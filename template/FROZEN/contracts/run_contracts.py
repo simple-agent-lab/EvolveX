@@ -49,7 +49,9 @@ def ok(name):
 
 
 def sh(cmd, cwd, timeout=60):
-    env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+    # contracts always exercise operators against the stub harness — cheap,
+    # deterministic, and independent of live infra
+    env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1", HARNESS_STUB="1")
     return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
                           timeout=timeout, env=env)
 
@@ -148,8 +150,8 @@ def main() -> int:
 
     # -- presence: everything the registry + frozen core promise ------------
     missing = [s.script for s in protocol.OPERATORS.values() if not (src / s.script).exists()]
-    missing += [f"FROZEN/{f}" for f in ("eval.sh", "stamp.sh", "contracts/protocol.py",
-                                        "contracts/oplib.py")
+    missing += [f"FROZEN/{f}" for f in ("eval.sh", "stamp.sh", "sealed_eval.sh",
+                                        "contracts/protocol.py", "contracts/oplib.py")
                 if not (src / "FROZEN" / f).exists()]
     if missing:
         fail("presence", f"missing: {missing}")

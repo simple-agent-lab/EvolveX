@@ -23,6 +23,7 @@ assert len(nodes) == 6, f"expected 6 ledger entries (gen0 + 5), got {len(nodes)}
 ids = {n["genid"] for n in nodes}
 assert ids == set(range(6)), f"genids not contiguous: {sorted(ids)}"
 
+splits = json.load(open("FROZEN/splits.json"))
 REQUIRED = ["genid", "parent", "tag", "score", "score_ci", "task_vector",
             "harness_version", "audit", "cost", "mutated", "operator_diff",
             "operator_reverted", "weights_ref", "train", "status", "valid_parent",
@@ -37,7 +38,8 @@ for n in nodes:
             f"gen {n['genid']} has bad parent {n['parent']}"
         assert n["mutated"], f"gen {n['genid']} recorded no mutated paths"
     assert 0.0 <= n["score"] <= 1.0
-    assert len(n["task_vector"]) == 20
+    assert len(n["task_vector"]) == len(splits["gate"]), \
+        "canonical task_vector must cover exactly the gate split"
     assert n["audit"] == "clean"
 
 parents = {n["parent"] for n in nodes if n["parent"] is not None}
