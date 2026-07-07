@@ -82,8 +82,14 @@ tagged `gen/<id>` per generation.
 | M4 | presets (autoresearch / AHE / HyperAgents / MetaAgent) + operator variants | **done** |
 | M5 | data pipeline (distill + frozen decontam, tamper-evident stamps; engine rejects unstamped) | **done** |
 | M6 | weights into the lineage — **blocked on infra**: open-weights policy model + vLLM serving + GPU (or fine-tuning API) | blocked |
-| M7 | auto-train closed loop (plateau trigger, async train jobs) | after M6 |
-| M8 | recipe evolution + online RL exploration | after M7 |
+| M7 | auto-train trigger mechanics (plateau detect -> distill -> decontam -> engine dispatch) **done to the engine boundary**; checkpoint re-entry needs M6 | mechanics done |
+| M8 | recipe evolution + online RL exploration | after M6/M7 |
+
+Observability: `bin/lineage-report.py <workspace>` (population health,
+task-vector diversity with collapse warning, Tier-1 operator-mutation
+attribution vs sibling lineages); `FROZEN/audit.sh` lists quarantined gens
+(`EVOLVE_AUDIT_JUMP` arms the anomaly escalation in the stamp).
 
 Tests: `tests/run_all.sh` (smoke, contract rejection, insight loop,
-self-reference admission, islands, presets, training-data pipeline).
+self-reference admission, islands, presets, training-data pipeline,
+outer-loop trigger + audit quarantine).

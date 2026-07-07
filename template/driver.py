@@ -247,6 +247,69 @@ def generation(inject: Path = None) -> None:
     run_operator("reflect", gen=gen)                                # (10)
 
 
+def outer_loop_check() -> None:
+    """Outer loop T1–T4 (design §03): on a best-ever plateau, distill dev
+    trajectories, pass the frozen decontamination gate, and dispatch the train
+    engine as a background-able job. The produced checkpoint re-enters the
+    inner loop as a candidate (M6, engine currently infra-blocked) — the
+    trigger, data, and stamping mechanics are live now.
+
+    Armed via EVOLVE_TRAIN_PLATEAU=<K> (off when unset/0)."""
+    k = int(os.environ.get("EVOLVE_TRAIN_PLATEAU", "0") or 0)
+    best_path = WS / "best_ever.json"
+    if not k or not best_path.exists():
+        return
+    best = json.loads(best_path.read_text())
+    latest = next_id() - 1
+    if latest - best["genid"] < k:
+        return
+
+    state_path = WS / "runs" / "train-requests" / "state.json"
+    state = json.loads(state_path.read_text()) if state_path.exists() else {}
+    if latest - state.get("last_request_gen", -10**9) < k:
+        return  # cooldown: one request per plateau window
+
+    log(f"outer loop: plateau detected (best gen {best['genid']} unchallenged "
+        f"for {latest - best['genid']} gens) — T2 distill")
+    request = {"trigger_gen": latest, "plateau_k": k, "champion": best}
+    try:
+        distilled = run_operator("distill")                              # T2
+        request["manifest"] = distilled["manifest"]
+        request["samples"] = {"sft": distilled["sft"], "dpo": distilled["dpo"]}
+
+        p = subprocess.run([sys.executable, str(WS / "FROZEN" / "decontam.py"),
+                            "stamp", distilled["manifest"]],
+                           cwd=WS, capture_output=True, text=True)      # T3
+        request["stamped"] = p.returncode == 0
+        if p.returncode != 0:
+            request["engine"] = "skipped"
+            log(f"outer loop: decontam rejected the manifest — {p.stderr.strip()[:200]}")
+        else:
+            p = subprocess.run(
+                ["bash", str(WS / "operators" / "engines" / "train_tinker.sh"),
+                 "ckpts/base", distilled["manifest"],
+                 "operators/train/recipe.yaml", f"ckpts/req-{latest}"],
+                cwd=WS, capture_output=True, text=True)                 # T4
+            if p.returncode == protocol.EXIT_NOT_WIRED:
+                request["engine"] = "not-wired"
+                log("outer loop: armed and data staged — train engine backend "
+                    "is M6 (open-weights model + GPU/API)")
+            elif p.returncode == 0:
+                request["engine"] = "ok"
+                log("outer loop: train job dispatched")  # M6: checkpoint re-entry
+            else:
+                request["engine"] = f"failed:{p.returncode}"
+                log(f"outer loop: engine failed — {p.stderr.strip()[:200]}")
+    except (GenDiscard, NotWired) as e:
+        request["error"] = str(e)[:200]
+        log(f"outer loop: aborted — {e}")
+
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    (state_path.parent / f"req-{latest}.json").write_text(
+        json.dumps(request, indent=1) + "\n")
+    state_path.write_text(json.dumps({"last_request_gen": latest}) + "\n")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("n", nargs="?", type=int, default=5)
@@ -275,6 +338,7 @@ def main() -> int:
         except NotWired as e:
             log(f"abort: {e}")
             return protocol.EXIT_NOT_WIRED
+        outer_loop_check()  # T1: plateau trigger (no-op unless armed)
 
     best = "n/a"
     best_path = WS / "best_ever.json"
