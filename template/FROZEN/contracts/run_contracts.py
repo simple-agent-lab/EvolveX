@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""FROZEN — operator contract tests (credit-assignment Tier 0, design v0.4 §06-C).
+"""FROZEN — Tier-0 operator contract tests, driven by protocol.py.
 
-Validates every operator's interface against a disposable copy of the
-workspace, and verifies FROZEN write-protection. A self-modified operator must
-pass these before it may even reach the meta_eval admission gate (M3) — this is
-the cheap first gate that catches the most common self-reference death:
-shipping a broken operator that kills the whole lineage.
+There are no hand-written interface assertions here: presence, CLI, output
+shape, and write scopes all come from the OPERATORS registry, so protocol.py
+is the single place the interface is defined. A self-modified operator must
+pass these before it may reach the meta_eval admission gate (M3) — the cheap
+first gate that catches the most common self-reference death: a broken
+operator killing the whole lineage.
 
-Usage: run_contracts.py [--workspace <dir>]   (default: the workspace this file lives in)
+Usage: run_contracts.py [--workspace <dir>]
 Exit 0 = all contracts hold; exit 1 = at least one violation (offender named).
 """
 import argparse
@@ -18,205 +19,178 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 
-SCHEMA_V2_KEYS = [
-    "genid", "parent", "tag",
-    "score", "score_ci", "task_vector", "harness_version", "audit",
-    "cost", "mutated", "operator_diff", "operator_reverted",
-    "weights_ref", "train",
-    "status", "valid_parent", "used_insights", "predicted_fixes",
-    "verified_fixes", "novelty", "note",
-]
+_HERE = Path(__file__).resolve()
+sys.path.insert(0, str(_HERE.parents[2]))
+from FROZEN.contracts import protocol  # noqa: E402
 
-OPERATORS = ["select.py", "rollout.py", "mutate.py", "novelty.py",
-             "gate.py", "record.py", "reflect.py"]
-
-MUTABLE_PREFIXES = ("candidate/", "operators/", "meta/", "program.md")
+# fixture CLI values per operator (fixture seeds gens 0/1/2; gen 3 is "next")
+FIXTURE_CLI = {
+    "select": {},
+    "rollout": {"gen": 3, "parent": 1},
+    "mutate": {"gen": 3, "parent": 1},
+    "novelty": {"gen": 3, "parent": 1},
+    "gate": {"gen": 2},
+    "record": {"gen": 2, "parent": 0},
+    "reflect": {"gen": 2},
+}
 
 FAILURES = []
 
 
-def fail(name: str, msg: str) -> None:
+def fail(name, msg):
     FAILURES.append(f"{name}: {msg}")
     print(f"  FAIL  {name}: {msg}")
 
 
-def ok(name: str) -> None:
+def ok(name):
     print(f"  ok    {name}")
 
 
-def run(cmd, cwd, timeout=60):
-    return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout)
+def sh(cmd, cwd, timeout=60):
+    env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+    return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
+                          timeout=timeout, env=env)
 
 
-def frozen_digest(ws: str) -> str:
+def frozen_digest(ws: Path) -> str:
     h = hashlib.sha256()
-    froot = os.path.join(ws, "FROZEN")
-    for root, dirs, files in os.walk(froot):
-        dirs.sort()
-        for name in sorted(files):
-            p = os.path.join(root, name)
-            h.update(os.path.relpath(p, froot).encode())
-            with open(p, "rb") as fh:
-                h.update(fh.read())
+    root = ws / "FROZEN"
+    for p in sorted(root.rglob("*")):
+        if p.is_dir() or "__pycache__" in p.parts or p.suffix == ".pyc":
+            continue
+        h.update(str(p.relative_to(root)).encode())
+        h.update(p.read_bytes())
     return h.hexdigest()
 
 
-def build_fixture(src_ws: str, tmp: str) -> str:
+def build_fixture(src: Path, tmp: Path) -> Path:
     """Copy the workspace (code only) and seed a minimal 3-gen evolution state."""
-    ws = os.path.join(tmp, "ws")
-    shutil.copytree(
-        src_ws, ws,
-        ignore=shutil.ignore_patterns(".git", "runs", "ckpts", "manifests", "__pycache__"),
-    )
+    ws = tmp / "ws"
+    shutil.copytree(src, ws, ignore=shutil.ignore_patterns(
+        ".git", "runs", "ckpts", "manifests", "__pycache__"))
     for d in ("runs", "insights", "manifests", "ckpts"):
-        os.makedirs(os.path.join(ws, d), exist_ok=True)
+        (ws / d).mkdir(exist_ok=True)
 
     git = ["git", "-c", "user.name=contracts", "-c", "user.email=contracts@local"]
-    run(["git", "init", "-q", "-b", "main"], ws)
-    run(git + ["add", "-A"], ws)
-    run(git + ["commit", "-qm", "fixture"], ws)
+    sh(["git", "init", "-q", "-b", "main"], ws)
+    sh(git + ["add", "-A"], ws)
+    sh(git + ["commit", "-qm", "fixture"], ws)
     for g in (0, 1, 2):
-        run(["git", "tag", f"gen/{g}"], ws)
+        sh(["git", "tag", f"gen/{g}"], ws)
 
-    nodes = [
-        {"genid": 0, "parent": None, "score": 0.40, "valid_parent": True},
-        {"genid": 1, "parent": 0, "score": 0.55, "valid_parent": True},
-        {"genid": 2, "parent": 0, "score": 0.35, "valid_parent": False},
-    ]
-    with open(os.path.join(ws, "archive.jsonl"), "w") as f:
-        for n in nodes:
+    with open(ws / "archive.jsonl", "w") as f:
+        for n in ({"genid": 0, "parent": None, "score": 0.40, "valid_parent": True},
+                  {"genid": 1, "parent": 0, "score": 0.55, "valid_parent": True},
+                  {"genid": 2, "parent": 0, "score": 0.35, "valid_parent": False}):
             f.write(json.dumps(n) + "\n")
 
     for g in (1, 2):
-        d = os.path.join(ws, "runs", f"gen-{g}")
-        os.makedirs(d, exist_ok=True)
-        json.dump(
+        d = ws / "runs" / f"gen-{g}"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "stamp.json").write_text(json.dumps(
             {"genid": g, "score": 0.5 + g / 10, "score_ci": [0.3, 0.7],
-             "task_vector": "10110", "harness_version": "stub-v1", "audit": "clean"},
-            open(os.path.join(d, "stamp.json"), "w"),
-        )
-        json.dump(
+             "task_vector": "10110", "harness_version": "stub-v1", "audit": "clean"}))
+        (d / "mutate.json").write_text(json.dumps(
             {"note": "fixture", "predicted_fixes": [], "used_insights": [],
-             "cost": {"tokens": 0, "eval_minutes": 0}},
-            open(os.path.join(d, "mutate.json"), "w"),
-        )
-        json.dump({"novelty": 1.0, "accept": True}, open(os.path.join(d, "novelty.json"), "w"))
-        json.dump({"status": "keep", "valid_parent": True}, open(os.path.join(d, "gate.json"), "w"))
+             "cost": {"tokens": 0, "eval_minutes": 0}}))
+        (d / "novelty.json").write_text(json.dumps({"novelty": 1.0, "accept": True}))
+        (d / "gate.json").write_text(json.dumps({"status": "keep", "valid_parent": True}))
     return ws
 
 
-def parse_json_stdout(name: str, proc) -> dict:
-    if proc.returncode != 0:
+def reset_tree(ws: Path) -> None:
+    sh(["git", "checkout", "-q", "--", "."], ws)
+    sh(["git", "clean", "-qfd"], ws)
+
+
+def touched_paths(ws: Path) -> list:
+    out = sh(["git", "status", "--porcelain"], ws).stdout
+    return [line[3:].strip().strip('"') for line in out.splitlines() if line.strip()]
+
+
+def run_and_validate(ws: Path, name: str) -> dict:
+    """Run one operator per its registry spec; validate output + write scope."""
+    spec = protocol.OPERATORS[name]
+    cmd = [sys.executable, str(ws / spec.script)]
+    for key, value in FIXTURE_CLI[name].items():
+        cmd += [f"--{key}", str(value)]
+    proc = sh(cmd, ws)
+    if proc.returncode != protocol.EXIT_OK:
         fail(name, f"exit {proc.returncode}: {proc.stderr.strip()[:200]}")
         return {}
     try:
-        return json.loads(proc.stdout)
-    except (json.JSONDecodeError, ValueError):
+        data = json.loads(proc.stdout)
+    except json.JSONDecodeError:
         fail(name, f"stdout is not JSON: {proc.stdout.strip()[:120]!r}")
         return {}
+    errs = protocol.validate(data, spec.output)
+    if errs:
+        fail(name, f"output violates protocol: {errs}")
+        return {}
+
+    bad = [p for p in touched_paths(ws)
+           if p.startswith("FROZEN/") or not p.startswith(spec.write_scope or ("\0",))]
+    if bad:
+        fail(name, f"touched paths outside write scope {spec.write_scope}: {bad}")
+        return {}
+    ok(name)
+    return data
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    default_ws = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    ap.add_argument("--workspace", default=default_ws)
+    ap.add_argument("--workspace", default=str(_HERE.parents[2]))
     a = ap.parse_args()
-    src = os.path.abspath(a.workspace)
-    print(f"contracts: workspace={src}")
+    src = Path(a.workspace).resolve()
+    print(f"contracts: workspace={src} protocol=v{protocol.PROTOCOL_VERSION}")
 
-    # -- presence & executability ------------------------------------------
-    for f in OPERATORS:
-        p = os.path.join(src, "operators", f)
-        if not os.path.exists(p):
-            fail("presence", f"operators/{f} missing")
-    for f in ("eval.sh", "stamp.sh"):
-        if not os.path.exists(os.path.join(src, "FROZEN", f)):
-            fail("presence", f"FROZEN/{f} missing")
-    if FAILURES:
+    # -- presence: everything the registry + frozen core promise ------------
+    missing = [s.script for s in protocol.OPERATORS.values() if not (src / s.script).exists()]
+    missing += [f"FROZEN/{f}" for f in ("eval.sh", "stamp.sh", "contracts/protocol.py",
+                                        "contracts/oplib.py")
+                if not (src / "FROZEN" / f).exists()]
+    if missing:
+        fail("presence", f"missing: {missing}")
         print(f"contracts: {len(FAILURES)} violation(s)")
         return 1
     ok("presence")
 
-    tmp = tempfile.mkdtemp(prefix="contracts-")
+    tmp = Path(tempfile.mkdtemp(prefix="contracts-"))
     try:
         ws = build_fixture(src, tmp)
         fz_before = frozen_digest(ws)
-        py = sys.executable
 
-        # -- select: must return a valid_parent genid that exists ----------
-        j = parse_json_stdout("select", run([py, "operators/select.py"], ws))
-        if j:
-            if j.get("parent") not in (0, 1):
-                fail("select", f"parent={j.get('parent')!r} is not a valid_parent genid from the archive")
+        results = {}
+        for name in protocol.OPERATORS:
+            reset_tree(ws)
+            results[name] = run_and_validate(ws, name)
+
+        # -- semantic checks beyond shape -----------------------------------
+        sel = results.get("select") or {}
+        if sel and sel.get("parent") not in (0, 1):
+            fail("select-semantic",
+                 f"parent={sel.get('parent')!r} is not a valid_parent genid from the archive")
+        elif sel:
+            ok("select-semantic (parent is a valid_parent)")
+
+        rec = results.get("record") or {}
+        if rec:
+            stamp = json.loads((ws / "runs" / "gen-2" / "stamp.json").read_text())
+            if rec["score"] != stamp["score"] or rec["task_vector"] != stamp["task_vector"]:
+                fail("record-semantic", "frozen fields do not match the stamp")
             else:
-                ok("select")
+                ok("record-semantic (frozen fields == stamp)")
 
-        # -- gate: legal status/valid_parent over a frozen stamp -----------
-        j = parse_json_stdout("gate", run([py, "operators/gate.py", "--gen", "2"], ws))
-        if j:
-            if j.get("status") not in ("keep", "discard") or not isinstance(j.get("valid_parent"), bool):
-                fail("gate", f"illegal output {j}")
-            else:
-                ok("gate")
-
-        # -- rollout / novelty / reflect: schema-shaped JSON ---------------
-        j = parse_json_stdout("rollout", run([py, "operators/rollout.py", "--gen", "1", "--parent", "0"], ws))
-        if j and j.get("ok") is not True:
-            fail("rollout", f"missing ok=true: {j}")
-        elif j:
-            ok("rollout")
-
-        j = parse_json_stdout("novelty", run([py, "operators/novelty.py", "--gen", "1", "--parent", "0"], ws))
-        if j and not isinstance(j.get("accept"), bool):
-            fail("novelty", f"accept must be bool: {j}")
-        elif j:
-            ok("novelty")
-
-        j = parse_json_stdout("reflect", run([py, "operators/reflect.py", "--gen", "1"], ws))
-        if j and not isinstance(j.get("ops"), list):
-            fail("reflect", f"ops must be a list: {j}")
-        elif j:
-            ok("reflect")
-
-        # -- mutate: only mutable paths, never FROZEN -----------------------
-        proc = run([py, "operators/mutate.py", "--gen", "3", "--parent", "1"], ws)
-        j = parse_json_stdout("mutate", proc)
-        if j and "note" not in j:
-            fail("mutate", f"missing note: {j}")
-        touched = run(["git", "status", "--porcelain"], ws).stdout.splitlines()
-        bad = []
-        for line in touched:
-            path = line[3:].strip().strip('"')
-            if path.startswith("FROZEN/"):
-                bad.append(path)
-            elif path and not path.startswith(MUTABLE_PREFIXES):
-                bad.append(path)
-        if bad:
-            fail("mutate", f"touched non-mutable paths: {bad}")
-        elif j:
-            ok("mutate")
-
-        # -- record: schema v2, frozen fields only from the stamp ----------
-        proc = run([py, "operators/record.py", "--gen", "2", "--parent", "0"], ws)
-        j = parse_json_stdout("record", proc)
-        if j:
-            missing = [k for k in SCHEMA_V2_KEYS if k not in j]
-            stamp = json.load(open(os.path.join(ws, "runs", "gen-2", "stamp.json")))
-            if missing:
-                fail("record", f"schema v2 keys missing: {missing}")
-            elif j["score"] != stamp["score"] or j["task_vector"] != stamp["task_vector"]:
-                fail("record", "frozen fields do not match the stamp")
-            else:
-                ok("record")
-        # forging must fail: no score argument may exist
-        proc = run([py, "operators/record.py", "--gen", "2", "--parent", "0", "--score", "0.99"], ws)
-        if proc.returncode == 0:
+        # forging must fail: the protocol CLI has no score flag
+        proc = sh([sys.executable, str(ws / "operators" / "record.py"),
+                   "--gen", "2", "--parent", "0", "--score", "0.99"], ws)
+        if proc.returncode == protocol.EXIT_OK:
             fail("record-forge", "record.py accepted a --score argument (invariant #2 violation)")
         else:
             ok("record-forge (rejected as required)")
 
-        # -- FROZEN write-protection across everything above ----------------
         if frozen_digest(ws) != fz_before:
             fail("frozen-guard", "an operator modified FROZEN/ during contract runs")
         else:

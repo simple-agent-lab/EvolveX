@@ -1,8 +1,10 @@
 # program.md — 循环规则(agent 模式的编排说明书)
 
 driver 模式下这份文件只是文档;agent 模式下,编排 agent 读它决定何时调哪个算子。
+算子的调用约定 / 输出 schema / 写权限 / 退出码,以 PROTOCOL.md(权威定义在
+FROZEN/contracts/protocol.py)为准,agent 编排同样受其约束。
 
-## 每代的标准节拍(与 loop.sh 一致)
+## 每代的标准节拍(与 driver.py 一致)
 
 1. `operators/select.py` 从 archive.jsonl 选父代(默认 parent-balancing)。
 2. `git checkout gen/<P>` 取出父代快照(代码 + 按 weights_ref 恢复权重)。

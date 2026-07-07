@@ -7,4 +7,4 @@
 # (ledger: operator_reverted=true) while candidate changes survive.
 # The protocol lives here because the thing being evaluated must not own its evaluator.
 echo "meta_eval lands at M3 — operator self-modification is not yet admitted" >&2
-exit 2
+exit 3  # EXIT_NOT_WIRED

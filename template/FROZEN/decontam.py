@@ -12,4 +12,4 @@ distill.py is evolvable; this gate is not reachable by it.
 import sys
 
 print("decontam lands at M5 — no training data may be stamped before then", file=sys.stderr)
-sys.exit(2)
+sys.exit(3)  # EXIT_NOT_WIRED

@@ -16,4 +16,4 @@ gate is not reachable from here.
 import sys
 
 print("distill lands at M5 — no trajectories to distill before the real harness (M1)", file=sys.stderr)
-sys.exit(2)
+sys.exit(3)  # EXIT_NOT_WIRED; joins the protocol OPERATORS registry at M5

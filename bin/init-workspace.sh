@@ -19,7 +19,7 @@ cd "$TARGET"
 mkdir -p runs manifests ckpts insights
 [[ -f insights/playbook.jsonl ]] || : > insights/playbook.jsonl
 
-chmod +x loop.sh FROZEN/*.sh operators/*.sh operators/*.py operators/engines/*.sh \
+chmod +x loop.sh driver.py FROZEN/*.sh operators/*.sh operators/*.py operators/engines/*.sh \
          FROZEN/*.py FROZEN/contracts/*.py 2>/dev/null || true
 
 git init -q -b main

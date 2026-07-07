@@ -12,8 +12,15 @@ Design doc (v0.4, 中文): [架构 Review artifact](https://claude.ai/code/artif
 - **Evolvable operators, orthogonal orchestration**: the loop is a chain of
   operator scripts (`select / rollout / mutate / novelty / gate / record /
   reflect / distill`), each shipping a default implementation + variants.
-  A ~100-line `loop.sh` drives them (driver mode); an orchestrating agent
+  A Python `driver.py` conducts them (driver mode); an orchestrating agent
   reading `program.md` can replace it (agent mode).
+- **Typed protocol, JSON only at the wire**: every operator interface (CLI,
+  required output keys, write scopes, exit codes) is defined once as types in
+  `FROZEN/contracts/protocol.py` — the interface is mechanism, the
+  implementation is evolvable. The driver, the operator SDK
+  (`FROZEN/contracts/oplib.py`), and the contract tests all validate against
+  the same types; `PROTOCOL.md` is the human/LLM-readable rendition injected
+  into mutation prompts from M2.
 - **Weight updates are just mutations**: a checkpoint is a candidate, training
   is a variation operator, and the same frozen ruler scores it
   (`mutated: ["weights"]` in the ledger).
@@ -47,12 +54,14 @@ tests/contracts_reject.sh  # broken operators (garbage output / FROZEN writes / 
 ```
 bin/init-workspace.sh   instantiate template/ into a workspace (own git repo, tag gen/0)
 template/               the meta-workspace template
-├─ loop.sh              driver-mode conductor (10-step inner loop)
+├─ driver.py            driver-mode conductor (10-step inner loop; loop.sh is a thin wrapper)
 ├─ program.md           loop rules (agent-mode orchestration prose)
+├─ PROTOCOL.md          operator protocol, human/LLM-readable (authority: FROZEN/contracts/protocol.py)
 ├─ operators/           evolvable operators (defaults + variants) + engine adapters
 ├─ meta/                paired strategy prose per operator
 ├─ candidate/           Layer 2 genome: code + model_ref (weights slot)
-├─ FROZEN/              frozen core: eval/stamp/splits/decontam/meta_eval/contracts/audit
+├─ FROZEN/              frozen core: eval/stamp/splits/decontam/meta_eval/audit
+│   └─ contracts/       protocol.py (typed interfaces) + oplib.py (operator SDK) + run_contracts.py
 └─ .gitignore           runs/, archive.jsonl, insights/, ckpts/… stay untracked (reset-proof)
 tests/                  M0 acceptance scripts
 ```

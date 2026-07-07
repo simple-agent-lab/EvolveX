@@ -5,4 +5,4 @@
 #   output: new checkpoint ref (ckpts/gen-<id>) + train_metrics.json
 # Unstamped manifests are rejected here (invariant #4 enforcement point).
 echo "train engine adapter lands at M6" >&2
-exit 2
+exit 3  # EXIT_NOT_WIRED

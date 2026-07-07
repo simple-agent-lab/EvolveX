@@ -5,4 +5,4 @@
 # "real capability" vs "exploit", writing audit=clean|exploit into the stamp.
 # Exploit-flagged gens: trajectories are excluded from training data (decontam).
 echo "audit lands at M3+ — stamps default to audit=clean until then" >&2
-exit 2
+exit 3  # EXIT_NOT_WIRED

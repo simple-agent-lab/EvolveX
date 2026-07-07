@@ -23,7 +23,7 @@ else
   echo "real harbor harness lands at M1 — run with HARNESS_STUB=1 for now" >&2
   echo "(M1: harbor run --agent candidate:Agent --dataset \$DATASET --n-attempts \$N_ATTEMPTS \\" >&2
   echo "     --n-concurrent \$N_CONCURRENT --env docker --job-name gen-$GEN --jobs-dir runs)" >&2
-  exit 2
+  exit 3 # EXIT_NOT_WIRED
 fi
 
 echo "$OUT/result.json"
