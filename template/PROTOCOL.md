@@ -51,8 +51,20 @@ flag,输出是 stdout 上的**单个 JSON 对象**。JSON 只是进程边界的�
 
 ## 公开环境变量
 
-`HARNESS_STUB`(M0 假 harness 开关)· `EVOLVE_SEED`(可复现运行)·
-`EVOLVE_SELECT_ALPHA`(parent-balancing 的 α)。其余 env 均为实现细节。
+| 变量 | 作用 |
+|---|---|
+| `HARNESS_STUB` | 1 = stub harness(真 harbor 是 M1-infra) |
+| `EVOLVE_SEED` | 可复现运行 |
+| `EVOLVE_SELECT_ALPHA` | parent-balancing 的 α(默认 1.0) |
+| `EVOLVE_MUTATE_VARIANT` | fixed / llm / noop(覆盖 config.json) |
+| `EVOLVE_NOVELTY_THRESHOLD` | 变异查重相似度阈值(默认 0.98) |
+| `EVOLVE_PLAYBOOK_CAP` | insight pool active 条目上限(默认 80) |
+| `EVOLVE_DISTILL_CAP` | distill 每任务样本封顶(默认 3) |
+| `EVOLVE_TRAIN_PLATEAU` | K:best-ever 停滞 K 代触发外环(默认关) |
+| `EVOLVE_AUDIT_JUMP` | 超冠军该幅度即 audit=pending 隔离(默认关) |
+| `META_EVAL_K` / `META_EVAL_MARGIN` | 自指准入回放代数(2)与非劣 margin(0.05) |
+
+`EVOLVE_IN_META_EVAL` 是内部变量(回放防递归),不属于公开接口。
 
 ## 校验点(同一份 protocol.py 驱动)
 
