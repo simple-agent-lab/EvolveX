@@ -1,0 +1,6 @@
+{
+ "select": "parent-balancing",
+ "gate": "open",
+ "mutate": "fixed",
+ "_note": "Layer-1 variant selection; presets/ holds the repro-matrix configs. Env overrides (EVOLVE_MUTATE_VARIANT) win over this file."
+}

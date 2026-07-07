@@ -211,12 +211,14 @@ def inject_candidate(gen: int, source: Path) -> dict:
 
 
 def generation(inject: Path = None) -> None:
-    parent = run_operator("select")["parent"]                       # (1)
+    selected = run_operator("select")                               # (1)
+    parent = selected["parent"]
     gen = next_id()
     log(f"gen {gen} <- parent {parent}" + (" [inject]" if inject else ""))
 
     sh(GIT + ["checkout", "-q", f"gen/{parent}"])                   # (2)
     (WS / "runs" / f"gen-{gen}").mkdir(parents=True, exist_ok=True)
+    write_run_json(gen, "select", selected)
     fz_before = frozen_digest()
 
     try:
@@ -240,7 +242,7 @@ def generation(inject: Path = None) -> None:
 
     frozen_step("eval.sh", gen)                                     # (7)
     frozen_step("stamp.sh", gen)
-    run_operator("gate", gen=gen)                                   # (8)
+    run_operator("gate", gen=gen, parent=parent)                    # (8)
     run_operator("record", gen=gen, parent=parent)                  # (9)
     run_operator("reflect", gen=gen)                                # (10)
 

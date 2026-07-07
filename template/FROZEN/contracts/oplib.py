@@ -74,6 +74,13 @@ def env_seed(salt: str = ""):
     return f"{seed}:{salt}" if seed else None
 
 
+def config() -> dict:
+    """Layer-1 variant selection (config.json — tracked, travels with the
+    lineage, evolvable). Operators read their variant from here; presets are
+    just alternative config files (design §07: four systems = four configs)."""
+    return read_json(ws_path("config.json"), {}) or {}
+
+
 # --- playbook primitives (insight pool, design §06-A) -----------------------
 # The playbook file is append-only op lines; folding by id (last line wins)
 # yields current state. Mechanism owns these primitives; the POLICY (what to

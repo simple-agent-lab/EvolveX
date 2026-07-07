@@ -21,8 +21,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from FROZEN.contracts.oplib import (OperatorError, operator_main, playbook_active,  # noqa: E402
-                                    read_json, ws_path)
+from FROZEN.contracts.oplib import (OperatorError, config, operator_main,  # noqa: E402
+                                    playbook_active, read_json, ws_path)
 from FROZEN.contracts.protocol import MutateOutput  # noqa: E402
 
 TOP_K = 3
@@ -103,7 +103,7 @@ def main(args):
     failed = feedback.get("failed_tasks", [])
     used_ids, insights = retrieve_insights(failed)
 
-    variant = os.environ.get("EVOLVE_MUTATE_VARIANT", "fixed")
+    variant = os.environ.get("EVOLVE_MUTATE_VARIANT") or config().get("mutate", "fixed")
     if variant == "noop":
         note = "noop (control arm)"
     elif variant == "llm":

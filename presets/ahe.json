@@ -1,0 +1,6 @@
+{
+ "select": "tournament",
+ "gate": "hillclimb",
+ "mutate": "llm",
+ "_repro": "AHE: elitist pressure (tournament) + improvement-gated lineage; predicted_fixes falsification runs in the ledger for every preset. The full falsification+rollback gate variant lands with the real harness (M1)."
+}

@@ -1,0 +1,6 @@
+{
+ "select": "random",
+ "gate": "none",
+ "mutate": "llm",
+ "_repro": "MetaAgent: pure accumulation — no gating at all; memory grows via the insight playbook (reflect), which is this framework's context-memory analogue."
+}

@@ -31,7 +31,7 @@ FIXTURE_CLI = {
     "rollout": {"gen": 3, "parent": 1},
     "mutate": {"gen": 3, "parent": 1},
     "novelty": {"gen": 3, "parent": 1},
-    "gate": {"gen": 2},
+    "gate": {"gen": 2, "parent": 0},
     "record": {"gen": 2, "parent": 0},
     "reflect": {"gen": 2},
 }

@@ -1,0 +1,6 @@
+{
+ "select": "random",
+ "gate": "open",
+ "mutate": "llm",
+ "_repro": "HyperAgents: open-ended random-parent population over a full-repo candidate; valid-parent = ran clean, which is the open gate."
+}
