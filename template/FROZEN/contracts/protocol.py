@@ -87,6 +87,15 @@ class ReflectOutput:
 
 
 @dataclass
+class DistillOutput:
+    ok: bool
+    manifest: str  # manifests/<name>.jsonl — every sample traces to (genid, task, hash)
+    sft: int
+    dpo: int
+    extras: dict = field(default_factory=dict)
+
+
+@dataclass
 class Stamp:
     """Written only by FROZEN/stamp.sh (invariant #2). record.py copies these
     fields verbatim into the ledger and accepts them from nowhere else."""
@@ -187,7 +196,9 @@ OPERATORS = {
                            output=LedgerEntry, write_scope=()),
     "reflect": OperatorSpec("reflect", "operators/reflect.py",
                             cli=(_GEN,), output=ReflectOutput, write_scope=()),
-    # distill joins the registry at M5 (outer loop T2).
+    # outer loop T2: trajectories -> training data (manifests/ is untracked state)
+    "distill": OperatorSpec("distill", "operators/distill.py",
+                            cli=(), output=DistillOutput, write_scope=()),
 }
 
 # environment variables that are part of the public interface

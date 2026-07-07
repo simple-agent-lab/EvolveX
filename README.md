@@ -76,11 +76,14 @@ tagged `gen/<id>` per generation.
 | # | Goal | Status |
 |---|------|--------|
 | M0 | pipeline (driver + stub) + ledger schema v2 + contract tests | **done** |
-| M1 | real harness (harbor), 3-way splits, parent-balancing on real scores | next |
-| M2 | llm mutate + reflect/playbook (insight pool + credit backfill) | |
-| M3 | population + self-reference (novelty, meta_eval admission gate, islands) | |
-| M4 | presets (autoresearch / AHE / HyperAgents / MetaAgent) | |
-| M5 | data pipeline (distill + frozen decontam) | |
-| M6 | weights into the lineage (open model + vLLM, LoRA SFT) | |
-| M7 | auto-train closed loop (plateau trigger, async train jobs) | |
-| M8 | recipe evolution + online RL exploration | |
+| M1 | real harness (harbor): 3-way splits + adapter **done on stub**; needs a live harbor install (binary, docker, dataset pin, model keys) to finalize | mechanics done |
+| M2 | reflect/playbook (insight pool + falsification + credit backfill); llm mutate scaffolded (needs claude CLI/key) | **done** |
+| M3 | population + self-reference (real novelty + retries, contracts+meta_eval admission gate, islands w/ migration) | **done** |
+| M4 | presets (autoresearch / AHE / HyperAgents / MetaAgent) + operator variants | **done** |
+| M5 | data pipeline (distill + frozen decontam, tamper-evident stamps; engine rejects unstamped) | **done** |
+| M6 | weights into the lineage — **blocked on infra**: open-weights policy model + vLLM serving + GPU (or fine-tuning API) | blocked |
+| M7 | auto-train closed loop (plateau trigger, async train jobs) | after M6 |
+| M8 | recipe evolution + online RL exploration | after M7 |
+
+Tests: `tests/run_all.sh` (smoke, contract rejection, insight loop,
+self-reference admission, islands, presets, training-data pipeline).

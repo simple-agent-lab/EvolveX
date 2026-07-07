@@ -29,9 +29,10 @@ flag,输出是 stdout 上的**单个 JSON 对象**。JSON 只是进程边界的�
 | rollout | `--gen --parent` | `ok: bool, lane: "dev"` | 无 |
 | mutate | `--gen --parent` | `note, predicted_fixes, used_insights, cost` | `candidate/`(M3+:`operators/ meta/ program.md`) |
 | novelty | `--gen --parent` | `novelty: float, accept: bool` | 无 |
-| gate | `--gen` | `status: keep\|discard, valid_parent: bool` | 无 |
+| gate | `--gen [--parent]` | `status: keep\|discard, valid_parent: bool` | 无 |
 | record | `--gen [--parent\|--genesis] [--note]` | LedgerEntry 全部 21 键(schema v2) | 无 |
 | reflect | `--gen` | `ops: list`(playbook delta,严禁整篇重写) | 无 |
+| distill | — | `ok, manifest, sft, dpo`(manifest 每样本可溯源) | 无 |
 
 **扩展规则:必需键封闭,额外键开放。** 算子可以进化出更丰富的输出
 (放 `extras`,序列化时平铺),driver 只依赖必需键。加可选键、加新算子

@@ -34,6 +34,7 @@ FIXTURE_CLI = {
     "gate": {"gen": 2, "parent": 0},
     "record": {"gen": 2, "parent": 0},
     "reflect": {"gen": 2},
+    "distill": {},  # fixture has no trajectories -> must succeed with an empty manifest
 }
 
 FAILURES = []
