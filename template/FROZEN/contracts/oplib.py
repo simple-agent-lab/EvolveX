@@ -74,6 +74,41 @@ def env_seed(salt: str = ""):
     return f"{seed}:{salt}" if seed else None
 
 
+# --- playbook primitives (insight pool, design §06-A) -----------------------
+# The playbook file is append-only op lines; folding by id (last line wins)
+# yields current state. Mechanism owns these primitives; the POLICY (what to
+# add, when to retire, caps) lives in reflect.py and is evolvable.
+
+def playbook_path() -> Path:
+    return ws_path("insights", "playbook.jsonl")
+
+
+def playbook_state() -> dict:
+    """Fold the append-only op log into {id: latest entry}."""
+    state = {}
+    p = playbook_path()
+    if p.exists():
+        for line in p.read_text().splitlines():
+            if line.strip():
+                entry = json.loads(line)
+                state[entry["id"]] = entry
+    return state
+
+
+def playbook_append(ops: list) -> None:
+    """Append full-state op lines (each carries the entry's complete new state)."""
+    p = playbook_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with open(p, "a") as f:
+        for op in ops:
+            f.write(json.dumps(op, ensure_ascii=False) + "\n")
+
+
+def playbook_active(state: dict = None) -> list:
+    state = playbook_state() if state is None else state
+    return [e for e in state.values() if e.get("status") == "active"]
+
+
 def operator_main(name: str):
     """Wire an operator function to the protocol CLI contract.
 
