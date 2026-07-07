@@ -1,0 +1,9 @@
+# untracked state: survives `git reset` (reset-protected ledger & artifacts)
+runs/
+archive.jsonl
+best_ever.json
+insights/
+manifests/
+ckpts/
+__pycache__/
+*.pyc

@@ -1,0 +1,6 @@
+{
+ "provider": "stub",
+ "model": null,
+ "weights_ref": null,
+ "_note": "policy-model config slot (design v0.4 §01). Harness evolution may run on API models; auto-train (M6+) switches this to an open-weights model served via vLLM, with weights_ref pointing into ckpts/. The mutator model is configured separately — it is a tool, not the training target."
+}

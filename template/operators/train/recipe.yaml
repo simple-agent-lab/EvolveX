@@ -1,0 +1,11 @@
+# train recipe — evolvable from M8 (through the meta_eval admission gate).
+# Consumed by the train engine adapter (M6). LoRA SFT to start: checkpoints are
+# tens of MB, so the lineage can afford many of them.
+method: lora_sft          # lora_sft -> dpo -> online_rl (M8 exploration)
+base_model: null          # filled at M6 (open-weights, e.g. a Qwen-class model)
+lr: 1.0e-4
+epochs: 2
+lora_rank: 16
+data:
+  manifest: null          # must carry decontam_stamp (FROZEN/decontam.py)
+  mix: {sft_success: 1.0}

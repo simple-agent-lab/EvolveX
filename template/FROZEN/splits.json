@@ -1,0 +1,8 @@
+{
+  "harness_version": "stub-v1",
+  "n_tasks": 20,
+  "dev": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+  "gate": [12, 13, 14, 15, 16, 17],
+  "sealed_test": [18, 19],
+  "_note": "M0 stub scores over all tasks; M1 wires eval.sh to the gate split, rollout.py to dev, and seals sealed_test (never selected on, human-triggered only). Training data (M5) may only come from dev — enforced by decontam.py."
+}
