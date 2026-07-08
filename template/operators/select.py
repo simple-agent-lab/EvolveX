@@ -11,10 +11,7 @@ Variants (config.json "select"):
 """
 import os
 import random
-import sys
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from FROZEN.contracts.oplib import OperatorError, config, env_seed, operator_main, read_archive  # noqa: E402
 from FROZEN.contracts.protocol import SelectOutput  # noqa: E402
 

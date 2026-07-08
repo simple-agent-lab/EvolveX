@@ -8,10 +8,7 @@ has no score flag — a forged --score dies at the argparse boundary
 (EXIT_USAGE), and the contract tests assert that.
 """
 import subprocess
-import sys
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from FROZEN.contracts.oplib import (OperatorError, append_ledger, operator_main,  # noqa: E402
                                     read_json, ws_path)
 from FROZEN.contracts.protocol import LedgerEntry  # noqa: E402

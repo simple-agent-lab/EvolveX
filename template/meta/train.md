@@ -1,7 +1,12 @@
-# train 策略(与 operators/distill.py + train/recipe.yaml 配对,M5+)
+# Training strategy (paired prose for operators/distill.py + train/recipe.yaml, M5+)
 
-- 数据只从 dev 轨迹来,必须过 FROZEN/decontam 盖章 —— 这不是策略,是不变量。
-- 任务级筛选:失败代里成功任务的轨迹照样是好数据。
-- 近似轨迹每任务封顶,防数据分布坍缩到简单任务。
-- 训练触发看平台期(best-ever 停滞 K 代),不要按代数硬训。
-- checkpoint 是候选,不是产物:训完照常过 canonical eval,掉分就淘汰。
+- Data comes from dev trajectories only and must pass the FROZEN/decontam
+  stamp — that is an invariant, not a strategy.
+- Task-level selection: a successful task trajectory from a failed generation
+  is still good data.
+- Cap near-duplicate trajectories per task, or the data distribution
+  collapses onto easy tasks.
+- Trigger training on plateaus (best-ever stagnant for K gens), not on a
+  fixed generation count.
+- A checkpoint is a candidate, not a deliverable: it goes through canonical
+  eval like any mutation and gets eliminated if it scores worse.

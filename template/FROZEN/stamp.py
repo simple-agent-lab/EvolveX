@@ -11,7 +11,6 @@ import sys
 from pathlib import Path
 
 WS = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(WS))
 
 from FROZEN.contracts.protocol import Stamp, payload, validate  # noqa: E402
 

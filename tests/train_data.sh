@@ -10,6 +10,7 @@ trap 'rm -rf "$TMP"' EXIT
 
 "$ROOT/bin/init-workspace.sh" "$TMP/ws" > /dev/null
 cd "$TMP/ws"
+export PYTHONPATH="$PWD"   # direct operator invocations below import FROZEN.*
 HARNESS_STUB=1 EVOLVE_SEED=9 ./loop.sh 6 > /dev/null 2>&1
 
 echo "== distill produces a traceable manifest"

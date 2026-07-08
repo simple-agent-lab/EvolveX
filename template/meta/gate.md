@@ -1,6 +1,7 @@
-# gate 策略(与 operators/gate.py 配对的 prose,可进化)
+# Gate strategy (paired prose for operators/gate.py — evolvable)
 
-默认 open:非 crash 即 valid_parent —— 开放式种群,把淘汰交给 select 的
-权重而不是硬闸。要收紧(hillclimb / elitist+rollback)前记住:gate 只能
-污染种群,污染不了 fitness(score 与 best-ever 由冻结环节守着),所以
-宁可松,不可假装严。
+Default open: anything that didn't crash is a valid parent — an open-ended
+population that delegates elimination to selection weights rather than a hard
+gate. Before tightening (hillclimb / elitist+rollback), remember: a gate can
+only pollute the population, never the fitness signal (scores and best-ever
+are guarded by the frozen side). So err loose; never fake-strict.

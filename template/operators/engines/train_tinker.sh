@@ -15,8 +15,12 @@ RECIPE="${3:?recipe}"
 OUT="${4:?out-ckpt}"
 WS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
+export PYTHONPATH="$WS"
+PY=(python3)
+command -v uv >/dev/null 2>&1 && PY=(uv run --quiet --project "$WS" python3)
+
 # invariant #4: unstamped or tampered manifests are rejected before anything else
-python3 "$WS/FROZEN/decontam.py" verify "$MANIFEST" \
+"${PY[@]}" "$WS/FROZEN/decontam.py" verify "$MANIFEST" \
   || { echo "train engine: manifest rejected by decontam — refusing to train" >&2; exit 1; }
 
 echo "train engine backend lands at M6 (needs an open-weights policy model + GPU/API)" >&2

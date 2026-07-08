@@ -67,7 +67,7 @@ test "$(wc -l < archive.jsonl | tr -d ' ')" -eq 6 || { echo "ledger lost after r
 test -f best_ever.json || { echo "best_ever lost after reset" >&2; exit 1; }
 
 echo "== contracts on the workspace"
-python3 FROZEN/contracts/run_contracts.py
+./evolve contracts
 
 echo
 echo "M0 smoke: PASS"

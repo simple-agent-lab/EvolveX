@@ -1,78 +1,87 @@
-# PROTOCOL.md — 算子协议(人 / LLM 可读版)
+# PROTOCOL.md — the operator protocol (human/LLM-readable rendition)
 
-机器可读的权威定义在 `FROZEN/contracts/protocol.py`(接口是 mechanism,
-实现才可进化;两者冲突时以 protocol.py 为准)。这份文档随谱系旅行,
-M2 起注入 mutate 的 prompt:**改算子时,必须保持这里声明的接口。**
+The machine-readable authority is `FROZEN/contracts/protocol.py` (the
+interface is mechanism; only implementations evolve — on any conflict,
+protocol.py wins). This document travels with the lineage and is injected
+into mutation context: **when you edit an operator, you must preserve the
+interfaces declared here.**
 
-当前 `PROTOCOL_VERSION = 1`。
+Current `PROTOCOL_VERSION = 1`.
 
-## 调用约定
+## Invocation convention
 
-每个算子是一个独立可执行脚本,跑在子进程里(崩溃隔离)。参数只有标量
-flag,输出是 stdout 上的**单个 JSON 对象**。JSON 只是进程边界的序列化
-格式,协议本身是 protocol.py 里的类型。
+Every operator is a standalone executable script running in a subprocess
+(crash isolation). Arguments are scalar flags only; output is a **single
+JSON object on stdout**. JSON is just the wire format at the process
+boundary — the protocol itself is the set of types in protocol.py.
 
-## 退出码
+## Exit codes
 
-| code | 含义 | driver 的反应 |
+| code | meaning | driver's reaction |
 |---|---|---|
-| 0 | 成功,stdout 有一个 JSON 对象 | 继续 |
-| 1 | 算子失败 | 废弃本代,循环继续 |
-| 2 | 调用错误(argparse;含伪造 flag,如给 record 传 `--score`) | 废弃本代 |
-| 3 | 能力属于后续里程碑(not wired) | 停循环,大声报错 |
+| 0 | success; stdout carries one JSON object | continue |
+| 1 | operator failure | discard this generation, loop continues |
+| 2 | usage error (argparse; incl. forged flags like `--score` to record) | discard |
+| 3 | capability belongs to a later milestone (not wired) | stop the loop, loudly |
 
-## 每算子的接口
+## Per-operator interfaces
 
-| 算子 | CLI | 输出必需键 | 可写(tracked 路径) |
+| operator | CLI | required output keys | writable (tracked paths) |
 |---|---|---|---|
-| select | — | `parent: int`(必须是 archive 中的 valid_parent) | 无 |
-| rollout | `--gen --parent` | `ok: bool, lane: "dev"` | 无 |
-| mutate | `--gen --parent` | `note, predicted_fixes, used_insights, cost` | `candidate/`(M3+:`operators/ meta/ program.md`) |
-| novelty | `--gen --parent` | `novelty: float, accept: bool` | 无 |
-| gate | `--gen [--parent]` | `status: keep\|discard, valid_parent: bool` | 无 |
-| record | `--gen [--parent\|--genesis] [--note]` | LedgerEntry 全部 21 键(schema v2) | 无 |
-| reflect | `--gen` | `ops: list`(playbook delta,严禁整篇重写) | 无 |
-| distill | — | `ok, manifest, sft, dpo`(manifest 每样本可溯源) | 无 |
+| select | — | `parent: int` (must be a valid_parent genid in the archive) | none |
+| rollout | `--gen --parent` | `ok: bool, lane: "dev"` | none |
+| mutate | `--gen --parent [--attempt]` | `note, predicted_fixes, used_insights, cost` | `candidate/` (M3+: `operators/ meta/ program.md config.json`) |
+| novelty | `--gen --parent` | `novelty: float, accept: bool` | none |
+| gate | `--gen [--parent]` | `status: keep\|discard, valid_parent: bool` | none |
+| record | `--gen [--parent\|--genesis] [--note]` | all 21 LedgerEntry keys (schema v2) | none |
+| reflect | `--gen` | `ops: list` (playbook delta ops — never a rewrite) | none |
+| distill | — | `ok, manifest, sft, dpo` (every sample traceable) | none |
 
-**扩展规则:必需键封闭,额外键开放。** 算子可以进化出更丰富的输出
-(放 `extras`,序列化时平铺),driver 只依赖必需键。加可选键、加新算子
-随时可以;改必需键 = 人在循环外走正门(bump PROTOCOL_VERSION),
-与 harness 版本化同一扇门。
+**Extension rule: required keys closed, extra keys open.** Operators may
+evolve richer outputs (put them in `extras`; they serialize flat) — the
+driver relies only on required keys. Adding optional keys or new operators
+is always allowed; changing required keys = a human walks through the front
+door outside the loop (bump PROTOCOL_VERSION), the same door as harness
+versioning.
 
-## 文件系统约定(git 之外的状态)
+## Filesystem conventions (state outside git)
 
-- `runs/gen-<id>/` — 本代 scratch,任何算子可写;driver 会把每个算子的
-  stdout 持久化成 `runs/gen-<id>/<name>.json`(可检视、可尸检)。
-- `archive.jsonl` — 仅 append,仅经 record;score 等冻结字段仅来自
-  `runs/gen-<id>/stamp.json`(不变量 ②)。
-- `insights/` — 仅 reflect 写(delta 操作)。
-- `FROZEN/` — **任何算子永远只读**。driver 在 mutation 前后做摘要比对,
-  被改则回滚并废弃该代;contracts 同样校验。
+- `runs/gen-<id>/` — per-generation scratch; any operator may write; the
+  driver persists every operator's stdout as `runs/gen-<id>/<name>.json`
+  (inspectable, post-mortem-able).
+- `archive.jsonl` — append-only, via record only; frozen fields come only
+  from `runs/gen-<id>/stamp.json` (invariant #2).
+- `insights/` — written only by reflect (delta ops).
+- `FROZEN/` — **read-only for every operator, always**. The driver digests
+  it around mutations and voids the generation on any change; contracts
+  check it too.
 
-## 公开环境变量
+## Public environment variables
 
-| 变量 | 作用 |
+| variable | effect |
 |---|---|
-| `HARNESS_STUB` | 1 = stub harness(真 harbor 是 M1-infra) |
-| `EVOLVE_SEED` | 可复现运行 |
-| `EVOLVE_SELECT_ALPHA` | parent-balancing 的 α(默认 1.0) |
-| `EVOLVE_MUTATE_VARIANT` | fixed / agent / noop(覆盖 config.json;llm 为 agent 的旧别名) |
-| `EVOLVE_MUTATOR_CMD` | agent 变体的自定义 mutator 命令(读 `$MUTATION_PROMPT`,改文件,写 `$MUTATION_REPORT`);不设则用 headless claude CLI |
-| `EVOLVE_MUTATOR_TIMEOUT` | agent 变体单次变异超时秒数(默认 600) |
-| `EVOLVE_NOVELTY_THRESHOLD` | 变异查重相似度阈值(默认 0.98) |
-| `EVOLVE_PLAYBOOK_CAP` | insight pool active 条目上限(默认 80) |
-| `EVOLVE_DISTILL_CAP` | distill 每任务样本封顶(默认 3) |
-| `EVOLVE_TRAIN_PLATEAU` | K:best-ever 停滞 K 代触发外环(默认关) |
-| `EVOLVE_AUDIT_JUMP` | 超冠军该幅度即 audit=pending 隔离(默认关) |
-| `META_EVAL_K` / `META_EVAL_MARGIN` | 自指准入回放代数(2)与非劣 margin(0.05) |
+| `HARNESS_STUB` | 1 = stub harness (real harbor is M1-infra) |
+| `EVOLVE_SEED` | reproducible runs |
+| `EVOLVE_SELECT_ALPHA` | parent-balancing α (default 1.0) |
+| `EVOLVE_MUTATE_VARIANT` | fixed / agent / noop (overrides config.json; `llm` is a legacy alias for agent) |
+| `EVOLVE_MUTATOR_CMD` | custom mutator command for the agent variant (reads `$MUTATION_PROMPT`, edits files, writes `$MUTATION_REPORT`); unset = headless claude CLI |
+| `EVOLVE_MUTATOR_TIMEOUT` | per-mutation timeout in seconds for the agent variant (default 600) |
+| `EVOLVE_NOVELTY_THRESHOLD` | mutation dedup similarity threshold (default 0.98) |
+| `EVOLVE_PLAYBOOK_CAP` | max active insight entries (default 80) |
+| `EVOLVE_DISTILL_CAP` | per-task sample cap in distill (default 3) |
+| `EVOLVE_TRAIN_PLATEAU` | K: trigger the outer loop after best-ever stalls K gens (default off) |
+| `EVOLVE_AUDIT_JUMP` | quarantine (audit=pending) any score jumping past the champion by this margin (default off) |
+| `META_EVAL_K` / `META_EVAL_MARGIN` | admission replay generations (2) and non-inferiority margin (0.05) |
 
-`EVOLVE_IN_META_EVAL` 是内部变量(回放防递归),不属于公开接口。
+`EVOLVE_IN_META_EVAL` and `EVOLVE_UV` are internal (replay recursion guard /
+uv re-exec guard), not part of the public interface.
 
-## 校验点(同一份 protocol.py 驱动)
+## Validation points (all driven by the same protocol.py)
 
-1. **driver**:每次算子调用后校验输出类型(纵深防御)。
-2. **oplib**:算子自己 emit 前校验(违反自己协议的算子立刻失败,
-   不把垃圾喂给 driver)。
-3. **contracts**(`FROZEN/contracts/run_contracts.py`):Tier-0 门,
-   自指改动必须先过它;presence / CLI / 输出 / 写权限全部由
-   OPERATORS registry 驱动,没有手写断言。
+1. **driver**: validates every operator output at the call boundary
+   (defense in depth).
+2. **oplib**: operators self-validate before emitting — an operator that
+   violates its own protocol fails instead of feeding the driver garbage.
+3. **contracts** (`./evolve contracts`): the Tier-0 gate every self-modified
+   operator must pass; presence / CLI / output shape / write scopes all
+   derive from the OPERATORS registry — no hand-written assertions.

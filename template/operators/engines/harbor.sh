@@ -14,6 +14,10 @@ LANE="${2:?lane (dev|gate|sealed)}"
 OUT="${3:?outdir}"
 WS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
+export PYTHONPATH="$WS"
+PY=(python3)
+command -v uv >/dev/null 2>&1 && PY=(uv run --quiet --project "$WS" python3)
+
 source "$WS/FROZEN/harness.env"
 
 if ! command -v harbor >/dev/null; then
@@ -36,7 +40,7 @@ harbor run \
   --job-name "gen-$GEN-$LANE" \
   --jobs-dir "$WS/runs"
 
-python3 "$WS/operators/engines/harbor_parse.py" \
+"${PY[@]}" "$WS/operators/engines/harbor_parse.py" \
   --job-dir "$WS/runs/gen-$GEN-$LANE" \
   --splits "$WS/FROZEN/splits.json" \
   --lane "$LANE" \

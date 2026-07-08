@@ -7,6 +7,10 @@
 set -euo pipefail
 GEN="${1:?usage: sealed_eval.sh <genid>  (run by a human, at milestones)}"
 WS="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+export PYTHONPATH="$WS"
+PY=(python3)
+command -v uv >/dev/null 2>&1 && PY=(uv run --quiet --project "$WS" python3)
 OUT="$WS/runs/sealed/gen-$GEN"
 mkdir -p "$OUT"
 
@@ -15,7 +19,7 @@ source "$WS/FROZEN/harness.env"
 git -C "$WS" -c advice.detachedHead=false checkout -q "gen/$GEN"
 
 if [[ "${HARNESS_STUB:-0}" == "1" ]]; then
-  python3 "$WS/FROZEN/stub_harness.py" \
+  "${PY[@]}" "$WS/FROZEN/stub_harness.py" \
     --candidate "$WS/candidate" \
     --out "$OUT" \
     --splits "$WS/FROZEN/splits.json" \

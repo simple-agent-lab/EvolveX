@@ -19,6 +19,15 @@ for ((i = 0; i < N; i++)); do
 done
 echo "[islands] $N islands under $BASE"
 
+run_py() { # run_py <workspace> <args...> — uv-managed python with fallback
+  local ws="$1"; shift
+  if command -v uv >/dev/null 2>&1; then
+    PYTHONPATH="$ws" uv run --quiet --project "$ws" python3 "$@"
+  else
+    PYTHONPATH="$ws" python3 "$@"
+  fi
+}
+
 for ((r = 1; r <= ROUNDS; r++)); do
   echo "[islands] round $r: $GENS gens per island"
   for ((i = 0; i < N; i++)); do
@@ -49,7 +58,8 @@ print(b["score"], b["genid"])' "$BASE/island-$i/best_ever.json")
     git -C "$BASE/island-$CHAMP" archive "gen/$CHAMP_GEN" candidate | tar -x -C "$EXPORT"
     for ((i = 0; i < N; i++)); do
       [[ $i -eq $CHAMP ]] && continue
-      ( cd "$BASE/island-$i" && python3 driver.py --inject "$EXPORT" 2>&1 | sed "s/^/[island-$i] /" )
+      ( cd "$BASE/island-$i" \
+        && run_py "$PWD" driver.py --inject "$EXPORT" 2>&1 | sed "s/^/[island-$i] /" )
     done
     rm -rf "$EXPORT"
   fi

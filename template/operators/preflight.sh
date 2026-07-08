@@ -3,10 +3,14 @@
 set -euo pipefail
 WS="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+export PYTHONPATH="$WS"
+PY=(python3)
+command -v uv >/dev/null 2>&1 && PY=(uv run --quiet --project "$WS" python3)
+
 command -v python3 >/dev/null || { echo "preflight: python3 not found" >&2; exit 1; }
 command -v git >/dev/null || { echo "preflight: git not found" >&2; exit 1; }
 
-python3 - "$WS" <<'PY'
+"${PY[@]}" - "$WS" <<'PY'
 import json, sys
 splits = json.load(open(f"{sys.argv[1]}/FROZEN/splits.json"))
 lanes = [set(splits["dev"]), set(splits["gate"]), set(splits["sealed_test"])]

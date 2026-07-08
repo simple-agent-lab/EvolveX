@@ -1,0 +1,13 @@
+# evolve workspace — uv project marker.
+# No dependencies today (stdlib only); future operator/engine deps land here
+# and every entry script picks them up through `uv run`.
+[project]
+name = "evolve-workspace"
+version = "0.1.0"
+description = "A self-evolving agent workspace (see SKILL.md)"
+requires-python = ">=3.9"
+dependencies = []
+
+[tool.uv]
+# runtime venv only — this project is state + scripts, not a distributable package
+package = false

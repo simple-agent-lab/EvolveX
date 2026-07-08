@@ -7,7 +7,7 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 expect_reject() { # expect_reject <label> <workspace>
-  if python3 "$2/FROZEN/contracts/run_contracts.py" --workspace "$2" > "$TMP/$1.log" 2>&1; then
+  if ( cd "$2" && ./evolve contracts ) > "$TMP/$1.log" 2>&1; then
     echo "FAIL: contracts accepted a broken operator ($1)" >&2
     cat "$TMP/$1.log" >&2
     exit 1

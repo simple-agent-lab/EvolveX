@@ -12,9 +12,7 @@ trap 'rm -rf "$TMP"' EXIT
 make_self_ref_mutate() { # $1 = workspace, $2 = payload script appended to gate.py mutation
   cat > "$1/operators/mutate.py" <<EOF
 #!/usr/bin/env python3
-import json, sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import json
 from FROZEN.contracts.oplib import operator_main, ws_path
 from FROZEN.contracts.protocol import MutateOutput
 

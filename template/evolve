@@ -20,6 +20,8 @@ One entry point for every workspace operation. Read SKILL.md first.
 """
 import argparse
 import json
+import os
+import shutil
 import statistics
 import subprocess
 import sys
@@ -27,7 +29,17 @@ import tempfile
 from pathlib import Path
 
 WS = Path(__file__).resolve().parent
-sys.path.insert(0, str(WS))
+
+# prefer the uv-managed environment when uv is available (deps from
+# pyproject.toml); plain python3 remains a full fallback
+if (shutil.which("uv") and os.environ.get("EVOLVE_UV") != "1"
+        and sys.prefix == sys.base_prefix):
+    os.environ["EVOLVE_UV"] = "1"
+    os.execvp("uv", ["uv", "run", "--quiet", "--project", str(WS),
+                     "python3", str(WS / "evolve"), *sys.argv[1:]])
+
+# script-dir rule resolves FROZEN.* here; children inherit via PYTHONPATH
+os.environ["PYTHONPATH"] = str(WS)
 
 import driver  # noqa: E402
 from FROZEN.contracts import oplib, protocol  # noqa: E402
@@ -322,6 +334,11 @@ def main() -> int:
     p = sub.add_parser("gen", help="skill mode: you are the mutator")
     gsub = p.add_subparsers(dest="gcmd", required=True)
     g = gsub.add_parser("begin")
+    g.add_argument("--parent", type=int, default=None,
+                   help="make the parent-selection judgement yourself "
+                        "(skips the select operator)")
+    g.add_argument("--no-rollout", action="store_true",
+                   help="skip dev sampling (you own that judgement too)")
     g.add_argument("--json", action="store_true")
     g = gsub.add_parser("finish")
     g.add_argument("--note", required=True,
@@ -340,6 +357,7 @@ def main() -> int:
     p.add_argument("--json", action="store_true")
     sub.add_parser("doctor")
     sub.add_parser("verify")
+    sub.add_parser("contracts", help="Tier-0 operator contract tests")
     p = sub.add_parser("report")
     p.add_argument("--horizon", type=int, default=5)
     p = sub.add_parser("distill")
@@ -353,7 +371,8 @@ def main() -> int:
         if a.cmd == "run":
             return driver.main([str(a.n)])
         if a.cmd == "gen" and a.gcmd == "begin":
-            brief = driver.begin_generation()
+            brief = driver.begin_generation(parent=a.parent,
+                                            rollout=not a.no_rollout)
             out(brief, a.json,
                 f"gen {brief['gen']} begun (parent {brief['parent']})\n"
                 + "read these (the workspace is the medium — use your own tools):\n"
@@ -380,6 +399,10 @@ def main() -> int:
             return cmd_doctor(a)
         if a.cmd == "verify":
             return cmd_verify(a)
+        if a.cmd == "contracts":
+            return subprocess.run(
+                [sys.executable, str(WS / "FROZEN" / "contracts" / "run_contracts.py")],
+                cwd=WS).returncode
         if a.cmd == "report":
             return _report(a)
         if a.cmd == "distill":

@@ -6,6 +6,10 @@
 set -euo pipefail
 GEN="${1:?usage: eval.sh <genid>}"
 WS="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+export PYTHONPATH="$WS"
+PY=(python3)
+command -v uv >/dev/null 2>&1 && PY=(uv run --quiet --project "$WS" python3)
 OUT="$WS/runs/gen-$GEN"
 mkdir -p "$OUT"
 
@@ -14,7 +18,7 @@ mkdir -p "$OUT"
 source "$WS/FROZEN/harness.env"
 
 if [[ "${HARNESS_STUB:-0}" == "1" ]]; then
-  python3 "$WS/FROZEN/stub_harness.py" \
+  "${PY[@]}" "$WS/FROZEN/stub_harness.py" \
     --candidate "$WS/candidate" \
     --out "$OUT" \
     --splits "$WS/FROZEN/splits.json" \

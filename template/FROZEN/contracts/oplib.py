@@ -23,8 +23,6 @@ import sys
 from pathlib import Path
 
 WS = Path(__file__).resolve().parents[2]
-if str(WS) not in sys.path:
-    sys.path.insert(0, str(WS))
 
 from FROZEN.contracts import protocol  # noqa: E402
 

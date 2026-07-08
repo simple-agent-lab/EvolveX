@@ -22,7 +22,11 @@ import sys
 from pathlib import Path
 
 WS = Path(__file__).resolve().parent
-sys.path.insert(0, str(WS))
+# Import discipline instead of sys.path hacks: this script lives at the
+# workspace root, so Python's script-dir rule already resolves `FROZEN.*`
+# for us; exporting PYTHONPATH makes it resolve for every child process
+# (operators, FROZEN scripts, contract runs) without any per-file bootstrap.
+os.environ["PYTHONPATH"] = str(WS)
 os.environ.setdefault("PYTHONDONTWRITEBYTECODE", "1")  # keep FROZEN digests byte-stable
 
 from FROZEN.contracts import protocol  # noqa: E402
@@ -303,13 +307,14 @@ def mutation_brief(gen: int, parent: int) -> dict:
         "gen": gen, "parent": parent,
         "read_these": {
             f"runs/gen-{gen}/dev/feedback.json":
-                "本代 dev 采样:失败任务、失败簇、逐任务结果",
+                "this gen's dev sampling: failed tasks, clusters, per-task results",
             "insights/playbook.jsonl":
-                "跨谱系经验池:每行一条 op,按 id 折叠取最后一行,只信 "
-                "status==active;按 target_tasks 重叠度自行挑选",
-            "meta/mutate.md": "变异策略 prose",
-            "archive.jsonl": "谱系账本(父代分数、历史尝试)",
-            "candidate/": "你要改的对象本体",
+                "cross-lineage experience pool: one op per line, fold by id "
+                "(last line wins), trust only status==active; pick by "
+                "target_tasks overlap",
+            "meta/mutate.md": "mutation strategy prose",
+            "archive.jsonl": "lineage ledger (parent scores, past attempts)",
+            "candidate/": "the thing you are mutating",
         },
         "write_scope": list(protocol.MUTATE_SCOPE),
         "next": "read the files above with your own tools, edit within "
@@ -319,7 +324,12 @@ def mutation_brief(gen: int, parent: int) -> dict:
     }
 
 
-def begin_generation() -> dict:
+def begin_generation(parent: int = None, rollout: bool = True) -> dict:
+    """Control inversion for the operating agent: pass `parent` to make the
+    selection judgement yourself (the select operator is a tool, not a
+    station), `rollout=False` to skip dev sampling. The machine keeps only
+    what invariants require: checkout, guards, and later the frozen
+    eval/stamp + bookkeeping in finish_generation."""
     if read_state():
         raise SkillFlowError("a generation is already in progress — run "
                              "`./evolve gen finish --note ...` or `./evolve gen abort` first")
@@ -330,14 +340,23 @@ def begin_generation() -> dict:
     if next_id() == 0:
         bootstrap()
 
-    selected = run_operator("select")                               # (1)
-    parent = selected["parent"]
+    if parent is not None:                                          # (1) yours…
+        known = {json.loads(l)["genid"]
+                 for l in (WS / "archive.jsonl").read_text().splitlines() if l.strip()}
+        if parent not in known:
+            raise SkillFlowError(f"--parent {parent} is not in the ledger "
+                                 f"(have 0..{max(known)}) — pick a recorded generation")
+        selected = {"parent": parent, "strategy": "agent-choice"}
+    else:                                                           # …or the operator's
+        selected = run_operator("select")
+        parent = selected["parent"]
     gen = next_id()
     sh(GIT + ["checkout", "-q", f"gen/{parent}"])                   # (2)
     (WS / "runs" / f"gen-{gen}").mkdir(parents=True, exist_ok=True)
     write_run_json(gen, "select", selected)
     fz = frozen_digest()
-    run_operator("rollout", gen=gen, parent=parent)                 # (3)
+    if rollout:
+        run_operator("rollout", gen=gen, parent=parent)             # (3) optional too
 
     STATE_FILE.write_text(json.dumps(
         {"gen": gen, "parent": parent, "fz_digest": fz, "phase": "begun"}) + "\n")

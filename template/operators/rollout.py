@@ -11,9 +11,7 @@ Variants: random-subset / staged / full / racing (budget-capped).
 import os
 import subprocess
 import sys
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from FROZEN.contracts.oplib import OperatorError, operator_main, read_json, run_dir, write_json, ws_path  # noqa: E402
 from FROZEN.contracts.protocol import RolloutOutput  # noqa: E402
 

@@ -8,3 +8,6 @@ ckpts/
 .evolve-gen.json
 __pycache__/
 *.pyc
+# uv runtime artifacts — must never dirty a generation diff
+.venv/
+uv.lock

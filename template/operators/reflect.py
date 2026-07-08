@@ -16,10 +16,7 @@ M2 default is rule-based distillation; an LLM distiller can replace step 1
 (this operator is evolvable) — the fold/append primitives stay in oplib.
 """
 import os
-import sys
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from FROZEN.contracts.oplib import (operator_main, playbook_active, playbook_append,  # noqa: E402
                                     playbook_state, read_archive)
 from FROZEN.contracts.protocol import ReflectOutput  # noqa: E402
@@ -58,11 +55,13 @@ def main(args):
     # 1. distill: settled predictions -> tactic / pitfall entries
     for fix in me.get("verified_fixes", []):
         upsert(state, ops, eid=f"ins_fix_{fix}", etype="tactic",
-               claim=f"针对 {fix} 失败簇的小步变异已被验证可修复(见 evidence 代的 diff)",
+               claim=f"a small mutation aimed at the {fix} failure cluster was "
+                     f"verified to fix it (see the evidence gens' diffs)",
                tasks=[fix], gen=args.gen, delta_support=1)
     for fix in me.get("refuted_fixes", []):
         upsert(state, ops, eid=f"ins_miss_{fix}", etype="pitfall",
-               claim=f"预测能修 {fix} 的变异方向未生效,再走这个方向前先找新证据",
+               claim=f"a mutation predicted to fix {fix} did not work — find new "
+                     f"evidence before trying that direction again",
                tasks=[fix], gen=args.gen, delta_refute=1)
 
     # 2. credit backfill on the insights this gen's mutation consumed

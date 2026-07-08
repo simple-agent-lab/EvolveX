@@ -66,6 +66,19 @@ echo "junk" >> candidate/notes.md
 ./evolve gen abort | sed 's/^/  /'
 git diff --quiet || { echo "FAIL: abort left a dirty tree" >&2; exit 1; }
 
+echo "== one-agent mode: agent owns parent selection, skips rollout"
+./evolve gen begin --parent 0 --no-rollout > /dev/null
+python3 -c "import json; s=json.load(open('.evolve-gen.json')); assert s['parent']==0, s"
+python3 -c "
+import json, glob
+sel = json.load(open(sorted(glob.glob('runs/gen-*/select.json'))[-1]))
+assert sel['strategy'] == 'agent-choice', sel"
+./evolve gen abort > /dev/null
+if ./evolve gen begin --parent 999 > /dev/null 2>"$TMP/badparent"; then
+  echo "FAIL: accepted a nonexistent parent" >&2; exit 1
+fi
+grep -q "not in the ledger" "$TMP/badparent" && echo "  ok (agent-choice honored, bad parent refused)"
+
 echo "== doctor: reverts orphan edits, completes interrupted generations"
 echo "stray" >> candidate/notes.md
 ./evolve doctor | sed 's/^/  /'

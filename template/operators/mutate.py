@@ -22,10 +22,8 @@ import json
 import os
 import shutil
 import subprocess
-import sys
-from pathlib import Path
+from string import Template
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from FROZEN.contracts.oplib import (OperatorError, config, operator_main,  # noqa: E402
                                     playbook_active, read_json, run_dir, ws_path)
 from FROZEN.contracts.protocol import MUTATE_SCOPE, MutateOutput  # noqa: E402
@@ -69,41 +67,18 @@ def mutate_fixed(args, failed, insights):
 
 
 def build_brief(args) -> str:
-    """The mutation brief is a MAP, not a digest: all inter-operator
+    """Render meta/mutation_brief.md — a user-editable template, decoupled
+    from code. The brief is a MAP, not a digest: all inter-operator
     communication goes through workspace files, and the agent reads them with
-    its own tools. No pre-chewed insights — retrieval judgement belongs to the
-    agent (and to meta/mutate.md, which is evolvable), not to this launcher."""
-    attempt = getattr(args, "attempt", None) or 0
-    retry_hint = ""
-    if attempt:
-        retry_hint = (f"\n## 重试提示(第 {attempt} 次)\n"
-                      f"上一次变异被查重打回,原因在 runs/gen-{args.gen}/novelty.json —— "
-                      f"读它,然后换一个明显不同的方向。\n")
-    return f"""# 变异任务(gen {args.gen},parent {args.parent})
-
-你是这个进化 workspace 的 mutator。你的唯一目标:改动文件,让 candidate 在
-冻结评测上的分数比父代更高。当前目录就是 workspace 根。
-
-## 情报都在文件里,用你的工具自己读(workspace 就是算子间的通信介质)
-- `runs/gen-{args.gen}/dev/feedback.json` — 本代 dev 采样:失败任务、失败簇、逐任务结果
-- `insights/playbook.jsonl` — 跨谱系经验池:每行一条 op,按 id 折叠(同 id 取最后一行),
-  只信 status=="active" 的条目;按 target_tasks 与你要修的任务的重叠度自行挑选
-- `meta/mutate.md` — 变异策略 prose
-- `archive.jsonl` — 谱系账本(要看父代分数、历史尝试时查它)
-- `candidate/` — 你要改的对象本体
-{retry_hint}
-## 硬约束(机制会强制执行,违反 = 整代作废)
-- 只允许改动:{list(MUTATE_SCOPE)}(本阶段建议只改 candidate/)
-- 禁止触碰:FROZEN/、runs/、archive.jsonl、best_ever.json、driver.py、evolve、.claude/
-- 不要 git add/commit/tag,不要运行 ./evolve —— 记账是机制的事,你只负责变异
-- 一次只验证一个假设,diff 越小归因越干净
-
-## 完成后必须做的最后一件事
-把报告写到 runs/gen-{args.gen}/mutation_report.json,格式:
-{{"note": "改了什么、为什么(一句话)",
-  "predicted_fixes": ["task_N", ...],   ← 你预测会修好的任务,下代会核对,别乱说
-  "used_insights": ["ins_...", ...]}}   ← 你真正读过并采纳的经验 id
-"""
+    its own tools; retrieval judgement belongs to the agent (and to the
+    template + meta/mutate.md, both evolvable), not to this launcher."""
+    tpl_path = ws_path("meta", "mutation_brief.md")
+    if not tpl_path.exists():
+        raise OperatorError("meta/mutation_brief.md is missing — restore it "
+                            "(git checkout -- meta/) or write a new brief template")
+    return Template(tpl_path.read_text()).safe_substitute(
+        gen=args.gen, parent=args.parent,
+        mutate_scope=", ".join(MUTATE_SCOPE))
 
 
 def mutate_agent(args):

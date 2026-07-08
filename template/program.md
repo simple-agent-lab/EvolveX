@@ -1,34 +1,43 @@
-# program.md — 循环规则(agent 模式的编排说明书)
+# program.md — loop rules (the orchestration manual for agent mode)
 
-driver 模式下这份文件只是文档;agent 模式下,编排 agent 读它决定何时调哪个算子。
-算子的调用约定 / 输出 schema / 写权限 / 退出码,以 PROTOCOL.md(权威定义在
-FROZEN/contracts/protocol.py)为准,agent 编排同样受其约束。
+In driver mode this file is documentation; in agent mode, the orchestrating
+agent reads it to decide when to call which operator. Operator invocation
+conventions / output schemas / write scopes / exit codes are governed by
+PROTOCOL.md (authority: FROZEN/contracts/protocol.py) — agent orchestration
+is bound by them too.
 
-## 每代的标准节拍(与 driver.py 一致)
+## The standard beat of one generation (same as driver.py)
 
-1. `operators/select.py` 从 archive.jsonl 选父代(默认 parent-balancing)。
-2. `git checkout gen/<P>` 取出父代快照(代码 + 按 weights_ref 恢复权重)。
-3. `operators/rollout.py` 跑 dev 采样,产反馈(advisory,永不进 canonical)。
-4. `operators/mutate.py` 读反馈 + meta/mutate.md + playbook top-K,改 candidate(M3+ 可含 operators/)。
-5. `operators/novelty.py` 变异查重,近重复打回重变异(≤2 次)。
-6. `git commit` + `git tag gen/<id>`。
-7. `FROZEN/eval.sh` → `FROZEN/stamp.sh`:canonical 打分并盖章(score / task_vector / CI)。
-8. `operators/gate.py` 判 status / valid_parent。
-9. `operators/record.py` append 账本(冻结字段只从 stamp.json 读)。
-10. `operators/reflect.py` 证伪核对 + playbook 增量更新。
+1. `operators/select.py` picks a parent from archive.jsonl (default: parent-balancing).
+2. `git checkout gen/<P>` restores the parent snapshot (code + weights via weights_ref).
+3. `operators/rollout.py` samples the dev lane (advisory, never canonical).
+4. `operators/mutate.py` mutates the candidate, guided by feedback + playbook
+   (M3+: may include operators/ = self-reference).
+5. `operators/novelty.py` rejects near-duplicate mutations (≤2 retries).
+6. `git commit` + `git tag gen/<id>`.
+7. `FROZEN/eval.sh` → `FROZEN/stamp.sh`: canonical scoring + stamping
+   (score / task_vector / CI).
+8. `operators/gate.py` judges status / valid_parent.
+9. `operators/record.py` appends the ledger (frozen fields only from stamp.json).
+10. `operators/reflect.py` verifies predictions + updates the playbook (delta ops).
 
-## 硬规则(agent 也不许绕)
+## Hard rules (agents may not route around them)
 
-- FROZEN/ 只读。改了会被 driver 的 frozen guard 回滚并废弃该代。
-- score / task_vector / best-ever 永远以 FROZEN 盖章为准,不接受任何一方传参。
-- diff 触及 operators/ 时必须先过 FROZEN/contracts 合同测试与 meta_eval 准入门(M3 起强制)。
-- 训练数据只能来自 dev lane 轨迹,须带 decontam_stamp(M5 起强制)。
+- FROZEN/ is read-only. Edits are caught by the driver's frozen guard; the
+  generation is voided.
+- score / task_vector / best-ever always come from the frozen stamp; no
+  participant may pass them as arguments.
+- A diff touching operators/ must pass FROZEN/contracts + the meta_eval
+  admission gate (enforced from M3).
+- Training data may only come from dev-lane trajectories and must carry a
+  decontam stamp (enforced from M5).
 
-## 外环触发(M7 起)
+## Outer-loop trigger (from M7)
 
-best-ever 停滞 K 代 / distill 样本超阈值 / 固定节奏 → 异步派训练 job;
-checkpoint 作为新 gen 排队过 canonical eval,照常 gate 入档。
+best-ever stagnant for K gens / distill sample threshold / fixed cadence →
+dispatch an async training job; the checkpoint queues through canonical eval
+and enters the archive like any candidate.
 
-## 停机条件
+## Stopping conditions
 
-target score | max_iter | budget 任一命中。
+Any of: target score | max_iter | budget.

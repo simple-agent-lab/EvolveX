@@ -22,7 +22,6 @@ import tempfile
 from pathlib import Path
 
 _HERE = Path(__file__).resolve()
-sys.path.insert(0, str(_HERE.parents[2]))
 from FROZEN.contracts import protocol  # noqa: E402
 
 FAILURES = []
@@ -39,8 +38,10 @@ def ok(name):
 
 def sh(cmd, cwd, timeout=60):
     # contracts always exercise operators against the stub harness — cheap,
-    # deterministic, and independent of live infra
-    env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1", HARNESS_STUB="1")
+    # deterministic, and independent of live infra. PYTHONPATH points at the
+    # fixture workspace so `from FROZEN...` resolves without sys.path hacks.
+    env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1", HARNESS_STUB="1",
+               PYTHONPATH=str(cwd))
     return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
                           timeout=timeout, env=env)
 
@@ -60,7 +61,7 @@ def build_fixture(src: Path, tmp: Path) -> Path:
     """Copy the workspace (code only) and seed a minimal 3-gen evolution state."""
     ws = tmp / "ws"
     shutil.copytree(src, ws, ignore=shutil.ignore_patterns(
-        ".git", "runs", "ckpts", "manifests", "__pycache__"))
+        ".git", "runs", "ckpts", "manifests", "__pycache__", ".venv", "uv.lock"))
     for d in ("runs", "insights", "manifests", "ckpts"):
         (ws / d).mkdir(exist_ok=True)
 

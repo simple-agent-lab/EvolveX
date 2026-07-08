@@ -1,6 +1,8 @@
-# rollout 策略(与 operators/rollout.py 配对的 prose,可进化)
+# Rollout strategy (paired prose for operators/rollout.py — evolvable)
 
-dev lane 是形成性的:目的是给 mutate 可瞄准的反馈,不是打分。
-默认 failure-focused,预算封顶。采样越省越好 —— 但 dev 轨迹同时是
-未来训练数据(M5 distill)的唯一来源,别省到没有轨迹可蒸。
-永远只跑 train(dev) split;gate/sealed split 不属于这条 lane。
+The dev lane is formative: its purpose is aim-able feedback for mutate, not
+scoring. Default failure-focused, budget-capped. Sample as cheaply as you can
+— but dev trajectories are also the ONLY source of future training data
+(distill, M5), so don't economize down to zero trajectories.
+Only ever run the train (dev) split; the gate and sealed splits do not belong
+to this lane.

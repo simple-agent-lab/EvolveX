@@ -11,10 +11,7 @@ Variants (config.json "gate"):
 
 Reads only the frozen stamp + the ledger — never a score argument.
 """
-import sys
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from FROZEN.contracts.oplib import config, operator_main, read_archive, read_json, ws_path  # noqa: E402
 from FROZEN.contracts.protocol import GateOutput  # noqa: E402
 
