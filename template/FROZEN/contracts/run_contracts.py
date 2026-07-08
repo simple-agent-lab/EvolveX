@@ -25,18 +25,6 @@ _HERE = Path(__file__).resolve()
 sys.path.insert(0, str(_HERE.parents[2]))
 from FROZEN.contracts import protocol  # noqa: E402
 
-# fixture CLI values per operator (fixture seeds gens 0/1/2; gen 3 is "next")
-FIXTURE_CLI = {
-    "select": {},
-    "rollout": {"gen": 3, "parent": 1},
-    "mutate": {"gen": 3, "parent": 1},
-    "novelty": {"gen": 3, "parent": 1},
-    "gate": {"gen": 2, "parent": 0},
-    "record": {"gen": 2, "parent": 0},
-    "reflect": {"gen": 2},
-    "distill": {},  # fixture has no trajectories -> must succeed with an empty manifest
-}
-
 FAILURES = []
 
 
@@ -117,7 +105,7 @@ def run_and_validate(ws: Path, name: str) -> dict:
     """Run one operator per its registry spec; validate output + write scope."""
     spec = protocol.OPERATORS[name]
     cmd = [sys.executable, str(ws / spec.script)]
-    for key, value in FIXTURE_CLI[name].items():
+    for key, value in spec.fixture:
         cmd += [f"--{key}", str(value)]
     proc = sh(cmd, ws)
     if proc.returncode != protocol.EXIT_OK:

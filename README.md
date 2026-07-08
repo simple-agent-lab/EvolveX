@@ -1,65 +1,57 @@
 # simple-evolve-agent
 
-A self-evolve **and** auto-train agent framework: an inner loop evolves the
-harness (operators / prompts / candidate code) and produces trajectories; an
-outer loop distills those trajectories into weight updates. Both loops share
-one lineage, one frozen ruler, and five hard invariants.
+Evolve a candidate (code / prompts / config / weights-ref) under a frozen
+scoring harness. Git is the lineage archive, `archive.jsonl` is the ledger,
+and five hard invariants keep the fitness signal honest no matter what the
+loop — or the agent driving it — does.
+
+RSI has no settled paradigm yet, so this framework deliberately isn't a bet
+on one. The irreducible core is small — **a candidate, a frozen ruler, a
+lineage, one command** — and every research paradigm on top (insight pools,
+self-modifying operators, islands, auto-train) is an opt-in layer, off by
+default. The repro matrix (four published systems as four config files) is
+the proof that paradigms are configs here, not architecture.
 
 Design doc (v0.4, 中文): [架构 Review artifact](https://claude.ai/code/artifact/7375cbaa-768a-4265-88e2-43d26a2032bf)
 
-## Core ideas
-
-- **Evolvable operators, orthogonal orchestration**: the loop is a chain of
-  operator scripts (`select / rollout / mutate / novelty / gate / record /
-  reflect / distill`), each shipping a default implementation + variants.
-  A Python `driver.py` conducts them (driver mode); an orchestrating agent
-  reading `program.md` can replace it (agent mode).
-- **Typed protocol, JSON only at the wire**: every operator interface (CLI,
-  required output keys, write scopes, exit codes) is defined once as types in
-  `FROZEN/contracts/protocol.py` — the interface is mechanism, the
-  implementation is evolvable. The driver, the operator SDK
-  (`FROZEN/contracts/oplib.py`), and the contract tests all validate against
-  the same types; `PROTOCOL.md` is the human/LLM-readable rendition injected
-  into mutation prompts from M2.
-- **Weight updates are just mutations**: a checkpoint is a candidate, training
-  is a variation operator, and the same frozen ruler scores it
-  (`mutated: ["weights"]` in the ledger).
-- **Five hard invariants** (everything else is open to self-modification):
-  1. `FROZEN/eval.sh` (the Harness) never changes inside the loop — one ruler, all gens.
-  2. Scores enter the ledger only via the frozen stamp; agents never pass them.
-  3. `best-ever` is recomputed from true scores by a fixed rule; champion changes require a replication re-eval.
-  4. Training data never contains gate/sealed-test tasks and never comes from audit-flagged gens (`FROZEN/decontam.py`).
-  5. Checkpoints enter the lineage only through canonical eval.
-
-## Quickstart
+## 60 seconds
 
 ```bash
-bin/init-workspace.sh ws          # instantiate a workspace with its own git archive
-cd ws
-export HARNESS_STUB=1             # stub harness until harbor lands (M1-infra)
-./evolve status                   # one-screen digest (add --json for machines)
-./evolve run 5                    # autonomous mode: operators mutate
-./evolve verify                   # integrity fsck: ledger vs stamps vs recomputes
+bin/init-workspace.sh ws && cd ws
+export HARNESS_STUB=1        # deterministic stub harness (real harbor = M1-infra)
+./evolve run 5               # evolve 5 generations
+./evolve status              # who's the champion, how healthy is the population
 ```
 
-**Agent-as-mutator (the skill surface)** — an operating agent (e.g. Claude
-Code) is the mutator; the mechanism keeps its monopoly on bookkeeping and
-invariants. See the workspace `SKILL.md` (the agent's operating manual) and
-`.claude/skills/evolve-agent/` (auto-discovered by Claude Code):
+That's the whole product at level 0. Everything below is optional depth.
 
-```bash
-./evolve gen begin                # select+checkout+rollout -> mutation brief
-#  ...edit files within the printed write scope...
-./evolve gen finish --note "what and why" --predict task_3
-./evolve doctor                   # detect + repair interrupted states
-```
+## The learning ladder
 
-Tests (M0 acceptance):
+| Level | You get | Turn it on | Read |
+|---|---|---|---|
+| **0 · run the loop** | generations, lineage, champion tracking | `./evolve run N` | this file |
+| **1 · be the mutator** | your agent makes the mutations; the machine keeps the books | `./evolve gen begin` → edit → `gen finish` | workspace `SKILL.md` (~60 lines) |
+| **2 · shape the search** | select/gate/mutate variants; four published systems as presets | edit `config.json`, or `bin/apply-preset.sh ws <name>` | `presets/*.json` |
+| **3 · let it modify itself** | operators/meta/program.md become mutable, behind contract tests + a replay admission gate; novelty rejection; islands | happens when a mutation touches `operators/` (gated automatically); `bin/islands.sh` | `PROTOCOL.md`, `program.md` |
+| **4 · auto-train** | plateau → distill trajectories → decontam-stamped data → train engine → checkpoint re-enters as a candidate | `EVOLVE_TRAIN_PLATEAU=K` (engine backend is M6, infra-blocked) | design doc §03 |
 
-```bash
-tests/smoke_m0.sh          # 5 idle gens -> lineage grows; git reset keeps history; contracts hold
-tests/contracts_reject.sh  # broken operators (garbage output / FROZEN writes / score forgery) get rejected
-```
+Defaults keep every advanced layer off: no novelty threshold tuning, no
+audit quarantine (`EVOLVE_AUDIT_JUMP`), no outer loop, no islands — until
+you ask. A user who only ever runs level 0 has a complete, honest
+evolution loop.
+
+## The five invariants (the part that is NOT optional)
+
+Everything else is open to evolution and self-modification. These are not:
+
+1. `FROZEN/eval.sh` (the Harness) never changes inside the loop — one ruler, all gens.
+2. Scores enter the ledger only via the frozen stamp; agents never pass them.
+3. `best-ever` is recomputed from true scores by a fixed rule; champion changes require a replication re-eval.
+4. Training data never contains gate/sealed-test tasks and never comes from audit-flagged gens (`FROZEN/decontam.py`, tamper-evident stamps).
+5. Checkpoints enter the lineage only through canonical eval.
+
+Weight updates are just mutations: a checkpoint is a candidate, training is
+a variation operator, the same frozen ruler scores it.
 
 ## Layout
 
@@ -68,7 +60,7 @@ bin/init-workspace.sh   instantiate template/ into a workspace (own git repo, ta
 .claude/skills/         evolve-agent skill (auto-discovered by Claude Code)
 template/               the meta-workspace template
 ├─ evolve               the operating console: run/gen/status/show/doctor/verify/…
-├─ SKILL.md             the operating manual for agents (read this first)
+├─ SKILL.md             the operating manual for agents (level 1 starts here)
 ├─ driver.py            mechanism engine (10-step loop, begin/finish slots, outer loop)
 ├─ program.md           loop rules (agent-mode orchestration prose)
 ├─ PROTOCOL.md          operator protocol, human/LLM-readable (authority: FROZEN/contracts/protocol.py)
@@ -82,11 +74,6 @@ template/               the meta-workspace template
 presets/                repro-matrix configs (autoresearch/AHE/HyperAgents/MetaAgent)
 tests/                  acceptance suites (tests/run_all.sh)
 ```
-
-Workspace state that must survive `git reset` (ledger, runs, playbook,
-manifests, checkpoints) is deliberately untracked; everything that travels
-with the lineage (candidate, operators, meta, program.md) is committed and
-tagged `gen/<id>` per generation.
 
 ## Milestones
 
@@ -102,11 +89,16 @@ tagged `gen/<id>` per generation.
 | M7 | auto-train trigger mechanics (plateau detect -> distill -> decontam -> engine dispatch) **done to the engine boundary**; checkpoint re-entry needs M6 | mechanics done |
 | M8 | recipe evolution + online RL exploration | after M6/M7 |
 
-Observability: `bin/lineage-report.py <workspace>` (population health,
-task-vector diversity with collapse warning, Tier-1 operator-mutation
-attribution vs sibling lineages); `FROZEN/audit.sh` lists quarantined gens
-(`EVOLVE_AUDIT_JUMP` arms the anomaly escalation in the stamp).
+## Observability & integrity
 
-Tests: `tests/run_all.sh` (smoke, contract rejection, insight loop,
+- `./evolve status` / `show <gen>` — one-screen digest / one-gen deep dive (`--json` for machines)
+- `./evolve report` and `bin/lineage-report.py` — population health, task-vector
+  diversity (collapse warning), Tier-1 operator-mutation attribution
+- `./evolve doctor` — detect + repair interrupted states
+- `./evolve verify` — integrity fsck: ledger vs stamps vs eval results vs
+  deterministic spot recomputes (hand-edited ledgers are exposed)
+- `./evolve audit` / `EVOLVE_AUDIT_JUMP` — quarantine of suspicious score jumps
+
+Tests: `tests/run_all.sh` (9 suites: smoke, contract rejection, insight loop,
 self-reference admission, islands, presets, training-data pipeline,
-outer-loop trigger + audit quarantine).
+outer-loop trigger, skill CLI).

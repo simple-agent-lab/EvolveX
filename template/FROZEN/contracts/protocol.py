@@ -167,6 +167,10 @@ class OperatorSpec:
     #                     insights/, archive.jsonl append via record) is
     #                     governed by convention in PROTOCOL.md; FROZEN/ is
     #                     never writable and is guarded by digest everywhere.
+    fixture: tuple = ()  # CLI args ((flag, value), ...) the contract tests use
+    #                     against the standard fixture (gens 0/1/2 recorded,
+    #                     gen 3 is next). Lives here so adding an operator is
+    #                     ONE registry entry — no parallel table to drift.
 
 
 _GEN = ArgDef("--gen", "int", required=True)
@@ -180,23 +184,29 @@ OPERATORS = {
     "select": OperatorSpec("select", "operators/select.py",
                            cli=(), output=SelectOutput, write_scope=()),
     "rollout": OperatorSpec("rollout", "operators/rollout.py",
-                            cli=(_GEN, _PARENT), output=RolloutOutput, write_scope=()),
+                            cli=(_GEN, _PARENT), output=RolloutOutput, write_scope=(),
+                            fixture=(("gen", 3), ("parent", 1))),
     "mutate": OperatorSpec("mutate", "operators/mutate.py",
                            cli=(_GEN, _PARENT, ArgDef("--attempt", "int", required=False)),
-                           output=MutateOutput, write_scope=MUTATE_SCOPE),
+                           output=MutateOutput, write_scope=MUTATE_SCOPE,
+                           fixture=(("gen", 3), ("parent", 1))),
     "novelty": OperatorSpec("novelty", "operators/novelty.py",
-                            cli=(_GEN, _PARENT), output=NoveltyOutput, write_scope=()),
+                            cli=(_GEN, _PARENT), output=NoveltyOutput, write_scope=(),
+                            fixture=(("gen", 3), ("parent", 1))),
     "gate": OperatorSpec("gate", "operators/gate.py",
                          cli=(_GEN, ArgDef("--parent", "int", required=False)),
-                         output=GateOutput, write_scope=()),
+                         output=GateOutput, write_scope=(),
+                         fixture=(("gen", 2), ("parent", 0))),
     "record": OperatorSpec("record", "operators/record.py",
                            cli=(_GEN,
                                 ArgDef("--parent", "int", required=False),
                                 ArgDef("--genesis", "flag"),
                                 ArgDef("--note", "str", required=False)),
-                           output=LedgerEntry, write_scope=()),
+                           output=LedgerEntry, write_scope=(),
+                           fixture=(("gen", 2), ("parent", 0))),
     "reflect": OperatorSpec("reflect", "operators/reflect.py",
-                            cli=(_GEN,), output=ReflectOutput, write_scope=()),
+                            cli=(_GEN,), output=ReflectOutput, write_scope=(),
+                            fixture=(("gen", 2),)),
     # outer loop T2: trajectories -> training data (manifests/ is untracked state)
     "distill": OperatorSpec("distill", "operators/distill.py",
                             cli=(), output=DistillOutput, write_scope=()),
