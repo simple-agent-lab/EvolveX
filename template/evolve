@@ -1,0 +1,404 @@
+#!/usr/bin/env python3
+"""evolve — the workspace operating console (the skill surface).
+
+One entry point for every workspace operation. Read SKILL.md first.
+
+  run [N]                    autonomous mode: N generations via the operators
+  gen begin                  skill mode: select+checkout+rollout, print the
+                             mutation brief — then YOU edit the files
+  gen finish --note ...      your mutation goes through novelty, admission,
+                             frozen eval/stamp, gate, record, reflect
+  gen abort                  drop the in-progress mutation, restore the tree
+  status [--json]            one-screen lineage digest
+  show <gen> [--json]        everything about one generation
+  doctor                     detect + repair interrupted states
+  verify                     integrity fsck (ledger vs stamps vs results)
+  report [--horizon K]       population health + operator attribution
+  distill [--stamp]          build a training manifest (optionally decontam-stamp)
+  sealed <gen>               human-only: sealed-split evaluation
+  audit                      list generations quarantined as audit=pending
+"""
+import argparse
+import json
+import statistics
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+WS = Path(__file__).resolve().parent
+sys.path.insert(0, str(WS))
+
+import driver  # noqa: E402
+from FROZEN.contracts import oplib, protocol  # noqa: E402
+
+
+def ledger() -> list:
+    arc = WS / "archive.jsonl"
+    if not arc.exists():
+        return []
+    return [json.loads(l) for l in arc.read_text().splitlines() if l.strip()]
+
+
+def out(data, as_json: bool, text: str) -> None:
+    print(json.dumps(data, indent=1, ensure_ascii=False) if as_json else text)
+
+
+def jaccard(a: str, b: str) -> float:
+    sa = {i for i, c in enumerate(a) if c == "1"}
+    sb = {i for i, c in enumerate(b) if c == "1"}
+    u = sa | sb
+    return 1.0 - (len(sa & sb) / len(u)) if u else 0.0
+
+
+# ---------------------------------------------------------------- status/show
+
+def cmd_status(args) -> int:
+    nodes = ledger()
+    state = driver.read_state()
+    dirty = bool(driver.changed_paths())
+    data = {"gens": len(nodes), "pending_generation": state, "tree_dirty": dirty}
+    if not nodes:
+        out(data, args.json, "empty lineage — run `./evolve run 1` or `./evolve gen begin`")
+        return 0
+
+    best_path = WS / "best_ever.json"
+    best = json.loads(best_path.read_text()) if best_path.exists() else None
+    valid = [n for n in nodes if n["valid_parent"]]
+    pending_audits = [n["genid"] for n in nodes if n["audit"] == "pending"]
+    vecs = [n["task_vector"] for n in valid[-12:] if n.get("task_vector")]
+    diversity = (round(statistics.mean(
+        jaccard(vecs[i], vecs[j]) for i in range(len(vecs))
+        for j in range(i + 1, len(vecs))), 3) if len(vecs) >= 2 else None)
+    tr_state = WS / "runs" / "train-requests" / "state.json"
+    train = json.loads(tr_state.read_text()) if tr_state.exists() else None
+    tail = [{"genid": n["genid"], "parent": n["parent"], "score": n["score"],
+             "status": n["status"]} for n in nodes[-5:]]
+    data.update(champion=best, valid_parents=len(valid), diversity=diversity,
+                pending_audits=pending_audits,
+                playbook_active=len(oplib.playbook_active()),
+                last_train_request=train, tail=tail)
+
+    lines = [
+        f"lineage: {len(nodes)} gens ({len(valid)} valid parents)"
+        + (f" | champion gen {best['genid']} @ {best['score']}" if best else ""),
+        "last 5: " + "  ".join(f"{t['genid']}:{t['score']}({t['status']})" for t in tail),
+        f"diversity: {diversity} | playbook: {data['playbook_active']} active"
+        f" | pending audits: {pending_audits or 'none'}",
+        f"outer loop: "
+        + (f"last request after gen {train['last_request_gen']}" if train else "no requests"),
+        "pending generation: "
+        + (f"gen {state['gen']} (parent {state['parent']}) — finish or abort"
+           if state else "none")
+        + f" | tree: {'DIRTY' if dirty else 'clean'}",
+    ]
+    out(data, args.json, "\n".join(lines))
+    return 0
+
+
+def cmd_show(args) -> int:
+    nodes = ledger()
+    entry = next((n for n in nodes if n["genid"] == args.gen), None)
+    if entry is None:
+        print(f"gen {args.gen} is not in the ledger (have 0..{len(nodes) - 1}); "
+              f"if a tag gen/{args.gen} exists this is an interrupted generation — "
+              f"run `./evolve doctor`", file=sys.stderr)
+        return 1
+    run = WS / "runs" / f"gen-{args.gen}"
+    detail = {"ledger": entry}
+    for name in ("select", "novelty", "gate", "admission", "reflect", "mutate"):
+        p = run / f"{name}.json"
+        if p.exists():
+            detail[name] = json.loads(p.read_text())
+    text = [f"gen {entry['genid']} <- parent {entry['parent']}  "
+            f"score={entry['score']} ci={entry['score_ci']} [{entry['status']}]",
+            f"note: {entry['note']}",
+            f"mutated: {entry['mutated']}"
+            + (f"  (operator diff: {entry['operator_diff']}"
+               + (", REVERTED)" if entry["operator_reverted"] else ")")
+               if entry["operator_diff"] or entry["operator_reverted"] else ""),
+            f"audit: {entry['audit']} | predicted: {entry['predicted_fixes']} "
+            f"verified: {entry['verified_fixes']} | insights used: {entry['used_insights']}"]
+    out(detail, args.json, "\n".join(text))
+    return 0
+
+
+# ------------------------------------------------------------- doctor/verify
+
+def cmd_doctor(args) -> int:
+    nodes = ledger()
+    known = {n["genid"] for n in nodes}
+    actions = []
+
+    state = driver.read_state()
+    if state:
+        print(f"doctor: generation {state['gen']} is in progress (not a fault) — "
+              f"`./evolve gen finish --note ...` or `./evolve gen abort`")
+        return 0
+
+    if driver.changed_paths():
+        driver.cleanup_worktree()
+        actions.append("reverted a dirty tree with no generation in progress")
+
+    # tags without ledger lines = a crash between tag and record: complete them
+    tags = subprocess.run(["git", "tag", "-l", "gen/*"], cwd=WS,
+                          capture_output=True, text=True).stdout.split()
+    for tag in sorted(tags, key=lambda t: int(t.split("/")[1])):
+        gid = int(tag.split("/")[1])
+        if gid in known:
+            continue
+        subject = subprocess.run(["git", "log", "-1", "--format=%s", tag], cwd=WS,
+                                 capture_output=True, text=True).stdout.strip()
+        try:
+            parent = int(subject.split("(parent ")[1].split(")")[0])
+        except (IndexError, ValueError):
+            actions.append(f"SKIPPED {tag}: cannot parse parent from commit "
+                           f"({subject!r}) — resolve by hand")
+            continue
+        driver.sh(driver.GIT + ["checkout", "-q", tag])
+        (WS / "runs" / f"gen-{gid}").mkdir(parents=True, exist_ok=True)
+        if not (WS / "runs" / f"gen-{gid}" / "stamp.json").exists():
+            driver.frozen_step("eval.sh", gid)
+            driver.frozen_step("stamp.sh", gid)
+        driver.run_operator("gate", gen=gid, parent=parent)
+        driver.run_operator("record", gen=gid, parent=parent)
+        driver.run_operator("reflect", gen=gid)
+        actions.append(f"completed interrupted {tag} (eval/gate/record recovered)")
+        known.add(gid)
+
+    for n in nodes:
+        if subprocess.run(["git", "rev-parse", "-q", "--verify",
+                           f"refs/tags/gen/{n['genid']}"], cwd=WS,
+                          capture_output=True).returncode != 0:
+            actions.append(f"WARNING: ledger gen {n['genid']} has no git tag — "
+                           f"its snapshot is unrecoverable (was the repo rewritten?)")
+
+    latest = max(known, default=None)
+    if latest is not None:
+        driver.sh(driver.GIT + ["checkout", "-q", f"gen/{latest}"])
+
+    print("\n".join(f"doctor: {a}" for a in actions) if actions
+          else "doctor: workspace is healthy")
+    return 1 if any(a.startswith(("SKIPPED", "WARNING")) for a in actions) else 0
+
+
+def cmd_verify(args) -> int:
+    nodes = ledger()
+    problems = []
+    seen = set()
+    for n in nodes:
+        gid = n["genid"]
+        if gid in seen:
+            problems.append(f"gen {gid}: duplicate ledger line")
+        seen.add(gid)
+        if n["parent"] is not None and n["parent"] not in seen:
+            problems.append(f"gen {gid}: parent {n['parent']} not earlier in the ledger")
+        stamp_path = WS / "runs" / f"gen-{gid}" / "stamp.json"
+        if not stamp_path.exists():
+            problems.append(f"gen {gid}: frozen stamp missing — ledger line unverifiable")
+            continue
+        stamp = json.loads(stamp_path.read_text())
+        for key in ("score", "score_ci", "task_vector", "harness_version", "audit"):
+            if n[key] != stamp[key]:
+                problems.append(f"gen {gid}: ledger {key}={n[key]!r} != stamp "
+                                f"{stamp[key]!r} — the ledger was edited by hand")
+        result_path = WS / "runs" / f"gen-{gid}" / "result.json"
+        if result_path.exists():
+            if json.loads(result_path.read_text())["score"] != stamp["score"]:
+                problems.append(f"gen {gid}: stamp score != eval result.json")
+
+    best_path = WS / "best_ever.json"
+    if best_path.exists() and nodes:
+        best = json.loads(best_path.read_text())
+        clean = [n for n in nodes if n["audit"] == "clean"]
+        true_best = max(clean, key=lambda n: n["score"], default=None)
+        if true_best and best["score"] != true_best["score"]:
+            problems.append(f"best_ever {best['score']} != true max clean score "
+                            f"{true_best['score']} (gen {true_best['genid']})")
+
+    # spot-recompute (stub harness is deterministic from candidate content):
+    # champion + latest get re-evaluated from their snapshots
+    stub_targets = [n for n in nodes if n["harness_version"].startswith("stub")]
+    if stub_targets:
+        for n in {max(stub_targets, key=lambda x: x["score"])["genid"],
+                  stub_targets[-1]["genid"]}:
+            entry = next(x for x in nodes if x["genid"] == n)
+            with tempfile.TemporaryDirectory() as tmp:
+                pr = subprocess.run(
+                    f"git archive gen/{n} candidate | tar -x -C {tmp}",
+                    shell=True, cwd=WS, capture_output=True)
+                if pr.returncode != 0:
+                    problems.append(f"gen {n}: snapshot unreadable for recompute")
+                    continue
+                subprocess.run(
+                    [sys.executable, str(WS / "FROZEN" / "stub_harness.py"),
+                     "--candidate", f"{tmp}/candidate", "--out", tmp,
+                     "--splits", str(WS / "FROZEN" / "splits.json"),
+                     "--lane", "gate", "--harness-version", entry["harness_version"]],
+                    capture_output=True)
+                re_score = json.loads(Path(tmp, "result.json").read_text())["score"]
+                if re_score != entry["score"]:
+                    problems.append(f"gen {n}: recomputed score {re_score} != ledger "
+                                    f"{entry['score']} — snapshot and score disagree")
+
+    if problems:
+        print("\n".join(f"verify: FAIL — {p}" for p in problems))
+        return 1
+    print(f"verify: OK — {len(nodes)} ledger lines consistent with stamps, results, "
+          f"best-ever, and spot recomputes")
+    return 0
+
+
+# ------------------------------------------------------------------- report
+
+def _report(args) -> int:
+    nodes = ledger()
+    if not nodes:
+        print("empty lineage")
+        return 0
+    by_id = {n["genid"]: n for n in nodes}
+    kids = {}
+    for n in nodes:
+        if n["parent"] is not None:
+            kids.setdefault(n["parent"], []).append(n["genid"])
+
+    def desc(root, horizon):
+        outl, frontier = [], [root]
+        for _ in range(horizon):
+            frontier = [c for g in frontier for c in kids.get(g, [])]
+            outl.extend(frontier)
+        return outl
+
+    best = max(nodes, key=lambda n: n["score"])
+    valid = [n for n in nodes if n["valid_parent"]]
+    print(f"# lineage report ({len(nodes)} gens)")
+    print(f"champion: gen {best['genid']} @ {best['score']} | valid: "
+          f"{len(valid)}/{len(nodes)} | pending audits: "
+          f"{sum(1 for n in nodes if n['audit'] == 'pending')}")
+    vecs = [n["task_vector"] for n in valid if n.get("task_vector")]
+    if len(vecs) >= 2:
+        d = statistics.mean(jaccard(vecs[i], vecs[j])
+                            for i in range(len(vecs)) for j in range(i + 1, len(vecs)))
+        print(f"diversity (mean pairwise Jaccard): {d:.3f}"
+              + ("   <- collapse warning" if d < 0.1 else ""))
+    events = [n for n in nodes if n.get("operator_diff")]
+    print(f"\noperator-mutation attribution (horizon {args.horizon}, observational):")
+    if not events:
+        print("  no operator-mutation events")
+    for e in events:
+        mine = [by_id[d]["score"] for d in desc(e["genid"], args.horizon)]
+        sibs = [n for n in nodes if n["parent"] == e["parent"] and n["genid"] != e["genid"]]
+        theirs = [by_id[d]["score"] for s in sibs for d in desc(s["genid"], args.horizon)]
+        me = round(statistics.mean(mine), 3) if mine else None
+        them = round(statistics.mean(theirs), 3) if theirs else None
+        credit = f"{me - them:+.3f}" if me is not None and them is not None else "n/a"
+        print(f"  gen {e['genid']} [{e['operator_diff']}]"
+              f"{' REVERTED' if e['operator_reverted'] else ''}: descendants={me} "
+              f"vs siblings={them}  credit={credit}")
+    return 0
+
+
+# --------------------------------------------------------------------- misc
+
+def cmd_distill(args) -> int:
+    data = driver.run_operator("distill")
+    print(f"manifest: {data['manifest']} ({data['sft']} sft, {data['dpo']} dpo)")
+    if args.stamp:
+        return subprocess.run([sys.executable, str(WS / "FROZEN" / "decontam.py"),
+                               "stamp", data["manifest"]], cwd=WS).returncode
+    print("unstamped — train engines will reject it; stamp with: "
+          "./evolve distill --stamp  (or python3 FROZEN/decontam.py stamp <manifest>)")
+    return 0
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(prog="evolve", description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    p = sub.add_parser("run", help="autonomous mode: N generations via the operators")
+    p.add_argument("n", nargs="?", type=int, default=5)
+
+    p = sub.add_parser("gen", help="skill mode: you are the mutator")
+    gsub = p.add_subparsers(dest="gcmd", required=True)
+    g = gsub.add_parser("begin")
+    g.add_argument("--json", action="store_true")
+    g = gsub.add_parser("finish")
+    g.add_argument("--note", required=True,
+                   help="what you changed and why (goes into the ledger)")
+    g.add_argument("--predict", action="append", default=[],
+                   help="task_N you expect this mutation to fix (falsified next gen)")
+    g.add_argument("--used-insight", action="append", default=[],
+                   help="playbook id you relied on (credit backfill)")
+    g.add_argument("--json", action="store_true")
+    gsub.add_parser("abort")
+
+    p = sub.add_parser("status")
+    p.add_argument("--json", action="store_true")
+    p = sub.add_parser("show")
+    p.add_argument("gen", type=int)
+    p.add_argument("--json", action="store_true")
+    sub.add_parser("doctor")
+    sub.add_parser("verify")
+    p = sub.add_parser("report")
+    p.add_argument("--horizon", type=int, default=5)
+    p = sub.add_parser("distill")
+    p.add_argument("--stamp", action="store_true")
+    p = sub.add_parser("sealed", help="human-only: sealed-split evaluation")
+    p.add_argument("gen", type=int)
+    sub.add_parser("audit")
+
+    a = ap.parse_args()
+    try:
+        if a.cmd == "run":
+            return driver.main([str(a.n)])
+        if a.cmd == "gen" and a.gcmd == "begin":
+            brief = driver.begin_generation()
+            out(brief, a.json,
+                f"gen {brief['gen']} begun (parent {brief['parent']}, dev_score "
+                f"{brief['dev_score']})\nfailed tasks: {brief['failed_tasks']}\n"
+                + ("insights:\n" + "\n".join(
+                    f"  [{i['id']}] ({i['type']}, +{i['support']}/-{i['refute']}) {i['claim']}"
+                    for i in brief["insights"]) + "\n" if brief["insights"] else "")
+                + f"write scope: {brief['write_scope']}\nnext: {brief['next']}")
+            return 0
+        if a.cmd == "gen" and a.gcmd == "finish":
+            entry = driver.finish_generation(a.note, a.predict, a.used_insight)
+            out(entry, a.json,
+                f"gen {entry['genid']} recorded: score={entry['score']} "
+                f"[{entry['status']}] audit={entry['audit']}"
+                + (" operator_reverted!" if entry["operator_reverted"] else ""))
+            return 0
+        if a.cmd == "gen" and a.gcmd == "abort":
+            r = driver.abort_generation()
+            print(f"aborted gen {r['aborted_gen']}, workspace restored to {r['back_at']}")
+            return 0
+        if a.cmd == "status":
+            return cmd_status(a)
+        if a.cmd == "show":
+            return cmd_show(a)
+        if a.cmd == "doctor":
+            return cmd_doctor(a)
+        if a.cmd == "verify":
+            return cmd_verify(a)
+        if a.cmd == "report":
+            return _report(a)
+        if a.cmd == "distill":
+            return cmd_distill(a)
+        if a.cmd == "sealed":
+            return subprocess.run(["bash", str(WS / "FROZEN" / "sealed_eval.sh"),
+                                   str(a.gen)], cwd=WS).returncode
+        if a.cmd == "audit":
+            return subprocess.run(["bash", str(WS / "FROZEN" / "audit.sh")],
+                                  cwd=WS).returncode
+    except driver.SkillFlowError as e:
+        print(f"evolve: {e}", file=sys.stderr)
+        return 1
+    except (driver.GenDiscard, driver.NotWired) as e:
+        print(f"evolve: {e}", file=sys.stderr)
+        return 1
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

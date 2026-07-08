@@ -31,15 +31,27 @@ Design doc (v0.4, 中文): [架构 Review artifact](https://claude.ai/code/artif
   4. Training data never contains gate/sealed-test tasks and never comes from audit-flagged gens (`FROZEN/decontam.py`).
   5. Checkpoints enter the lineage only through canonical eval.
 
-## Quickstart (M0: stub harness)
+## Quickstart
 
 ```bash
 bin/init-workspace.sh ws          # instantiate a workspace with its own git archive
 cd ws
-HARNESS_STUB=1 ./loop.sh 5        # idle-run 5 generations
-cat archive.jsonl                 # the lineage (ledger schema v2)
-git tag -l 'gen/*'                # commit = candidate, tag = generation
-python3 FROZEN/contracts/run_contracts.py   # Tier-0 operator contract tests
+export HARNESS_STUB=1             # stub harness until harbor lands (M1-infra)
+./evolve status                   # one-screen digest (add --json for machines)
+./evolve run 5                    # autonomous mode: operators mutate
+./evolve verify                   # integrity fsck: ledger vs stamps vs recomputes
+```
+
+**Agent-as-mutator (the skill surface)** — an operating agent (e.g. Claude
+Code) is the mutator; the mechanism keeps its monopoly on bookkeeping and
+invariants. See the workspace `SKILL.md` (the agent's operating manual) and
+`.claude/skills/evolve-agent/` (auto-discovered by Claude Code):
+
+```bash
+./evolve gen begin                # select+checkout+rollout -> mutation brief
+#  ...edit files within the printed write scope...
+./evolve gen finish --note "what and why" --predict task_3
+./evolve doctor                   # detect + repair interrupted states
 ```
 
 Tests (M0 acceptance):
@@ -53,17 +65,22 @@ tests/contracts_reject.sh  # broken operators (garbage output / FROZEN writes / 
 
 ```
 bin/init-workspace.sh   instantiate template/ into a workspace (own git repo, tag gen/0)
+.claude/skills/         evolve-agent skill (auto-discovered by Claude Code)
 template/               the meta-workspace template
-├─ driver.py            driver-mode conductor (10-step inner loop; loop.sh is a thin wrapper)
+├─ evolve               the operating console: run/gen/status/show/doctor/verify/…
+├─ SKILL.md             the operating manual for agents (read this first)
+├─ driver.py            mechanism engine (10-step loop, begin/finish slots, outer loop)
 ├─ program.md           loop rules (agent-mode orchestration prose)
 ├─ PROTOCOL.md          operator protocol, human/LLM-readable (authority: FROZEN/contracts/protocol.py)
+├─ config.json          Layer-1 variant selection (presets are alternative configs)
 ├─ operators/           evolvable operators (defaults + variants) + engine adapters
 ├─ meta/                paired strategy prose per operator
 ├─ candidate/           Layer 2 genome: code + model_ref (weights slot)
 ├─ FROZEN/              frozen core: eval/stamp/splits/decontam/meta_eval/audit
 │   └─ contracts/       protocol.py (typed interfaces) + oplib.py (operator SDK) + run_contracts.py
 └─ .gitignore           runs/, archive.jsonl, insights/, ckpts/… stay untracked (reset-proof)
-tests/                  M0 acceptance scripts
+presets/                repro-matrix configs (autoresearch/AHE/HyperAgents/MetaAgent)
+tests/                  acceptance suites (tests/run_all.sh)
 ```
 
 Workspace state that must survive `git reset` (ledger, runs, playbook,

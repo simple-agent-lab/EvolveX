@@ -40,6 +40,14 @@ class GenDiscard(RuntimeError):
     """This generation is bad (operator failure / guard trip) — discard, continue."""
 
 
+class SkillFlowError(RuntimeError):
+    """skill-mode error: the workspace is left AS-IS (nothing reverted); the
+    message tells the operating agent exactly what to run next."""
+
+
+STATE_FILE = WS / ".evolve-gen.json"  # pending begin/finish handoff (untracked)
+
+
 def log(msg: str) -> None:
     print(f"[driver] {msg}", file=sys.stderr)
 
@@ -113,6 +121,24 @@ def frozen_step(script: str, gen: int) -> None:
 def cleanup_worktree() -> None:
     sh(GIT + ["checkout", "-q", "--", "."])
     sh(["git", "clean", "-qfd", "candidate", "operators", "meta"], check=False)
+
+
+def changed_paths() -> list:
+    out = sh(["git", "status", "--porcelain"], capture=True)
+    return [line[3:].strip().strip('"') for line in out.splitlines() if line.strip()]
+
+
+def check_mutation_scope() -> None:
+    """A mutation (operator-made or agent-made) may only touch MUTATE_SCOPE.
+    Everything else — driver.py, evolve, tests, FROZEN/ — is the machine, not
+    the genome."""
+    scope = protocol.MUTATE_SCOPE
+    bad = [p for p in changed_paths() if not p.startswith(scope)]
+    if bad:
+        raise GenDiscard(
+            f"mutation touched paths outside the mutation scope: {bad}. "
+            f"Allowed: {list(scope)}. Revert them (git checkout -- <path>) "
+            f"or discard the attempt (./evolve gen abort).")
 
 
 def write_run_json(gen: int, name: str, data: dict) -> None:
@@ -228,7 +254,10 @@ def generation(inject: Path = None) -> None:
             run_operator("rollout", gen=gen, parent=parent)         # (3)
             mutate = mutate_with_novelty(gen, parent)               # (4)(5)
         if frozen_digest() != fz_before:
-            raise GenDiscard("mutation touched FROZEN/ — reverting")
+            raise GenDiscard("mutation touched FROZEN/ — the frozen core is "
+                             "read-only; propose harness changes to the human "
+                             "outside the loop")
+        check_mutation_scope()
     except GenDiscard:
         cleanup_worktree()
         raise
@@ -245,6 +274,133 @@ def generation(inject: Path = None) -> None:
     run_operator("gate", gen=gen, parent=parent)                    # (8)
     run_operator("record", gen=gen, parent=parent)                  # (9)
     run_operator("reflect", gen=gen)                                # (10)
+
+
+# ---------------------------------------------------------------------------
+# skill mode: the operating agent IS the mutator (gen begin / finish / abort).
+# The mechanism keeps its monopoly on bookkeeping and invariants; the agent
+# only occupies the one step where it adds value — making the mutation.
+# ---------------------------------------------------------------------------
+
+
+def read_state() -> dict:
+    return json.loads(STATE_FILE.read_text()) if STATE_FILE.exists() else None
+
+
+def preflight_or_raise() -> None:
+    p = subprocess.run(["bash", str(WS / "operators" / "preflight.sh")],
+                       cwd=WS, capture_output=True, text=True)
+    if p.returncode != 0:
+        raise SkillFlowError(p.stderr.strip())
+
+
+def mutation_brief(gen: int, parent: int) -> dict:
+    """Everything the mutator needs, assembled from files — no digging."""
+    from FROZEN.contracts import oplib
+    feedback = json.loads((WS / "runs" / f"gen-{gen}" / "dev" / "feedback.json")
+                          .read_text()) if (WS / "runs" / f"gen-{gen}" / "dev"
+                                            / "feedback.json").exists() else {}
+    failed = feedback.get("failed_tasks", [])
+    failed_names = {f"task_{t}" for t in failed}
+    insights = sorted(
+        (e for e in oplib.playbook_active()
+         if failed_names & set(e.get("target_tasks", []))),
+        key=lambda e: -(e["support"] - e["refute"]))[:3]
+    strategy_path = WS / "meta" / "mutate.md"
+    return {
+        "gen": gen, "parent": parent,
+        "dev_score": feedback.get("dev_score"),
+        "failed_tasks": failed,
+        "insights": [{"id": e["id"], "type": e["type"], "claim": e["claim"],
+                      "support": e["support"], "refute": e["refute"]} for e in insights],
+        "strategy": strategy_path.read_text() if strategy_path.exists() else "",
+        "write_scope": list(protocol.MUTATE_SCOPE),
+        "next": "edit files within write_scope, then: ./evolve gen finish "
+                "--note '<what you changed and why>' [--predict task_N ...] "
+                "[--used-insight <id> ...]   (or ./evolve gen abort)",
+    }
+
+
+def begin_generation() -> dict:
+    if read_state():
+        raise SkillFlowError("a generation is already in progress — run "
+                             "`./evolve gen finish --note ...` or `./evolve gen abort` first")
+    if changed_paths():
+        raise SkillFlowError("working tree is dirty with no generation in progress — "
+                             "run `./evolve doctor` first")
+    preflight_or_raise()
+    if next_id() == 0:
+        bootstrap()
+
+    selected = run_operator("select")                               # (1)
+    parent = selected["parent"]
+    gen = next_id()
+    sh(GIT + ["checkout", "-q", f"gen/{parent}"])                   # (2)
+    (WS / "runs" / f"gen-{gen}").mkdir(parents=True, exist_ok=True)
+    write_run_json(gen, "select", selected)
+    fz = frozen_digest()
+    run_operator("rollout", gen=gen, parent=parent)                 # (3)
+
+    STATE_FILE.write_text(json.dumps(
+        {"gen": gen, "parent": parent, "fz_digest": fz, "phase": "begun"}) + "\n")
+    return mutation_brief(gen, parent)                              # (4) is YOURS
+
+
+def finish_generation(note: str, predicted=(), used_insights=()) -> dict:
+    state = read_state()
+    if not state:
+        raise SkillFlowError("no generation in progress — run `./evolve gen begin` first")
+    gen, parent = state["gen"], state["parent"]
+
+    if frozen_digest() != state["fz_digest"]:
+        sh(GIT + ["checkout", "-q", "--", "FROZEN"])
+        raise SkillFlowError("your edits touched FROZEN/ — reverted just those paths. "
+                             "The frozen core is read-only (invariants #1–#5); adjust "
+                             "your mutation and re-run `./evolve gen finish`")
+    bad = [p for p in changed_paths() if not p.startswith(protocol.MUTATE_SCOPE)]
+    if bad:
+        raise SkillFlowError(f"edits outside the mutation scope: {bad}. Allowed: "
+                             f"{list(protocol.MUTATE_SCOPE)}. Revert them "
+                             f"(git checkout -- <path>) and re-run `./evolve gen finish`")
+    if not changed_paths():
+        raise SkillFlowError("nothing changed — make a mutation within "
+                             f"{list(protocol.MUTATE_SCOPE)}, or `./evolve gen abort`")
+
+    write_run_json(gen, "mutate", {
+        "note": note, "predicted_fixes": list(predicted),
+        "used_insights": list(used_insights),
+        "cost": {"tokens": 0, "eval_minutes": 0}, "variant": "agent"})
+
+    novelty = run_operator("novelty", gen=gen, parent=parent)       # (5)
+    if not novelty["accept"]:
+        raise SkillFlowError(f"novelty reject: {novelty.get('hint')} — your edits are "
+                             "kept; change direction and re-run `./evolve gen finish`")
+
+    sh(["git", "add", "-A"])                                        # (6)
+    sh(["git", "commit", "-qm", f"gen {gen} (parent {parent}): {note}"])
+    admission(gen, parent)                                          # (6b)
+    sh(["git", "tag", f"gen/{gen}"])
+
+    frozen_step("eval.sh", gen)                                     # (7)
+    frozen_step("stamp.sh", gen)
+    run_operator("gate", gen=gen, parent=parent)                    # (8)
+    entry = run_operator("record", gen=gen, parent=parent)          # (9)
+    run_operator("reflect", gen=gen)                                # (10)
+    STATE_FILE.unlink(missing_ok=True)
+    outer_loop_check()
+    return entry
+
+
+def abort_generation() -> dict:
+    state = read_state()
+    if not state:
+        raise SkillFlowError("no generation in progress — nothing to abort")
+    cleanup_worktree()
+    latest = next_id() - 1
+    if latest >= 0:
+        sh(GIT + ["checkout", "-q", f"gen/{latest}"])
+    STATE_FILE.unlink(missing_ok=True)
+    return {"aborted_gen": state["gen"], "back_at": f"gen/{latest}"}
 
 
 def outer_loop_check() -> None:
@@ -310,13 +466,17 @@ def outer_loop_check() -> None:
     state_path.write_text(json.dumps({"last_request_gen": latest}) + "\n")
 
 
-def main() -> int:
+def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("n", nargs="?", type=int, default=5)
     ap.add_argument("--inject", type=Path, default=None,
                     help="run one migration generation from this workspace dir")
-    a = ap.parse_args()
+    a = ap.parse_args(argv)
 
+    if read_state():
+        log("a skill-mode generation is in progress — run `./evolve gen finish` "
+            "or `./evolve gen abort` before autonomous runs")
+        return 1
     p = subprocess.run(["bash", str(WS / "operators" / "preflight.sh")],
                        cwd=WS, capture_output=True, text=True)
     if p.returncode != 0:

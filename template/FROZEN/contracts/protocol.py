@@ -172,8 +172,9 @@ class OperatorSpec:
 _GEN = ArgDef("--gen", "int", required=True)
 _PARENT = ArgDef("--parent", "int", required=True)
 
-# mutate's bound is the M3 self-reference set; the M0 default only uses candidate/.
-MUTATE_SCOPE = ("candidate/", "operators/", "meta/", "program.md")
+# mutate's bound is the M3 self-reference set (config.json is Layer-1: variant
+# switches mid-run happen as mutations); the default variant only uses candidate/.
+MUTATE_SCOPE = ("candidate/", "operators/", "meta/", "program.md", "config.json")
 
 OPERATORS = {
     "select": OperatorSpec("select", "operators/select.py",
