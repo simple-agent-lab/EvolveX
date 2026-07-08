@@ -3,7 +3,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FAIL=0
-for t in smoke_m0 contracts_reject insight_loop self_reference islands presets train_data outer_loop skill_cli; do
+for t in smoke_m0 contracts_reject insight_loop self_reference islands presets train_data outer_loop skill_cli agentic_mutate; do
   if "$ROOT/$t.sh" > /dev/null 2>&1; then
     echo "PASS $t"
   else

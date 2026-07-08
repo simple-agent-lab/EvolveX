@@ -56,7 +56,9 @@ flag,输出是 stdout 上的**单个 JSON 对象**。JSON 只是进程边界的�
 | `HARNESS_STUB` | 1 = stub harness(真 harbor 是 M1-infra) |
 | `EVOLVE_SEED` | 可复现运行 |
 | `EVOLVE_SELECT_ALPHA` | parent-balancing 的 α(默认 1.0) |
-| `EVOLVE_MUTATE_VARIANT` | fixed / llm / noop(覆盖 config.json) |
+| `EVOLVE_MUTATE_VARIANT` | fixed / agent / noop(覆盖 config.json;llm 为 agent 的旧别名) |
+| `EVOLVE_MUTATOR_CMD` | agent 变体的自定义 mutator 命令(读 `$MUTATION_PROMPT`,改文件,写 `$MUTATION_REPORT`);不设则用 headless claude CLI |
+| `EVOLVE_MUTATOR_TIMEOUT` | agent 变体单次变异超时秒数(默认 600) |
 | `EVOLVE_NOVELTY_THRESHOLD` | 变异查重相似度阈值(默认 0.98) |
 | `EVOLVE_PLAYBOOK_CAP` | insight pool active 条目上限(默认 80) |
 | `EVOLVE_DISTILL_CAP` | distill 每任务样本封顶(默认 3) |

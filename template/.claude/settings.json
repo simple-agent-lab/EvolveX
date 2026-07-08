@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "deny": [
+      "Edit(FROZEN/**)",
+      "Write(FROZEN/**)",
+      "Edit(archive.jsonl)",
+      "Write(archive.jsonl)",
+      "Edit(best_ever.json)",
+      "Write(best_ever.json)",
+      "Edit(driver.py)",
+      "Write(driver.py)",
+      "Edit(evolve)",
+      "Write(evolve)",
+      "Edit(.claude/**)",
+      "Write(.claude/**)"
+    ]
+  }
+}

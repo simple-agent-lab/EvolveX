@@ -295,27 +295,25 @@ def preflight_or_raise() -> None:
 
 
 def mutation_brief(gen: int, parent: int) -> dict:
-    """Everything the mutator needs, assembled from files — no digging."""
-    from FROZEN.contracts import oplib
-    feedback = json.loads((WS / "runs" / f"gen-{gen}" / "dev" / "feedback.json")
-                          .read_text()) if (WS / "runs" / f"gen-{gen}" / "dev"
-                                            / "feedback.json").exists() else {}
-    failed = feedback.get("failed_tasks", [])
-    failed_names = {f"task_{t}" for t in failed}
-    insights = sorted(
-        (e for e in oplib.playbook_active()
-         if failed_names & set(e.get("target_tasks", []))),
-        key=lambda e: -(e["support"] - e["refute"]))[:3]
-    strategy_path = WS / "meta" / "mutate.md"
+    """A MAP, not a digest: all inter-operator communication goes through
+    workspace files, and the mutator reads them with its own tools. Retrieval
+    judgement (which insights matter, what history to check) belongs to the
+    agent, not to the machine."""
     return {
         "gen": gen, "parent": parent,
-        "dev_score": feedback.get("dev_score"),
-        "failed_tasks": failed,
-        "insights": [{"id": e["id"], "type": e["type"], "claim": e["claim"],
-                      "support": e["support"], "refute": e["refute"]} for e in insights],
-        "strategy": strategy_path.read_text() if strategy_path.exists() else "",
+        "read_these": {
+            f"runs/gen-{gen}/dev/feedback.json":
+                "本代 dev 采样:失败任务、失败簇、逐任务结果",
+            "insights/playbook.jsonl":
+                "跨谱系经验池:每行一条 op,按 id 折叠取最后一行,只信 "
+                "status==active;按 target_tasks 重叠度自行挑选",
+            "meta/mutate.md": "变异策略 prose",
+            "archive.jsonl": "谱系账本(父代分数、历史尝试)",
+            "candidate/": "你要改的对象本体",
+        },
         "write_scope": list(protocol.MUTATE_SCOPE),
-        "next": "edit files within write_scope, then: ./evolve gen finish "
+        "next": "read the files above with your own tools, edit within "
+                "write_scope, then: ./evolve gen finish "
                 "--note '<what you changed and why>' [--predict task_N ...] "
                 "[--used-insight <id> ...]   (or ./evolve gen abort)",
     }

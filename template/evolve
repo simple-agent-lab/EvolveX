@@ -355,12 +355,11 @@ def main() -> int:
         if a.cmd == "gen" and a.gcmd == "begin":
             brief = driver.begin_generation()
             out(brief, a.json,
-                f"gen {brief['gen']} begun (parent {brief['parent']}, dev_score "
-                f"{brief['dev_score']})\nfailed tasks: {brief['failed_tasks']}\n"
-                + ("insights:\n" + "\n".join(
-                    f"  [{i['id']}] ({i['type']}, +{i['support']}/-{i['refute']}) {i['claim']}"
-                    for i in brief["insights"]) + "\n" if brief["insights"] else "")
-                + f"write scope: {brief['write_scope']}\nnext: {brief['next']}")
+                f"gen {brief['gen']} begun (parent {brief['parent']})\n"
+                + "read these (the workspace is the medium — use your own tools):\n"
+                + "\n".join(f"  {path} — {why}"
+                            for path, why in brief["read_these"].items())
+                + f"\nwrite scope: {brief['write_scope']}\nnext: {brief['next']}")
             return 0
         if a.cmd == "gen" and a.gcmd == "finish":
             entry = driver.finish_generation(a.note, a.predict, a.used_insight)

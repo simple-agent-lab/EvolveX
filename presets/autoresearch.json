@@ -1,6 +1,6 @@
 {
  "select": "greedy",
  "gate": "hillclimb",
- "mutate": "llm",
- "_repro": "autoresearch: greedy hillclimb chain over a mutable candidate; eval = run train.py -> -bpb (real harness at M1). llm mutate needs the claude CLI; EVOLVE_MUTATE_VARIANT=fixed to dry-run."
+ "mutate": "agent",
+ "_repro": "autoresearch: greedy hillclimb chain over a mutable candidate; eval = run train.py -> -bpb (real harness at M1). agentic mutate needs the claude CLI (or EVOLVE_MUTATOR_CMD); EVOLVE_MUTATE_VARIANT=fixed to dry-run."
 }
