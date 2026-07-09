@@ -77,3 +77,28 @@
   the real Harbor/agent-command defaults.
 - Cleaned import ordering in `tests/test_agent_command_mutate.py` and
   `tests/test_hyperagents_semantics.py` to satisfy Ruff.
+
+## Review-Fix Pass
+
+- Updated `README.md` recipe docs so every real recipe now describes the same
+  Harbor-backed evaluator shape with the explicit
+  `target.harbor_agent:MiniSweSourceAgent` behavior, while keeping the real
+  recipe differences accurate for mode, children-per-generation, and mutable
+  surface.
+- Rewrote the glossary mutate entry to separate the mutate operator protocol
+  adapter from `run_meta_agent`, and clarified that `agent_command` delegates
+  to `run_meta_agent`.
+- Removed nearby smoke/real ambiguity in `README.md` by switching the
+  deterministic `EVAL_STUB=1` init examples to `hill_climb-smoke` and
+  `dgm-smoke`.
+
+## Review-Fix Verification
+
+- `uv run pytest tests/test_coherence.py::test_docs_do_not_describe_real_recipes_as_smoke_or_checkout_fallback -q`
+  - Passed.
+- `uv run pytest -q`
+  - Passed.
+- `uv run ruff check .`
+  - Passed.
+- `git diff --check`
+  - Passed.

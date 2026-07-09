@@ -120,7 +120,7 @@ evolve --help
 Create a new generated workspace:
 
 ```bash
-evolve init /tmp/evolve-demo --recipe hill_climb
+evolve init /tmp/evolve-demo --recipe hill_climb-smoke
 cd /tmp/evolve-demo
 ```
 
@@ -149,12 +149,12 @@ shape, and evaluator template.
 
 | Recipe | Children | Mode | Evaluator shape | Surface shape |
 | --- | ---: | --- | --- | --- |
-| `hill_climb` | 1 | driver | Harbor pass@k | target |
-| `dgm` | 4 | driver | Harbor pass@k | target |
-| `ahe` | 1 | driver | Harbor pass@k | target |
-| `hyperagents` | 2 | driver | Docker `report.json` | target + operators + meta |
-| `autoresearch` | 1 | agent | `train.py` / negative BPB | single-file target |
-| `metaagent` | 1 | driver | reflection trace | target + meta |
+| `hill_climb` | 1 | driver | Harbor MiniSWE source agent (`target.harbor_agent:MiniSweSourceAgent`) | target |
+| `dgm` | 4 | driver | Harbor MiniSWE source agent (`target.harbor_agent:MiniSweSourceAgent`) | target |
+| `ahe` | 1 | driver | Harbor MiniSWE source agent (`target.harbor_agent:MiniSweSourceAgent`) | target |
+| `hyperagents` | 2 | driver | Harbor MiniSWE source agent (`target.harbor_agent:MiniSweSourceAgent`) | target + operators |
+| `autoresearch` | 1 | agent | Harbor MiniSWE source agent (`target.harbor_agent:MiniSweSourceAgent`) | `target/agent.py` |
+| `metaagent` | 1 | driver | Harbor MiniSWE source agent (`target.harbor_agent:MiniSweSourceAgent`) | target + operator prompts |
 
 For MiniSWE source evolution, `target/` is the MiniSWE source checkout plus
 `target/harbor_agent.py`. Harbor imports
@@ -165,7 +165,7 @@ behavior.
 Example:
 
 ```bash
-evolve init /tmp/evolve-dgm --recipe dgm
+evolve init /tmp/evolve-dgm --recipe dgm-smoke
 EVAL_STUB=1 evolve run /tmp/evolve-dgm --max-generations 1
 evolve status /tmp/evolve-dgm
 ```

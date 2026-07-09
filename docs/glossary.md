@@ -25,10 +25,11 @@ Precise meanings for the domain terms this project uses.
   not part of the agent being evolved. (`observe` is retired — the mechanism
   writes the feedback bundle itself; see `src/evolve/feedback.py`.)
 
-- **Mutate / meta-agent** — the operator that changes the candidate. The
-  `agent_command` variant spawns a coding agent that edits the folder in
-  place; agent-agnostic via a configured command. Out-of-surface edits are
-  auto-repaired before the mechanism sees them.
+- **Mutate operator** — the loop step that changes the candidate. It is a
+  protocol adapter around mutate variants such as `fixed`, `llm`, and
+  `agent_command`. The `agent_command` variant delegates to
+  `run_meta_agent`, then the mechanism applies surface enforcement before it
+  inspects the result.
 
 - **Evaluator / ruler** — the frozen scorer, wired to **Harbor**. Runs a
   candidate through the configured Harbor agent and returns a score. Harbor is
@@ -56,8 +57,9 @@ Precise meanings for the domain terms this project uses.
   the task container, installs that source, and then reuses Harbor's MiniSWE
   run behavior.
 
-- **`run_meta_agent`** — `run_meta_agent(workspace, prompt, config)` is the
-  local mutation-agent runner. It receives a checkout and prompt, then runs the
+- **`run_meta_agent`** — `run_meta_agent(workspace, prompt, config)` is
+  separate from the mutate operator interface. It is only the local
+  mutation-agent runner that receives a checkout and prompt, then runs the
   configured command in that checkout. It does not know about generation IDs,
   archive rows, Harbor, or surface policy.
 
