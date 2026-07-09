@@ -43,3 +43,14 @@ def test_init_real_harbor_recipe_requires_evaluator_agent(
 
     with pytest.raises(ValueError, match="evaluator.agent is required"):
         init_workspace(InitOptions(workspace=tmp_path / "w", recipe="broken"))
+
+
+def test_init_writes_recipe_harbor_agent_to_eval_env(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+
+    init_workspace(InitOptions(workspace=workspace, recipe="hill_climb"))
+
+    env = (workspace / "evaluator" / "eval.env").read_text()
+    assert "EVOLVE_HARBOR_AGENT=target.harbor_agent:MiniSweSourceAgent\n" in env
+    assert "CheckoutTargetAgent" not in env
+    assert not (workspace / "evaluator" / "checkout_agent.py").exists()
