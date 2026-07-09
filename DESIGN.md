@@ -12,13 +12,12 @@ Docs layout: [`docs/README.md`](docs/README.md).
 > **Implementation status** (this doc describes the whole design; not all of it
 > is built). **Built & green today:** the honest core loop, the operator
 > contract + single-source `OPERATORS` registry, the frozen ring
-> (`interfaces`/`sdk`/`meta_eval`), optional research operators (novelty,
-> reflect) and the self-modification gate, falsification → `verified_fixes`,
-> and observability (`verify` / `doctor`; audit quarantine via
-> `EVOLVE_AUDIT_JUMP`). **Planned, not yet built:** islands, auto-train
-> (distill/decontam/train — DESIGN level 4, needs weights infra), and a real
-> evaluator backend (harbor; today the ruler is a candidate-derived stub).
-> Interactive `gen begin` / `gen finish` is designed but not yet a CLI surface.
+> (`interfaces`/`sdk`/`meta_eval`), Harbor-backed evaluation, optional
+> research operators (novelty, reflect) and the self-modification gate,
+> falsification → `verified_fixes`, and observability (`verify` / `doctor`;
+> audit quarantine via `EVOLVE_AUDIT_JUMP`). **Planned, not yet built:**
+> islands, auto-train (distill/decontam/train — DESIGN level 4, needs weights
+> infra), and interactive `gen begin` / `gen finish` as a CLI surface.
 
 ---
 
@@ -34,6 +33,10 @@ RSI has no settled paradigm, so this framework isn't a bet on one. The
 irreducible core is tiny; every research layer on top (insight pools,
 self-modifying operators, islands, auto-train) is **opt-in, off by default**.
 A user who only runs level 0 still has a complete, honest loop.
+
+Harbor is the only real benchmark execution path. Real recipes call Harbor with
+an explicit `evaluator.agent` value. Smoke recipes are named `*-smoke` and are
+the only recipes intended for deterministic `EVAL_STUB=1` mechanism tests.
 
 ## 2. Three rings, ordered by who may change what
 
@@ -102,7 +105,7 @@ The product *is* a skill. Two distinct skills, do not conflate them:
   that travels into every workspace, copied into a **unified, tool-agnostic
   `skills/` folder** (not `.claude/skills/`) so Claude Code, codex, and other
   tools can all find it; the workspace `AGENTS.md` points at it. This is where
-  "you are the mutator" lives.
+  "you are the meta-agent" lives.
 
 Intelligence lives in these markdown skills and in `operators/*.md` (per-verb
 strategy prose beside the scripts), never in the harness. Thin harness, fat
@@ -136,20 +139,20 @@ simple-evolve-agent/
 │
 ├─ skills/                        fat skills as recipes (where `template = skill` lives)
 │   ├─ evolve-agent/SKILL.md      outer: create + enter
-│   ├─ evolve-workspace/SKILL.md  inner: the mutator's manual (travels into workspaces)
+│   ├─ evolve-workspace/SKILL.md  inner: the meta-agent's manual (travels into workspaces)
 │   ├─ _conventions.md  _invariants.md  manifest.json
 │
 ├─ templates/workspace/           Ring 2 static skeleton — the browsable shape init copies in
 │   ├─ README.md                  the workspace map (also lands at the workspace root)
 │   ├─ AGENTS.md  program.md      agent entry + loop orchestration prose
 │   ├─ .gitignore
-│   └─ operators/                 per-verb strategy prose seeds (`<verb>.md` + mutation_brief.md)
+│   └─ operators/                 per-verb strategy prose seeds (`<verb>.md` + meta_agent_brief.md)
 │       (init overlays the per-recipe/generated parts: evolve.yaml · operators/<verb>.py +
 │        operators/README.md · library/<verb>/ palette · evaluator/… · target/ seed · skills/ · PROTOCOL.md)
 │
 ├─ library/                       the framework's operator catalog (consult & adapt)
-│   ├─ select/ mutate/ gate/ rollout/ record/ novelty/ reflect/   variants, each with a _skeleton.py
-│   └─ README.md                  how the mutator draws from here (surfaced via the skill)
+│   ├─ select/ meta_agent/ gate/ rollout/ record/ novelty/ reflect/   variants, each with a _skeleton.py
+│   └─ README.md                  how the meta-agent draws from here (surfaced via the skill)
 │       init vendors a per-recipe subset into the workspace's OWN library/
 │
 ├─ recipes/                       a paradigm = a config (hill_climb, dgm, ahe, autoresearch, hyperagents, metaagent)
@@ -170,7 +173,7 @@ simple-evolve-agent/
 ├─ evaluator/                      the FROZEN ruler (pinned to gen/0; outside the mutable surface)
 ├─ .evolve/                        vendored harness (stdlib-only) → the workspace self-drives (meta_eval replay needs this)
 ├─ evolve                          console → .evolve
-├─ skills/evolve-workspace/        the mutator's manual (tool-agnostic: Claude Code + codex)
+├─ skills/evolve-workspace/        the meta-agent's manual (tool-agnostic: Claude Code + codex)
 ├─ PROTOCOL.md                     the operator contract in prose
 ├─ archive.jsonl                   the ledger (append-only, via record; frozen fields only from stamp)
 ├─ runs/gen-<id>/                  per-gen scratch: feedback.json · <op>.json · stamp.json · novelty.json
@@ -203,14 +206,25 @@ deploy — never two lineages.
 Canonical verb set — this supersedes any earlier "six-verb" list:
 
 ```
-select · rollout · mutate · novelty · gate · record · reflect     (+ distill, deferred with weights)
+select · rollout · meta_agent · novelty · gate · record · reflect     (+ distill, deferred with weights)
 ```
 
 `observe` is retired (migration step S5): the feedback bundle is ledger-derived,
-so the mechanism writes it after rollout and before mutate (a new
+so the mechanism writes it after rollout and before meta_agent (a new
 `src/evolve/feedback.py`) — it exists even when rollout is a noop variant, and no
-operator can suppress it. The mutator reads files with its own tools; the
+operator can suppress it. The meta-agent reads files with its own tools; the
 workspace is the medium between operators — nothing is pre-chewed.
+
+For MiniSWE source evolution, `target/` is the MiniSWE source checkout plus
+`target/harbor_agent.py`. Harbor imports
+`target.harbor_agent:MiniSweSourceAgent`, uploads the candidate source into the
+task container, installs that source, and then reuses Harbor's MiniSWE run
+behavior.
+
+`run_meta_agent(workspace, prompt, config)` is the local meta-agent runner.
+It receives a checkout and prompt, then runs the configured command in that
+checkout. It does not know about generation IDs, archive rows, Harbor, or
+surface policy.
 
 Each operator is a standalone subprocess script (crash isolation), invoked with
 `--config <json>` and an `EVOLVE_*` env contract, writing its result under
@@ -227,25 +241,30 @@ Variants are **operators to consult during evolution**, not a palette switched
 at runtime. So they are neither harness (`src/`) nor per-workspace genome
 (`templates/`) — they are a **top-level, framework-versioned catalog**:
 
-- The mutator (an agent) reads `library/<verb>/*.py`, then **adapts a variant
+- The meta-agent (an agent) reads `library/<verb>/*.py`, then **adapts a variant
   into** the workspace's active `operators/<verb>.py`. Only that adapted-in,
   committed copy ever runs — so meta_eval replay and the self-reference gate
   always act on in-tree code, and the catalog needs no digest, no freeze, no
   gate. It can grow freely without bloating a workspace.
-- The catalog is surfaced through the skill (`operators/mutate.md` points at
+- The catalog is surfaced through the skill (`operators/meta_agent.md` points at
   it), not copied in — fat-skills, again.
 - It is also the sink for **harvest**: operators that evolve well in real runs
   get promoted back into `library/`, closing the loop
   `framework seeds → workspace evolves → good variants flow back` (M8).
+
+HyperAgents can evolve `operators/**`. A changed `operators/meta_agent.py`
+affects later children forked from the accepted generation; changed gate or
+record code can affect the same generation because those operators run after
+the candidate edit.
 
 ## 8. The learning ladder (every rung above 0 is opt-in)
 
 | Level | You get | Turn it on |
 |---|---|---|
 | 0 · run the loop | generations, lineage, champion tracking | `./evolve run N` |
-| 1 · be the mutator | your agent mutates; the machine keeps the books | edit within surface, then `./evolve run` (interactive `gen begin`/`finish` planned) |
-| 2 · shape the search | select/gate/mutate behaviors; paradigms as recipes | edit `evolve.yaml` / `evolve init --recipe <name>` |
-| 3 · self-modify | `operators/` (scripts + strategy prose) and `program.md` become mutable, behind contract tests + the meta_eval admission gate + novelty rejection; islands | a mutation touches `operators/` (gated automatically) |
+| 1 · be the meta-agent | your agent edits the candidate; the machine keeps the books | edit within surface, then `./evolve run` (interactive `gen begin`/`finish` planned) |
+| 2 · shape the search | select/gate/meta_agent behaviors; paradigms as recipes | edit `evolve.yaml` / `evolve init --recipe <name>` |
+| 3 · self-modify | `operators/` (scripts + strategy prose) and `program.md` become mutable, behind contract tests + the meta_eval admission gate + novelty rejection; islands | a candidate edit touches `operators/` (gated automatically) |
 | 4 · auto-train | plateau → distill → decontam-stamped data → train engine → checkpoint re-enters as a candidate | `EVOLVE_TRAIN_PLATEAU=K` (weights infra required) |
 
 ## 9. Versioning

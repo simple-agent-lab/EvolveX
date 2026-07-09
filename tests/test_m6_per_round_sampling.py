@@ -2,7 +2,7 @@ import json
 import stat
 from pathlib import Path
 
-from conftest import git, init_workspace, rows_by_genid, run_evolve
+from conftest import git, init_workspace, rows_by_genid, run_evolve, smoke_agent_command
 
 
 def _rewrite(workspace: Path, relative_path: str, content: str) -> None:
@@ -61,7 +61,7 @@ def test_per_round_sampling_re_evaluates_parent_before_same_hash_gate(tmp_path: 
         str(workspace),
         "--max-generations",
         "2",
-        env={"EVOLVE_HOME": str(evolve_home)},
+        env={"EVOLVE_HOME": str(evolve_home), "EVOLVE_AGENT_COMMAND": smoke_agent_command()},
     )
 
     assert result.returncode == 0, result.stderr

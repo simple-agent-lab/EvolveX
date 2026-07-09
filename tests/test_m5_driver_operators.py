@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from conftest import git, init_workspace, rows_by_genid, run_evolve
+from conftest import git, init_workspace, rows_by_genid, run_evolve, smoke_env
 
 
 def _rewrite(workspace: Path, relative_path: str, content: str) -> None:
@@ -23,30 +23,30 @@ def test_run_uses_operator_subprocesses_for_loop_steps(tmp_path: Path) -> None:
         str(workspace),
         "--max-generations",
         "1",
-        env={"EVAL_STUB": "1", "EVOLVE_HOME": str(evolve_home)},
+        env=smoke_env(evolve_home),
     )
 
     assert result.returncode == 0, result.stderr
     run_dir = workspace / "runs" / "gen-1"
-    assert "written-by: operators/mutate.py" in (run_dir / "mutate" / "rationale.md").read_text()
+    assert "written-by: operators/meta_agent.py" in (run_dir / "meta_agent" / "rationale.md").read_text()
     assert json.loads((run_dir / "gate.json").read_text())["verdict"] == "keep"
     assert (run_dir / "feedback" / "index.md").exists()
     row = rows_by_genid(workspace)["1"]
     assert row["reason"] == "score 1.0 >= parent 1.0"
-    assert row["note"] == "variant: fixed"
+    assert row["note"] == "variant: agent_command"
 
 
-def test_run_records_operator_failed_when_mutate_operator_crashes(tmp_path: Path) -> None:
+def test_run_records_operator_failed_when_meta_agent_operator_crashes(tmp_path: Path) -> None:
     workspace, evolve_home = init_workspace(tmp_path)
-    _rewrite(workspace, "operators/mutate.py", "raise SystemExit(1)\n")
-    _commit_and_retag_gen0(workspace, "operators/mutate.py")
+    _rewrite(workspace, "operators/meta_agent.py", "raise SystemExit(1)\n")
+    _commit_and_retag_gen0(workspace, "operators/meta_agent.py")
 
     result = run_evolve(
         "run",
         str(workspace),
         "--max-generations",
         "1",
-        env={"EVAL_STUB": "1", "EVOLVE_HOME": str(evolve_home)},
+        env=smoke_env(evolve_home),
     )
 
     assert result.returncode == 0, result.stderr
@@ -54,4 +54,4 @@ def test_run_records_operator_failed_when_mutate_operator_crashes(tmp_path: Path
     assert row["status"] == "operator_failed"
     assert row["valid_parent"] is False
     assert row["verdict"] == "discard"
-    assert row["reason"] == "operator mutate failed"
+    assert row["reason"] == "operator meta_agent failed"

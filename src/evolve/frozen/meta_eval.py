@@ -1,13 +1,14 @@
 """Self-modification admission gate (mechanism 1, DESIGN §2/§7).
 
-When a mutation edits the operator surface (operators/, program.md) it must not
-be trusted just because it ran — the thing being evaluated must not own its
-evaluator. This runs a confound-free replay: both sides start from the PARENT
-tree and differ only in the operator surface (old = parent's, new = the child's
-uncommitted version). Each side replays K micro-generations on the stub harness
-in a disposable git repo; the new operators are admitted only if they are
-non-inferior (`new_best >= old_best - margin`). Fail-closed: any operational
-error rejects the change.
+When a candidate edit touches the operator surface (operators/, program.md) it
+must not be trusted just because it ran — the thing being evaluated must not own
+its evaluator. This runs a confound-free replay: both sides start from the
+PARENT tree and differ only in the operator surface (old = parent's, new = the
+child's uncommitted version). Each side replays K micro-generations in the
+caller's evaluator environment inside a disposable git repo; the stub harness is
+used only when the caller explicitly sets `EVAL_STUB=1`. The new operators are
+admitted only if they are non-inferior (`new_best >= old_best - margin`).
+Fail-closed: any operational error rejects the change.
 """
 
 from __future__ import annotations
@@ -68,7 +69,7 @@ def _write_genesis(tree: Path) -> None:
 
 
 def _replay(tree: Path, k: int, seed: str) -> float:
-    """Fresh repo + K micro-generations on the stub harness; return the best score."""
+    """Fresh repo plus K micro-generations; return the best score."""
     git = ["git", "-c", "user.name=meta-eval", "-c", "user.email=meta@local"]
     _sh(["git", "init", "-q", "-b", "main"], tree)
     _sh(git + ["add", "-A"], tree)
@@ -79,7 +80,7 @@ def _replay(tree: Path, k: int, seed: str) -> float:
         [sys.executable, "-m", "evolve", "run", ".", "--max-generations", str(k)],
         tree,
         check=False,
-        env={"EVAL_STUB": "1", "EVOLVE_HOME": str(tree / ".meta-home"), "EVOLVE_SEED": str(seed)},
+        env={"EVOLVE_HOME": str(tree / ".meta-home"), "EVOLVE_SEED": str(seed)},
     )
     if result.returncode != 0:
         raise RuntimeError(f"replay run failed: {result.stderr.strip()[:300]}")

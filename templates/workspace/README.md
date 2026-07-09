@@ -17,8 +17,8 @@ library/         the operator catalog: variants per verb. Copy one over an
                  operators/<verb>.py to change strategy.
 evaluator/       the FROZEN ruler — how a candidate is scored. Never changes
                  inside the loop (pinned to gen/0); a harness change is a proposal
-                 for a human, not a mutation.
-skills/          the mutator's manual (tool-agnostic: Claude Code, codex, …)
+                 for a human, not a generated candidate edit.
+skills/          the meta-agent's manual (tool-agnostic: Claude Code, codex, …)
 evolve.yaml      experiment config: recipe, operator selection, the mutable surface
 program.md       loop orchestration prose (agent mode)
 PROTOCOL.md      the operator contract in prose (authority: the framework)

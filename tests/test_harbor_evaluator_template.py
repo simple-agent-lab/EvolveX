@@ -24,9 +24,9 @@ def test_harbor_registry_dataset_uses_dataset_flag_and_task_file(tmp_path: Path)
             tasks_per_round=1,
             trials=1,
             partial_floor=0.8,
+            agent="mini-swe-agent",
             dataset_mode="registry",
             task_file="evaluator/tasks/train.txt",
-            harbor_agent="mini-swe-agent",
         )
     )
     (evaluator / "tasks" / "train.txt").write_text("task-a\n# comment\n\ntask-b\n")

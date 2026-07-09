@@ -7,7 +7,8 @@ experiment:
   mode: driver
   seed: 0
 target:
-  seed: builtin-dummy
+  seed: https://github.com/SWE-agent/mini-swe-agent.git
+  harbor_agent: miniswe-source
 surface:
   include:
     - target/**
@@ -15,13 +16,14 @@ surface:
 operators:
   select: {variant: greedy}
   rollout: {variant: failure_focused, budget_tasks: 32}
-  mutate: {variant: fixed, timeout_s: 3600}
+  meta_agent: {variant: agent_command, timeout_s: 3600}
   gate: {variant: parent_eligible}
   record: {variant: jsonl}
   timeout_s: 600
 evaluator:
   engine: harbor
-  dataset: pass@k
+  dataset: swe-bench-lite
+  agent: target.harbor_agent:MiniSweSourceAgent
   split: {train: 0.5, gate: 0.4, sealed: 0.1, seed: 0}
   sampling: static
   tasks_per_round: 16

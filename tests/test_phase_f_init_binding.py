@@ -20,7 +20,7 @@ def test_init_binds_dgm_select_to_score_weighted_library_variant_and_stamps_prot
         "init",
         str(workspace),
         "--recipe",
-        "dgm",
+        "dgm-smoke",
         env={"EVOLVE_HOME": str(tmp_path / "home")},
     )
 
@@ -35,3 +35,22 @@ def test_init_binds_dgm_select_to_score_weighted_library_variant_and_stamps_prot
     assert "evolve it" in header
     assert body == expected_source
     assert (workspace / ".evolve-protocol-version").read_text() == "1\n"
+
+
+def test_real_recipe_binds_meta_agent_to_agent_command_library_variant(tmp_path: Path) -> None:
+    from evolve import workspace as workspace_module
+
+    config = workspace_module.default_config("hill_climb", "hill")
+
+    bindings = workspace_module._operator_bindings(config, recipe="hill_climb", init_cwd=tmp_path)
+    meta_agent = next(binding for binding in bindings if binding.kind == "meta_agent")
+
+    expected_source = (ROOT / "library" / "meta_agent" / "agent_command.py").read_text()
+    assert meta_agent.source == "library/meta_agent/agent_command.py"
+    assert meta_agent.text == expected_source
+
+    palette = workspace_module._operator_palette("hill_climb")
+    assert "library/meta_agent/agent_command.py" in palette
+    assert "library/meta_agent/fixed.py" not in palette
+    assert "library/meta_agent/noop.py" not in palette
+    assert "library/meta_agent/llm.py" not in palette

@@ -1,22 +1,15 @@
 # HyperAgents
 
-HyperAgents-style search evolves more than the target agent. The mutable
-surface includes the agent, its operators, and its meta prompts, so improvements
-can come from behavior, process, or memory. The population stays small but
-branchy, and parent choice is randomized to explore different process variants
-instead of always following the current best score.
+This is the live Harbor recipe for process-plus-agent evolution on MiniSWE. It
+keeps the wider mutable surface and randomized parent choice while switching
+the meta-agent operator to `agent_command` and evaluation to Harbor on
+`swe-bench-lite`.
 
-`children_per_gen: 2` gives two parallel process variants per round.
-`surface.include` exposes `target/**` and `operators/**` (scripts + strategy prose).
-`select.variant: random` keeps exploration in the archive.
-`gate.variant: parent_eligible` admits evaluated process variants.
-`evaluator.engine: docker-report` expects a report.json style score source.
-`sampling: static` keeps Phase E comparisons fixed when this recipe is run live.
-
-## Operator Routing
-
+`surface.include` exposes both `target/**` and `operators/**`.
+`evaluator.agent: target.harbor_agent:MiniSweSourceAgent` is the real Harbor entrypoint.
+`target/harbor_agent.py` binds the Harbor wrapper to the cloned MiniSWE source tree.
+`meta_agent: {variant: agent_command, timeout_s: 3600}` resolves to [`library/meta_agent/agent_command.py`](../../library/meta_agent/agent_command.py).
 `select: {variant: random, seed: 0}` resolves to [`library/select/random.py`](../../library/select/random.py).
-`rollout: {variant: failure_focused, budget_tasks: 32}` resolves to [`library/rollout/failure_focused.py`](../../library/rollout/failure_focused.py).
-`mutate: {variant: fixed, timeout_s: 3600}` resolves to [`library/mutate/fixed.py`](../../library/mutate/fixed.py).
-`gate: {variant: parent_eligible}` resolves to [`library/gate/parent_eligible.py`](../../library/gate/parent_eligible.py).
-`record: {variant: jsonl}` resolves to [`library/record/jsonl.py`](../../library/record/jsonl.py).
+Changes to `operators/meta_agent.py` affect later children forked from an accepted
+generation; gate and record edits can affect the same generation because those
+operators run after the candidate edit.

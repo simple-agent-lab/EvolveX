@@ -1,7 +1,7 @@
-"""Baseline novelty operator: accept every mutation (no dedup).
+"""Baseline novelty operator: accept every candidate edit (no dedup).
 
-The off-by-default choice — a mutation is never rejected for similarity. Swap
-in `diff_similarity` when you want near-duplicate mutations pruned before eval.
+The off-by-default choice — a candidate edit is never rejected for similarity.
+Swap in `diff_similarity` when you want near-duplicate edits pruned before eval.
 """
 
 # ruff: noqa: E402

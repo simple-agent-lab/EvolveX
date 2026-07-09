@@ -11,7 +11,7 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
         "init",
         str(workspace),
         "--recipe",
-        "hill_climb",
+        "hill_climb-smoke",
         env={"EVAL_STUB": "1", "EVOLVE_HOME": str(tmp_path / "evolve-home")},
     )
 
@@ -23,17 +23,17 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
         "program.md",
         "operators/select.py",
         "operators/rollout.py",
-        "operators/mutate.py",
+        "operators/meta_agent.py",
         "operators/gate.py",
         "operators/record.py",
         "operators/engines/local.sh",
         "operators/preflight.sh",
         "operators/select.md",
         "operators/rollout.md",
-        "operators/mutate.md",
+        "operators/meta_agent.md",
         "operators/gate.md",
         "operators/record.md",
-        "operators/mutation_brief.md",
+        "operators/meta_agent_brief.md",
         "skills/evolve-workspace/SKILL.md",
         "target/agent.py",
         "target/README.md",
@@ -50,6 +50,10 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
     ]
     for relative_path in expected_paths:
         assert (workspace / relative_path).exists(), relative_path
+    assert not (workspace / "operators" / "mutate.py").exists()
+    assert not (workspace / "operators" / "mutate.md").exists()
+    assert not (workspace / "operators" / "mutation_brief.md").exists()
+    assert not (workspace / "evaluator" / "checkout_agent.py").exists()
 
     config = (workspace / "evolve.yaml").read_text()
     assert "children_per_gen: 1" in config
@@ -57,7 +61,8 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
     assert "seed: builtin-dummy" in config
     assert "variant:" not in config
     assert "script:" not in config
-    assert "mutate: {timeout_s: 3600}" in config
+    assert "meta_agent: {timeout_s: 3600}" in config
+    assert "mutate:" not in config
     assert "- target/**" in config
     assert (workspace / ".evolve-protocol-version").read_text() == "1\n"
 
@@ -79,7 +84,7 @@ def test_init_creates_generation_zero_git_snapshot_and_archive_event(tmp_path: P
         "init",
         str(workspace),
         "--recipe",
-        "hill_climb",
+        "hill_climb-smoke",
         env={"EVAL_STUB": "1", "EVOLVE_HOME": str(tmp_path / "evolve-home")},
     )
 

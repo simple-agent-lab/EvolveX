@@ -4,7 +4,7 @@
 Simulates a task suite (task-0 .. task-{K-1}) whose outcome is a function of the
 candidate: every task passes by default (so a fresh candidate scores 1.0), but a
 candidate may fail specific tasks by declaring `# FAIL task-N` lines in
-target/agent.py. A mutation that changes those lines flips which tasks pass —
+target/agent.py. A candidate edit that changes those lines flips which tasks pass —
 which is what makes `predicted_fixes -> verified_fixes` a real signal under the
 stub. Writes score (pass rate), status, task_vector.json, and metrics.json;
 exits 0 (complete) when every task passes, else 2 (partial).

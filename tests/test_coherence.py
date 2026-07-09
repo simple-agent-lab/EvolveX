@@ -14,12 +14,12 @@ from evolve.frozen import interfaces
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src" / "evolve"
-TOTAL_BUDGET = 3900  # raised for the DESIGN mechanisms + observability (novelty,
-# meta_eval, falsification/verified_fixes, the frozen ring, verify/audit/doctor)
+TOTAL_BUDGET = 4180  # includes agent/patching modules and current init scaffolding growth
 ROW = re.compile(r"^\| `([^`]+\.py)` \| (\d+) \|")
 APPROVED_MODULES = {
     "__init__.py",
     "__main__.py",
+    "agent.py",
     "archive.py",
     "cli.py",
     "config.py",
@@ -28,6 +28,7 @@ APPROVED_MODULES = {
     "feedback.py",
     "git.py",
     "operators.py",
+    "patching.py",
     "population.py",
     "report.py",
     "surface.py",
@@ -136,3 +137,18 @@ def test_operator_registry_is_the_single_source() -> None:
     from evolve import config
 
     assert set(config.OPERATOR_KINDS) | set(config.OPTIONAL_OPERATOR_KINDS) == {s.kind for s in interfaces.OPERATORS}
+
+
+def test_docs_do_not_describe_real_recipes_as_smoke_or_checkout_fallback() -> None:
+    docs = [
+        ROOT / "README.md",
+        ROOT / "DESIGN.md",
+        ROOT / "docs" / "glossary.md",
+        ROOT / "recipes" / "README.md",
+    ]
+    text = "\n".join(path.read_text() for path in docs if path.exists())
+    assert "solve.sh" not in text
+    assert "run.sh" not in text
+    assert "CheckoutTargetAgent" not in text
+    assert "hyperagents-smoke" in text
+    assert "target.harbor_agent:MiniSweSourceAgent" in text

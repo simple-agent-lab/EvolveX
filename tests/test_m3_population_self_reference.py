@@ -4,8 +4,8 @@ from pathlib import Path
 from conftest import git, git_show, init_workspace, rows_by_genid, run_evolve
 
 
-def install_self_referential_mutate(workspace: Path) -> None:
-    (workspace / "operators" / "mutate.py").write_text(
+def install_self_referential_meta_agent(workspace: Path) -> None:
+    (workspace / "operators" / "meta_agent.py").write_text(
         "#!/usr/bin/env python3\n"
         "import argparse\n"
         "import json\n"
@@ -23,11 +23,11 @@ def install_self_referential_mutate(workspace: Path) -> None:
         'needle = \'return GateResult(decision="accept" if keep else "reject", reason=reason)\'\n'
         'replacement = \'return GateResult(decision="accept" if keep else "reject", reason=reason + " evolved")\'\n'
         "gate.write_text(gate.read_text().replace(needle, replacement))\n"
-        "mutate_dir = Path(os.environ['EVOLVE_RUN_DIR']) / 'mutate'\n"
-        "mutate_dir.mkdir(parents=True, exist_ok=True)\n"
-        "(mutate_dir / 'rationale.md').write_text('written-by: operators/mutate.py\\nvariant: self-reference\\n')\n"
-        "(mutate_dir / 'predicted_fixes.json').write_text('[]\\n')\n"
-        "(mutate_dir / 'usage.json').write_text('{\"usd\": 0}\\n')\n"
+        "meta_agent_dir = Path(os.environ['EVOLVE_RUN_DIR']) / 'meta_agent'\n"
+        "meta_agent_dir.mkdir(parents=True, exist_ok=True)\n"
+        "(meta_agent_dir / 'rationale.md').write_text('written-by: operators/meta_agent.py\\nvariant: self-reference\\n')\n"
+        "(meta_agent_dir / 'predicted_fixes.json').write_text('[]\\n')\n"
+        "(meta_agent_dir / 'usage.json').write_text('{\"usd\": 0}\\n')\n"
     )
 
 
@@ -57,8 +57,8 @@ def test_population_fanout_creates_branching_lineage(tmp_path: Path) -> None:
 
 def test_out_of_surface_operator_edit_is_caught_and_recorded(tmp_path: Path) -> None:
     workspace, evolve_home = init_workspace(tmp_path)
-    install_self_referential_mutate(workspace)
-    git(workspace, "add", "operators/mutate.py")
+    install_self_referential_meta_agent(workspace)
+    git(workspace, "add", "operators/meta_agent.py")
     git(workspace, "commit", "-m", "attempt out-of-surface operator edit")
     git(workspace, "tag", "-f", "gen/0")
 

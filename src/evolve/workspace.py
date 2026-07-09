@@ -47,13 +47,13 @@ def init_workspace(options: InitOptions) -> None:
 
     workspace.mkdir(parents=True, exist_ok=True)
     config = default_config(options.recipe, workspace.name)
+    target = config["target"]
+    assert isinstance(target, dict)
     if options.seed:
-        target = config["target"]
-        assert isinstance(target, dict)
         target["seed"] = options.seed
 
     _write_files(workspace, config, recipe=options.recipe, init_cwd=Path.cwd())
-    _write_target(workspace, options.seed)
+    _write_target(workspace, target)
     _vendor_mechanism(workspace)
     _make_executable(
         workspace / "operators" / "engines" / "local.sh",
@@ -93,7 +93,7 @@ def _vendor_mechanism(workspace: Path) -> None:
     """Copy the evolve mechanism package into the workspace so it is
     self-driving (mechanism-in-workspace). The vendored copy lives under
     .evolve/ and, together with the root `evolve` console, is protected from
-    mutation by the surface's implicit excludes."""
+    candidate edits by the surface's implicit excludes."""
     package_src = Path(__file__).resolve().parent
     shutil.copytree(
         package_src,
@@ -108,6 +108,9 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
     evaluator = cast("dict[str, Any]", config["evaluator"])
     evaluator_engine = str(evaluator["engine"])
     evaluator_dataset = str(evaluator["dataset"])
+    evaluator_agent = str(evaluator.get("agent") or "")
+    if evaluator_engine == "harbor" and not evaluator_agent:
+        raise ValueError("evaluator.agent is required for harbor recipes")
     evaluator_trials = int(evaluator.get("k", 1))
     tasks_per_round = int(evaluator.get("tasks_per_round", evaluator_trials))
     evaluator_n = int(evaluator.get("n_concurrent", evaluator_trials))
@@ -127,15 +130,15 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
         # meta/ tree) so code + policy travel as one pair.
         "operators/select.md": _template("workspace/operators/select.md"),
         "operators/rollout.md": _template("workspace/operators/rollout.md"),
-        "operators/mutate.md": _template("workspace/operators/mutate.md"),
+        "operators/meta_agent.md": _template("workspace/operators/meta_agent.md"),
         "operators/gate.md": _template("workspace/operators/gate.md"),
         "operators/record.md": _template("workspace/operators/record.md"),
-        "operators/mutation_brief.md": _template("workspace/operators/mutation_brief.md"),
+        "operators/meta_agent_brief.md": _template("workspace/operators/meta_agent_brief.md"),
         # Inner skill: travels into the workspace under a unified, tool-agnostic
         # `skills/` folder (not `.claude/skills/`) so Claude Code AND codex (and
-        # others) can find the mutator's manual (DESIGN §4, template = skill).
+        # others) can find the meta-agent's manual (DESIGN §4, template = skill).
         "skills/evolve-workspace/SKILL.md": _skill("evolve-workspace/SKILL.md"),
-        # Human-readable operator protocol the inner skill points mutators at.
+        # Human-readable operator protocol the inner skill points meta-agents at.
         "PROTOCOL.md": (library_root() / "PROTOCOL.md").read_text(),
         "evaluator/eval.sh": _eval_sh(evaluator_engine, evaluator_dataset),
         "evaluator/eval.env": _eval_env(
@@ -145,15 +148,14 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
             tasks_per_round,
             evaluator_trials,
             partial_floor,
+            evaluator_agent,
             dataset_mode=str(evaluator.get("dataset_mode", "path")),
             task_file=str(evaluator["task_file"]) if "task_file" in evaluator else None,
-            harbor_agent=str(evaluator.get("agent", "evaluator.checkout_agent:CheckoutTargetAgent")),
         ),
         "evaluator/splits.json": json.dumps({"train": 0.5, "gate": 0.4, "sealed": 0.1, "seed": 0}, indent=2) + "\n",
         "evaluator/dataset.pin": f"dataset={evaluator_dataset}\nchecksum=sha256:stub\n",
         "evaluator/parse_score.py": _template("evaluator/parse_score.py"),
         "evaluator/stub_eval.py": _template("evaluator/stub_eval.py"),
-        "evaluator/checkout_agent.py": _template("evaluator/checkout_agent.py"),
         "evaluator/engines/local.sh": _shell_script("canonical local engine"),
         "archive.jsonl": "",
     }
@@ -298,8 +300,10 @@ def _runtime_config(config: dict[str, object]) -> dict[str, object]:
     return runtime
 
 
-def _write_target(workspace: Path, seed: str | None) -> None:
-    if not seed or seed == "builtin-dummy":
+def _write_target(workspace: Path, target_config: dict[str, Any]) -> None:
+    seed = target_config.get("seed")
+    seed_text = str(seed) if seed else None
+    if not seed_text or seed_text == "builtin-dummy":
         target = workspace / "target"
         target.mkdir(parents=True, exist_ok=True)
         (target / "agent.py").write_text(_template("target/agent.py"))
@@ -307,17 +311,29 @@ def _write_target(workspace: Path, seed: str | None) -> None:
         (target / "UPSTREAM.json").write_text(
             json.dumps({"kind": "builtin", "seed": "builtin-dummy"}, sort_keys=True) + "\n"
         )
+        _write_target_harbor_agent(workspace, target_config)
         return
-    if _looks_like_git_url(seed):
+    if _looks_like_git_url(seed_text):
         with tempfile.TemporaryDirectory(prefix="evolve-seed-") as tmp:
             checkout = Path(tmp) / "seed"
-            _git_clone(seed, checkout)
-            _vendor_seed(workspace, checkout, seed)
+            _git_clone(seed_text, checkout)
+            _vendor_seed(workspace, checkout, seed_text)
+        _write_target_harbor_agent(workspace, target_config)
         return
-    source = Path(seed).expanduser()
+    source = Path(seed_text).expanduser()
     if not source.is_dir():
-        raise ValueError(f"seed is not a local directory or git URL: {seed}")
+        raise ValueError(f"seed is not a local directory or git URL: {seed_text}")
     _vendor_seed(workspace, source.resolve(), str(source.resolve()))
+    _write_target_harbor_agent(workspace, target_config)
+
+
+def _write_target_harbor_agent(workspace: Path, target_config: dict[str, Any]) -> None:
+    kind = str(target_config.get("harbor_agent") or "")
+    if not kind:
+        return
+    if kind != "miniswe-source":
+        raise ValueError(f"unsupported target.harbor_agent: {kind}")
+    (workspace / "target" / "harbor_agent.py").write_text(_template("target/harbor/miniswe_source_agent.py"))
 
 
 def _vendor_seed(workspace: Path, source: Path, fallback_remote: str) -> None:
@@ -414,18 +430,26 @@ def _make_executable(*paths: Path) -> None:
 
 
 def _eval_env(
-    workspace_name: str, dataset: str, n_concurrent: int, tasks_per_round: int, trials: int, partial_floor: float, *,
+    workspace_name: str,
+    dataset: str,
+    n_concurrent: int,
+    tasks_per_round: int,
+    trials: int,
+    partial_floor: float,
+    agent: str,
+    *,
     dataset_mode: str = "path", task_file: str | None = None,
-    harbor_agent: str = "evaluator.checkout_agent:CheckoutTargetAgent",
 ) -> str:
     expected_trials = tasks_per_round * max(trials, 1)
     text = (
         f"EVOLVE_EVALUATOR_DATASET={dataset}\n"
         f"EVOLVE_HARBOR_TASKS={shlex.quote(dataset)}\n"
         f"EVOLVE_HARBOR_DATASET_MODE={shlex.quote(dataset_mode)}\n"
-        f"EVOLVE_HARBOR_N_CONCURRENT={n_concurrent}\nEVOLVE_HARBOR_EXPECTED_TRIALS={expected_trials}\nEVOLVE_HARBOR_N={n_concurrent}\n"
+        f"EVOLVE_HARBOR_N_CONCURRENT={n_concurrent}\n"
+        f"EVOLVE_HARBOR_EXPECTED_TRIALS={expected_trials}\n"
+        f"EVOLVE_HARBOR_N={n_concurrent}\n"
         f'EVOLVE_JOBS_DIR="$HOME/.evolve/harbor-jobs/{workspace_name}"\n'
-        f"EVOLVE_HARBOR_AGENT={shlex.quote(harbor_agent)}\n"
+        f"EVOLVE_HARBOR_AGENT={shlex.quote(agent)}\n"
         f"EVOLVE_PARTIAL_FLOOR={partial_floor}\n"
     )
     return text + (f"EVOLVE_HARBOR_TASK_FILE={shlex.quote(task_file)}\n" if task_file else "")
