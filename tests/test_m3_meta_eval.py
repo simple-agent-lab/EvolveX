@@ -7,7 +7,9 @@ score-based rejection needs a live harness). So the driver's revert path is
 tested by mocking `admit`, and the admit-keep path is exercised for real.
 """
 
+import json
 import subprocess
+import sys
 from pathlib import Path
 
 from conftest import init_workspace, rows_by_genid
@@ -65,7 +67,27 @@ def _setup_self_mod_workspace(tmp_path: Path) -> tuple[Path, Path]:
     return workspace, evolve_home
 
 
-def test_meta_eval_admits_noninferior_operator_edit(tmp_path: Path) -> None:
+def test_meta_eval_replay_does_not_inject_eval_stub(tmp_path: Path, monkeypatch) -> None:
+    captured_env = {}
+
+    def fake_sh(cmd, cwd, *, check=True, env=None, timeout=600):
+        if cmd[:3] == [sys.executable, "-m", "evolve"]:
+            captured_env.update(env or {})
+            (cwd / "archive.jsonl").write_text(json.dumps({"score": 1.0}) + "\n")
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.delenv("EVAL_STUB", raising=False)
+    monkeypatch.setattr(meta_eval, "_sh", fake_sh)
+
+    score = meta_eval._replay(tmp_path, k=1, seed="s")
+
+    assert score == 1.0
+    assert "EVAL_STUB" not in captured_env
+    assert captured_env["EVOLVE_HOME"] == str(tmp_path / ".meta-home")
+
+
+def test_meta_eval_admits_noninferior_operator_edit(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("EVAL_STUB", "1")
     workspace, _ = init_workspace(tmp_path)
     sel = workspace / "operators" / "select.py"
     sel.write_text(sel.read_text() + "\n# harmless comment\n")
