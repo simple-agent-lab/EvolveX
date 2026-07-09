@@ -25,6 +25,12 @@ Precise meanings for the domain terms this project uses.
   not part of the agent being evolved. (`observe` is retired — the mechanism
   writes the feedback bundle itself; see `src/evolve/feedback.py`.)
 
+- **Operator context (`ctx`)** — The per-operator invocation context. In code,
+  `ctx` is an `OperatorContext`: workspace root, checkout, run directory,
+  generation id, selected parent, optional round, fan-out, operator config, and
+  seeded RNG. It tells an operator where it is and which generation it is
+  handling.
+
 - **Mutate / meta-agent** — the operator that changes the candidate. The
   `agent_command` variant spawns a coding agent that edits the folder in
   place; agent-agnostic via a configured command. Out-of-surface edits are

@@ -139,7 +139,15 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
         "PROTOCOL.md": (library_root() / "PROTOCOL.md").read_text(),
         "evaluator/eval.sh": _eval_sh(evaluator_engine, evaluator_dataset),
         "evaluator/eval.env": _eval_env(
-            workspace.name, evaluator_dataset, evaluator_n, tasks_per_round, evaluator_trials, partial_floor
+            workspace.name,
+            evaluator_dataset,
+            evaluator_n,
+            tasks_per_round,
+            evaluator_trials,
+            partial_floor,
+            dataset_mode=str(evaluator.get("dataset_mode", "path")),
+            task_file=str(evaluator["task_file"]) if "task_file" in evaluator else None,
+            harbor_agent=str(evaluator.get("agent", "evaluator.checkout_agent:CheckoutTargetAgent")),
         ),
         "evaluator/splits.json": json.dumps({"train": 0.5, "gate": 0.4, "sealed": 0.1, "seed": 0}, indent=2) + "\n",
         "evaluator/dataset.pin": f"dataset={evaluator_dataset}\nchecksum=sha256:stub\n",
@@ -406,26 +414,26 @@ def _make_executable(*paths: Path) -> None:
 
 
 def _eval_env(
-    workspace_name: str, dataset: str, n_concurrent: int, tasks_per_round: int, trials: int, partial_floor: float
+    workspace_name: str, dataset: str, n_concurrent: int, tasks_per_round: int, trials: int, partial_floor: float, *,
+    dataset_mode: str = "path", task_file: str | None = None,
+    harbor_agent: str = "evaluator.checkout_agent:CheckoutTargetAgent",
 ) -> str:
     expected_trials = tasks_per_round * max(trials, 1)
-    return (
+    text = (
         f"EVOLVE_EVALUATOR_DATASET={dataset}\n"
         f"EVOLVE_HARBOR_TASKS={shlex.quote(dataset)}\n"
+        f"EVOLVE_HARBOR_DATASET_MODE={shlex.quote(dataset_mode)}\n"
         f"EVOLVE_HARBOR_N_CONCURRENT={n_concurrent}\nEVOLVE_HARBOR_EXPECTED_TRIALS={expected_trials}\nEVOLVE_HARBOR_N={n_concurrent}\n"
         f'EVOLVE_JOBS_DIR="$HOME/.evolve/harbor-jobs/{workspace_name}"\n'
-        "EVOLVE_HARBOR_AGENT=evaluator.checkout_agent:CheckoutTargetAgent\n"
+        f"EVOLVE_HARBOR_AGENT={shlex.quote(harbor_agent)}\n"
         f"EVOLVE_PARTIAL_FLOOR={partial_floor}\n"
     )
+    return text + (f"EVOLVE_HARBOR_TASK_FILE={shlex.quote(task_file)}\n" if task_file else "")
 
 
 def _eval_sh(engine: str, dataset: str) -> str:
     names = {"harbor": "harbor", "docker-report": "docker-report", "train-bpb": "train-bpb", "reflection": "reflection"}
-    body = (
-        _template(f"evaluator/engines/{names[engine]}.sh")
-        if engine in names
-        else _template("evaluator/engines/unknown.sh")
-    )
+    body = _template(f"evaluator/engines/{names[engine]}.sh") if engine in names else _template("evaluator/engines/unknown.sh")
     body = body.replace("@ENGINE@", engine).replace("@DATASET@", dataset)
     return _template("evaluator/eval-prefix.sh") + body
 
