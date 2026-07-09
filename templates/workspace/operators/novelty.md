@@ -1,3 +1,3 @@
 # Novelty
 
-Reject near-duplicate mutations before they are evaluated.
+Reject near-duplicate candidate edits before they are evaluated.

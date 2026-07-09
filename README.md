@@ -34,7 +34,7 @@ Inside that generated workspace, the six core concepts are:
 | --- | --- |
 | workspace | The generated experiment repository. |
 | target | The code or agent being improved. |
-| operator | Evolvable scripts for select, rollout, mutate, gate, and record. |
+| operator | Evolvable scripts for select, rollout, meta_agent, gate, and record. |
 | evaluator | A pinned black-box evaluator contract. |
 | archive | `archive.jsonl` plus `gen/<id>` git tags. |
 | mutable surface | The paths proposals are allowed to change. |
@@ -61,12 +61,13 @@ complete, honest evolution loop.
 | Level | You get | How |
 | --- | --- | --- |
 | 0 · run the loop | generations, lineage, champion tracking | `evolve init` → `evolve run . --max-generations N` |
-| 1 · be the mutator | your agent makes the edits; the mechanism keeps the books | `mode: agent` recipe + `program.md`; drive the verbs by hand |
+| 1 · be the meta-agent | your agent makes the edits; the mechanism keeps the books | `mode: agent` recipe + `program.md`; drive the verbs by hand |
 | 2 · shape the search | select/gate variants; six published systems as recipes | `--recipe <name>`, or edit `evolve.yaml` |
 | 3 · let it self-modify | widen the surface so the agent evolves its own operators (scripts + strategy prose) | `surface.include` adds `operators/**` (e.g. the `hyperagents` recipe) |
 
 Evolving weights is not a separate level: a checkpoint is just a candidate —
-a mutation that produces new weights re-enters at level 1/2 like any other.
+a candidate edit that produces new weights re-enters at level 1/2 like any
+other.
 
 ## Status
 
@@ -76,11 +77,11 @@ Milestones M0-M6 are implemented and tested in the mechanism suite:
 | --- | --- |
 | M0 | Stub loop, generation snapshots, resume, and archive mirroring. |
 | M1 | Evaluator invariants, clean-checkout eval, surface enforcement, infra failure status. |
-| M2 | Feedback bundle shape and early deterministic mutation mechanics; real operator-authored mutation landed later in M5. |
+| M2 | Feedback bundle shape and early deterministic candidate-edit mechanics; real operator-authored edits landed later in M5. |
 | M3 | Population fan-out and early widened-surface self-reference tests; real child-gate self-reference landed later in M5. |
 | M4 | Six recipes, agent bootstrapping instructions, `status`, and `report`. |
 | M5 | Real subprocess operator runtime, `evolve record`, `evolve.sdk`, operator config variants, and child-owned gate/record self-reference. |
-| M6 | Harbor-first evaluator templates, generic `llm`/`agent_command` mutator adapters, target seed vendoring, and per-round same-hash evaluation. |
+| M6 | Harbor-first evaluator templates, generic `llm`/`agent_command` meta-agent adapters, target seed vendoring, and per-round same-hash evaluation. |
 
 Harbor is the only real benchmark execution path. Real recipes call Harbor with
 an explicit `evaluator.agent` value. Smoke recipes are named `*-smoke` and are
@@ -162,10 +163,10 @@ For MiniSWE source evolution, `target/` is the MiniSWE source checkout plus
 task container, installs that source, and then reuses Harbor's MiniSWE run
 behavior.
 
-All real recipes use `mutate: {variant: agent_command, ...}`. Before running
+All real recipes use `meta_agent: {variant: agent_command, ...}`. Before running
 them, provide a meta-agent command with either `EVOLVE_AGENT_COMMAND` in the
-environment or `operators.mutate.command` in config. The recipes do not ship a
-default command.
+environment or `operators.meta_agent.command` in config. The recipes do not
+ship a default command.
 
 Example:
 
@@ -299,9 +300,9 @@ thermal pressure, and get more predictable long-running Docker behavior.
 
 - The quickstart local smoke path uses `EVAL_STUB=1` for deterministic
   framework feedback.
-- `llm` and `agent_command` mutator adapters exist, but repeatable
+- `llm` and `agent_command` meta-agent adapters exist, but repeatable
   milestone tests still use the deterministic checkout-local `fixed`
-  mutate operator by default.
+  meta-agent operator by default.
 - Archive provenance is protected by mechanism stamps and receipt
   sidecars for auxiliary evals, not by cryptographic signatures.
 - Harbor is verified for Mac development smoke tests, but production

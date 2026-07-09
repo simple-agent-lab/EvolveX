@@ -4,7 +4,7 @@ from pathlib import Path
 from conftest import init_workspace, rows_by_genid, run_evolve
 
 
-def test_fixed_mutator_ten_generations_has_monotone_best_and_feedback_bundle(tmp_path: Path) -> None:
+def test_fixed_meta_agent_ten_generations_has_monotone_best_and_feedback_bundle(tmp_path: Path) -> None:
     workspace, evolve_home = init_workspace(tmp_path)
 
     result = run_evolve(
@@ -41,8 +41,8 @@ def test_fixed_mutator_ten_generations_has_monotone_best_and_feedback_bundle(tmp
         assert {path.name for path in feedback.iterdir()} >= expected_feedback
         assert "failures/" in (feedback / "index.md").read_text()
         assert (
-            "written-by: operators/mutate.py"
-            in (workspace / "runs" / f"gen-{gen}" / "mutate" / "rationale.md").read_text()
+            "written-by: operators/meta_agent.py"
+            in (workspace / "runs" / f"gen-{gen}" / "meta_agent" / "rationale.md").read_text()
         )
         assert json.loads((workspace / "runs" / f"gen-{gen}" / "gate.json").read_text())["verdict"] == "keep"
 

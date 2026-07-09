@@ -14,7 +14,7 @@ from evolve.frozen import interfaces
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src" / "evolve"
-TOTAL_BUDGET = 4180  # includes agent/mutation modules and current init scaffolding growth
+TOTAL_BUDGET = 4180  # includes agent/patching modules and current init scaffolding growth
 ROW = re.compile(r"^\| `([^`]+\.py)` \| (\d+) \|")
 APPROVED_MODULES = {
     "__init__.py",
@@ -27,8 +27,8 @@ APPROVED_MODULES = {
     "evaluator.py",
     "feedback.py",
     "git.py",
-    "mutation.py",
     "operators.py",
+    "patching.py",
     "population.py",
     "report.py",
     "surface.py",

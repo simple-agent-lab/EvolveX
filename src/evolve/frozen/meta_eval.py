@@ -1,12 +1,12 @@
 """Self-modification admission gate (mechanism 1, DESIGN §2/§7).
 
-When a mutation edits the operator surface (operators/, program.md) it must not
-be trusted just because it ran — the thing being evaluated must not own its
-evaluator. This runs a confound-free replay: both sides start from the PARENT
-tree and differ only in the operator surface (old = parent's, new = the child's
-uncommitted version). Each side replays K micro-generations in the caller's
-evaluator environment inside a disposable git repo; the stub harness is used
-only when the caller explicitly sets `EVAL_STUB=1`. The new operators are
+When a candidate edit touches the operator surface (operators/, program.md) it
+must not be trusted just because it ran — the thing being evaluated must not own
+its evaluator. This runs a confound-free replay: both sides start from the
+PARENT tree and differ only in the operator surface (old = parent's, new = the
+child's uncommitted version). Each side replays K micro-generations in the
+caller's evaluator environment inside a disposable git repo; the stub harness is
+used only when the caller explicitly sets `EVAL_STUB=1`. The new operators are
 admitted only if they are non-inferior (`new_best >= old_best - margin`).
 Fail-closed: any operational error rejects the change.
 """

@@ -13,8 +13,8 @@ to prepare claims.
 Hard rules (enforced — do not fight them): never hand-edit scores or archive
 status fields; the frozen evaluator side stamps those. If `evolve.yaml` says
 `mode: agent`, read `program.md` and sequence the verbs yourself; the console
-still enforces the honesty invariants. Before finishing manual mutations, run
+still enforces the honesty invariants. Before finishing manual candidate edits, run
 `./evolve surface-check .` and repair any violations.
 
-Repo-local `.env` values supply live mutator/evaluator keys and endpoints;
+Repo-local `.env` values supply live meta-agent/evaluator keys and endpoints;
 load them locally, never commit secrets.

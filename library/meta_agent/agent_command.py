@@ -1,4 +1,4 @@
-"""Agent-command mutate delegates mutation to a configured meta-agent command."""
+"""Agent-command meta-agent delegates candidate edits to a configured command."""
 
 # ruff: noqa: E402
 
@@ -15,8 +15,8 @@ sys.path = [p for p in sys.path if os.path.abspath(p or os.getcwd()) != os.path.
 
 from evolve.agent import AgentCommandError, AgentRunResult, run_meta_agent
 from evolve.frozen import sdk
-from evolve.frozen.interfaces import MutateOperator, MutateResult, OperatorContext
-from evolve.mutation import MutationPatch, create_mutation_patch, load_surface_policy, mutation_parent_ref
+from evolve.frozen.interfaces import MetaAgentOperator, MetaAgentResult, OperatorContext
+from evolve.patching import CandidatePatch, create_candidate_patch, load_surface_policy, patch_parent_ref
 
 
 def _write_json(path: Path, payload: object) -> None:
@@ -69,13 +69,13 @@ def _surface_rules(checkout: Path) -> str:
     return "- Surface include: %s\n- Surface exclude: %s" % (surface.include, surface.exclude)
 
 
-def build_mutation_prompt(checkout: Path, observation: str, ctx: OperatorContext) -> str:
+def build_meta_agent_prompt(checkout: Path, observation: str, ctx: OperatorContext) -> str:
     feedback = _feedback_text(ctx.run_dir) or observation.strip()
     return (
         "\n\n".join(
             chunk
             for chunk in [
-                (checkout / "operators" / "mutate.md").read_text().rstrip(),
+                (checkout / "operators" / "meta_agent.md").read_text().rstrip(),
                 feedback,
                 "# Surface Rules\n\n%s" % _surface_rules(checkout),
                 '# Output Contract\n\nEdit the checkout directly. Do not output patches, diffs, or fenced file blocks. Optional final line: predicted_fixes: ["task-id"].',
@@ -86,40 +86,40 @@ def build_mutation_prompt(checkout: Path, observation: str, ctx: OperatorContext
     )
 
 
-def _write_mutation_result(
+def _write_meta_agent_result(
     run_dir: Path,
     agent_run: AgentRunResult | None,
-    patch: MutationPatch,
+    patch: CandidatePatch,
     notes: list[str],
     *,
     output: str = "",
     usage: dict[str, Any] | None = None,
-) -> MutateResult:
-    mutate_dir = run_dir / "mutate"
-    mutate_dir.mkdir(parents=True, exist_ok=True)
+) -> MetaAgentResult:
+    meta_agent_dir = run_dir / "meta_agent"
+    meta_agent_dir.mkdir(parents=True, exist_ok=True)
     combined_output = output or (agent_run.output if agent_run else "")
-    all_notes = [*notes, *patch.notes, "written-by: operators/mutate.py", "variant: agent_command"]
+    all_notes = [*notes, *patch.notes, "written-by: operators/meta_agent.py", "variant: agent_command"]
     if combined_output.strip():
         all_notes.append("agent-output: %s" % combined_output.strip().splitlines()[0])
     usage_payload = _safe_usage(usage or (agent_run.usage if agent_run else {"usd": 0}))
-    _write_json(mutate_dir / "changed.json", patch.changed_paths)
-    _write_json(mutate_dir / "surface-check.json", patch.surface_report)
-    (mutate_dir / "patch.diff").write_text(patch.diff)
-    (mutate_dir / "rationale.md").write_text("\n".join(all_notes) + "\n")
-    (mutate_dir / "predicted_fixes.json").write_text(json.dumps(_predicted_fixes(combined_output)) + "\n")
-    _write_json(mutate_dir / "usage.json", usage_payload)
-    return MutateResult(changed=patch.changed_paths, notes=all_notes, usage=usage_payload)
+    _write_json(meta_agent_dir / "changed.json", patch.changed_paths)
+    _write_json(meta_agent_dir / "surface-check.json", patch.surface_report)
+    (meta_agent_dir / "patch.diff").write_text(patch.diff)
+    (meta_agent_dir / "rationale.md").write_text("\n".join(all_notes) + "\n")
+    (meta_agent_dir / "predicted_fixes.json").write_text(json.dumps(_predicted_fixes(combined_output)) + "\n")
+    _write_json(meta_agent_dir / "usage.json", usage_payload)
+    return MetaAgentResult(changed=patch.changed_paths, notes=all_notes, usage=usage_payload)
 
 
-def _empty_failure_patch(checkout: Path, parent_ref: str, error: Exception) -> MutationPatch:
+def _empty_failure_patch(checkout: Path, parent_ref: str, error: Exception) -> CandidatePatch:
     try:
-        patch = create_mutation_patch(
+        patch = create_candidate_patch(
             checkout=checkout,
             parent_ref=parent_ref,
             surface=load_surface_policy(checkout),
         )
     except Exception:
-        patch = MutationPatch(
+        patch = CandidatePatch(
             changed_paths=[],
             diff="",
             surface_report={"ok": True, "mutated": [], "violations": [], "error": str(error)},
@@ -128,25 +128,25 @@ def _empty_failure_patch(checkout: Path, parent_ref: str, error: Exception) -> M
     return patch
 
 
-class AgentCommandMutate(MutateOperator):
-    def mutate(self, checkout: Path, observation: str, ctx: OperatorContext) -> MutateResult:
-        parent_ref = mutation_parent_ref(checkout, ctx)
+class AgentCommandMetaAgent(MetaAgentOperator):
+    def run(self, checkout: Path, observation: str, ctx: OperatorContext) -> MetaAgentResult:
+        parent_ref = patch_parent_ref(checkout, ctx)
         try:
-            prompt = build_mutation_prompt(checkout, observation, ctx)
+            prompt = build_meta_agent_prompt(checkout, observation, ctx)
             agent_run = run_meta_agent(workspace=checkout, prompt=prompt, config=ctx.config)
-            patch = create_mutation_patch(
+            patch = create_candidate_patch(
                 checkout=checkout,
                 parent_ref=parent_ref,
                 surface=load_surface_policy(checkout),
             )
-            result = _write_mutation_result(ctx.run_dir, agent_run, patch, [])
+            result = _write_meta_agent_result(ctx.run_dir, agent_run, patch, [])
         except AgentCommandError as exc:
-            patch = create_mutation_patch(
+            patch = create_candidate_patch(
                 checkout=checkout,
                 parent_ref=parent_ref,
                 surface=load_surface_policy(checkout),
             )
-            _write_mutation_result(
+            _write_meta_agent_result(
                 ctx.run_dir,
                 None,
                 patch,
@@ -158,11 +158,11 @@ class AgentCommandMutate(MutateOperator):
         except SystemExit as exc:
             code = exc.code if isinstance(exc.code, int) and exc.code else 1
             patch = _empty_failure_patch(checkout, parent_ref, exc)
-            _write_mutation_result(ctx.run_dir, None, patch, ["error: %s" % (exc.code or "mutator exited")])
+            _write_meta_agent_result(ctx.run_dir, None, patch, ["error: %s" % (exc.code or "meta-agent exited")])
             raise SystemExit(code)
         except Exception as exc:
             patch = _empty_failure_patch(checkout, parent_ref, exc)
-            _write_mutation_result(
+            _write_meta_agent_result(
                 ctx.run_dir,
                 None,
                 patch,
@@ -171,11 +171,11 @@ class AgentCommandMutate(MutateOperator):
             raise SystemExit(1)
         if not result.changed:
             return result
-        surface = json.loads((ctx.run_dir / "mutate" / "surface-check.json").read_text())
+        surface = json.loads((ctx.run_dir / "meta_agent" / "surface-check.json").read_text())
         if not surface.get("ok"):
             raise SystemExit(1)
         return result
 
 
 if __name__ == "__main__":
-    sdk.main(AgentCommandMutate)
+    sdk.main(AgentCommandMetaAgent)

@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make Evolve use Harbor as the only real evaluation path, run mutation through a simple local meta-agent primitive, split real recipes from smoke recipes, and evaluate MiniSWE source through a Harbor custom agent wrapper in `target/`.
+**Goal:** Make Evolve use Harbor as the only real evaluation path, run candidate editing through a simple local meta-agent primitive, split real recipes from smoke recipes, and evaluate MiniSWE source through a Harbor custom agent wrapper in `target/`.
 
-**Architecture:** Mutation becomes three narrow parts: prompt assembly, `run_meta_agent(workspace, prompt, config)`, and `create_mutation_patch(checkout, parent_ref, surface)`. Harbor evaluation receives an explicit `evaluator.agent` value and real MiniSWE recipes generate `target/harbor_agent.py`, while smoke recipes keep cheap deterministic behavior under explicit smoke names. HyperAgents self-modification remains driver-ordered: changed mutate workflow affects later generations, while changed gate and record can affect the same child after mutation.
+**Architecture:** Candidate editing becomes three narrow parts: prompt assembly, `run_meta_agent(workspace, prompt, config)`, and `create_candidate_patch(checkout, parent_ref, surface)`. Harbor evaluation receives an explicit `evaluator.agent` value and real MiniSWE recipes generate `target/harbor_agent.py`, while smoke recipes keep cheap deterministic behavior under explicit smoke names. HyperAgents self-modification remains driver-ordered: changed meta_agent workflow affects later generations, while changed gate and record can affect the same child after the candidate edit.
 
 **Tech Stack:** Python 3.11, pytest, git CLI, shell evaluator templates, Harbor custom agents via `BaseAgent`/`BaseInstalledAgent`, MiniSWE through Harbor's `MiniSweAgent` adapter.
 
@@ -14,9 +14,9 @@
 - No real recipe may depend on `solve.sh`, `run.sh`, or `CheckoutTargetAgent` fallback behavior.
 - Real recipe names are reserved for real behavior; deterministic or stub behavior must live in explicit `*-smoke` recipes.
 - MiniSWE source evolution evaluates the candidate `target/` source plus `target/harbor_agent.py`.
-- `MutateOperator` remains the Evolve protocol adapter; it is not the meta-agent.
+- `MetaAgentOperator` remains the Evolve protocol adapter; it is not the meta-agent.
 - `run_meta_agent` only runs the configured local agent command in a workspace with a prompt file.
-- `create_mutation_patch` owns git diffing and surface repair.
+- `create_candidate_patch` owns git diffing and surface repair.
 - Real self-modification admission must not inject `EVAL_STUB=1`.
 - Tests that need cheap evaluator behavior must set `EVAL_STUB=1` and use smoke paths.
 
@@ -25,8 +25,8 @@
 ## File Structure
 
 - Create `src/evolve/agent.py`: local meta-agent command runner and result/error types.
-- Create `src/evolve/mutation.py`: mutation parent ref, surface policy loader, changed-path diff builder, and surface repair helper.
-- Modify `library/mutate/agent_command.py`: thin `MutateOperator` adapter using the new runner and patch builder.
+- Create `src/evolve/patching.py`: parent-ref resolution, surface policy loader, changed-path diff builder, and surface repair helper.
+- Modify `library/meta_agent/agent_command.py`: thin `MetaAgentOperator` adapter using the new runner and patch builder.
 - Modify `src/evolve/workspace.py`: explicit Harbor agent configuration, target adapter overlay, and no default checkout fallback.
 - Modify `src/evolve/frozen/meta_eval.py`: remove hard-coded stub replay.
 - Create `templates/target/harbor/miniswe_source_agent.py`: MiniSWE source wrapper subclassing Harbor's `MiniSweAgent`.
@@ -34,7 +34,7 @@
 - Keep `templates/evaluator/checkout_agent.py` only as a compatibility template, but stop vendoring it into new real workspaces.
 - Create smoke recipe directories `recipes/hill_climb-smoke`, `recipes/dgm-smoke`, `recipes/ahe-smoke`, `recipes/autoresearch-smoke`, `recipes/hyperagents-smoke`, and `recipes/metaagent-smoke`.
 - Modify real recipe directories `recipes/hill_climb`, `recipes/dgm`, `recipes/ahe`, `recipes/autoresearch`, `recipes/hyperagents`, and `recipes/metaagent`.
-- Modify tests under `tests/` to cover runner, patch builder, mutator, evaluator env, MiniSWE wrapper, recipes, meta-eval, and HyperAgents semantics.
+- Modify tests under `tests/` to cover runner, patch builder, meta-agent, evaluator env, MiniSWE wrapper, recipes, meta-eval, and HyperAgents semantics.
 - Modify docs `README.md`, `DESIGN.md`, `docs/glossary.md`, and `recipes/README.md` after behavior is implemented.
 
 ### Shared Interfaces
@@ -68,7 +68,7 @@ class SurfacePolicy:
 
 
 @dataclass(frozen=True)
-class MutationPatch:
+class CandidatePatch:
     changed_paths: list[str]
     diff: str
     surface_report: dict[str, Any]
@@ -76,8 +76,8 @@ class MutationPatch:
 
 
 # load_surface_policy(checkout: Path | str) -> SurfacePolicy
-# mutation_parent_ref(checkout: Path | str, ctx: OperatorContext) -> str
-# create_mutation_patch(checkout: Path | str, parent_ref: str, surface: SurfacePolicy, *, repair: bool = True) -> MutationPatch
+# patch_parent_ref(checkout: Path | str, ctx: OperatorContext) -> str
+# create_candidate_patch(checkout: Path | str, parent_ref: str, surface: SurfacePolicy, *, repair: bool = True) -> CandidatePatch
 ```
 
 ### Task 1: Local Meta-Agent Runner
@@ -87,7 +87,7 @@ class MutationPatch:
 - Test: `tests/test_agent_runner.py`
 
 **Interfaces:**
-- Consumes: `operators.mutate.command` as `config["command"]`, nested `config["operators"]["mutate"]["command"]`, or environment `EVOLVE_AGENT_COMMAND`.
+- Consumes: `operators.meta_agent.command` as `config["command"]`, nested `config["operators"]["meta_agent"]["command"]`, or environment `EVOLVE_AGENT_COMMAND`.
 - Produces: `AgentRunResult`, `AgentCommandError`, and `run_meta_agent(workspace, prompt, config)`.
 
 - [ ] **Step 1: Write failing runner tests**
@@ -146,7 +146,7 @@ def test_run_meta_agent_uses_env_command_and_reports_missing_command(tmp_path: P
     with pytest.raises(AgentCommandError) as excinfo:
         run_meta_agent(workspace=workspace, prompt="x", config={})
     assert "EVOLVE_AGENT_COMMAND" in str(excinfo.value)
-    assert "operators.mutate.command" in str(excinfo.value)
+    assert "operators.meta_agent.command" in str(excinfo.value)
     assert excinfo.value.returncode == 2
 
 
@@ -271,14 +271,14 @@ def _resolve_command(config: dict[str, Any]) -> str:
         return str(command)
     operators = config.get("operators")
     if isinstance(operators, dict):
-        mutate = operators.get("mutate")
-        if isinstance(mutate, dict) and mutate.get("command"):
-            return str(mutate["command"])
+        meta_agent = operators.get("meta_agent")
+        if isinstance(meta_agent, dict) and meta_agent.get("command"):
+            return str(meta_agent["command"])
     env_command = os.environ.get("EVOLVE_AGENT_COMMAND")
     if env_command:
         return env_command
     raise AgentCommandError(
-        "missing meta-agent command; set EVOLVE_AGENT_COMMAND or operators.mutate.command",
+        "missing meta-agent command; set EVOLVE_AGENT_COMMAND or operators.meta_agent.command",
         returncode=2,
     )
 
@@ -341,25 +341,25 @@ git add src/evolve/agent.py tests/test_agent_runner.py
 git commit -m "Add local meta-agent runner"
 ```
 
-### Task 2: Mutation Patch Builder
+### Task 2: Candidate Patch Builder
 
 **Files:**
-- Create: `src/evolve/mutation.py`
-- Test: `tests/test_mutation_patch.py`
+- Create: `src/evolve/patching.py`
+- Test: `tests/test_patching.py`
 
 **Interfaces:**
 - Consumes: `evolve.git.working_tree_changed_paths`, `evolve.surface.check_paths`, and `evolve.surface.surface_patterns`.
-- Produces: `SurfacePolicy`, `MutationPatch`, `load_surface_policy`, `mutation_parent_ref`, and `create_mutation_patch`.
+- Produces: `SurfacePolicy`, `CandidatePatch`, `load_surface_policy`, `patch_parent_ref`, and `create_candidate_patch`.
 
 - [ ] **Step 1: Write failing patch-builder tests**
 
-Create `tests/test_mutation_patch.py`:
+Create `tests/test_patching.py`:
 
 ```python
 import subprocess
 from pathlib import Path
 
-from evolve.mutation import SurfacePolicy, create_mutation_patch
+from evolve.patching import SurfacePolicy, create_candidate_patch
 
 
 def _git(root: Path, *args: str) -> str:
@@ -383,11 +383,11 @@ def _repo(tmp_path: Path) -> Path:
     return root
 
 
-def test_create_mutation_patch_reports_changed_paths_and_diff(tmp_path: Path) -> None:
+def test_create_candidate_patch_reports_changed_paths_and_diff(tmp_path: Path) -> None:
     root = _repo(tmp_path)
     (root / "target" / "agent.py").write_text("print('child')\n")
 
-    patch = create_mutation_patch(
+    patch = create_candidate_patch(
         checkout=root,
         parent_ref="gen/0",
         surface=SurfacePolicy(include=["target/**"], exclude=[]),
@@ -399,12 +399,12 @@ def test_create_mutation_patch_reports_changed_paths_and_diff(tmp_path: Path) ->
     assert patch.notes == []
 
 
-def test_create_mutation_patch_repairs_out_of_surface_paths(tmp_path: Path) -> None:
+def test_create_candidate_patch_repairs_out_of_surface_paths(tmp_path: Path) -> None:
     root = _repo(tmp_path)
     (root / "target" / "agent.py").write_text("print('child')\n")
     (root / "README.md").write_text("leak\n")
 
-    patch = create_mutation_patch(
+    patch = create_candidate_patch(
         checkout=root,
         parent_ref="gen/0",
         surface=SurfacePolicy(include=["target/**"], exclude=[]),
@@ -417,11 +417,11 @@ def test_create_mutation_patch_repairs_out_of_surface_paths(tmp_path: Path) -> N
     assert patch.notes == ["repaired surface violations by reverted: README.md"]
 
 
-def test_create_mutation_patch_reports_remaining_violation_when_repair_disabled(tmp_path: Path) -> None:
+def test_create_candidate_patch_reports_remaining_violation_when_repair_disabled(tmp_path: Path) -> None:
     root = _repo(tmp_path)
     (root / "README.md").write_text("leak\n")
 
-    patch = create_mutation_patch(
+    patch = create_candidate_patch(
         checkout=root,
         parent_ref="gen/0",
         surface=SurfacePolicy(include=["target/**"], exclude=[]),
@@ -435,13 +435,13 @@ def test_create_mutation_patch_reports_remaining_violation_when_repair_disabled(
 
 - [ ] **Step 2: Run patch-builder tests to verify failure**
 
-Run: `uv run pytest tests/test_mutation_patch.py -q`
+Run: `uv run pytest tests/test_patching.py -q`
 
-Expected: FAIL during import with `ModuleNotFoundError: No module named 'evolve.mutation'`.
+Expected: FAIL during import with `ModuleNotFoundError: No module named 'evolve.patching'`.
 
-- [ ] **Step 3: Implement `src/evolve/mutation.py`**
+- [ ] **Step 3: Implement `src/evolve/patching.py`**
 
-Create `src/evolve/mutation.py`:
+Create `src/evolve/patching.py`:
 
 ```python
 from __future__ import annotations
@@ -462,7 +462,7 @@ class SurfacePolicy:
 
 
 @dataclass(frozen=True)
-class MutationPatch:
+class CandidatePatch:
     changed_paths: list[str]
     diff: str
     surface_report: dict[str, Any]
@@ -474,20 +474,20 @@ def load_surface_policy(checkout: Path | str) -> SurfacePolicy:
     return SurfacePolicy(include=include, exclude=exclude)
 
 
-def mutation_parent_ref(checkout: Path | str, ctx: Any) -> str:
+def patch_parent_ref(checkout: Path | str, ctx: Any) -> str:
     parent = getattr(ctx, "parent", None)
     if parent:
         return f"gen/{parent}"
     return head_tag(Path(checkout)) or "gen/0"
 
 
-def create_mutation_patch(
+def create_candidate_patch(
     checkout: Path | str,
     parent_ref: str,
     surface: SurfacePolicy,
     *,
     repair: bool = True,
-) -> MutationPatch:
+) -> CandidatePatch:
     root = Path(checkout).resolve()
     notes: list[str] = []
     changed = working_tree_changed_paths(root, parent_ref)
@@ -500,7 +500,7 @@ def create_mutation_patch(
         violations = check_paths(changed, surface.include, surface.exclude)
     diff = git(root, "diff", "--binary", parent_ref, "--").stdout
     surface_report = {"ok": not violations, "mutated": changed, "violations": violations}
-    return MutationPatch(changed_paths=changed, diff=diff, surface_report=surface_report, notes=notes)
+    return CandidatePatch(changed_paths=changed, diff=diff, surface_report=surface_report, notes=notes)
 
 
 def _repair_surface_violations(root: Path, parent_ref: str, violations: list[str]) -> list[str]:
@@ -540,28 +540,28 @@ def _repair_surface_path(root: Path, parent_ref: str, path: str) -> str | None:
 
 - [ ] **Step 4: Run patch-builder tests to verify pass**
 
-Run: `uv run pytest tests/test_mutation_patch.py -q`
+Run: `uv run pytest tests/test_patching.py -q`
 
 Expected: PASS, all three tests pass.
 
 - [ ] **Step 5: Commit Task 2**
 
 ```bash
-git add src/evolve/mutation.py tests/test_mutation_patch.py
-git commit -m "Add mutation patch builder"
+git add src/evolve/patching.py tests/test_patching.py
+git commit -m "Add candidate patch builder"
 ```
 
 ### Task 3: Thin `agent_command` Mutate Operator
 
 **Files:**
-- Modify: `library/mutate/agent_command.py`
+- Modify: `library/meta_agent/agent_command.py`
 - Test: `tests/test_agent_command_mutate.py`
 
 **Interfaces:**
-- Consumes: `run_meta_agent`, `create_mutation_patch`, `mutation_parent_ref`, and `load_surface_policy`.
-- Produces: `AgentCommandMutate.mutate()` with a small four-step body: build prompt, run meta-agent, create patch, write result.
+- Consumes: `run_meta_agent`, `create_candidate_patch`, `patch_parent_ref`, and `load_surface_policy`.
+- Produces: `AgentCommandMetaAgent.run()` with a small four-step body: build prompt, run meta-agent, create patch, write result.
 
-- [ ] **Step 1: Write failing mutator behavior tests**
+- [ ] **Step 1: Write failing meta-agent behavior tests**
 
 Create `tests/test_agent_command_mutate.py`:
 
@@ -573,7 +573,7 @@ import sys
 from pathlib import Path
 
 from evolve.frozen.interfaces import OperatorContext
-from library.mutate.agent_command import AgentCommandMutate
+from library.meta_agent.agent_command import AgentCommandMetaAgent
 
 
 def _git(root: Path, *args: str) -> str:
@@ -588,12 +588,12 @@ def _checkout(tmp_path: Path) -> tuple[Path, Path]:
     (checkout / "target").mkdir(parents=True)
     (checkout / "operators").mkdir()
     (checkout / "target" / "agent.py").write_text("print('parent')\n")
-    (checkout / "operators" / "mutate.md").write_text("# Mutate\n\nImprove the target.\n")
+    (checkout / "operators" / "meta_agent.md").write_text("# Meta-Agent\n\nImprove the target.\n")
     (checkout / "evolve.yaml").write_text(
         "experiment:\n  id: test\n"
         "target:\n  seed: builtin-dummy\n"
         "surface:\n  include:\n    - target/**\n  exclude: []\n"
-        "operators:\n  mutate: {timeout_s: 30}\n"
+        "operators:\n  meta_agent: {timeout_s: 30}\n"
         "evaluator:\n  engine: harbor\n  dataset: pass@k\n  agent: target.harbor_agent:MiniSweSourceAgent\n"
     )
     _git(checkout, "init", "-q")
@@ -628,15 +628,15 @@ def test_agent_command_mutate_runs_meta_agent_and_writes_artifacts(tmp_path: Pat
         "print('predicted_fixes: [\"task-1\"]')\n"
     )
 
-    result = AgentCommandMutate().mutate(checkout, "", _ctx(checkout, run_dir, f"{sys.executable} {script}"))
+    result = AgentCommandMetaAgent().run(checkout, "", _ctx(checkout, run_dir, f"{sys.executable} {script}"))
 
     assert result.changed == ["target/agent.py"]
-    assert json.loads((run_dir / "mutate" / "changed.json").read_text()) == ["target/agent.py"]
-    assert json.loads((run_dir / "mutate" / "predicted_fixes.json").read_text()) == ["task-1"]
-    assert json.loads((run_dir / "mutate" / "surface-check.json").read_text())["ok"] is True
-    assert json.loads((run_dir / "mutate" / "usage.json").read_text())["usd"] == 0
-    rationale = (run_dir / "mutate" / "rationale.md").read_text()
-    assert "written-by: operators/mutate.py" in rationale
+    assert json.loads((run_dir / "meta_agent" / "changed.json").read_text()) == ["target/agent.py"]
+    assert json.loads((run_dir / "meta_agent" / "predicted_fixes.json").read_text()) == ["task-1"]
+    assert json.loads((run_dir / "meta_agent" / "surface-check.json").read_text())["ok"] is True
+    assert json.loads((run_dir / "meta_agent" / "usage.json").read_text())["usd"] == 0
+    rationale = (run_dir / "meta_agent" / "rationale.md").read_text()
+    assert "written-by: operators/meta_agent.py" in rationale
     assert "variant: agent_command" in rationale
 
 
@@ -646,25 +646,25 @@ def test_agent_command_mutate_exits_nonzero_after_writing_failure_artifacts(tmp_
     script.write_text("import sys\nprint('bad')\nsys.exit(7)\n")
 
     try:
-        AgentCommandMutate().mutate(checkout, "", _ctx(checkout, run_dir, f"{sys.executable} {script}"))
+        AgentCommandMetaAgent().run(checkout, "", _ctx(checkout, run_dir, f"{sys.executable} {script}"))
     except SystemExit as exc:
         assert exc.code == 7
     else:
         raise AssertionError("expected SystemExit")
 
-    assert json.loads((run_dir / "mutate" / "changed.json").read_text()) == []
-    assert "error:" in (run_dir / "mutate" / "rationale.md").read_text()
+    assert json.loads((run_dir / "meta_agent" / "changed.json").read_text()) == []
+    assert "error:" in (run_dir / "meta_agent" / "rationale.md").read_text()
 ```
 
-- [ ] **Step 2: Run mutator tests to verify expected failure**
+- [ ] **Step 2: Run meta-agent tests to verify expected failure**
 
 Run: `uv run pytest tests/test_agent_command_mutate.py -q`
 
-Expected: The first test fails because the current mutator returns `changed=[]` after running the agent, even when the checkout changed.
+Expected: The first test fails because the current meta-agent returns `changed=[]` after running the agent, even when the checkout changed.
 
-- [ ] **Step 3: Refactor `library/mutate/agent_command.py`**
+- [ ] **Step 3: Refactor `library/meta_agent/agent_command.py`**
 
-Replace the runner and surface code in `library/mutate/agent_command.py` with a small adapter:
+Replace the runner and surface code in `library/meta_agent/agent_command.py` with a small adapter:
 
 ```python
 from __future__ import annotations
@@ -680,8 +680,8 @@ sys.path = [p for p in sys.path if os.path.abspath(p or os.getcwd()) != os.path.
 
 from evolve.agent import AgentCommandError, AgentRunResult, run_meta_agent
 from evolve.frozen import sdk
-from evolve.frozen.interfaces import MutateOperator, MutateResult, OperatorContext
-from evolve.mutation import MutationPatch, create_mutation_patch, load_surface_policy, mutation_parent_ref
+from evolve.frozen.interfaces import MetaAgentOperator, MetaAgentResult, OperatorContext
+from evolve.patching import CandidatePatch, create_candidate_patch, load_surface_policy, patch_parent_ref
 
 
 def _write_json(path: Path, payload: object) -> None:
@@ -734,13 +734,13 @@ def _surface_rules(checkout: Path) -> str:
     return "- Surface include: %s\n- Surface exclude: %s" % (surface.include, surface.exclude)
 
 
-def build_mutation_prompt(checkout: Path, observation: str, ctx: OperatorContext) -> str:
+def build_meta_agent_prompt(checkout: Path, observation: str, ctx: OperatorContext) -> str:
     feedback = _feedback_text(ctx.run_dir) or observation.strip()
     return (
         "\n\n".join(
             chunk
             for chunk in [
-                (checkout / "operators" / "mutate.md").read_text().rstrip(),
+                (checkout / "operators" / "meta_agent.md").read_text().rstrip(),
                 feedback,
                 "# Surface Rules\n\n%s" % _surface_rules(checkout),
                 '# Output Contract\n\nEdit the checkout directly. Do not output patches, diffs, or fenced file blocks. Optional final line: predicted_fixes: ["task-id"].',
@@ -751,48 +751,48 @@ def build_mutation_prompt(checkout: Path, observation: str, ctx: OperatorContext
     )
 
 
-def _write_mutation_result(
+def _write_meta_agent_result(
     run_dir: Path,
     agent_run: AgentRunResult | None,
-    patch: MutationPatch,
+    patch: CandidatePatch,
     notes: list[str],
     *,
     output: str = "",
     usage: dict[str, Any] | None = None,
-) -> MutateResult:
-    mutate_dir = run_dir / "mutate"
-    mutate_dir.mkdir(parents=True, exist_ok=True)
+) -> MetaAgentResult:
+    meta_agent_dir = run_dir / "meta_agent"
+    meta_agent_dir.mkdir(parents=True, exist_ok=True)
     combined_output = output or (agent_run.output if agent_run else "")
-    all_notes = [*notes, *patch.notes, "written-by: operators/mutate.py", "variant: agent_command"]
+    all_notes = [*notes, *patch.notes, "written-by: operators/meta_agent.py", "variant: agent_command"]
     if combined_output.strip():
         all_notes.append("agent-output: %s" % combined_output.strip().splitlines()[0])
     usage_payload = _safe_usage(usage or (agent_run.usage if agent_run else {"usd": 0}))
-    _write_json(mutate_dir / "changed.json", patch.changed_paths)
-    _write_json(mutate_dir / "surface-check.json", patch.surface_report)
-    (mutate_dir / "rationale.md").write_text("\n".join(all_notes) + "\n")
-    (mutate_dir / "predicted_fixes.json").write_text(json.dumps(_predicted_fixes(combined_output)) + "\n")
-    _write_json(mutate_dir / "usage.json", usage_payload)
-    return MutateResult(changed=patch.changed_paths, notes=all_notes, usage=usage_payload)
+    _write_json(meta_agent_dir / "changed.json", patch.changed_paths)
+    _write_json(meta_agent_dir / "surface-check.json", patch.surface_report)
+    (meta_agent_dir / "rationale.md").write_text("\n".join(all_notes) + "\n")
+    (meta_agent_dir / "predicted_fixes.json").write_text(json.dumps(_predicted_fixes(combined_output)) + "\n")
+    _write_json(meta_agent_dir / "usage.json", usage_payload)
+    return MetaAgentResult(changed=patch.changed_paths, notes=all_notes, usage=usage_payload)
 
 
-class AgentCommandMutate(MutateOperator):
-    def mutate(self, checkout: Path, observation: str, ctx: OperatorContext) -> MutateResult:
-        prompt = build_mutation_prompt(checkout, observation, ctx)
+class AgentCommandMetaAgent(MetaAgentOperator):
+    def run(self, checkout: Path, observation: str, ctx: OperatorContext) -> MetaAgentResult:
+        prompt = build_meta_agent_prompt(checkout, observation, ctx)
         try:
             agent_run = run_meta_agent(workspace=checkout, prompt=prompt, config=ctx.config)
-            patch = create_mutation_patch(
+            patch = create_candidate_patch(
                 checkout=checkout,
-                parent_ref=mutation_parent_ref(checkout, ctx),
+                parent_ref=patch_parent_ref(checkout, ctx),
                 surface=load_surface_policy(checkout),
             )
-            result = _write_mutation_result(ctx.run_dir, agent_run, patch, [])
+            result = _write_meta_agent_result(ctx.run_dir, agent_run, patch, [])
         except AgentCommandError as exc:
-            patch = create_mutation_patch(
+            patch = create_candidate_patch(
                 checkout=checkout,
-                parent_ref=mutation_parent_ref(checkout, ctx),
+                parent_ref=patch_parent_ref(checkout, ctx),
                 surface=load_surface_policy(checkout),
             )
-            _write_mutation_result(
+            _write_meta_agent_result(
                 ctx.run_dir,
                 None,
                 patch,
@@ -803,18 +803,18 @@ class AgentCommandMutate(MutateOperator):
             raise SystemExit(exc.returncode)
         if not result.changed:
             return result
-        if not (ctx.run_dir / "mutate" / "surface-check.json").exists():
+        if not (ctx.run_dir / "meta_agent" / "surface-check.json").exists():
             raise SystemExit(1)
         return result
 
 
 if __name__ == "__main__":
-    sdk.main(AgentCommandMutate)
+    sdk.main(AgentCommandMetaAgent)
 ```
 
 After green tests, add one small refinement: if `patch.surface_report["ok"]` is false, return artifacts and raise `SystemExit(1)`.
 
-- [ ] **Step 4: Run mutator tests and focused operator tests**
+- [ ] **Step 4: Run meta-agent tests and focused operator tests**
 
 Run: `uv run pytest tests/test_agent_command_mutate.py tests/test_m5_operator_runner.py tests/test_m5_driver_operators.py -q`
 
@@ -823,8 +823,8 @@ Expected: PASS.
 - [ ] **Step 5: Commit Task 3**
 
 ```bash
-git add library/mutate/agent_command.py tests/test_agent_command_mutate.py
-git commit -m "Refactor agent command mutator"
+git add library/meta_agent/agent_command.py tests/test_agent_command_mutate.py
+git commit -m "Refactor agent command meta-agent"
 ```
 
 ### Task 4: Explicit Harbor Agent Configuration
@@ -876,7 +876,7 @@ def test_init_real_harbor_recipe_requires_evaluator_agent(tmp_path: Path, monkey
         "operators": {
             "select": {"variant": "greedy"},
             "rollout": {"variant": "noop"},
-            "mutate": {"variant": "noop"},
+            "meta_agent": {"variant": "noop"},
             "gate": {"variant": "parent_eligible"},
             "record": {"variant": "jsonl"},
         },
@@ -922,10 +922,10 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
         "operators/preflight.sh": _shell_script("operator preflight"),
         "operators/select.md": _template("workspace/operators/select.md"),
         "operators/rollout.md": _template("workspace/operators/rollout.md"),
-        "operators/mutate.md": _template("workspace/operators/mutate.md"),
+        "operators/meta_agent.md": _template("workspace/operators/meta_agent.md"),
         "operators/gate.md": _template("workspace/operators/gate.md"),
         "operators/record.md": _template("workspace/operators/record.md"),
-        "operators/mutation_brief.md": _template("workspace/operators/mutation_brief.md"),
+        "operators/meta_agent_brief.md": _template("workspace/operators/meta_agent_brief.md"),
         "skills/evolve-workspace/SKILL.md": _skill("evolve-workspace/SKILL.md"),
         "PROTOCOL.md": (library_root() / "PROTOCOL.md").read_text(),
         "evaluator/eval.sh": _eval_sh(evaluator_engine, evaluator_dataset),
@@ -1255,11 +1255,11 @@ def test_all_recipes_are_recipe_artifacts_only() -> None:
             assert section in config
 
 
-def test_real_recipes_use_harbor_and_real_agent_mutation() -> None:
+def test_real_recipes_use_harbor_and_real_meta_agent() -> None:
     for name in REAL_RECIPES:
         config = _config(name)
         assert "engine: harbor" in config
-        assert "mutate: {variant: agent_command" in config
+        assert "meta_agent: {variant: agent_command" in config
         assert "agent: target.harbor_agent:MiniSweSourceAgent" in config
         assert "harbor_agent: miniswe-source" in config
         assert "variant: fixed" not in config
@@ -1274,7 +1274,7 @@ def test_smoke_recipes_are_explicitly_named_and_deterministic() -> None:
         config = _config(name)
         assert "engine: harbor" in config
         assert "agent: target.harbor_agent:MiniSweSourceAgent" in config
-        assert "mutate: {variant: fixed" in config or "mutate: {variant: noop" in config
+        assert "meta_agent: {variant: fixed" in config or "meta_agent: {variant: noop" in config
 ```
 
 Modify `tests/conftest.py`:
@@ -1311,9 +1311,9 @@ evaluator:
   agent: target.harbor_agent:MiniSweSourceAgent
 ```
 
-Smoke recipes can keep deterministic `fixed` or `noop` mutation because tests will run them with `EVAL_STUB=1`.
+Smoke recipes can keep deterministic `fixed` or `noop` meta-agent edits because tests will run them with `EVAL_STUB=1`.
 
-- [ ] **Step 4: Convert real recipes to MiniSWE source plus live meta-agent mutation**
+- [ ] **Step 4: Convert real recipes to MiniSWE source plus live meta-agent edit**
 
 For each real recipe, set:
 
@@ -1322,7 +1322,7 @@ target:
   seed: https://github.com/SWE-agent/mini-swe-agent.git
   harbor_agent: miniswe-source
 operators:
-  mutate: {variant: agent_command, timeout_s: 3600}
+  meta_agent: {variant: agent_command, timeout_s: 3600}
 evaluator:
   engine: harbor
   dataset: swe-bench-lite
@@ -1386,7 +1386,7 @@ git commit -m "Split real and smoke recipes"
 - Add or modify: `tests/test_hyperagents_semantics.py`
 
 **Interfaces:**
-- Consumes: current driver ordering: rollout, mutate, meta-eval admission, novelty, commit, eval, gate, record.
+- Consumes: current driver ordering: rollout, meta_agent, meta-eval admission, novelty, commit, eval, gate, record.
 - Produces: `meta_eval` that replays with the caller's evaluator environment and only uses stub when caller explicitly sets `EVAL_STUB=1`.
 
 - [ ] **Step 1: Write failing meta-eval environment test**
@@ -1490,18 +1490,18 @@ def test_hyperagents_mutate_change_affects_later_generation_not_current_one(tmp_
     (workspace / "evolve.yaml").write_text(
         evolve_yaml.replace("    - target/**\n  exclude: []", "    - target/**\n    - operators/**\n  exclude: []")
     )
-    (workspace / "operators" / "mutate.py").write_text(
+    (workspace / "operators" / "meta_agent.py").write_text(
         "import os, sys\n"
         "sys.path = [p for p in sys.path if os.path.abspath(p or os.getcwd()) != os.path.dirname(os.path.abspath(__file__))]\n"
         "from evolve.frozen import sdk\n"
-        "from evolve.frozen.interfaces import MutateOperator, MutateResult\n"
-        "class M(MutateOperator):\n"
-        "    def mutate(self, checkout, observation, ctx):\n"
-        "        script = checkout / 'operators' / 'mutate.py'\n"
+        "from evolve.frozen.interfaces import MetaAgentOperator, MetaAgentResult\n"
+        "class M(MetaAgentOperator):\n"
+        "    def run(self, checkout, observation, ctx):\n"
+        "        script = checkout / 'operators' / 'meta_agent.py'\n"
         "        script.write_text(script.read_text().replace('first-child', 'later-child'))\n"
         "        agent = checkout / 'target' / 'agent.py'\n"
         "        agent.write_text(agent.read_text() + '\\n# first-child\\n')\n"
-        "        return MutateResult(changed=['operators/mutate.py', 'target/agent.py'], notes=['self changed'], usage={'usd': 0})\n"
+        "        return MetaAgentResult(changed=['operators/meta_agent.py', 'target/agent.py'], notes=['self changed'], usage={'usd': 0})\n"
         "if __name__ == '__main__':\n"
         "    sdk.main(M)\n"
     )
@@ -1542,7 +1542,7 @@ git commit -m "Make meta-eval use real evaluator environment"
 
 **Interfaces:**
 - Consumes: completed behavior from Tasks 1 through 7.
-- Produces: docs that say Harbor runs benchmarks, `target/harbor_agent.py` adapts MiniSWE source, `run_meta_agent` edits local workspaces, smoke recipes are explicit, and HyperAgents mutation workflow changes apply to later generations.
+- Produces: docs that say Harbor runs benchmarks, `target/harbor_agent.py` adapts MiniSWE source, `run_meta_agent` edits local workspaces, smoke recipes are explicit, and HyperAgents meta-agent workflow changes apply to later generations.
 
 - [ ] **Step 1: Write doc coherence test**
 
@@ -1589,16 +1589,16 @@ behavior.
 ```
 
 ```markdown
-`run_meta_agent(workspace, prompt, config)` is the local mutation-agent runner.
+`run_meta_agent(workspace, prompt, config)` is the local meta-agent runner.
 It receives a checkout and prompt, then runs the configured command in that
 checkout. It does not know about generation IDs, archive rows, Harbor, or
 surface policy.
 ```
 
 ```markdown
-HyperAgents can evolve `operators/**`. A changed `operators/mutate.py` affects
+HyperAgents can evolve `operators/**`. A changed `operators/meta_agent.py` affects
 later children forked from the accepted generation; changed gate or record code
-can affect the same generation because those operators run after mutation.
+can affect the same generation because those operators run after the candidate edit.
 ```
 
 - [ ] **Step 4: Run full verification**
@@ -1622,9 +1622,9 @@ git commit -m "Document Harbor real recipes"
 
 ## Self-Review Checklist
 
-- Spec coverage: Tasks 1 and 3 cover the simple meta-agent runner and thin `MutateOperator`; Task 2 covers patch creation and surface repair; Tasks 4 and 5 cover Harbor explicit agents and MiniSWE source wrapper; Task 6 covers real versus smoke recipes; Task 7 covers real meta-eval and HyperAgents semantics; Task 8 covers docs.
+- Spec coverage: Tasks 1 and 3 cover the simple meta-agent runner and thin `MetaAgentOperator`; Task 2 covers patch creation and surface repair; Tasks 4 and 5 cover Harbor explicit agents and MiniSWE source wrapper; Task 6 covers real versus smoke recipes; Task 7 covers real meta-eval and HyperAgents semantics; Task 8 covers docs.
 - Placeholder scan: the plan avoids deferred placeholders and names every file, interface, command, and expected failure.
-- Type consistency: `AgentRunResult`, `AgentCommandError`, `SurfacePolicy`, and `MutationPatch` are defined once in the shared interfaces and reused by later tasks.
+- Type consistency: `AgentRunResult`, `AgentCommandError`, `SurfacePolicy`, and `CandidatePatch` are defined once in the shared interfaces and reused by later tasks.
 - TDD cycle: each task starts with failing tests, verifies red, implements the minimal behavior, verifies green, and commits.
 
 ## Execution Handoff

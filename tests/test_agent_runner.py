@@ -34,6 +34,21 @@ def test_run_meta_agent_runs_command_in_workspace_with_prompt_file(tmp_path: Pat
     assert result.usage["wall_s"] >= 0
 
 
+def test_run_meta_agent_uses_nested_meta_agent_command(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    script = tmp_path / "agent.py"
+    script.write_text("from pathlib import Path\nPath('nested-command-ran').write_text('yes\\n')\n")
+
+    run_meta_agent(
+        workspace=workspace,
+        prompt="x",
+        config={"operators": {"meta_agent": {"command": f"{sys.executable} {script}"}}, "timeout_s": 30},
+    )
+
+    assert (workspace / "nested-command-ran").read_text() == "yes\n"
+
+
 def test_run_meta_agent_uses_env_command_and_reports_missing_command(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -49,7 +64,7 @@ def test_run_meta_agent_uses_env_command_and_reports_missing_command(tmp_path: P
     with pytest.raises(AgentCommandError) as excinfo:
         run_meta_agent(workspace=workspace, prompt="x", config={})
     assert "EVOLVE_AGENT_COMMAND" in str(excinfo.value)
-    assert "operators.mutate.command" in str(excinfo.value)
+    assert "operators.meta_agent.command" in str(excinfo.value)
     assert excinfo.value.returncode == 2
 
 

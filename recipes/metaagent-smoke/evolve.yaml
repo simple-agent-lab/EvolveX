@@ -16,7 +16,7 @@ surface:
 operators:
   select: {variant: newest}
   rollout: {variant: failure_focused, budget_tasks: 32}
-  mutate: {variant: fixed, timeout_s: 3600}
+  meta_agent: {variant: fixed, timeout_s: 3600}
   gate: {variant: parent_eligible}
   record: {variant: jsonl}
   timeout_s: 600

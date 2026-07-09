@@ -19,17 +19,17 @@ from evolve.frozen.interfaces import OperatorContext, RecordOperator, RecordResu
 
 def _record_fields_from_run_dir(run_dir: Path) -> dict[str, Any]:
     gate = json.loads((run_dir / "gate.json").read_text())
-    predicted_path = run_dir / "mutate" / "predicted_fixes.json"
+    predicted_path = run_dir / "meta_agent" / "predicted_fixes.json"
     predicted_fixes = json.loads(predicted_path.read_text()) if predicted_path.exists() else []
     note = ""
-    rationale = run_dir / "mutate" / "rationale.md"
+    rationale = run_dir / "meta_agent" / "rationale.md"
     if rationale.exists():
         for line in rationale.read_text().splitlines():
             stripped = line.strip()
-            if stripped and stripped != "written-by: operators/mutate.py":
+            if stripped and stripped != "written-by: operators/meta_agent.py":
                 note = stripped
                 break
-    usage = run_dir / "mutate" / "usage.json"
+    usage = run_dir / "meta_agent" / "usage.json"
     if usage.exists():
         try:
             usd = json.loads(usage.read_text()).get("usd")

@@ -1,4 +1,4 @@
-"""LLM mutate asks an OpenAI-compatible chat endpoint for fenced file edits.
+"""LLM meta-agent asks an OpenAI-compatible chat endpoint for fenced file edits.
 
 It applies full-file fenced responses and repairs out-of-surface changes.
 """
@@ -19,7 +19,7 @@ from typing import Any
 sys.path = [p for p in sys.path if os.path.abspath(p or os.getcwd()) != os.path.dirname(os.path.abspath(__file__))]
 
 from evolve.frozen import sdk
-from evolve.frozen.interfaces import MutateOperator, MutateResult, OperatorContext
+from evolve.frozen.interfaces import MetaAgentOperator, MetaAgentResult, OperatorContext
 from evolve.git import head_tag, working_tree_changed_paths
 from evolve.surface import check_paths, surface_patterns
 
@@ -67,7 +67,7 @@ def _apply_fenced_file_response(text: str, checkout: Path | str = ".") -> list[s
     for rel, body in _response_files(text):
         path = Path(rel)
         if path.is_absolute() or ".." in path.parts:
-            raise SystemExit(f"invalid mutate path: {rel}")
+            raise SystemExit(f"invalid meta-agent path: {rel}")
         dst = root / path
         dst.parent.mkdir(parents=True, exist_ok=True)
         dst.write_text(body)
@@ -102,19 +102,19 @@ def _surface_rule_lists(checkout: Path | str) -> tuple[list[str], list[str]]:
         return ["target/**"], []
 
 
-def _mutate_surface_rules(checkout: Path | str = ".") -> str:
+def _meta_agent_surface_rules(checkout: Path | str = ".") -> str:
     include, exclude = _surface_rule_lists(checkout)
     return "- Surface include: %s\n- Surface exclude: %s" % (include, exclude)
 
 
-def _mutate_prompt(checkout: Path, run_dir: Path) -> str:
+def _meta_agent_prompt(checkout: Path, run_dir: Path) -> str:
     return (
         "\n\n".join(
             chunk
             for chunk in [
-                (checkout / "operators" / "mutate.md").read_text().rstrip(),
+                (checkout / "operators" / "meta_agent.md").read_text().rstrip(),
                 _feedback_text(run_dir),
-                "# Surface Rules\n\n%s" % _mutate_surface_rules(checkout),
+                "# Surface Rules\n\n%s" % _meta_agent_surface_rules(checkout),
                 '# Output Contract\n\nReturn full-file edits only as fenced blocks named like ```file:target/agent.py. Optional first line: predicted_fixes: ["task-id"].',
             ]
             if chunk
@@ -239,7 +239,7 @@ def _fallback_surface_check(checkout: Path | str = ".") -> dict[str, Any]:
 
 
 def _checked_surface(
-    mutate_dir: Path, notes: list[str], changed: list[str], checkout: Path | str = "."
+    meta_agent_dir: Path, notes: list[str], changed: list[str], checkout: Path | str = "."
 ) -> dict[str, Any]:
     try:
         result = _surface_check(checkout)
@@ -248,7 +248,7 @@ def _checked_surface(
             result = _fallback_surface_check(checkout)
         except Exception as exc:
             result = {"ok": False, "mutated": changed, "violations": [], "error": "surface-check failed: %s" % exc}
-            _write_json(mutate_dir / "surface-check.json", result)
+            _write_json(meta_agent_dir / "surface-check.json", result)
             return result
     if result.get("violations"):
         reverted: list[str] = []
@@ -273,11 +273,11 @@ def _checked_surface(
                 result = _fallback_surface_check(checkout)
             except Exception as exc:
                 result = {"ok": False, "mutated": changed, "violations": [], "error": "surface-check failed: %s" % exc}
-    _write_json(mutate_dir / "surface-check.json", result)
+    _write_json(meta_agent_dir / "surface-check.json", result)
     return result
 
 
-def _write_mutate_artifacts(
+def _write_meta_agent_artifacts(
     *,
     run_dir: Path,
     notes: list[str],
@@ -287,30 +287,30 @@ def _write_mutate_artifacts(
     surface: dict[str, Any] | None = None,
     changed: list[str] | None = None,
 ) -> dict[str, Any]:
-    mutate_dir = run_dir / "mutate"
-    mutate_dir.mkdir(parents=True, exist_ok=True)
-    notes.extend(["written-by: operators/mutate.py", "variant: %s" % variant])
+    meta_agent_dir = run_dir / "meta_agent"
+    meta_agent_dir.mkdir(parents=True, exist_ok=True)
+    notes.extend(["written-by: operators/meta_agent.py", "variant: %s" % variant])
     if output.strip():
         notes.append("agent-output: %s" % output.strip().splitlines()[0])
     if surface is None:
         surface = {"ok": True, "mutated": changed or [], "violations": []}
-    _write_json(mutate_dir / "surface-check.json", surface)
+    _write_json(meta_agent_dir / "surface-check.json", surface)
     usage_payload = _safe_usage(usage or {"usd": 0})
-    (mutate_dir / "rationale.md").write_text("\n".join(notes) + "\n")
-    (mutate_dir / "predicted_fixes.json").write_text(json.dumps(_predicted_fixes(output)) + "\n")
-    _write_json(mutate_dir / "usage.json", usage_payload)
+    (meta_agent_dir / "rationale.md").write_text("\n".join(notes) + "\n")
+    (meta_agent_dir / "predicted_fixes.json").write_text(json.dumps(_predicted_fixes(output)) + "\n")
+    _write_json(meta_agent_dir / "usage.json", usage_payload)
     return usage_payload
 
 
-class LlmMutate(MutateOperator):
-    def mutate(self, checkout: Path, observation: str, ctx: OperatorContext) -> MutateResult:
+class LlmMetaAgent(MetaAgentOperator):
+    def run(self, checkout: Path, observation: str, ctx: OperatorContext) -> MetaAgentResult:
         notes: list[str] = []
         output = ""
         usage = {"usd": 0}
         changed: list[str] = []
         returncode = 0
         try:
-            prompt = _mutate_prompt(checkout, ctx.run_dir)
+            prompt = _meta_agent_prompt(checkout, ctx.run_dir)
             output, usage = _llm_request(ctx.config, prompt)
             changed = _apply_fenced_file_response(output, checkout)
         except AdapterFailure as exc:
@@ -320,13 +320,13 @@ class LlmMutate(MutateOperator):
             returncode = exc.returncode
         except SystemExit as exc:
             code = exc.code if isinstance(exc.code, int) else 1
-            notes.append("error: %s" % (exc.code if exc.code else "mutator exited"))
+            notes.append("error: %s" % (exc.code if exc.code else "meta-agent exited"))
             returncode = code if code else 1
         except Exception as exc:
             notes.append("error: %s: %s" % (exc.__class__.__name__, exc))
             returncode = 1
-        surface = _checked_surface(ctx.run_dir / "mutate", notes, changed, checkout)
-        usage = _write_mutate_artifacts(
+        surface = _checked_surface(ctx.run_dir / "meta_agent", notes, changed, checkout)
+        usage = _write_meta_agent_artifacts(
             run_dir=ctx.run_dir,
             notes=notes,
             output=output,
@@ -339,8 +339,8 @@ class LlmMutate(MutateOperator):
             raise SystemExit(returncode)
         if not surface.get("ok"):
             raise SystemExit(1)
-        return MutateResult(changed=changed, notes=notes, usage=usage)
+        return MetaAgentResult(changed=changed, notes=notes, usage=usage)
 
 
 if __name__ == "__main__":
-    sdk.main(LlmMutate)
+    sdk.main(LlmMetaAgent)

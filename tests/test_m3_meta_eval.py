@@ -18,28 +18,28 @@ from evolve.driver import RunOptions
 from evolve.driver import run as driver_run
 from evolve.frozen import meta_eval
 
-# A mutate operator that edits the operator surface (operators/select.py) and the
+# A meta-agent operator that edits the operator surface (operators/select.py) and the
 # candidate (target/agent.py), so we can watch the operator part get reverted
 # while the candidate part survives.
-_SELF_MOD_MUTATE = """
+_SELF_MOD_META_AGENT = """
 import os
 import sys
 sys.path = [p for p in sys.path if os.path.abspath(p or os.getcwd()) != os.path.dirname(os.path.abspath(__file__))]
 from evolve.frozen import sdk
-from evolve.frozen.interfaces import MutateOperator, MutateResult
+from evolve.frozen.interfaces import MetaAgentOperator, MetaAgentResult
 
 
-class SelfModMutate(MutateOperator):
-    def mutate(self, checkout, observation, ctx):
+class SelfModMetaAgent(MetaAgentOperator):
+    def run(self, checkout, observation, ctx):
         sel = checkout / "operators" / "select.py"
         sel.write_text(sel.read_text() + "\\n# self-mod operator edit\\n")
         agent = checkout / "target" / "agent.py"
         agent.write_text(agent.read_text() + "\\n# candidate edit\\n")
-        return MutateResult(changed=["operators/select.py", "target/agent.py"], notes=["self-mod"], usage={"usd": 0})
+        return MetaAgentResult(changed=["operators/select.py", "target/agent.py"], notes=["self-mod"], usage={"usd": 0})
 
 
 if __name__ == "__main__":
-    sdk.main(SelfModMutate)
+    sdk.main(SelfModMetaAgent)
 """
 
 
@@ -50,7 +50,7 @@ def _git(workspace: Path, *args: str) -> str:
 
 def _setup_self_mod_workspace(tmp_path: Path) -> tuple[Path, Path]:
     workspace, evolve_home = init_workspace(tmp_path)
-    (workspace / "operators" / "mutate.py").write_text(_SELF_MOD_MUTATE)
+    (workspace / "operators" / "meta_agent.py").write_text(_SELF_MOD_META_AGENT)
     yaml = (
         (workspace / "evolve.yaml")
         .read_text()

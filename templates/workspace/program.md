@@ -1,9 +1,9 @@
 # Evolution Program
 
-Run select, rollout, mutate, commit, eval, gate, and record through the
+Run select, rollout, meta_agent, commit, eval, gate, and record through the
 mechanism verbs. The mechanism writes the feedback bundle (`runs/gen-<id>/
-feedback/`) after rollout for the mutator to read. The canonical evaluator and
-archive are not part of the mutable surface. Mutators should run `evolve
+feedback/`) after rollout for the meta-agent to read. The canonical evaluator and
+archive are not part of the mutable surface. Meta-agents should run `evolve
 surface-check` before proposing a child so out-of-surface edits are caught early.
 
 ## Split contract (evaluator/splits.json)

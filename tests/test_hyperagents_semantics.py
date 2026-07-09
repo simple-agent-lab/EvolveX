@@ -6,7 +6,9 @@ from evolve.driver import RunOptions
 from evolve.driver import run as driver_run
 
 
-def test_hyperagents_mutate_change_affects_later_generation_not_current_one(tmp_path: Path, monkeypatch) -> None:
+def test_hyperagents_meta_agent_change_affects_later_generation_not_current_one(
+    tmp_path: Path, monkeypatch
+) -> None:
     workspace, evolve_home = init_workspace(tmp_path)
     monkeypatch.setenv("EVAL_STUB", "1")
     monkeypatch.setenv("EVOLVE_HOME", str(evolve_home))
@@ -27,18 +29,18 @@ def test_hyperagents_mutate_change_affects_later_generation_not_current_one(tmp_
         "if __name__ == '__main__':\n"
         "    sdk.main(S)\n"
     )
-    (workspace / "operators" / "mutate.py").write_text(
+    (workspace / "operators" / "meta_agent.py").write_text(
         "import os, sys\n"
         "sys.path = [p for p in sys.path if os.path.abspath(p or os.getcwd()) != os.path.dirname(os.path.abspath(__file__))]\n"
         "from evolve.frozen import sdk\n"
-        "from evolve.frozen.interfaces import MutateOperator, MutateResult\n"
-        "class M(MutateOperator):\n"
-        "    def mutate(self, checkout, observation, ctx):\n"
-        "        script = checkout / 'operators' / 'mutate.py'\n"
+        "from evolve.frozen.interfaces import MetaAgentOperator, MetaAgentResult\n"
+        "class M(MetaAgentOperator):\n"
+        "    def run(self, checkout, observation, ctx):\n"
+        "        script = checkout / 'operators' / 'meta_agent.py'\n"
         "        script.write_text(script.read_text().replace('first-child', 'later-child'))\n"
         "        agent = checkout / 'target' / 'agent.py'\n"
         "        agent.write_text(agent.read_text() + '\\n# first-child\\n')\n"
-        "        return MutateResult(changed=['operators/mutate.py', 'target/agent.py'], notes=['self changed'], usage={'usd': 0})\n"
+        "        return MetaAgentResult(changed=['operators/meta_agent.py', 'target/agent.py'], notes=['self changed'], usage={'usd': 0})\n"
         "if __name__ == '__main__':\n"
         "    sdk.main(M)\n"
     )

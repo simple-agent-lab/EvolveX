@@ -1,11 +1,12 @@
-"""The feedback bundle the mutator reads — mechanism bookkeeping, not an operator.
+"""The feedback bundle the meta-agent reads — mechanism bookkeeping, not an operator.
 
 Folded out of the retired `observe` operator (DESIGN §7: the canonical verb set
-is select/rollout/mutate/…/gate/record). The bundle is derived from the ledger +
+is select/rollout/meta_agent/…/gate/record). The bundle is derived from the ledger +
 workspace, so the mechanism owns it: the driver calls `write_feedback_bundle`
-after rollout and before mutate, and mutate reads `runs/gen-<id>/feedback/`. It
-therefore exists even when rollout is a noop variant, and no operator can
-suppress it. This is the one home for the logic — `library/observe/*` is deleted.
+after rollout and before meta_agent, and the meta-agent reads
+`runs/gen-<id>/feedback/`. It therefore exists even when rollout is a noop
+variant, and no operator can suppress it. This is the one home for the logic —
+`library/observe/*` is deleted.
 """
 
 from __future__ import annotations

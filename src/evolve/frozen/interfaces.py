@@ -77,9 +77,9 @@ class RolloutOperator(ABC):
     def rollout(self, checkout: Path, ctx) -> RolloutResult: ...
 
 
-class MutateOperator(ABC):
+class MetaAgentOperator(ABC):
     @abstractmethod
-    def mutate(self, checkout: Path, observation: str, ctx) -> MutateResult: ...
+    def run(self, checkout: Path, observation: str, ctx) -> MetaAgentResult: ...
 
 
 class NoveltyOperator(ABC):
@@ -114,7 +114,7 @@ class RolloutResult:
 
 
 @dataclass(frozen=True)
-class MutateResult:
+class MetaAgentResult:
     changed: list[str]
     notes: list[str]
     usage: dict[str, Any]
@@ -123,7 +123,7 @@ class MutateResult:
 @dataclass(frozen=True)
 class NoveltyResult:
     novelty: float  # 1.0 = wholly novel, 0.0 = an exact duplicate of a prior diff
-    accept: bool  # reject near-duplicate mutations before they are evaluated
+    accept: bool  # reject near-duplicate candidate edits before they are evaluated
 
 
 @dataclass(frozen=True)
@@ -159,7 +159,7 @@ def validate_rollout_payload(payload: RolloutResult | dict[str, Any]) -> dict[st
     return {"summary": data["summary"], "artifacts": [str(artifact) for artifact in data["artifacts"]]}
 
 
-def validate_mutate_payload(payload: MutateResult | dict[str, Any]) -> dict[str, Any]:
+def validate_meta_agent_payload(payload: MetaAgentResult | dict[str, Any]) -> dict[str, Any]:
     data = _payload_dict(payload)
     if not isinstance(data.get("changed"), list):
         raise PayloadValidationError("changed", "changed must be a list")
@@ -167,7 +167,7 @@ def validate_mutate_payload(payload: MutateResult | dict[str, Any]) -> dict[str,
         raise PayloadValidationError("notes", "notes must be a list")
     if not isinstance(data.get("usage"), dict):
         raise PayloadValidationError("usage", "usage must be a dict")
-    usage = validate_mutate_usage_payload(data["usage"])
+    usage = validate_meta_agent_usage_payload(data["usage"])
     return {
         "changed": [str(path) for path in data["changed"]],
         "notes": [str(note) for note in data["notes"]],
@@ -221,13 +221,13 @@ def validate_rollout_artifacts_payload(payload: object) -> list[str]:
     return [str(item) for item in payload]
 
 
-def validate_mutate_predicted_fixes_payload(payload: object) -> list[str]:
+def validate_meta_agent_predicted_fixes_payload(payload: object) -> list[str]:
     if not isinstance(payload, list):
         raise PayloadValidationError("predicted_fixes", "predicted_fixes must be a list")
     return [str(item) for item in payload]
 
 
-def validate_mutate_usage_payload(payload: object) -> dict[str, Any]:
+def validate_meta_agent_usage_payload(payload: object) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise PayloadValidationError("usage", "usage must be a JSON object")
     data = cast("dict[str, Any]", payload)
@@ -293,7 +293,7 @@ class OperatorSpec:
 OPERATORS: tuple[OperatorSpec, ...] = (
     OperatorSpec("select", SelectOperator, SelectResult, "pick", True),
     OperatorSpec("rollout", RolloutOperator, RolloutResult, "rollout", True),
-    OperatorSpec("mutate", MutateOperator, MutateResult, "mutate", True),
+    OperatorSpec("meta_agent", MetaAgentOperator, MetaAgentResult, "run", True),
     OperatorSpec("novelty", NoveltyOperator, NoveltyResult, "assess", False),
     OperatorSpec("gate", GateOperator, GateResult, "decide", True),
     OperatorSpec("record", RecordOperator, RecordResult, "annotate", True),

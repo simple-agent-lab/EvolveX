@@ -26,8 +26,8 @@ from .frozen import meta_eval
 from .frozen.interfaces import (
     PayloadValidationError,
     validate_gate_file_payload,
-    validate_mutate_predicted_fixes_payload,
-    validate_mutate_usage_payload,
+    validate_meta_agent_predicted_fixes_payload,
+    validate_meta_agent_usage_payload,
     validate_novelty_file_payload,
     validate_record_fields_payload,
     validate_rollout_artifacts_payload,
@@ -195,10 +195,10 @@ def _run_child(
             )
             return
 
-        for name in ("rollout", "mutate"):
-            if name == "mutate":
+        for name in ("rollout", "meta_agent"):
+            if name == "meta_agent":
                 # The feedback bundle (retired `observe`) is ledger-derived
-                # mechanism bookkeeping: written after rollout, before mutate,
+                # mechanism bookkeeping: written after rollout, before meta_agent,
                 # so it exists regardless of the rollout variant.
                 write_feedback_bundle(workspace=workspace, run_dir=_run_dir(workspace, genid))
             if not _run_operator_or_fail(
@@ -215,10 +215,10 @@ def _run_child(
                 return
 
         # Self-modification admission gate (mechanism 1, DESIGN §2/§7). When a
-        # mutation edits the operator surface, a confound-free replay decides
-        # whether the new operators are non-inferior; if not, only the operator
-        # part of the diff is reverted (candidate/ changes are kept). Skipped
-        # inside a replay (recursion guard) and cheap when the surface is unchanged.
+        # candidate edit touches the operator surface, a confound-free replay
+        # decides whether the new operators are non-inferior; if not, only the
+        # operator part of the diff is reverted (target/ changes are kept).
+        # Skipped inside a replay (recursion guard) and cheap when unchanged.
         if not os.environ.get("EVOLVE_IN_META_EVAL"):
             mutated_paths = working_tree_changed_paths(child, f"gen/{parent}")
             if meta_eval.operator_surface_changed(mutated_paths):
@@ -228,7 +228,7 @@ def _run_child(
                     operator_reverted = True
 
         # Novelty gate (mechanism 5, DESIGN §7) — optional, off unless the recipe
-        # configures `operators.novelty`. Runs on the uncommitted mutation diff;
+        # configures `operators.novelty`. Runs on the uncommitted candidate diff;
         # a near-duplicate is discarded before it is ever committed or evaluated.
         if _operator_present(operators_config, "novelty"):
             run_dir = _run_dir(workspace, genid)
@@ -924,10 +924,14 @@ def _operator_output_error(name: str, run_dir: Path) -> OperatorOutputError | No
             (Path("rollout") / "summary.json", "summary", validate_rollout_summary_payload),
             (Path("rollout") / "artifacts.json", "artifacts", validate_rollout_artifacts_payload),
         )
-    elif name == "mutate":
+    elif name == "meta_agent":
         checks = (
-            (Path("mutate") / "predicted_fixes.json", "predicted_fixes", validate_mutate_predicted_fixes_payload),
-            (Path("mutate") / "usage.json", "usage", validate_mutate_usage_payload),
+            (
+                Path("meta_agent") / "predicted_fixes.json",
+                "predicted_fixes",
+                validate_meta_agent_predicted_fixes_payload,
+            ),
+            (Path("meta_agent") / "usage.json", "usage", validate_meta_agent_usage_payload),
         )
     elif name == "novelty":
         checks = ((Path("novelty.json"), "accept", validate_novelty_file_payload),)
@@ -995,7 +999,7 @@ def _append_operator_failed(
 def _append_novelty_rejected(
     workspace: Path, exp_id: str, genid: str, parent: str | None, payload: dict[str, Any]
 ) -> None:
-    """Record a mutation rejected by the novelty gate — discarded, not evaluated,
+    """Record a candidate edit rejected by the novelty gate — discarded, not evaluated,
     and never committed (mechanism 5, DESIGN §7)."""
     append_event(
         workspace,
@@ -1010,7 +1014,7 @@ def _append_novelty_rejected(
             "evaluator_tree": None,
             "valid_parent": False,
             "verdict": "discard",
-            "reason": "novelty gate rejected a near-duplicate mutation",
+            "reason": "novelty gate rejected a near-duplicate candidate edit",
             "mutated": [],
             "surface_violations": [],
             "predicted_fixes": [],

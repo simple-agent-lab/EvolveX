@@ -2,7 +2,7 @@
 
 Precise meanings for the domain terms this project uses.
 
-> **Note:** the canonical operator set is `select · rollout · mutate · gate ·
+> **Note:** the canonical operator set is `select · rollout · meta_agent · gate ·
 > record` (`observe` retired). `novelty` and `reflect` are optional operators
 > (off unless a recipe configures them). Authority is `DESIGN.md`.
 
@@ -11,22 +11,22 @@ Precise meanings for the domain terms this project uses.
 
 - **Candidate / target** — one agent version in the lineage. It *is the whole
   agent folder* (`target/`), not an abstract genome. What runs under the
-  evaluator is what a mutation edits.
+  evaluator is what a candidate edit changes.
 
 - **Mutable surface** — the `surface` include/exclude globs that say which
-  files a mutation may edit. The single knob that separates evolving an open
+  files a candidate edit may touch. The single knob that separates evolving an open
   agent (surface includes its code) from a closed agent (surface includes only
   the context layer), and a normal run from self-modification (surface adds
   `operators/**`). The evaluator, archive, and vendored mechanism are always
   excluded.
 
-- **Operator** — a swappable step in the loop: select, rollout, mutate, gate,
+- **Operator** — a swappable step in the loop: select, rollout, meta_agent, gate,
   record. Framework machinery configured per experiment, run as a subprocess;
   not part of the agent being evolved. (`observe` is retired — the mechanism
   writes the feedback bundle itself; see `src/evolve/feedback.py`.)
 
-- **Mutate operator** — the loop step that changes the candidate. It is a
-  protocol adapter around mutate variants such as `fixed`, `llm`, and
+- **Meta-agent operator** — the loop step that changes the candidate. It is a
+  protocol adapter around meta-agent variants such as `fixed`, `llm`, and
   `agent_command`. The `agent_command` variant delegates to
   `run_meta_agent`, then the mechanism applies surface enforcement before it
   inspects the result.
@@ -45,7 +45,7 @@ Precise meanings for the domain terms this project uses.
 
 - **Rollout** — runs the candidate on the train split to produce trajectories.
   The mechanism (`feedback.py`) then writes the ledger-derived feedback bundle
-  the mutator reads (the retired `observe` operator's former job).
+  the meta-agent reads (the retired `observe` operator's former job).
 
 - **Trace / trajectory** — the step record of a rollout. Harbor writes traces
   under `runs/gen-N/eval/` and `~/.evolve/harbor-jobs`. Subtask-level
@@ -58,8 +58,8 @@ Precise meanings for the domain terms this project uses.
   run behavior.
 
 - **`run_meta_agent`** — `run_meta_agent(workspace, prompt, config)` is
-  separate from the mutate operator interface. It is only the local
-  mutation-agent runner that receives a checkout and prompt, then runs the
+  separate from the meta-agent operator interface. It is only the local
+  agent runner that receives a checkout and prompt, then runs the
   configured command in that checkout. It does not know about generation IDs,
   archive rows, Harbor, or surface policy.
 

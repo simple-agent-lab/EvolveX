@@ -106,16 +106,16 @@ def _resolve_command(config: dict[str, Any]) -> str:
 
     operators = config.get("operators")
     if isinstance(operators, dict):
-        mutate = operators.get("mutate")
-        if isinstance(mutate, dict) and mutate.get("command"):
-            return str(mutate["command"])
+        meta_agent = operators.get("meta_agent")
+        if isinstance(meta_agent, dict) and meta_agent.get("command"):
+            return str(meta_agent["command"])
 
     env_command = os.environ.get("EVOLVE_AGENT_COMMAND")
     if env_command:
         return env_command
 
     raise AgentCommandError(
-        "missing meta-agent command; set EVOLVE_AGENT_COMMAND or operators.mutate.command",
+        "missing meta-agent command; set EVOLVE_AGENT_COMMAND or operators.meta_agent.command",
         returncode=2,
     )
 

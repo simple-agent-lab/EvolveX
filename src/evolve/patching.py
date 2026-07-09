@@ -16,7 +16,7 @@ class SurfacePolicy:
 
 
 @dataclass(frozen=True)
-class MutationPatch:
+class CandidatePatch:
     changed_paths: list[str]
     diff: str
     surface_report: dict[str, Any]
@@ -28,20 +28,20 @@ def load_surface_policy(checkout: Path | str) -> SurfacePolicy:
     return SurfacePolicy(include=include, exclude=exclude)
 
 
-def mutation_parent_ref(checkout: Path | str, ctx: Any) -> str:
+def patch_parent_ref(checkout: Path | str, ctx: Any) -> str:
     parent = getattr(ctx, "parent", None)
     if parent:
         return f"gen/{parent}"
     return head_tag(Path(checkout)) or "gen/0"
 
 
-def create_mutation_patch(
+def create_candidate_patch(
     checkout: Path | str,
     parent_ref: str,
     surface: SurfacePolicy,
     *,
     repair: bool = True,
-) -> MutationPatch:
+) -> CandidatePatch:
     root = Path(checkout).resolve()
     notes: list[str] = []
     changed = working_tree_changed_paths(root, parent_ref)
@@ -54,12 +54,12 @@ def create_mutation_patch(
         changed = working_tree_changed_paths(root, parent_ref)
         violations = check_paths(changed, surface.include, surface.exclude)
 
-    diff = _mutation_diff(root, parent_ref, changed)
+    diff = _candidate_diff(root, parent_ref, changed)
     surface_report = {"ok": not violations, "mutated": changed, "violations": violations}
-    return MutationPatch(changed_paths=changed, diff=diff, surface_report=surface_report, notes=notes)
+    return CandidatePatch(changed_paths=changed, diff=diff, surface_report=surface_report, notes=notes)
 
 
-def _mutation_diff(root: Path, parent_ref: str, changed: list[str]) -> str:
+def _candidate_diff(root: Path, parent_ref: str, changed: list[str]) -> str:
     if not changed:
         return ""
     untracked = set(_untracked_paths(root, changed))

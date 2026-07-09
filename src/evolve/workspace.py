@@ -93,7 +93,7 @@ def _vendor_mechanism(workspace: Path) -> None:
     """Copy the evolve mechanism package into the workspace so it is
     self-driving (mechanism-in-workspace). The vendored copy lives under
     .evolve/ and, together with the root `evolve` console, is protected from
-    mutation by the surface's implicit excludes."""
+    candidate edits by the surface's implicit excludes."""
     package_src = Path(__file__).resolve().parent
     shutil.copytree(
         package_src,
@@ -130,15 +130,15 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
         # meta/ tree) so code + policy travel as one pair.
         "operators/select.md": _template("workspace/operators/select.md"),
         "operators/rollout.md": _template("workspace/operators/rollout.md"),
-        "operators/mutate.md": _template("workspace/operators/mutate.md"),
+        "operators/meta_agent.md": _template("workspace/operators/meta_agent.md"),
         "operators/gate.md": _template("workspace/operators/gate.md"),
         "operators/record.md": _template("workspace/operators/record.md"),
-        "operators/mutation_brief.md": _template("workspace/operators/mutation_brief.md"),
+        "operators/meta_agent_brief.md": _template("workspace/operators/meta_agent_brief.md"),
         # Inner skill: travels into the workspace under a unified, tool-agnostic
         # `skills/` folder (not `.claude/skills/`) so Claude Code AND codex (and
-        # others) can find the mutator's manual (DESIGN §4, template = skill).
+        # others) can find the meta-agent's manual (DESIGN §4, template = skill).
         "skills/evolve-workspace/SKILL.md": _skill("evolve-workspace/SKILL.md"),
-        # Human-readable operator protocol the inner skill points mutators at.
+        # Human-readable operator protocol the inner skill points meta-agents at.
         "PROTOCOL.md": (library_root() / "PROTOCOL.md").read_text(),
         "evaluator/eval.sh": _eval_sh(evaluator_engine, evaluator_dataset),
         "evaluator/eval.env": _eval_env(

@@ -10,7 +10,7 @@
       "name": "evolve-workspace",
       "path": "evolve-workspace/SKILL.md",
       "role": "inner",
-      "summary": "The mutator's manual; travels into every workspace."
+      "summary": "The meta-agent's manual; travels into every workspace."
     }
   ],
   "shared": ["_invariants.md", "_conventions.md"]

@@ -11,9 +11,9 @@ For MiniSWE source evolution, `target/` is the MiniSWE source checkout plus
 task container, installs that source, and then reuses Harbor's MiniSWE run
 behavior.
 
-Every real recipe uses the `agent_command` mutator. Run them only after
+Every real recipe uses the `agent_command` meta-agent variant. Run them only after
 supplying a meta-agent command via `EVOLVE_AGENT_COMMAND` or
-`operators.mutate.command`; the real recipes intentionally leave that command
+`operators.meta_agent.command`; the real recipes intentionally leave that command
 unset.
 
 Each recipe keeps its operator routing in `evolve.yaml`, and each README calls

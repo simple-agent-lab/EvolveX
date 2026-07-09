@@ -2,7 +2,7 @@ import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
-from evolve.mutation import SurfacePolicy, create_mutation_patch, load_surface_policy, mutation_parent_ref
+from evolve.patching import SurfacePolicy, create_candidate_patch, load_surface_policy, patch_parent_ref
 
 
 def _git(root: Path, *args: str) -> str:
@@ -24,7 +24,7 @@ def _repo(tmp_path: Path) -> Path:
         "experiment:\n  id: test\n"
         "target:\n  seed: builtin-dummy\n"
         "surface:\n  include:\n    - target/**\n  exclude:\n    - target/tmp/**\n"
-        "operators:\n  mutate: {timeout_s: 30}\n"
+        "operators:\n  meta_agent: {timeout_s: 30}\n"
         "evaluator:\n  engine: harbor\n  dataset: pass@k\n  agent: target.harbor_agent:MiniSweSourceAgent\n"
     )
     _git(root, "add", ".")
@@ -33,11 +33,11 @@ def _repo(tmp_path: Path) -> Path:
     return root
 
 
-def test_create_mutation_patch_reports_changed_paths_and_diff(tmp_path: Path) -> None:
+def test_create_candidate_patch_reports_changed_paths_and_diff(tmp_path: Path) -> None:
     root = _repo(tmp_path)
     (root / "target" / "agent.py").write_text("print('child')\n")
 
-    patch = create_mutation_patch(
+    patch = create_candidate_patch(
         checkout=root,
         parent_ref="gen/0",
         surface=SurfacePolicy(include=["target/**"], exclude=[]),
@@ -49,11 +49,11 @@ def test_create_mutation_patch_reports_changed_paths_and_diff(tmp_path: Path) ->
     assert patch.notes == []
 
 
-def test_create_mutation_patch_includes_new_in_surface_files_in_diff(tmp_path: Path) -> None:
+def test_create_candidate_patch_includes_new_in_surface_files_in_diff(tmp_path: Path) -> None:
     root = _repo(tmp_path)
     (root / "target" / "new_file.py").write_text("print('new')\n")
 
-    patch = create_mutation_patch(
+    patch = create_candidate_patch(
         checkout=root,
         parent_ref="gen/0",
         surface=SurfacePolicy(include=["target/**"], exclude=[]),
@@ -66,12 +66,12 @@ def test_create_mutation_patch_includes_new_in_surface_files_in_diff(tmp_path: P
     assert _git(root, "status", "--porcelain", "--", "target/new_file.py") == "?? target/new_file.py"
 
 
-def test_create_mutation_patch_repairs_out_of_surface_paths(tmp_path: Path) -> None:
+def test_create_candidate_patch_repairs_out_of_surface_paths(tmp_path: Path) -> None:
     root = _repo(tmp_path)
     (root / "target" / "agent.py").write_text("print('child')\n")
     (root / "README.md").write_text("leak\n")
 
-    patch = create_mutation_patch(
+    patch = create_candidate_patch(
         checkout=root,
         parent_ref="gen/0",
         surface=SurfacePolicy(include=["target/**"], exclude=[]),
@@ -84,11 +84,11 @@ def test_create_mutation_patch_repairs_out_of_surface_paths(tmp_path: Path) -> N
     assert patch.notes == ["repaired surface violations by reverted: README.md"]
 
 
-def test_create_mutation_patch_reports_remaining_violation_when_repair_disabled(tmp_path: Path) -> None:
+def test_create_candidate_patch_reports_remaining_violation_when_repair_disabled(tmp_path: Path) -> None:
     root = _repo(tmp_path)
     (root / "README.md").write_text("leak\n")
 
-    patch = create_mutation_patch(
+    patch = create_candidate_patch(
         checkout=root,
         parent_ref="gen/0",
         surface=SurfacePolicy(include=["target/**"], exclude=[]),
@@ -108,13 +108,13 @@ def test_load_surface_policy_reads_workspace_surface_lists(tmp_path: Path) -> No
     assert policy == SurfacePolicy(include=["target/**"], exclude=["target/tmp/**"])
 
 
-def test_mutation_parent_ref_prefers_context_parent(tmp_path: Path) -> None:
+def test_patch_parent_ref_prefers_context_parent(tmp_path: Path) -> None:
     root = _repo(tmp_path)
 
-    assert mutation_parent_ref(root, SimpleNamespace(parent="7")) == "gen/7"
+    assert patch_parent_ref(root, SimpleNamespace(parent="7")) == "gen/7"
 
 
-def test_mutation_parent_ref_falls_back_to_head_tag(tmp_path: Path) -> None:
+def test_patch_parent_ref_falls_back_to_head_tag(tmp_path: Path) -> None:
     root = _repo(tmp_path)
 
-    assert mutation_parent_ref(root, SimpleNamespace(parent=None)) == "gen/0"
+    assert patch_parent_ref(root, SimpleNamespace(parent=None)) == "gen/0"

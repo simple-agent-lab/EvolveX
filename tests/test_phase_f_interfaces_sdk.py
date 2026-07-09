@@ -11,12 +11,24 @@ def test_operator_abcs_have_one_kind_specific_abstract_method():
     expected = {
         interfaces.SelectOperator: {"pick"},
         interfaces.RolloutOperator: {"rollout"},
-        interfaces.MutateOperator: {"mutate"},
+        interfaces.MetaAgentOperator: {"run"},
         interfaces.GateOperator: {"decide"},
         interfaces.RecordOperator: {"annotate"},
     }
     for cls, methods in expected.items():
         assert cls.__abstractmethods__ == methods
+
+
+def test_operator_registry_uses_meta_agent_not_mutate():
+    from evolve.frozen import interfaces
+
+    kinds = {spec.kind for spec in interfaces.OPERATORS}
+    assert "meta_agent" in kinds
+    assert "mutate" not in kinds
+    assert hasattr(interfaces, "MetaAgentOperator")
+    assert hasattr(interfaces, "MetaAgentResult")
+    assert not hasattr(interfaces, "MutateOperator")
+    assert not hasattr(interfaces, "MutateResult")
 
 
 def test_sdk_main_runs_select_operator_and_writes_parents(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -39,6 +51,36 @@ def test_sdk_main_runs_select_operator_and_writes_parents(tmp_path: Path, monkey
     sdk.main(TinySelect)
 
     assert json.loads((tmp_path / "run" / "parents.json").read_text()) == {"parents": ["0"]}
+
+
+def test_sdk_main_runs_meta_agent_operator_and_writes_meta_agent_artifacts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from evolve.frozen import interfaces, sdk
+
+    class TinyMetaAgent(interfaces.MetaAgentOperator):
+        def run(self, checkout, observation, ctx):
+            assert checkout == tmp_path / "checkout"
+            assert observation == '{"failed": ["task-1"]}\n'
+            assert ctx.parent == "0"
+            return interfaces.MetaAgentResult(
+                changed=["target/agent.py"],
+                notes=["edited target"],
+                usage={"usd": 1.25},
+            )
+
+    _set_sdk_env(monkeypatch, tmp_path, parent="0")
+    feedback_dir = tmp_path / "run" / "feedback"
+    feedback_dir.mkdir(parents=True)
+    (feedback_dir / "summary.json").write_text('{"failed": ["task-1"]}\n')
+
+    sdk.main(TinyMetaAgent)
+
+    meta_agent_dir = tmp_path / "run" / "meta_agent"
+    assert json.loads((meta_agent_dir / "changed.json").read_text()) == ["target/agent.py"]
+    assert json.loads((meta_agent_dir / "predicted_fixes.json").read_text()) == ["target/agent.py"]
+    assert json.loads((meta_agent_dir / "usage.json").read_text()) == {"usd": 1.25}
+    assert (meta_agent_dir / "rationale.md").read_text() == "edited target\n"
 
 
 def _set_sdk_env(

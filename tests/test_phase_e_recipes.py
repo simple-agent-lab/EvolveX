@@ -26,7 +26,7 @@ def test_all_recipes_are_recipe_artifacts_only() -> None:
             assert section in config
 
 
-def test_real_recipes_use_harbor_and_real_agent_mutation() -> None:
+def test_real_recipes_use_harbor_and_real_meta_agent() -> None:
     for name in REAL_RECIPES:
         config = _config(name)
         assert "engine: harbor" in config
@@ -34,7 +34,8 @@ def test_real_recipes_use_harbor_and_real_agent_mutation() -> None:
         assert "seed: https://github.com/SWE-agent/mini-swe-agent.git" in config
         assert "    - target/**" in config
         assert "target/agent.py" not in config
-        assert "mutate: {variant: agent_command" in config
+        assert "meta_agent: {variant: agent_command" in config
+        assert "mutate:" not in config
         assert "agent: target.harbor_agent:MiniSweSourceAgent" in config
         assert "harbor_agent: miniswe-source" in config
         assert "variant: fixed" not in config
@@ -51,4 +52,5 @@ def test_smoke_recipes_are_explicitly_named_and_deterministic() -> None:
         assert "dataset: pass@k" in config
         assert "seed: builtin-dummy" in config
         assert "agent: target.harbor_agent:MiniSweSourceAgent" in config
-        assert "mutate: {variant: fixed" in config or "mutate: {variant: noop" in config
+        assert "mutate:" not in config
+        assert "meta_agent: {variant: fixed" in config or "meta_agent: {variant: noop" in config

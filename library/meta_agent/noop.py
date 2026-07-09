@@ -1,6 +1,6 @@
-"""Fixed mutate appends a deterministic generation marker to target/agent.py.
+"""No-op meta-agent writes valid artifacts without editing the checkout.
 
-It is the simple generated baseline for verifying checkout-local mutation.
+It is the baseline recipe for edit-disabled runs.
 """
 
 # ruff: noqa: E402
@@ -16,7 +16,7 @@ from typing import Any
 sys.path = [p for p in sys.path if os.path.abspath(p or os.getcwd()) != os.path.dirname(os.path.abspath(__file__))]
 
 from evolve.frozen import sdk
-from evolve.frozen.interfaces import MutateOperator, MutateResult, OperatorContext
+from evolve.frozen.interfaces import MetaAgentOperator, MetaAgentResult, OperatorContext
 from evolve.git import head_tag, working_tree_changed_paths
 from evolve.surface import check_paths, surface_patterns
 
@@ -90,7 +90,7 @@ def _fallback_surface_check(checkout: Path | str = ".") -> dict[str, Any]:
 
 
 def _checked_surface(
-    mutate_dir: Path, notes: list[str], changed: list[str], checkout: Path | str = "."
+    meta_agent_dir: Path, notes: list[str], changed: list[str], checkout: Path | str = "."
 ) -> dict[str, Any]:
     try:
         result = _surface_check(checkout)
@@ -99,7 +99,7 @@ def _checked_surface(
             result = _fallback_surface_check(checkout)
         except Exception as exc:
             result = {"ok": False, "mutated": changed, "violations": [], "error": "surface-check failed: %s" % exc}
-            _write_json(mutate_dir / "surface-check.json", result)
+            _write_json(meta_agent_dir / "surface-check.json", result)
             return result
     if result.get("violations"):
         reverted: list[str] = []
@@ -124,11 +124,11 @@ def _checked_surface(
                 result = _fallback_surface_check(checkout)
             except Exception as exc:
                 result = {"ok": False, "mutated": changed, "violations": [], "error": "surface-check failed: %s" % exc}
-    _write_json(mutate_dir / "surface-check.json", result)
+    _write_json(meta_agent_dir / "surface-check.json", result)
     return result
 
 
-def _write_mutate_artifacts(
+def _write_meta_agent_artifacts(
     *,
     run_dir: Path,
     notes: list[str],
@@ -137,39 +137,36 @@ def _write_mutate_artifacts(
     surface: dict[str, Any] | None = None,
     changed: list[str] | None = None,
 ) -> dict[str, Any]:
-    mutate_dir = run_dir / "mutate"
-    mutate_dir.mkdir(parents=True, exist_ok=True)
-    notes.extend(["written-by: operators/mutate.py", "variant: %s" % variant])
+    meta_agent_dir = run_dir / "meta_agent"
+    meta_agent_dir.mkdir(parents=True, exist_ok=True)
+    notes.extend(["written-by: operators/meta_agent.py", "variant: %s" % variant])
     if surface is None:
         surface = {"ok": True, "mutated": changed or [], "violations": []}
-    _write_json(mutate_dir / "surface-check.json", surface)
+    _write_json(meta_agent_dir / "surface-check.json", surface)
     usage_payload = _safe_usage(usage or {"usd": 0})
-    (mutate_dir / "rationale.md").write_text("\n".join(notes) + "\n")
-    (mutate_dir / "predicted_fixes.json").write_text("[]\n")
-    _write_json(mutate_dir / "usage.json", usage_payload)
+    (meta_agent_dir / "rationale.md").write_text("\n".join(notes) + "\n")
+    (meta_agent_dir / "predicted_fixes.json").write_text("[]\n")
+    _write_json(meta_agent_dir / "usage.json", usage_payload)
     return usage_payload
 
 
-class FixedMutate(MutateOperator):
-    def mutate(self, checkout: Path, observation: str, ctx: OperatorContext) -> MutateResult:
-        agent = checkout / "target" / "agent.py"
-        safe = ctx.genid.replace("-", "_")
-        agent.write_text(agent.read_text() + '\nEVOLVE_GENERATION_%s = "%s"\n' % (safe, ctx.genid))
-        changed = ["target/agent.py"]
+class NoopMetaAgent(MetaAgentOperator):
+    def run(self, checkout: Path, observation: str, ctx: OperatorContext) -> MetaAgentResult:
+        changed: list[str] = []
         notes: list[str] = []
-        surface = _checked_surface(ctx.run_dir / "mutate", notes, changed, checkout)
-        usage = _write_mutate_artifacts(
+        surface = _checked_surface(ctx.run_dir / "meta_agent", notes, changed, checkout)
+        usage = _write_meta_agent_artifacts(
             run_dir=ctx.run_dir,
             notes=notes,
             usage={"usd": 0},
-            variant="fixed",
+            variant="noop",
             surface=surface,
             changed=changed,
         )
         if not surface.get("ok"):
             raise SystemExit(1)
-        return MutateResult(changed=changed, notes=notes, usage=usage)
+        return MetaAgentResult(changed=changed, notes=notes, usage=usage)
 
 
 if __name__ == "__main__":
-    sdk.main(FixedMutate)
+    sdk.main(NoopMetaAgent)
