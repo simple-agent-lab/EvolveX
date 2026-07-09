@@ -38,16 +38,17 @@ currently forces `EVAL_STUB=1` during operator-surface admission replay.
   explicit `EVAL_STUB=1` test paths.
 - Do not use Harbor's built-in `mini-swe-agent` agent for MiniSWE source-code
   evolution. That built-in agent evaluates an installed MiniSWE package; our
-  recipe must evaluate the candidate source in `target/`.
+  recipe must evaluate the candidate MiniSWE source and Harbor wrapper in
+  `target/`.
 
 ## Core Decision
 
 Use two agent interfaces, each with one job:
 
-- **Target evaluation agent:** a frozen Harbor adapter under `evaluator/` that
-  imports through Harbor's normal custom-agent path and installs the candidate
-  `target/` source into each task container. This is the only real benchmark
-  execution path.
+- **Target evaluation agent:** a Harbor `BaseAgent` or `BaseInstalledAgent`
+  wrapper inside `target/`, imported through Harbor's normal custom-agent path.
+  This wrapper lives next to the open-source agent source being evolved and is
+  the only real benchmark execution path.
 - **Mutation agent runner:** a local process runner that receives a workspace
   path and a prompt, then edits files in that workspace.
 
@@ -76,32 +77,46 @@ harbor run -p "$EVOLVE_HARBOR_TASKS" \
   prompts, or another artifact that the built-in agent explicitly consumes.
 - A Harbor custom import path, when the evolved target is source code.
 
-For MiniSWE source-code evolution, the recipe must use a custom import path such
-as:
+This matches Harbor's native contract. Harbor custom agents implement
+`BaseAgent`, installed agents use `BaseInstalledAgent` which extends
+`BaseAgent`, and Harbor's agent factory treats `--agent module.path:ClassName`
+as a custom import path.
+
+For MiniSWE source-code evolution, the recipe must use the target's Harbor
+wrapper as a custom import path:
 
 ```env
-EVOLVE_HARBOR_AGENT=evaluator.miniswe_source_agent:MiniSweSourceAgent
+EVOLVE_HARBOR_AGENT=target.harbor_agent:MiniSweSourceAgent
 ```
 
 `harbor.sh` already sets `PYTHONPATH="$PWD:$PYTHONPATH"`, so Harbor can import
-the frozen evaluator adapter from the candidate checkout while the evaluator
-tree remains pinned to `gen/0`.
+the candidate wrapper from `target/` while the evaluator tree remains pinned to
+`gen/0`.
 
 `templates/evaluator/checkout_agent.py` should not be the default real path. It
 may be deleted or kept only as a compatibility shim for old workspaces, but real
 recipes must not depend on it.
 
-### MiniSWE Source Adapter
+### MiniSWE Target Layout and Wrapper
 
-When the evolved target is MiniSWE source code, `target/` should contain the
-MiniSWE source tree only. It should not need `solve.sh`, `run.sh`, or Harbor
-wrapper files.
+When the evolved target is MiniSWE source code, `target/` should be a normal
+MiniSWE source checkout plus a thin Harbor wrapper:
 
-The frozen evaluator should provide a small Harbor adapter, for example
-`evaluator/miniswe_source_agent.py`, that subclasses Harbor's MiniSWE integration
-and overrides installation to use the candidate source:
+```text
+target/
+  pyproject.toml
+  mini_swe_agent/
+  harbor_agent.py
+```
 
-1. Upload `target/` from the host checkout into the Harbor task container with
+`target/harbor_agent.py` should implement Harbor's `BaseAgent` interface
+directly, or use `BaseInstalledAgent` when the source should be installed into
+the task container before running. For MiniSWE, `BaseInstalledAgent` is the
+natural fit because Harbor's own MiniSWE integration is an installed agent.
+
+The wrapper should stay small:
+
+1. Upload the candidate `target/` source tree into the Harbor task container with
    `environment.upload_dir(...)`.
 2. Install the uploaded source inside the container, for example with
    `uv tool install --force /installed-agent/miniswe-source` if the source is a
@@ -111,19 +126,20 @@ and overrides installation to use the candidate source:
    trajectory conversion, cost parsing, and ATIF support stay Harbor-native.
 4. Fail fast if `target/` is not an installable MiniSWE source tree.
 
-This is not a fallback path. It is the Harbor-native way to evaluate a mutable
-local source checkout: Harbor still owns tasks, environments, execution,
-parallelism, retries, logs, and score parsing; the adapter only ensures the
-candidate source is the agent Harbor runs.
+This is not a fallback path. It is Harbor's native custom-agent interface:
+MiniSWE is just source code plus a Harbor-compatible wrapper, and when Evolve
+modifies `target/`, Harbor imports and evaluates the modified target. Harbor
+still owns tasks, environments, execution, parallelism, retries, logs, and score
+parsing.
 
 The recipe should include a candidate-liveness check: a mutation to MiniSWE
 source must change the installed code path or version observed inside the task
 container. This prevents a recipe from accidentally evaluating a global or
 packaged MiniSWE install while claiming to evolve source.
 
-### MiniSWE Adapter Reuse Decision
+### MiniSWE Wrapper Reuse Decision
 
-The MiniSWE source adapter should be small. Harbor already has the right
+The MiniSWE Harbor wrapper should be small. Harbor already has the right
 MiniSWE runtime behavior: command construction, model environment forwarding,
 config handling, trajectory conversion, cost parsing, ATIF support, and Harbor
 logging. Evolve should reuse those pieces instead of reimplementing them.
@@ -131,31 +147,36 @@ logging. Evolve should reuse those pieces instead of reimplementing them.
 The preferred implementation is:
 
 ```python
+from pathlib import Path
+
 from harbor.agents.installed.mini_swe_agent import MiniSweAgent
 
 
 class MiniSweSourceAgent(MiniSweAgent):
     async def install(self, environment):
-        # Upload target/, install that uploaded source, then verify the
-        # mini-swe-agent executable resolves to the candidate install.
-        pass
+        source_dir = Path(__file__).resolve().parent
+        await environment.upload_dir(source_dir, "/installed-agent/miniswe-source")
+        await self.exec_as_agent(
+            environment,
+            command="uv tool install --force /installed-agent/miniswe-source",
+        )
 ```
 
 Only `install()` should change. Harbor's default MiniSWE install step installs a
 published `mini-swe-agent` package, which is correct for benchmarking the
 released agent but wrong for evolving local source. The overridden install step
-should upload `target/`, install that uploaded source with `uv tool install
---force`, and verify that the resulting `mini-swe-agent` executable resolves to
-the uploaded candidate source.
+should upload `Path(__file__).resolve().parent`, install that uploaded source
+with `uv tool install --force`, and verify that the resulting `mini-swe-agent`
+executable resolves to the uploaded candidate source.
 
-If Harbor's `MiniSweAgent` becomes awkward to subclass, vendoring its adapter is
-acceptable as a narrow second choice. Vendoring should copy only the Harbor
-MiniSWE adapter needed for compatibility and keep the same single intended
-behavior change: candidate-source installation. Writing a fresh MiniSWE Harbor
-agent from scratch is out of scope unless Harbor's adapter cannot be reused
-safely.
+If Harbor's `MiniSweAgent` becomes awkward to subclass, the target wrapper may
+vendor the Harbor MiniSWE adapter as a narrow second choice. Vendoring should
+copy only the Harbor MiniSWE adapter needed for compatibility and keep the same
+single intended behavior change: candidate-source installation. Writing a fresh
+MiniSWE Harbor agent from scratch is out of scope unless Harbor's adapter cannot
+be reused safely.
 
-This means the adapter needs design discipline more than a large amount of code:
+This means the wrapper needs design discipline more than a large amount of code:
 define the upload path, install command, verification command, and clear failure
 messages. The rest should stay Harbor-native.
 
@@ -266,11 +287,14 @@ stub check disguised as a real HyperAgents guard.
 
 - Missing Harbor executable or Docker setup remains an `infra_failed` evaluator
   result.
-- Missing or non-installable MiniSWE source under `target/` fails the Harbor
-  adapter setup with an actionable error.
-- The MiniSWE source adapter should verify that the in-container `mini-swe-agent`
-  executable resolves to the uploaded candidate install, not to a previously
-  installed global package.
+- Missing `target.harbor_agent:MiniSweSourceAgent`, or a wrapper that does not
+  satisfy Harbor's `BaseAgent` interface, fails during Harbor agent import or
+  setup with an actionable error.
+- Missing or non-installable MiniSWE source under `target/` fails the target
+  wrapper setup with an actionable error.
+- The MiniSWE target wrapper should verify that the in-container
+  `mini-swe-agent` executable resolves to the uploaded candidate install, not to
+  a previously installed global package.
 - Missing mutation agent command fails the mutate operator with
   `operator_failed`, naming `EVOLVE_AGENT_COMMAND` and `operators.mutate.command`
   as the accepted configuration points.
@@ -287,9 +311,12 @@ Add or update tests for these behaviors:
   `EVOLVE_PROMPT_FILE`, captures output, records wall time, and handles timeout.
 - `agent_command` mutator delegates process execution to `run_agent` and still
   writes valid mutate artifacts.
-- Harbor evaluator config passes custom import paths through to `harbor run`.
-- The MiniSWE source adapter uploads `target/`, installs from that uploaded
-  source, and fails if `target/` is missing or not installable.
+- Harbor evaluator config passes target custom import paths through to
+  `harbor run`, including `target.harbor_agent:MiniSweSourceAgent`.
+- The MiniSWE target wrapper satisfies Harbor's `BaseAgent` or
+  `BaseInstalledAgent` interface, uploads the candidate `target/` source,
+  installs from that uploaded source, and fails if the source is missing or not
+  installable.
 - A candidate-liveness test proves Harbor evaluates the candidate MiniSWE source
   rather than Harbor's built-in package install.
 - Real recipes do not use `fixed`, `noop`, non-Harbor evaluator engines, or
@@ -305,10 +332,10 @@ Add or update tests for these behaviors:
 1. Introduce the agent runner without changing recipe defaults.
 2. Refactor `agent_command` to use the runner.
 3. Replace default real Harbor evaluation with explicit Harbor agent config:
-   built-in agent names for config/prompt targets, custom import paths for
-   source-code targets.
-4. Add the frozen MiniSWE source adapter under `evaluator/` for MiniSWE source
-   recipes and point those recipes at it.
+   built-in agent names for config/prompt targets, target custom import paths
+   for source-code targets.
+4. Add `target/harbor_agent.py` to MiniSWE source recipes and point those
+   recipes at `target.harbor_agent:MiniSweSourceAgent`.
 5. Delete or de-default `CheckoutTargetAgent`; keep it only if needed for
    backward compatibility tests.
 6. Split recipe directories into real and smoke names.
@@ -322,11 +349,12 @@ Add or update tests for these behaviors:
 ## Success Criteria
 
 - A researcher can understand the system as:
-  "Harbor runs the benchmark; frozen evaluator adapters make Harbor consume the
-  candidate target source; `run_agent(workspace, prompt)` runs mutation agents;
-  `MutateOperator` adapts mutation into the evolve protocol."
-- For MiniSWE source evolution, `target/` is MiniSWE source code only, and Harbor
-  installs and runs that candidate source in each evaluation.
+  "Harbor runs the benchmark; `target/` contains the open-source target agent
+  plus a Harbor `BaseAgent` wrapper; `run_agent(workspace, prompt)` runs
+  mutation agents; `MutateOperator` adapts mutation into the evolve protocol."
+- For MiniSWE source evolution, `target/` is MiniSWE source plus
+  `target/harbor_agent.py`, and Harbor imports that wrapper, installs the
+  candidate source, and runs it in each evaluation.
 - Real recipes fail fast when live requirements are missing.
 - Smoke behavior is never hidden behind a real recipe name.
 - HyperAgents no longer claims same-generation mutation-workflow use where the
