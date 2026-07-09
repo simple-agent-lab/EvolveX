@@ -121,6 +121,44 @@ source must change the installed code path or version observed inside the task
 container. This prevents a recipe from accidentally evaluating a global or
 packaged MiniSWE install while claiming to evolve source.
 
+### MiniSWE Adapter Reuse Decision
+
+The MiniSWE source adapter should be small. Harbor already has the right
+MiniSWE runtime behavior: command construction, model environment forwarding,
+config handling, trajectory conversion, cost parsing, ATIF support, and Harbor
+logging. Evolve should reuse those pieces instead of reimplementing them.
+
+The preferred implementation is:
+
+```python
+from harbor.agents.installed.mini_swe_agent import MiniSweAgent
+
+
+class MiniSweSourceAgent(MiniSweAgent):
+    async def install(self, environment):
+        # Upload target/, install that uploaded source, then verify the
+        # mini-swe-agent executable resolves to the candidate install.
+        pass
+```
+
+Only `install()` should change. Harbor's default MiniSWE install step installs a
+published `mini-swe-agent` package, which is correct for benchmarking the
+released agent but wrong for evolving local source. The overridden install step
+should upload `target/`, install that uploaded source with `uv tool install
+--force`, and verify that the resulting `mini-swe-agent` executable resolves to
+the uploaded candidate source.
+
+If Harbor's `MiniSweAgent` becomes awkward to subclass, vendoring its adapter is
+acceptable as a narrow second choice. Vendoring should copy only the Harbor
+MiniSWE adapter needed for compatibility and keep the same single intended
+behavior change: candidate-source installation. Writing a fresh MiniSWE Harbor
+agent from scratch is out of scope unless Harbor's adapter cannot be reused
+safely.
+
+This means the adapter needs design discipline more than a large amount of code:
+define the upload path, install command, verification command, and clear failure
+messages. The rest should stay Harbor-native.
+
 ### Local Agent Runner
 
 Add `src/evolve/agent.py` with a small API:
