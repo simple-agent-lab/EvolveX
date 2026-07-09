@@ -47,7 +47,7 @@ def init_workspace(tmp_path: Path, experiment: str = "experiment") -> tuple[Path
         "init",
         str(workspace),
         "--recipe",
-        "hill_climb",
+        "hill_climb-smoke",
         env={"EVAL_STUB": "1", "EVOLVE_HOME": str(evolve_home)},
     )
     assert result.returncode == 0, result.stderr

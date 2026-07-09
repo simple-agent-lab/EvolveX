@@ -20,7 +20,7 @@ def test_init_binds_dgm_select_to_score_weighted_library_variant_and_stamps_prot
         "init",
         str(workspace),
         "--recipe",
-        "dgm",
+        "dgm-smoke",
         env={"EVOLVE_HOME": str(tmp_path / "home")},
     )
 

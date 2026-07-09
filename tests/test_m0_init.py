@@ -11,7 +11,7 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
         "init",
         str(workspace),
         "--recipe",
-        "hill_climb",
+        "hill_climb-smoke",
         env={"EVAL_STUB": "1", "EVOLVE_HOME": str(tmp_path / "evolve-home")},
     )
 
@@ -80,7 +80,7 @@ def test_init_creates_generation_zero_git_snapshot_and_archive_event(tmp_path: P
         "init",
         str(workspace),
         "--recipe",
-        "hill_climb",
+        "hill_climb-smoke",
         env={"EVAL_STUB": "1", "EVOLVE_HOME": str(tmp_path / "evolve-home")},
     )
 

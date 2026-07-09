@@ -1,16 +1,9 @@
 # Recipes
 
-These recipes are small, inspectable loop shapes. Each recipe keeps its
-operator routing in `evolve.yaml`; the recipe README links each routing line to
-the resolved file under `library/`.
+The recipe set is split in two:
 
-Recipe names may describe a research loop, but `variant:` values are canonical
-library file names. If a recipe says `gate: {variant: parent_eligible}`, the
-file is `library/gate/parent_eligible.py`.
+- real recipes (`hill_climb`, `dgm`, `ahe`, `autoresearch`, `hyperagents`, `metaagent`) use MiniSWE source checkout, Harbor, and `agent_command`
+- smoke recipes (`*-smoke`) preserve deterministic offline scaffolds for init and loop-shape tests
 
-- [AHE](ahe/README.md)
-- [AutoResearch](autoresearch/README.md)
-- [DGM](dgm/README.md)
-- [Hill Climb](hill_climb/README.md)
-- [HyperAgents](hyperagents/README.md)
-- [MetaAgent](metaagent/README.md)
+Each recipe keeps its operator routing in `evolve.yaml`, and each README calls
+out the few choices that distinguish that loop from the others.

@@ -48,7 +48,7 @@ def test_init_real_harbor_recipe_requires_evaluator_agent(
 def test_init_writes_recipe_harbor_agent_to_eval_env(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
 
-    init_workspace(InitOptions(workspace=workspace, recipe="hill_climb"))
+    init_workspace(InitOptions(workspace=workspace, recipe="hill_climb-smoke"))
 
     env = (workspace / "evaluator" / "eval.env").read_text()
     assert "EVOLVE_HARBOR_AGENT=target.harbor_agent:MiniSweSourceAgent\n" in env
