@@ -110,21 +110,39 @@ def _write_mutation_result(
     return MutateResult(changed=patch.changed_paths, notes=all_notes, usage=usage_payload)
 
 
+def _empty_failure_patch(checkout: Path, parent_ref: str, error: Exception) -> MutationPatch:
+    try:
+        patch = create_mutation_patch(
+            checkout=checkout,
+            parent_ref=parent_ref,
+            surface=load_surface_policy(checkout),
+        )
+    except Exception:
+        patch = MutationPatch(
+            changed_paths=[],
+            diff="",
+            surface_report={"ok": True, "mutated": [], "violations": [], "error": str(error)},
+            notes=[],
+        )
+    return patch
+
+
 class AgentCommandMutate(MutateOperator):
     def mutate(self, checkout: Path, observation: str, ctx: OperatorContext) -> MutateResult:
-        prompt = build_mutation_prompt(checkout, observation, ctx)
+        parent_ref = mutation_parent_ref(checkout, ctx)
         try:
+            prompt = build_mutation_prompt(checkout, observation, ctx)
             agent_run = run_meta_agent(workspace=checkout, prompt=prompt, config=ctx.config)
             patch = create_mutation_patch(
                 checkout=checkout,
-                parent_ref=mutation_parent_ref(checkout, ctx),
+                parent_ref=parent_ref,
                 surface=load_surface_policy(checkout),
             )
             result = _write_mutation_result(ctx.run_dir, agent_run, patch, [])
         except AgentCommandError as exc:
             patch = create_mutation_patch(
                 checkout=checkout,
-                parent_ref=mutation_parent_ref(checkout, ctx),
+                parent_ref=parent_ref,
                 surface=load_surface_policy(checkout),
             )
             _write_mutation_result(
@@ -136,6 +154,20 @@ class AgentCommandMutate(MutateOperator):
                 usage=exc.usage,
             )
             raise SystemExit(exc.returncode)
+        except SystemExit as exc:
+            code = exc.code if isinstance(exc.code, int) and exc.code else 1
+            patch = _empty_failure_patch(checkout, parent_ref, exc)
+            _write_mutation_result(ctx.run_dir, None, patch, ["error: %s" % (exc.code or "mutator exited")])
+            raise SystemExit(code)
+        except Exception as exc:
+            patch = _empty_failure_patch(checkout, parent_ref, exc)
+            _write_mutation_result(
+                ctx.run_dir,
+                None,
+                patch,
+                ["error: %s: %s" % (exc.__class__.__name__, exc)],
+            )
+            raise SystemExit(1)
         if not result.changed:
             return result
         surface = json.loads((ctx.run_dir / "mutate" / "surface-check.json").read_text())

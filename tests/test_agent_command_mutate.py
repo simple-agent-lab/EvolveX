@@ -114,3 +114,24 @@ def test_agent_command_mutate_repairs_surface_violation(tmp_path: Path) -> None:
     assert surface == {"ok": True, "mutated": [], "violations": []}
     assert "repaired surface violations" in (run_dir / "mutate" / "rationale.md").read_text()
     assert (checkout / "README.md").read_text() == "parent\n"
+
+
+def test_agent_command_mutate_writes_artifacts_for_prompt_failure(tmp_path: Path) -> None:
+    checkout, run_dir = _checkout(tmp_path)
+    (checkout / "operators" / "mutate.md").unlink()
+    script = tmp_path / "agent.py"
+    script.write_text("raise SystemExit('should not run')\n")
+
+    try:
+        _agent_command_mutate_cls()().mutate(checkout, "", _ctx(checkout, run_dir, f"{sys.executable} {script}"))
+    except SystemExit as exc:
+        assert exc.code == 1
+    else:
+        raise AssertionError("expected SystemExit")
+
+    assert json.loads((run_dir / "mutate" / "changed.json").read_text()) == []
+    assert json.loads((run_dir / "mutate" / "usage.json").read_text())["usd"] == 0
+    surface = json.loads((run_dir / "mutate" / "surface-check.json").read_text())
+    assert surface["ok"] is True
+    rationale = (run_dir / "mutate" / "rationale.md").read_text()
+    assert "error: FileNotFoundError" in rationale
