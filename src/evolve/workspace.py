@@ -47,13 +47,13 @@ def init_workspace(options: InitOptions) -> None:
 
     workspace.mkdir(parents=True, exist_ok=True)
     config = default_config(options.recipe, workspace.name)
+    target = config["target"]
+    assert isinstance(target, dict)
     if options.seed:
-        target = config["target"]
-        assert isinstance(target, dict)
         target["seed"] = options.seed
 
     _write_files(workspace, config, recipe=options.recipe, init_cwd=Path.cwd())
-    _write_target(workspace, options.seed)
+    _write_target(workspace, target)
     _vendor_mechanism(workspace)
     _make_executable(
         workspace / "operators" / "engines" / "local.sh",
@@ -298,8 +298,10 @@ def _runtime_config(config: dict[str, object]) -> dict[str, object]:
     return runtime
 
 
-def _write_target(workspace: Path, seed: str | None) -> None:
-    if not seed or seed == "builtin-dummy":
+def _write_target(workspace: Path, target_config: dict[str, Any]) -> None:
+    seed = target_config.get("seed")
+    seed_text = str(seed) if seed else None
+    if not seed_text or seed_text == "builtin-dummy":
         target = workspace / "target"
         target.mkdir(parents=True, exist_ok=True)
         (target / "agent.py").write_text(_template("target/agent.py"))
@@ -307,17 +309,29 @@ def _write_target(workspace: Path, seed: str | None) -> None:
         (target / "UPSTREAM.json").write_text(
             json.dumps({"kind": "builtin", "seed": "builtin-dummy"}, sort_keys=True) + "\n"
         )
+        _write_target_harbor_agent(workspace, target_config)
         return
-    if _looks_like_git_url(seed):
+    if _looks_like_git_url(seed_text):
         with tempfile.TemporaryDirectory(prefix="evolve-seed-") as tmp:
             checkout = Path(tmp) / "seed"
-            _git_clone(seed, checkout)
-            _vendor_seed(workspace, checkout, seed)
+            _git_clone(seed_text, checkout)
+            _vendor_seed(workspace, checkout, seed_text)
+        _write_target_harbor_agent(workspace, target_config)
         return
-    source = Path(seed).expanduser()
+    source = Path(seed_text).expanduser()
     if not source.is_dir():
-        raise ValueError(f"seed is not a local directory or git URL: {seed}")
+        raise ValueError(f"seed is not a local directory or git URL: {seed_text}")
     _vendor_seed(workspace, source.resolve(), str(source.resolve()))
+    _write_target_harbor_agent(workspace, target_config)
+
+
+def _write_target_harbor_agent(workspace: Path, target_config: dict[str, Any]) -> None:
+    kind = str(target_config.get("harbor_agent") or "")
+    if not kind:
+        return
+    if kind != "miniswe-source":
+        raise ValueError(f"unsupported target.harbor_agent: {kind}")
+    (workspace / "target" / "harbor_agent.py").write_text(_template("target/harbor/miniswe_source_agent.py"))
 
 
 def _vendor_seed(workspace: Path, source: Path, fallback_remote: str) -> None:
