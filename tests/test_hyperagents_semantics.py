@@ -50,5 +50,5 @@ def test_hyperagents_mutate_change_affects_later_generation_not_current_one(tmp_
     rows = rows_by_genid(workspace)
     assert "1" in rows
     assert "# first-child" in git(workspace, "show", "gen/1:target/agent.py")
-    if "2" in rows:
-        assert "# later-child" in git(workspace, "show", "gen/2:target/agent.py")
+    assert "2" in rows
+    assert "# later-child" in git(workspace, "show", "gen/2:target/agent.py")
