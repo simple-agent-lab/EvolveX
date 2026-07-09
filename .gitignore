@@ -41,6 +41,7 @@ archive.jsonl
 
 # Local agent/tooling state
 .superpowers/
+.worktrees/
 
 # Editor, OS, and logs
 .DS_Store
