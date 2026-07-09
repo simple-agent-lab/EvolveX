@@ -1,0 +1,45 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Install dev dependencies
+        run: uv sync --dev
+
+      # Safety net: workspaces set their own per-repo git identity, but a bare CI
+      # runner has no global one — configure it so any stray git op still works.
+      - name: Configure git identity
+        run: |
+          git config --global user.name "evolve-ci"
+          git config --global user.email "evolve-ci@example.invalid"
+          git config --global init.defaultBranch main
+
+      # The suite is the coherence guard (ARCHITECTURE + line budgets + the
+      # operator registry single-source are all enforced here). It must pass on
+      # every PR — this is what keeps an agent/human-built codebase from rotting.
+      - name: pytest
+        run: uv run pytest -q
+
+      - name: self-driving smoke (init → run → verify)
+        run: |
+          rm -rf /tmp/ci-smoke
+          uv run evolve init /tmp/ci-smoke --recipe hill_climb
+          EVAL_STUB=1 EVOLVE_HOME=/tmp/ci-smoke-home uv run python -m evolve run /tmp/ci-smoke --max-generations 3
+          EVOLVE_HOME=/tmp/ci-smoke-home uv run python -m evolve verify /tmp/ci-smoke

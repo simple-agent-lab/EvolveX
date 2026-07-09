@@ -1,0 +1,28 @@
+---
+description: Docs layout — where designs, plans, and guides go (no docs/superpowers/)
+globs: docs/**/*
+alwaysApply: true
+---
+
+# Docs layout (binding)
+
+When writing or moving documentation — including anything produced by
+**Superpowers** (writing-plans, writing-specs, executing-plans, etc.):
+
+1. Read `docs/README.md` first. That file is the authority for folder roles.
+2. **Never** create or recreate `docs/superpowers/`. That tree is gone.
+3. Place new files by role:
+   - Design / spec → `docs/designs/YYYY-MM-DD-<topic>.md`
+   - Implementation plan → `docs/plans/YYYY-MM-DD-<topic>.md`
+   - Kickoff / how-to → `docs/guides/YYYY-MM-DD-<topic>.md`
+   - Small implementation call → append `docs/decisions/implementation-log.md`
+   - Load-bearing decision → `docs/decisions/README.md` or fold into `DESIGN.md`
+4. Live system authority is `DESIGN.md` (+ `ARCHITECTURE.md` /
+   `src/evolve/frozen/interfaces.py`). Do not leave a second competing
+   "authoritative spec" beside it.
+5. When a design or plan is finished or superseded, `git mv` it into the
+   matching `archive/` folder and add a one-line archived banner — do not
+   leave completed work in the active folders.
+6. Behavior changes that update the live design edit `DESIGN.md` (or the
+   active `docs/designs/` doc) **in the same commit** — see
+   `docs/coding-style.md`.

@@ -1,0 +1,17 @@
+{
+  "skills": [
+    {
+      "name": "evolve-agent",
+      "path": "evolve-agent/SKILL.md",
+      "role": "outer",
+      "summary": "Router: create a workspace, then enter and operate it."
+    },
+    {
+      "name": "evolve-workspace",
+      "path": "evolve-workspace/SKILL.md",
+      "role": "inner",
+      "summary": "The mutator's manual; travels into every workspace."
+    }
+  ],
+  "shared": ["_invariants.md", "_conventions.md"]
+}

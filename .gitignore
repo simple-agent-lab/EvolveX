@@ -1,0 +1,51 @@
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pyre/
+.hypothesis/
+
+# Virtual environments and local interpreters
+.venv/
+venv/
+env/
+ENV/
+
+# Build and packaging outputs
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Coverage and test outputs
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+junit.xml
+
+# Local secrets and machine-specific config
+.env
+.env.*
+!.env.example
+*.local
+
+# Evolve runtime artifacts
+runs/
+archive.jsonl
+.evolve-eval-receipts.jsonl
+.local-archive/
+
+# Local agent/tooling state
+.superpowers/
+
+# Editor, OS, and logs
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+*.log

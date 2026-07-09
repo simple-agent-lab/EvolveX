@@ -1,0 +1,31 @@
+experiment:
+  id: autoresearch
+  max_generations: 8
+  target_score: null
+  budget_usd: 150
+  children_per_gen: 1
+  mode: agent
+  seed: 0
+target:
+  seed: builtin-dummy
+surface:
+  include:
+    - target/agent.py
+  exclude: []
+operators:
+  select: {variant: greedy}
+  rollout: {variant: failure_focused, budget_tasks: 32}
+  mutate: {variant: fixed, timeout_s: 3600}
+  gate: {variant: hillclimb}
+  record: {variant: jsonl}
+  timeout_s: 600
+evaluator:
+  engine: train-bpb
+  dataset: train.py
+  split: {train: 0.5, gate: 0.4, sealed: 0.1, seed: 0}
+  sampling: static
+  tasks_per_round: 16
+  anchor: {final: true, every_rounds: 0}
+  k: 1
+  n_concurrent: 16
+  partial_floor: 0.8

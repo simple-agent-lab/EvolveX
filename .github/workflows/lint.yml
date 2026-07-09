@@ -1,0 +1,31 @@
+name: lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: lint-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Install dev dependencies
+        run: uv sync --dev
+
+      - name: Ruff — lint (blocking)
+        run: uv run ruff check --output-format=github .
+
+      - name: ty — type check (blocking)
+        # The tree is at zero ty diagnostics; keep it there.
+        run: uv run ty check
