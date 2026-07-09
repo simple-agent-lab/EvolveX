@@ -60,8 +60,9 @@ def test_miniswe_wrapper_subclasses_harbor_miniswe_and_installs_candidate_source
     assert environment.uploads == [(target.resolve(), "/installed-agent/miniswe-source")]
     assert "uv tool install --force /installed-agent/miniswe-source" in environment.commands
     assert any("mini-swe-agent" in command for command in environment.commands)
-    assert any("uv run --project /installed-agent/miniswe-source" in command for command in environment.commands)
-    assert any("mini_swe_agent.__file__" in command for command in environment.commands)
+    assert any("direct_url.json" in command for command in environment.commands)
+    assert any("metadata.distribution('mini-swe-agent')" in command for command in environment.commands)
+    assert any("/installed-agent/miniswe-source" in command for command in environment.commands)
 
 
 def test_init_with_local_miniswe_seed_writes_target_harbor_wrapper(tmp_path: Path, monkeypatch) -> None:
