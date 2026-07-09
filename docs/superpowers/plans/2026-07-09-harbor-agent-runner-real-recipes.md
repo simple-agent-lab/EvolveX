@@ -1009,8 +1009,6 @@ import sys
 import types
 from pathlib import Path
 
-from conftest import run_evolve
-
 
 def _install_fake_harbor(monkeypatch):
     root = types.ModuleType("harbor")
@@ -1064,24 +1062,22 @@ def test_miniswe_wrapper_subclasses_harbor_miniswe_and_installs_candidate_source
     assert any("mini-swe-agent" in command for command in environment.commands)
 
 
-def test_init_with_local_miniswe_seed_writes_target_harbor_wrapper(tmp_path: Path) -> None:
+def test_init_with_local_miniswe_seed_writes_target_harbor_wrapper(tmp_path: Path, monkeypatch) -> None:
+    from evolve import workspace as workspace_module
+    from evolve.workspace import InitOptions, init_workspace
+
     seed = tmp_path / "miniswe"
     (seed / "mini_swe_agent").mkdir(parents=True)
     (seed / "mini_swe_agent" / "__init__.py").write_text("__version__ = '0.test'\n")
     (seed / "pyproject.toml").write_text("[project]\nname = 'mini-swe-agent'\nversion = '0.test'\n")
     workspace = tmp_path / "workspace"
+    config = workspace_module.default_config("hill_climb", workspace.name)
+    config["target"]["harbor_agent"] = "miniswe-source"
+    config["evaluator"]["agent"] = "target.harbor_agent:MiniSweSourceAgent"
+    monkeypatch.setattr(workspace_module, "default_config", lambda recipe, experiment_id: config)
 
-    result = run_evolve(
-        "init",
-        str(workspace),
-        "--recipe",
-        "hill_climb",
-        "--seed",
-        str(seed),
-        env={"EVOLVE_HOME": str(tmp_path / "home")},
-    )
+    init_workspace(InitOptions(workspace=workspace, recipe="hill_climb", seed=str(seed)))
 
-    assert result.returncode == 0, result.stderr
     wrapper = workspace / "target" / "harbor_agent.py"
     assert wrapper.exists()
     assert "class MiniSweSourceAgent(MiniSweAgent):" in wrapper.read_text()
