@@ -51,4 +51,6 @@ def test_real_recipe_binds_meta_agent_to_agent_command_library_variant(tmp_path:
 
     palette = workspace_module._operator_palette("hill_climb")
     assert "library/meta_agent/agent_command.py" in palette
-    assert "library/meta_agent/fixed.py" in palette
+    assert "library/meta_agent/fixed.py" not in palette
+    assert "library/meta_agent/noop.py" not in palette
+    assert "library/meta_agent/llm.py" not in palette

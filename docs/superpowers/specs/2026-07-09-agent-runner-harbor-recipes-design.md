@@ -10,7 +10,7 @@ The current framework mixes three concepts that should be separate:
 
 This causes confusing behavior. `CheckoutTargetAgent` can fall back to arbitrary
 scripts such as `solve.sh` or `run.sh`; production recipe names still use
-deterministic `fixed` meta-agent edits; HyperAgents exposes `operators/**` but the
+deterministic meta-agent edits; HyperAgents exposes `operators/**` but the
 default meta-agent does not actually evolve those operators; and `meta_eval`
 currently forces `EVAL_STUB=1` during operator-surface admission replay.
 
@@ -321,8 +321,9 @@ Smoke recipes should be explicitly named:
 - `hyperagents-smoke`
 - `metaagent-smoke`
 
-Smoke recipes may use `fixed`, `noop`, `EVAL_STUB=1`, and deterministic target
-fixtures. Tests that only verify framework mechanics should use smoke recipes.
+Smoke recipes may use `EVAL_STUB=1`, deterministic target fixtures, and a
+test-provided `EVOLVE_AGENT_COMMAND`. Tests that only verify framework
+mechanics should use smoke recipes.
 
 ## HyperAgents Semantics
 

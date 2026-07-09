@@ -81,7 +81,7 @@ Milestones M0-M6 are implemented and tested in the mechanism suite:
 | M3 | Population fan-out and early widened-surface self-reference tests; real child-gate self-reference landed later in M5. |
 | M4 | Six recipes, agent bootstrapping instructions, `status`, and `report`. |
 | M5 | Real subprocess operator runtime, `evolve record`, `evolve.sdk`, operator config variants, and child-owned gate/record self-reference. |
-| M6 | Harbor-first evaluator templates, generic `llm`/`agent_command` meta-agent adapters, target seed vendoring, and per-round same-hash evaluation. |
+| M6 | Harbor-first evaluator templates, `agent_command` meta-agent adapter, target seed vendoring, and per-round same-hash evaluation. |
 
 Harbor is the only real benchmark execution path. Real recipes call Harbor with
 an explicit `evaluator.agent` value. Smoke recipes are named `*-smoke` and are
@@ -300,9 +300,8 @@ thermal pressure, and get more predictable long-running Docker behavior.
 
 - The quickstart local smoke path uses `EVAL_STUB=1` for deterministic
   framework feedback.
-- `llm` and `agent_command` meta-agent adapters exist, but repeatable
-  milestone tests still use the deterministic checkout-local `fixed`
-  meta-agent operator by default.
+- `agent_command` is the only shipped meta-agent adapter. Repeatable milestone
+  tests provide a tiny `EVOLVE_AGENT_COMMAND` under explicit smoke recipes.
 - Archive provenance is protected by mechanism stamps and receipt
   sidecars for auxiliary evals, not by cryptographic signatures.
 - Harbor is verified for Mac development smoke tests, but production

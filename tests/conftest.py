@@ -1,5 +1,6 @@
 import json
 import os
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -19,6 +20,8 @@ def run_evolve(
                 merged_env.pop(key, None)
             else:
                 merged_env[key] = value
+    if env and env.get("EVAL_STUB") == "1" and "EVOLVE_AGENT_COMMAND" not in env:
+        merged_env["EVOLVE_AGENT_COMMAND"] = smoke_agent_command()
     return subprocess.run(
         [sys.executable, "-m", "evolve", *args],
         text=True,
@@ -27,6 +30,26 @@ def run_evolve(
         cwd=cwd,
         check=False,
     )
+
+
+def smoke_agent_command() -> str:
+    code = (
+        "import os\n"
+        "from pathlib import Path\n"
+        "target = Path('target/agent.py')\n"
+        "genid = os.environ.get('EVOLVE_GENID', 'unknown')\n"
+        "target.write_text(target.read_text() + f'\\n# smoke-meta-agent gen {genid}\\n')\n"
+        "print('predicted_fixes: []')\n"
+    )
+    return f"{shlex.quote(sys.executable)} -c {shlex.quote(code)}"
+
+
+def smoke_env(evolve_home: Path) -> dict[str, str]:
+    return {
+        "EVAL_STUB": "1",
+        "EVOLVE_HOME": str(evolve_home),
+        "EVOLVE_AGENT_COMMAND": smoke_agent_command(),
+    }
 
 
 def git(workspace: Path, *args: str) -> str:

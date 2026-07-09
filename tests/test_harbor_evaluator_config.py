@@ -33,7 +33,7 @@ def test_init_real_harbor_recipe_requires_evaluator_agent(
         "operators": {
             "select": {"variant": "greedy"},
             "rollout": {"variant": "noop"},
-            "meta_agent": {"variant": "noop"},
+            "meta_agent": {"variant": "agent_command"},
             "gate": {"variant": "parent_eligible"},
             "record": {"variant": "jsonl"},
         },

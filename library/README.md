@@ -21,7 +21,7 @@ See `DESIGN.md` §7 for the full rationale. In short:
 ```
 library/
 ├─ select/   greedy · newest · random · score_weighted
-├─ meta_agent/   fixed · noop · llm · agent_command
+├─ meta_agent/   agent_command
 ├─ gate/     hillclimb · parent_eligible
 ├─ rollout/  failure_focused · noop
 ├─ record/   jsonl

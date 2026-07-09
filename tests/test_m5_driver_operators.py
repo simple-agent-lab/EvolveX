@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from conftest import git, init_workspace, rows_by_genid, run_evolve
+from conftest import git, init_workspace, rows_by_genid, run_evolve, smoke_env
 
 
 def _rewrite(workspace: Path, relative_path: str, content: str) -> None:
@@ -23,7 +23,7 @@ def test_run_uses_operator_subprocesses_for_loop_steps(tmp_path: Path) -> None:
         str(workspace),
         "--max-generations",
         "1",
-        env={"EVAL_STUB": "1", "EVOLVE_HOME": str(evolve_home)},
+        env=smoke_env(evolve_home),
     )
 
     assert result.returncode == 0, result.stderr
@@ -33,7 +33,7 @@ def test_run_uses_operator_subprocesses_for_loop_steps(tmp_path: Path) -> None:
     assert (run_dir / "feedback" / "index.md").exists()
     row = rows_by_genid(workspace)["1"]
     assert row["reason"] == "score 1.0 >= parent 1.0"
-    assert row["note"] == "variant: fixed"
+    assert row["note"] == "variant: agent_command"
 
 
 def test_run_records_operator_failed_when_meta_agent_operator_crashes(tmp_path: Path) -> None:
@@ -46,7 +46,7 @@ def test_run_records_operator_failed_when_meta_agent_operator_crashes(tmp_path: 
         str(workspace),
         "--max-generations",
         "1",
-        env={"EVAL_STUB": "1", "EVOLVE_HOME": str(evolve_home)},
+        env=smoke_env(evolve_home),
     )
 
     assert result.returncode == 0, result.stderr

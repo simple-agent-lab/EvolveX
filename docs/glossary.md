@@ -26,8 +26,7 @@ Precise meanings for the domain terms this project uses.
   writes the feedback bundle itself; see `src/evolve/feedback.py`.)
 
 - **Meta-agent operator** — the loop step that changes the candidate. It is a
-  protocol adapter around meta-agent variants such as `fixed`, `llm`, and
-  `agent_command`. The `agent_command` variant delegates to
+  protocol adapter around the `agent_command` variant, which delegates to
   `run_meta_agent`, then the mechanism applies surface enforcement before it
   inspects the result.
 

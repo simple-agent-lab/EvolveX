@@ -177,7 +177,7 @@ may appear in recipe prose, but `variant:` values point to these files:
 
 - select: `greedy`, `random`, `score_weighted`, `newest`
 - rollout: `failure_focused`, `noop`
-- meta_agent: `fixed`, `noop`, `llm`, `agent_command`
+- meta_agent: `agent_command`
 - gate: `hillclimb`, `parent_eligible`
 - record: `jsonl`
 

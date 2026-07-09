@@ -53,4 +53,6 @@ def test_smoke_recipes_are_explicitly_named_and_deterministic() -> None:
         assert "seed: builtin-dummy" in config
         assert "agent: target.harbor_agent:MiniSweSourceAgent" in config
         assert "mutate:" not in config
-        assert "meta_agent: {variant: fixed" in config or "meta_agent: {variant: noop" in config
+        assert "meta_agent: {variant: agent_command" in config
+        assert "variant: fixed" not in config
+        assert "variant: noop" not in config

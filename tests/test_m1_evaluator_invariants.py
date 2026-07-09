@@ -1,7 +1,7 @@
 import stat
 from pathlib import Path
 
-from conftest import init_workspace, rows_by_genid, run_evolve
+from conftest import init_workspace, rows_by_genid, run_evolve, smoke_agent_command
 
 
 def make_eval_script(path: Path, body: str) -> None:
@@ -61,7 +61,7 @@ def test_infra_failed_eval_is_scoreless_invalid_parent_and_retryable(tmp_path: P
         str(workspace),
         "--max-generations",
         "1",
-        env={"EVAL_STUB": None, "EVOLVE_HOME": str(evolve_home)},
+        env={"EVAL_STUB": None, "EVOLVE_HOME": str(evolve_home), "EVOLVE_AGENT_COMMAND": smoke_agent_command()},
     )
     assert first.returncode == 0, first.stderr
 

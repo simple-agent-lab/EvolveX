@@ -876,7 +876,7 @@ def test_init_real_harbor_recipe_requires_evaluator_agent(tmp_path: Path, monkey
         "operators": {
             "select": {"variant": "greedy"},
             "rollout": {"variant": "noop"},
-            "meta_agent": {"variant": "noop"},
+            "meta_agent": {"variant": "agent_command"},
             "gate": {"variant": "parent_eligible"},
             "record": {"variant": "jsonl"},
         },
@@ -1274,7 +1274,7 @@ def test_smoke_recipes_are_explicitly_named_and_deterministic() -> None:
         config = _config(name)
         assert "engine: harbor" in config
         assert "agent: target.harbor_agent:MiniSweSourceAgent" in config
-        assert "meta_agent: {variant: fixed" in config or "meta_agent: {variant: noop" in config
+        assert "meta_agent: {variant: agent_command" in config
 ```
 
 Modify `tests/conftest.py`:
@@ -1298,7 +1298,7 @@ def init_workspace(tmp_path: Path, experiment: str = "experiment") -> tuple[Path
 
 Run: `uv run pytest tests/test_phase_e_recipes.py -q`
 
-Expected: FAIL because smoke recipes do not exist and real recipes still use `fixed` or non-Harbor engines.
+Expected: FAIL because smoke recipes do not exist and real recipes still use fake or non-Harbor engines.
 
 - [ ] **Step 3: Create smoke recipes from current deterministic recipes**
 
@@ -1311,7 +1311,8 @@ evaluator:
   agent: target.harbor_agent:MiniSweSourceAgent
 ```
 
-Smoke recipes can keep deterministic `fixed` or `noop` meta-agent edits because tests will run them with `EVAL_STUB=1`.
+Smoke recipes use `agent_command`; tests provide a deterministic
+`EVOLVE_AGENT_COMMAND` while running them with `EVAL_STUB=1`.
 
 - [ ] **Step 4: Convert real recipes to MiniSWE source plus live meta-agent edit**
 
