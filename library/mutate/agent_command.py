@@ -104,6 +104,7 @@ def _write_mutation_result(
     usage_payload = _safe_usage(usage or (agent_run.usage if agent_run else {"usd": 0}))
     _write_json(mutate_dir / "changed.json", patch.changed_paths)
     _write_json(mutate_dir / "surface-check.json", patch.surface_report)
+    (mutate_dir / "patch.diff").write_text(patch.diff)
     (mutate_dir / "rationale.md").write_text("\n".join(all_notes) + "\n")
     (mutate_dir / "predicted_fixes.json").write_text(json.dumps(_predicted_fixes(combined_output)) + "\n")
     _write_json(mutate_dir / "usage.json", usage_payload)

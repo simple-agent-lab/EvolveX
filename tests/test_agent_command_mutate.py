@@ -81,6 +81,9 @@ def test_agent_command_mutate_runs_meta_agent_and_writes_artifacts(tmp_path: Pat
     assert json.loads((run_dir / "mutate" / "predicted_fixes.json").read_text()) == ["task-1"]
     assert json.loads((run_dir / "mutate" / "surface-check.json").read_text())["ok"] is True
     assert json.loads((run_dir / "mutate" / "usage.json").read_text())["usd"] == 0
+    patch_diff = (run_dir / "mutate" / "patch.diff").read_text()
+    assert "diff --git a/target/agent.py b/target/agent.py" in patch_diff
+    assert "+print('child')" in patch_diff
     rationale = (run_dir / "mutate" / "rationale.md").read_text()
     assert "written-by: operators/mutate.py" in rationale
     assert "variant: agent_command" in rationale
@@ -99,6 +102,7 @@ def test_agent_command_mutate_exits_nonzero_after_writing_failure_artifacts(tmp_
         raise AssertionError("expected SystemExit")
 
     assert json.loads((run_dir / "mutate" / "changed.json").read_text()) == []
+    assert (run_dir / "mutate" / "patch.diff").is_file()
     assert "error:" in (run_dir / "mutate" / "rationale.md").read_text()
 
 

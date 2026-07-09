@@ -102,3 +102,37 @@
   - Passed.
 - `git diff --check`
   - Passed.
+
+## Final-Review Fix
+
+- Updated the live `autoresearch` recipe surface from `target/agent.py` to
+  `target/**`, and aligned the real recipe docs in `README.md`,
+  `recipes/README.md`, and `recipes/autoresearch/README.md` so they describe
+  MiniSWE source-tree mutation instead of a single-file target.
+- Documented the real-recipe `agent_command` requirement: callers must set
+  `EVOLVE_AGENT_COMMAND` or provide `operators.mutate.command`; no default
+  command is baked into the recipes.
+- Reworked `src/evolve/mutation.py::_mutation_diff` so tracked paths still come
+  from `git diff --binary <parent> -- ...`, while untracked files are appended
+  via `git diff --binary --no-index -- /dev/null <path>`, keeping the main
+  index untouched.
+- Updated `library/mutate/agent_command.py` to persist the computed mutation
+  diff as `runs/gen-N/mutate/patch.diff` on success and handled failure paths.
+- Corrected the `src/evolve/frozen/meta_eval.py` module docstring to describe
+  replay against the caller's evaluator environment, with stub replay only
+  under explicit `EVAL_STUB=1`.
+- Strengthened regression tests in:
+  - `tests/test_phase_e_recipes.py`
+  - `tests/test_mutation_patch.py`
+  - `tests/test_agent_command_mutate.py`
+
+### Final-Review Verification
+
+- `uv run pytest tests/test_phase_e_recipes.py tests/test_mutation_patch.py tests/test_agent_command_mutate.py tests/test_m3_meta_eval.py -q`
+- `uv run pytest -q`
+- `uv run ruff check .`
+- `git diff --check`
+
+### Final-Review Concerns
+
+- None at patch time; defer to the fresh verification results above.

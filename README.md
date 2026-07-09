@@ -153,7 +153,7 @@ shape, and evaluator template.
 | `dgm` | 4 | driver | Harbor MiniSWE source agent (`target.harbor_agent:MiniSweSourceAgent`) | target |
 | `ahe` | 1 | driver | Harbor MiniSWE source agent (`target.harbor_agent:MiniSweSourceAgent`) | target |
 | `hyperagents` | 2 | driver | Harbor MiniSWE source agent (`target.harbor_agent:MiniSweSourceAgent`) | target + operators |
-| `autoresearch` | 1 | agent | Harbor MiniSWE source agent (`target.harbor_agent:MiniSweSourceAgent`) | `target/agent.py` |
+| `autoresearch` | 1 | agent | Harbor MiniSWE source agent (`target.harbor_agent:MiniSweSourceAgent`) | target |
 | `metaagent` | 1 | driver | Harbor MiniSWE source agent (`target.harbor_agent:MiniSweSourceAgent`) | target + operator prompts |
 
 For MiniSWE source evolution, `target/` is the MiniSWE source checkout plus
@@ -161,6 +161,11 @@ For MiniSWE source evolution, `target/` is the MiniSWE source checkout plus
 `target.harbor_agent:MiniSweSourceAgent`, uploads the candidate source into the
 task container, installs that source, and then reuses Harbor's MiniSWE run
 behavior.
+
+All real recipes use `mutate: {variant: agent_command, ...}`. Before running
+them, provide a meta-agent command with either `EVOLVE_AGENT_COMMAND` in the
+environment or `operators.mutate.command` in config. The recipes do not ship a
+default command.
 
 Example:
 

@@ -63,6 +63,7 @@ def test_create_mutation_patch_includes_new_in_surface_files_in_diff(tmp_path: P
     assert patch.surface_report == {"ok": True, "mutated": ["target/new_file.py"], "violations": []}
     assert "diff --git a/target/new_file.py b/target/new_file.py" in patch.diff
     assert "+print('new')" in patch.diff
+    assert _git(root, "status", "--porcelain", "--", "target/new_file.py") == "?? target/new_file.py"
 
 
 def test_create_mutation_patch_repairs_out_of_surface_paths(tmp_path: Path) -> None:

@@ -62,8 +62,15 @@ def create_mutation_patch(
 def _mutation_diff(root: Path, parent_ref: str, changed: list[str]) -> str:
     if not changed:
         return ""
-    git(root, "add", "--intent-to-add", "--", *_untracked_paths(root, changed), check=False)
-    return git(root, "diff", "--binary", parent_ref, "--", *changed).stdout
+    untracked = set(_untracked_paths(root, changed))
+    tracked = [path for path in changed if path not in untracked]
+    parts: list[str] = []
+    if tracked:
+        parts.append(git(root, "diff", "--binary", parent_ref, "--", *tracked).stdout)
+    for path in changed:
+        if path in untracked:
+            parts.append(git(root, "diff", "--binary", "--no-index", "--", "/dev/null", path, check=False).stdout)
+    return "".join(parts)
 
 
 def _untracked_paths(root: Path, changed: list[str]) -> list[str]:

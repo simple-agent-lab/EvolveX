@@ -11,7 +11,7 @@ target:
   harbor_agent: miniswe-source
 surface:
   include:
-    - target/agent.py
+    - target/**
   exclude: []
 operators:
   select: {variant: greedy}
