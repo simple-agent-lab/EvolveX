@@ -14,12 +14,12 @@ from evolve.frozen import interfaces
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src" / "evolve"
-TOTAL_BUDGET = 3900  # raised for the DESIGN mechanisms + observability (novelty,
-# meta_eval, falsification/verified_fixes, the frozen ring, verify/audit/doctor)
+TOTAL_BUDGET = 4180  # includes agent/mutation modules and current init scaffolding growth
 ROW = re.compile(r"^\| `([^`]+\.py)` \| (\d+) \|")
 APPROVED_MODULES = {
     "__init__.py",
     "__main__.py",
+    "agent.py",
     "archive.py",
     "cli.py",
     "config.py",
@@ -27,6 +27,7 @@ APPROVED_MODULES = {
     "evaluator.py",
     "feedback.py",
     "git.py",
+    "mutation.py",
     "operators.py",
     "population.py",
     "report.py",

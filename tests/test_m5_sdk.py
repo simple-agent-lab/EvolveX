@@ -18,7 +18,7 @@ def _init_and_run_one(tmp_path):
     ws = tmp_path / "ws"
     home = tmp_path / "home"
     env = {"EVAL_STUB": "1", "EVOLVE_HOME": str(home)}
-    assert _evolve(["init", str(ws)], tmp_path, env).returncode == 0
+    assert _evolve(["init", str(ws), "--recipe", "hill_climb-smoke"], tmp_path, env).returncode == 0
     assert _evolve(["run", str(ws), "--max-generations", "1"], tmp_path, env).returncode == 0
     return ws, env
 

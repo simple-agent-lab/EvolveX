@@ -1,5 +1,5 @@
-import json
 import importlib.util
+import json
 import random
 import subprocess
 import sys
