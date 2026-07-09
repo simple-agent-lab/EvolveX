@@ -44,6 +44,8 @@ def run_meta_agent(workspace: Path | str, prompt: str, config: dict[str, Any] | 
 
     with tempfile.NamedTemporaryFile("w", delete=False) as handle:
         handle.write(prompt)
+        handle.flush()
+        os.fsync(handle.fileno())
         prompt_file = handle.name
 
     env = {**os.environ, "EVOLVE_PROMPT_FILE": prompt_file}
@@ -67,7 +69,11 @@ def run_meta_agent(workspace: Path | str, prompt: str, config: dict[str, Any] | 
             stdout, stderr = proc.communicate(timeout=timeout)
         except subprocess.TimeoutExpired:
             _kill_process_group(proc)
-            stdout, stderr = proc.communicate()
+            try:
+                stdout, stderr = proc.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                _kill_process_group(proc, signal.SIGKILL)
+                stdout, stderr = proc.communicate()
             raise AgentCommandError(
                 f"meta-agent timeout after {timeout}s",
                 output=_combined_output(stdout or "", stderr or ""),
@@ -140,9 +146,9 @@ def _timeout_headroom(timeout: float | None) -> float | None:
     return max(0.01, timeout - min(5.0, max(0.5, timeout * 0.05)))
 
 
-def _kill_process_group(proc: subprocess.Popen[str]) -> None:
+def _kill_process_group(proc: subprocess.Popen[str], sig: int = signal.SIGTERM) -> None:
     try:
-        os.killpg(proc.pid, signal.SIGTERM)
+        os.killpg(proc.pid, sig)
     except ProcessLookupError:
         return
 
