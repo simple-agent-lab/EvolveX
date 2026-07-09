@@ -30,6 +30,8 @@ def test_real_recipes_use_harbor_and_real_agent_mutation() -> None:
     for name in REAL_RECIPES:
         config = _config(name)
         assert "engine: harbor" in config
+        assert "dataset: swe-bench-lite" in config
+        assert "seed: https://github.com/SWE-agent/mini-swe-agent.git" in config
         assert "mutate: {variant: agent_command" in config
         assert "agent: target.harbor_agent:MiniSweSourceAgent" in config
         assert "harbor_agent: miniswe-source" in config
@@ -44,5 +46,7 @@ def test_smoke_recipes_are_explicitly_named_and_deterministic() -> None:
     for name in SMOKE_RECIPES:
         config = _config(name)
         assert "engine: harbor" in config
+        assert "dataset: pass@k" in config
+        assert "seed: builtin-dummy" in config
         assert "agent: target.harbor_agent:MiniSweSourceAgent" in config
         assert "mutate: {variant: fixed" in config or "mutate: {variant: noop" in config

@@ -118,3 +118,23 @@ Result:
   `https://github.com/SWE-agent/mini-swe-agent.git`, so any future tests or
   local workflows that still use plain recipe names for offline scaffolding will
   need to switch to `*-smoke` explicitly.
+
+## Fix Section
+
+### Changed files
+
+- `tests/test_phase_e_recipes.py`
+
+### Tests run
+
+- `uv run pytest tests/test_phase_e_recipes.py -q`
+
+### Exact results
+
+- `3 passed in 0.03s`
+
+### Self-review notes
+
+- Added explicit assertions for the real-vs-smoke dataset and seed policy so
+  the recipe catalog test now covers the invariant called out in review.
+- Kept the change constrained to the existing recipe policy test file.
