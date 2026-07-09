@@ -108,6 +108,9 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
     evaluator = cast("dict[str, Any]", config["evaluator"])
     evaluator_engine = str(evaluator["engine"])
     evaluator_dataset = str(evaluator["dataset"])
+    evaluator_agent = str(evaluator.get("agent") or "")
+    if evaluator_engine == "harbor" and not evaluator_agent:
+        raise ValueError("evaluator.agent is required for harbor recipes")
     evaluator_trials = int(evaluator.get("k", 1))
     tasks_per_round = int(evaluator.get("tasks_per_round", evaluator_trials))
     evaluator_n = int(evaluator.get("n_concurrent", evaluator_trials))
@@ -139,13 +142,18 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
         "PROTOCOL.md": (library_root() / "PROTOCOL.md").read_text(),
         "evaluator/eval.sh": _eval_sh(evaluator_engine, evaluator_dataset),
         "evaluator/eval.env": _eval_env(
-            workspace.name, evaluator_dataset, evaluator_n, tasks_per_round, evaluator_trials, partial_floor
+            workspace.name,
+            evaluator_dataset,
+            evaluator_n,
+            tasks_per_round,
+            evaluator_trials,
+            partial_floor,
+            evaluator_agent,
         ),
         "evaluator/splits.json": json.dumps({"train": 0.5, "gate": 0.4, "sealed": 0.1, "seed": 0}, indent=2) + "\n",
         "evaluator/dataset.pin": f"dataset={evaluator_dataset}\nchecksum=sha256:stub\n",
         "evaluator/parse_score.py": _template("evaluator/parse_score.py"),
         "evaluator/stub_eval.py": _template("evaluator/stub_eval.py"),
-        "evaluator/checkout_agent.py": _template("evaluator/checkout_agent.py"),
         "evaluator/engines/local.sh": _shell_script("canonical local engine"),
         "archive.jsonl": "",
     }
@@ -406,15 +414,23 @@ def _make_executable(*paths: Path) -> None:
 
 
 def _eval_env(
-    workspace_name: str, dataset: str, n_concurrent: int, tasks_per_round: int, trials: int, partial_floor: float
+    workspace_name: str,
+    dataset: str,
+    n_concurrent: int,
+    tasks_per_round: int,
+    trials: int,
+    partial_floor: float,
+    agent: str,
 ) -> str:
     expected_trials = tasks_per_round * max(trials, 1)
     return (
         f"EVOLVE_EVALUATOR_DATASET={dataset}\n"
         f"EVOLVE_HARBOR_TASKS={shlex.quote(dataset)}\n"
-        f"EVOLVE_HARBOR_N_CONCURRENT={n_concurrent}\nEVOLVE_HARBOR_EXPECTED_TRIALS={expected_trials}\nEVOLVE_HARBOR_N={n_concurrent}\n"
+        f"EVOLVE_HARBOR_N_CONCURRENT={n_concurrent}\n"
+        f"EVOLVE_HARBOR_EXPECTED_TRIALS={expected_trials}\n"
+        f"EVOLVE_HARBOR_N={n_concurrent}\n"
         f'EVOLVE_JOBS_DIR="$HOME/.evolve/harbor-jobs/{workspace_name}"\n'
-        "EVOLVE_HARBOR_AGENT=evaluator.checkout_agent:CheckoutTargetAgent\n"
+        f"EVOLVE_HARBOR_AGENT={agent}\n"
         f"EVOLVE_PARTIAL_FLOOR={partial_floor}\n"
     )
 

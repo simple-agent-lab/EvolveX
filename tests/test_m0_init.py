@@ -50,6 +50,7 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
     ]
     for relative_path in expected_paths:
         assert (workspace / relative_path).exists(), relative_path
+    assert not (workspace / "evaluator" / "checkout_agent.py").exists()
 
     config = (workspace / "evolve.yaml").read_text()
     assert "children_per_gen: 1" in config
