@@ -17,10 +17,11 @@ currently forces `EVAL_STUB=1` during operator-surface admission replay.
 ## Goals
 
 1. Make Harbor the only real benchmark execution interface.
-2. Add a small, reusable primitive for running a local mutation agent:
-   `run_agent(workspace, prompt)`.
+2. Add a small, reusable primitive for running a local meta-agent:
+   `run_meta_agent(workspace, prompt)`.
 3. Keep `MutateOperator` as the evolve protocol adapter, but make it call the
-   simple agent runner instead of embedding runner logic.
+   simple meta-agent runner and patch builder instead of embedding runner and
+   diff logic.
 4. Split real recipes from smoke recipes. Real recipes should be structurally
    real and fail fast if required live agent or Harbor configuration is missing.
 5. Make HyperAgents truthful: changed mutation workflow is used in later
@@ -49,12 +50,12 @@ Use two agent interfaces, each with one job:
   wrapper inside `target/`, imported through Harbor's normal custom-agent path.
   This wrapper lives next to the open-source agent source being evolved and is
   the only real benchmark execution path.
-- **Mutation agent runner:** a local process runner that receives a workspace
+- **Meta-agent runner:** a local runner that receives a workspace
   path and a prompt, then edits files in that workspace.
 
 `MutateOperator` remains the framework protocol boundary. It builds the prompt,
-calls the mutation agent runner, validates the surface, and writes evolve
-artifacts.
+calls the meta-agent runner, derives the patch from the modified checkout, and
+writes evolve artifacts.
 
 ## Architecture
 
@@ -180,47 +181,120 @@ This means the wrapper needs design discipline more than a large amount of code:
 define the upload path, install command, verification command, and clear failure
 messages. The rest should stay Harbor-native.
 
-### Local Agent Runner
+### Checkout Terminology
 
-Add `src/evolve/agent.py` with a small API:
+`checkout` means the local git worktree for one candidate generation. The driver
+creates it from the selected parent generation, then passes it to mutate. The
+meta-agent edits files inside this checkout.
+
+It is not the top-level Evolve project repo, and it is not the benchmark task
+repo that Harbor creates during evaluation. For MiniSWE source evolution, the
+checkout contains files such as:
+
+```text
+target/
+  mini_swe_agent/
+  harbor_agent.py
+operators/
+evolve.yaml
+evaluator/
+```
+
+Patch creation should compare the modified checkout against a parent git ref,
+usually `gen/{ctx.parent}`. It should not require a second physical parent
+workspace.
+
+### Meta-Agent Runner
+
+Add `src/evolve/agent.py` with a small primitive. The mutator may call it
+through a domain helper named `run_meta_agent`, but the concept is intentionally
+simple:
 
 ```python
-result = run_agent(
+agent_run = run_meta_agent(
     workspace=checkout,
     prompt=prompt,
-    command=command,
-    timeout_s=timeout_s,
+    config=ctx.config,
 )
 ```
 
-`run_agent` is responsible only for process execution:
+At this stage, a meta-agent is any configured program that receives a workspace
+and a prompt, then edits files in that workspace. Its class shape, tool choices,
+and provider-specific behavior can be designed later without changing
+`MutateOperator.mutate`.
+
+`run_meta_agent` is responsible only for running that agent:
 
 - Write the prompt to a temporary file.
-- Run the configured command with `cwd=workspace`.
+- Resolve the configured command from `operators.mutate.command` or
+  `EVOLVE_AGENT_COMMAND`.
+- Run the command with `cwd=workspace`.
 - Export `EVOLVE_PROMPT_FILE`.
 - Capture stdout, stderr, return code, and wall time.
 - Kill the process group on timeout.
 - Return an `AgentRunResult`.
 
-The configured command may come from `operators.mutate.command` or
-`EVOLVE_AGENT_COMMAND`. If neither is set in a real recipe, mutation fails fast
-with a clear message. The runner should not know about generation IDs, archive
-rows, surface checks, or mutate artifact files.
+If no command is configured in a real recipe, mutation fails fast with a clear
+message. The runner should not know about generation IDs, archive rows, surface
+checks, patches, or mutate artifact files.
+
+### Mutation Patch Builder
+
+Add a helper that turns the edited checkout into the mutation record:
+
+```python
+patch = create_mutation_patch(
+    checkout=checkout,
+    parent_ref=mutation_parent_ref(checkout, ctx),
+    surface=load_surface_policy(checkout),
+)
+```
+
+`create_mutation_patch` should:
+
+- Compare the modified checkout against `parent_ref` using git.
+- Compute changed paths and a diff.
+- Apply surface validation and repair or reject invalid paths.
+- Return a `MutationPatch` object with `changed_paths`, `diff`, `surface_report`,
+  and repair notes.
+
+The patch helper owns git diff details. The meta-agent runner does not.
 
 ### Mutate Operator
 
 Refactor `library/mutate/agent_command.py` so it becomes a thin protocol
 adapter:
 
-1. Build the mutation prompt from `operators/mutate.md`, feedback files, and
-   surface rules.
-2. Resolve the command from operator config or `EVOLVE_AGENT_COMMAND`.
-3. Call `run_agent(workspace=checkout, prompt=prompt, ...)`.
-4. Run surface validation and repair.
-5. Write `mutate/rationale.md`, `mutate/predicted_fixes.json`,
-   `mutate/usage.json`, and `mutate/changed.json` through the existing SDK path.
+```python
+class AgentCommandMutate(MutateOperator):
+    def mutate(
+        self,
+        checkout: Path,
+        observation: str,
+        ctx: OperatorContext,
+    ) -> MutateResult:
+        prompt = build_mutation_prompt(checkout, observation, ctx)
+        agent_run = run_meta_agent(
+            workspace=checkout,
+            prompt=prompt,
+            config=ctx.config,
+        )
+        patch = create_mutation_patch(
+            checkout=checkout,
+            parent_ref=mutation_parent_ref(checkout, ctx),
+            surface=load_surface_policy(checkout),
+        )
+        return write_mutation_result(ctx.run_dir, agent_run, patch)
+```
 
-The operator should not reimplement generic process management.
+`MutateOperator` is not the meta-agent. It is the Evolve protocol adapter. Its
+main method should remain this small: build the prompt, run the meta-agent in
+the checkout, derive the patch from the modified checkout, and write mutate
+artifacts.
+
+Helper functions may handle prompt assembly, command resolution, process
+management, git diffing, surface repair, rationale text, predicted fixes, usage,
+and `changed.json`. Those details should not be braided into the main method.
 
 ## Recipe Policy
 
@@ -295,7 +369,7 @@ stub check disguised as a real HyperAgents guard.
 - The MiniSWE target wrapper should verify that the in-container
   `mini-swe-agent` executable resolves to the uploaded candidate install, not to
   a previously installed global package.
-- Missing mutation agent command fails the mutate operator with
+- Missing meta-agent command fails the mutate operator with
   `operator_failed`, naming `EVOLVE_AGENT_COMMAND` and `operators.mutate.command`
   as the accepted configuration points.
 - Agent timeout kills the agent process group and records timeout details in
@@ -307,10 +381,13 @@ stub check disguised as a real HyperAgents guard.
 
 Add or update tests for these behaviors:
 
-- `run_agent` runs a fake command in a temporary workspace, passes
+- `run_meta_agent` runs a fake command in a temporary checkout, passes
   `EVOLVE_PROMPT_FILE`, captures output, records wall time, and handles timeout.
-- `agent_command` mutator delegates process execution to `run_agent` and still
-  writes valid mutate artifacts.
+- `create_mutation_patch` compares a modified checkout to the parent git ref,
+  reports changed paths and diff, and handles surface repair or rejection.
+- `agent_command` mutator has a small main method that calls prompt builder,
+  `run_meta_agent`, `create_mutation_patch`, and result writer while still
+  writing valid mutate artifacts.
 - Harbor evaluator config passes target custom import paths through to
   `harbor run`, including `target.harbor_agent:MiniSweSourceAgent`.
 - The MiniSWE target wrapper satisfies Harbor's `BaseAgent` or
@@ -329,8 +406,10 @@ Add or update tests for these behaviors:
 
 ## Migration
 
-1. Introduce the agent runner without changing recipe defaults.
-2. Refactor `agent_command` to use the runner.
+1. Introduce the meta-agent runner and mutation patch builder without changing
+   recipe defaults.
+2. Refactor `agent_command` so its main method delegates to prompt builder,
+   `run_meta_agent`, `create_mutation_patch`, and result writer.
 3. Replace default real Harbor evaluation with explicit Harbor agent config:
    built-in agent names for config/prompt targets, target custom import paths
    for source-code targets.
@@ -350,8 +429,9 @@ Add or update tests for these behaviors:
 
 - A researcher can understand the system as:
   "Harbor runs the benchmark; `target/` contains the open-source target agent
-  plus a Harbor `BaseAgent` wrapper; `run_agent(workspace, prompt)` runs
-  mutation agents; `MutateOperator` adapts mutation into the evolve protocol."
+  plus a Harbor `BaseAgent` wrapper; `run_meta_agent(workspace, prompt)` edits a
+  candidate checkout; `create_mutation_patch` derives the diff against the
+  parent; `MutateOperator` adapts mutation into the evolve protocol."
 - For MiniSWE source evolution, `target/` is MiniSWE source plus
   `target/harbor_agent.py`, and Harbor imports that wrapper, installs the
   candidate source, and runs it in each evaluation.
