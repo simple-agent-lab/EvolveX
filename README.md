@@ -82,10 +82,9 @@ Milestones M0-M6 are implemented and tested in the mechanism suite:
 | M5 | Real subprocess operator runtime, `evolve record`, `evolve.sdk`, operator config variants, and child-owned gate/record self-reference. |
 | M6 | Harbor-first evaluator templates, generic `llm`/`agent_command` mutator adapters, target seed vendoring, and per-round same-hash evaluation. |
 
-Harbor now has a verified MacBook development smoke path through Colima,
-and generated evaluator templates use the checkout's own `target/` via a
-custom Harbor agent path. A full mini-swe target live smoke is still
-pending; real long-running experiments should run on a Linux machine.
+Harbor is the only real benchmark execution path. Real recipes call Harbor with
+an explicit `evaluator.agent` value. Smoke recipes are named `*-smoke` and are
+the only recipes intended for deterministic `EVAL_STUB=1` mechanism tests.
 
 ## Install For Development
 
@@ -156,6 +155,12 @@ shape, and evaluator template.
 | `hyperagents` | 2 | driver | Docker `report.json` | target + operators + meta |
 | `autoresearch` | 1 | agent | `train.py` / negative BPB | single-file target |
 | `metaagent` | 1 | driver | reflection trace | target + meta |
+
+For MiniSWE source evolution, `target/` is the MiniSWE source checkout plus
+`target/harbor_agent.py`. Harbor imports
+`target.harbor_agent:MiniSweSourceAgent`, uploads the candidate source into the
+task container, installs that source, and then reuses Harbor's MiniSWE run
+behavior.
 
 Example:
 
@@ -289,9 +294,6 @@ thermal pressure, and get more predictable long-running Docker behavior.
 
 - The quickstart local smoke path uses `EVAL_STUB=1` for deterministic
   framework feedback.
-- The live Harbor pytest smoke is pending environment/test-path cleanup:
-  Harbor runs from `/private/tmp/harbor-evolve-m1`, while the current
-  live pytest resolves `examples/tasks/hello-world` from this repo.
 - `llm` and `agent_command` mutator adapters exist, but repeatable
   milestone tests still use the deterministic checkout-local `fixed`
   mutate operator by default.

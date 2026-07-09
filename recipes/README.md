@@ -2,8 +2,14 @@
 
 The recipe set is split in two:
 
-- real recipes (`hill_climb`, `dgm`, `ahe`, `autoresearch`, `hyperagents`, `metaagent`) use MiniSWE source checkout, Harbor, and `agent_command`
-- smoke recipes (`*-smoke`) preserve deterministic offline scaffolds for init and loop-shape tests
+- real recipes (`hill_climb`, `dgm`, `ahe`, `autoresearch`, `hyperagents`, `metaagent`) call Harbor with explicit `evaluator.agent` values and evolve the MiniSWE source checkout through `target.harbor_agent:MiniSweSourceAgent`
+- smoke recipes (`hill_climb-smoke`, `dgm-smoke`, `ahe-smoke`, `autoresearch-smoke`, `hyperagents-smoke`, `metaagent-smoke`) are the only deterministic `EVAL_STUB=1` scaffolds
+
+For MiniSWE source evolution, `target/` is the MiniSWE source checkout plus
+`target/harbor_agent.py`. Harbor imports
+`target.harbor_agent:MiniSweSourceAgent`, uploads the candidate source into the
+task container, installs that source, and then reuses Harbor's MiniSWE run
+behavior.
 
 Each recipe keeps its operator routing in `evolve.yaml`, and each README calls
 out the few choices that distinguish that loop from the others.

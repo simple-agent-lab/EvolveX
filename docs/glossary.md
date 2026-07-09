@@ -31,7 +31,10 @@ Precise meanings for the domain terms this project uses.
   auto-repaired before the mechanism sees them.
 
 - **Evaluator / ruler** — the frozen scorer, wired to **Harbor**. Runs a
-  candidate through a standard entry (`checkout_agent.py`) and returns a score.
+  candidate through the configured Harbor agent and returns a score. Harbor is
+  the only real benchmark execution path. Real recipes call Harbor with an
+  explicit `evaluator.agent` value. Smoke recipes are named `*-smoke` and are
+  the only recipes intended for deterministic `EVAL_STUB=1` mechanism tests.
   Frozen: its tree must match `gen/0` on every eval.
 
 - **Split** — `train / gate / sealed` (`evaluator/splits.json`): train feeds
@@ -46,6 +49,17 @@ Precise meanings for the domain terms this project uses.
 - **Trace / trajectory** — the step record of a rollout. Harbor writes traces
   under `runs/gen-N/eval/` and `~/.evolve/harbor-jobs`. Subtask-level
   trajectory analysis is not yet modelled.
+
+- **MiniSWE source target** — for MiniSWE source evolution, `target/` is the
+  MiniSWE source checkout plus `target/harbor_agent.py`. Harbor imports
+  `target.harbor_agent:MiniSweSourceAgent`, uploads the candidate source into
+  the task container, installs that source, and then reuses Harbor's MiniSWE
+  run behavior.
+
+- **`run_meta_agent`** — `run_meta_agent(workspace, prompt, config)` is the
+  local mutation-agent runner. It receives a checkout and prompt, then runs the
+  configured command in that checkout. It does not know about generation IDs,
+  archive rows, Harbor, or surface policy.
 
 - **Archive / lineage** — every candidate version in git (commit = candidate,
   tag `gen/N`) plus `archive.jsonl`. Keep everything.

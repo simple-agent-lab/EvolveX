@@ -12,13 +12,12 @@ Docs layout: [`docs/README.md`](docs/README.md).
 > **Implementation status** (this doc describes the whole design; not all of it
 > is built). **Built & green today:** the honest core loop, the operator
 > contract + single-source `OPERATORS` registry, the frozen ring
-> (`interfaces`/`sdk`/`meta_eval`), optional research operators (novelty,
-> reflect) and the self-modification gate, falsification → `verified_fixes`,
-> and observability (`verify` / `doctor`; audit quarantine via
-> `EVOLVE_AUDIT_JUMP`). **Planned, not yet built:** islands, auto-train
-> (distill/decontam/train — DESIGN level 4, needs weights infra), and a real
-> evaluator backend (harbor; today the ruler is a candidate-derived stub).
-> Interactive `gen begin` / `gen finish` is designed but not yet a CLI surface.
+> (`interfaces`/`sdk`/`meta_eval`), Harbor-backed evaluation, optional
+> research operators (novelty, reflect) and the self-modification gate,
+> falsification → `verified_fixes`, and observability (`verify` / `doctor`;
+> audit quarantine via `EVOLVE_AUDIT_JUMP`). **Planned, not yet built:**
+> islands, auto-train (distill/decontam/train — DESIGN level 4, needs weights
+> infra), and interactive `gen begin` / `gen finish` as a CLI surface.
 
 ---
 
@@ -34,6 +33,10 @@ RSI has no settled paradigm, so this framework isn't a bet on one. The
 irreducible core is tiny; every research layer on top (insight pools,
 self-modifying operators, islands, auto-train) is **opt-in, off by default**.
 A user who only runs level 0 still has a complete, honest loop.
+
+Harbor is the only real benchmark execution path. Real recipes call Harbor with
+an explicit `evaluator.agent` value. Smoke recipes are named `*-smoke` and are
+the only recipes intended for deterministic `EVAL_STUB=1` mechanism tests.
 
 ## 2. Three rings, ordered by who may change what
 
@@ -212,6 +215,17 @@ so the mechanism writes it after rollout and before mutate (a new
 operator can suppress it. The mutator reads files with its own tools; the
 workspace is the medium between operators — nothing is pre-chewed.
 
+For MiniSWE source evolution, `target/` is the MiniSWE source checkout plus
+`target/harbor_agent.py`. Harbor imports
+`target.harbor_agent:MiniSweSourceAgent`, uploads the candidate source into the
+task container, installs that source, and then reuses Harbor's MiniSWE run
+behavior.
+
+`run_meta_agent(workspace, prompt, config)` is the local mutation-agent runner.
+It receives a checkout and prompt, then runs the configured command in that
+checkout. It does not know about generation IDs, archive rows, Harbor, or
+surface policy.
+
 Each operator is a standalone subprocess script (crash isolation), invoked with
 `--config <json>` and an `EVOLVE_*` env contract, writing its result under
 `runs/gen-<id>/` (the file contract). The driver validates that result at the
@@ -237,6 +251,10 @@ at runtime. So they are neither harness (`src/`) nor per-workspace genome
 - It is also the sink for **harvest**: operators that evolve well in real runs
   get promoted back into `library/`, closing the loop
   `framework seeds → workspace evolves → good variants flow back` (M8).
+
+HyperAgents can evolve `operators/**`. A changed `operators/mutate.py` affects
+later children forked from the accepted generation; changed gate or record code
+can affect the same generation because those operators run after mutation.
 
 ## 8. The learning ladder (every rung above 0 is opt-in)
 

@@ -136,3 +136,18 @@ def test_operator_registry_is_the_single_source() -> None:
     from evolve import config
 
     assert set(config.OPERATOR_KINDS) | set(config.OPTIONAL_OPERATOR_KINDS) == {s.kind for s in interfaces.OPERATORS}
+
+
+def test_docs_do_not_describe_real_recipes_as_smoke_or_checkout_fallback() -> None:
+    docs = [
+        ROOT / "README.md",
+        ROOT / "DESIGN.md",
+        ROOT / "docs" / "glossary.md",
+        ROOT / "recipes" / "README.md",
+    ]
+    text = "\n".join(path.read_text() for path in docs if path.exists())
+    assert "solve.sh" not in text
+    assert "run.sh" not in text
+    assert "CheckoutTargetAgent" not in text
+    assert "hyperagents-smoke" in text
+    assert "target.harbor_agent:MiniSweSourceAgent" in text
