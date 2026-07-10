@@ -414,7 +414,9 @@ git commit -m "Vendor operator and recipe assets"
 - Modify: `templates/evaluator/stub_eval.py`
 - Modify: `src/evolve/driver.py:265-268,327-339`
 - Modify: `library/record/jsonl.py`
+- Modify: `ARCHITECTURE.md` (register the new mechanism module and update driver responsibility)
 - Create: `tests/test_task_vectors.py`
+- Modify: `tests/test_coherence.py` (register the new mechanism module)
 - Modify: `tests/test_m5_driver_operators.py`
 
 **Interfaces:**
@@ -597,7 +599,7 @@ Include `verified_fixes` in record fields only when the helper returns a list. T
 - [ ] **Step 6: Run task-vector and driver tests**
 
 ```bash
-uv run pytest tests/test_task_vectors.py tests/test_m5_driver_operators.py tests/test_m7_verify.py -v
+uv run pytest tests/test_task_vectors.py tests/test_m5_driver_operators.py tests/test_m7_verify.py tests/test_coherence.py -v
 ```
 
 Expected: PASS.
@@ -605,7 +607,9 @@ Expected: PASS.
 - [ ] **Step 7: Commit the task-vector contract**
 
 ```bash
-git add src/evolve/task_vectors.py src/evolve/driver.py library/record/jsonl.py templates/evaluator/stub_eval.py tests/test_task_vectors.py tests/test_m5_driver_operators.py
+git add ARCHITECTURE.md src/evolve/task_vectors.py src/evolve/driver.py \
+  library/record/jsonl.py templates/evaluator/stub_eval.py \
+  tests/test_coherence.py tests/test_task_vectors.py tests/test_m5_driver_operators.py
 git commit -m "Add versioned task vector contract"
 ```
 
