@@ -142,6 +142,7 @@ class MiniSweSourceAgent(MiniSweAgent):
             "set -euo pipefail\n"
             "if [ -f \"$HOME/.local/bin/env\" ]; then . \"$HOME/.local/bin/env\"; "
             "else export PATH=\"$HOME/.local/bin:$PATH\"; fi\n"
+            "unset HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy\n"
             f"cat > {shlex.quote(RUNNER_PATH)} <<'PY'\n{RUNNER}\nPY\n"
             "python - <<'PY'\n"
             "from pathlib import Path\n"

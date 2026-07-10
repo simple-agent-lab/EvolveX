@@ -127,6 +127,40 @@ def test_miniswe_wrapper_runs_candidate_source_api_not_cli(tmp_path: Path, monke
     assert env["OPENAI_API_BASE"] == "https://llm.example/v1"
 
 
+def test_miniswe_runtime_unsets_inherited_proxies_but_install_keeps_proxy(tmp_path: Path, monkeypatch) -> None:
+    _install_fake_harbor(monkeypatch)
+    for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"):
+        monkeypatch.setenv(name, f"http://inherited-{name.lower()}.example:8118")
+
+    target = tmp_path / "target"
+    target.mkdir()
+    wrapper = target / "harbor_agent.py"
+    wrapper.write_text(Path("templates/target/harbor/miniswe_source_agent.py").read_text())
+    module = _load(wrapper)
+
+    class Environment:
+        def __init__(self) -> None:
+            self.commands = []
+            self.envs = []
+
+    environment = Environment()
+    agent = module.MiniSweSourceAgent(model_name="openai/test-model")
+    asyncio.run(agent.run("Fix the bug.", environment, object()))
+
+    proxy_names = ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy")
+    unset_command = f"unset {' '.join(proxy_names)}"
+    runtime_command = environment.commands[-1]
+    assert unset_command in runtime_command
+    assert runtime_command.index(unset_command) < runtime_command.index("uv run --project")
+    assert set(proxy_names).isdisjoint(environment.envs[-1])
+
+    install_env = agent._install_env()
+    assert install_env["HTTP_PROXY"] == "http://proxy.example:8118"
+    assert install_env["HTTPS_PROXY"] == "http://proxy.example:8118"
+    assert install_env["http_proxy"] == "http://proxy.example:8118"
+    assert install_env["https_proxy"] == "http://proxy.example:8118"
+
+
 def test_init_with_local_miniswe_seed_writes_target_harbor_wrapper(tmp_path: Path, monkeypatch) -> None:
     from evolve import workspace as workspace_module
     from evolve.workspace import InitOptions, init_workspace
