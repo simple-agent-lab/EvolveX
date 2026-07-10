@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-10
 
-**Status:** Design approved; pending written-spec review
+**Status:** Approved for implementation
 
 **Scope:** Add a framework-native implementation of Agentic Harness Engineering
 (AHE) for evolving the vendored MiniSWE source agent with Harbor evaluations.
