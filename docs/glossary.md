@@ -16,14 +16,16 @@ Precise meanings for the domain terms this project uses.
 - **Mutable surface** — the `surface` include/exclude globs that say which
   files a candidate edit may touch. The single knob that separates evolving an open
   agent (surface includes its code) from a closed agent (surface includes only
-  the context layer), and a normal run from self-modification (surface adds
-  `operators/**`). The evaluator, archive, and vendored mechanism are always
-  excluded.
+  the context layer), and a normal run from self-modification (surface may add
+  specific workflow files such as `operators/meta_agent.py` and
+  `operators/meta_agent.md`). The evaluator, archive, and vendored mechanism
+  are always excluded.
 
 - **Operator** — a swappable step in the loop: select, rollout, meta_agent, gate,
   record. Framework machinery configured per experiment, run as a subprocess;
-  not part of the agent being evolved. (`observe` is retired — the mechanism
-  writes the feedback bundle itself; see `src/evolve/feedback.py`.)
+  not part of the agent being evolved. (`observe` is retired; operators read
+  in-loop artifacts directly through `ctx` paths such as `runs/`, rollout
+  summaries, and archive rows.)
 
 - **Operator context (`ctx`)** — The per-operator invocation context. In code,
   `ctx` is an `OperatorContext`: workspace root, checkout, run directory,
@@ -49,8 +51,9 @@ Precise meanings for the domain terms this project uses.
   partitioning; today the shape is honored by convention.)
 
 - **Rollout** — runs the candidate on the train split to produce trajectories.
-  The mechanism (`feedback.py`) then writes the ledger-derived feedback bundle
-  the meta-agent reads (the retired `observe` operator's former job).
+  The meta-agent can inspect rollout summaries, artifacts, archive rows, and
+  run directories directly through `ctx`; the mechanism no longer writes a
+  framework-authored feedback bundle.
 
 - **Trace / trajectory** — the step record of a rollout. Harbor writes traces
   under `runs/gen-N/eval/` and `~/.evolve/harbor-jobs`. Subtask-level

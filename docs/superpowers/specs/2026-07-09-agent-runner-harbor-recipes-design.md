@@ -327,26 +327,27 @@ mechanics should use smoke recipes.
 
 ## HyperAgents Semantics
 
-HyperAgents is real only when the meta-agent can edit `operators/**` and those edits
-can affect subsequent execution.
+This section is superseded for the implemented V1 HyperAgents recipe by
+`2026-07-10-method-faithful-hyperagents-recipe-design.md`. The old scaffold
+used broad `operators/**` exposure; the implemented recipe uses the bounded
+atomic genome `target/**`, `operators/meta_agent.py`, and
+`operators/meta_agent.md`, with fixed selection, validation, gate, record,
+evaluator, archive, and configuration.
 
-The driver semantics are:
+The implemented driver semantics are:
 
 - A changed `operators/meta_agent.py` cannot affect the same candidate edit that created
   it. It can affect future children forked from the accepted generation.
-- A changed `operators/gate.py` or `operators/record.py` can affect the same
-  generation because gate and record run after the candidate edit from the tagged child
-  checkout.
-- A changed `operators/select.py` or `operators/rollout.py` can affect future
-  generations when that generation becomes the selected checkout for those
-  operators.
+- `operators/gate.py`, `operators/record.py`, `operators/select.py`,
+  `operators/rollout.py`, and validation remain fixed outside the V1 mutable
+  surface.
 - `program.md` is not executable under `./evolve run`. It should not be
   presented as an evolved workflow unless a later change adds an explicit
   agent-mode orchestrator that reads and follows it.
 
-Real HyperAgents should use `agent_command` as its meta-agent and include
-`operators/**` in the mutable surface. The old deterministic version should be
-renamed `hyperagents-smoke`.
+Real HyperAgents uses the `hyperagents` meta-agent, `score_child_prop`
+selection, `hyperagents` validation/record variants, and the exact bounded
+surface above. The deterministic mechanism test recipe is `hyperagents-smoke`.
 
 ## Self-Modification Admission
 
