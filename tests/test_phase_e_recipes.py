@@ -26,7 +26,7 @@ def test_all_recipes_are_recipe_artifacts_only() -> None:
             assert section in config
 
 
-def test_real_recipes_use_harbor_and_real_meta_agent() -> None:
+def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
     for name in REAL_RECIPES:
         config = _config(name)
         assert "engine: harbor" in config
@@ -34,12 +34,24 @@ def test_real_recipes_use_harbor_and_real_meta_agent() -> None:
         assert "seed: https://github.com/SWE-agent/mini-swe-agent.git" in config
         assert "    - target/**" in config
         assert "target/agent.py" not in config
-        assert "meta_agent: {variant: agent_command" in config
+        if name == "hyperagents":
+            assert "    - operators/meta_agent.py" in config
+            assert "    - operators/meta_agent.md" in config
+            assert "    - operators/**" not in config
+            assert "select: {variant: score_child_prop" in config
+            assert "rollout: {variant: noop}" in config
+            assert "meta_agent: {variant: hyperagents" in config
+            assert "validate: {variant: hyperagents" in config
+            assert "gate: {variant: parent_eligible}" in config
+            assert "record: {variant: hyperagents}" in config
+            assert "stage: {tasks: 4, proceed_if: positive}" in config
+        else:
+            assert "meta_agent: {variant: agent_command" in config
+            assert "variant: noop" not in config
         assert "mutate:" not in config
         assert "agent: target.harbor_agent:MiniSweSourceAgent" in config
         assert "harbor_agent: miniswe-source" in config
         assert "variant: fixed" not in config
-        assert "variant: noop" not in config
         assert "engine: docker-report" not in config
         assert "engine: reflection" not in config
         assert "engine: train-bpb" not in config
@@ -53,6 +65,19 @@ def test_smoke_recipes_are_explicitly_named_and_deterministic() -> None:
         assert "seed: builtin-dummy" in config
         assert "agent: target.harbor_agent:MiniSweSourceAgent" in config
         assert "mutate:" not in config
-        assert "meta_agent: {variant: agent_command" in config
+        if name == "hyperagents-smoke":
+            assert "    - operators/meta_agent.py" in config
+            assert "    - operators/meta_agent.md" in config
+            assert "    - operators/**" not in config
+            assert "select: {variant: score_child_prop" in config
+            assert "rollout: {variant: noop}" in config
+            assert "meta_agent: {variant: hyperagents" in config
+            assert "validate: {variant: hyperagents" in config
+            assert "record: {variant: hyperagents}" in config
+            assert "budget_usd: 1" in config
+            assert "tasks_per_round: 8" in config
+            assert "stage: {tasks: 2, proceed_if: positive}" in config
+        else:
+            assert "meta_agent: {variant: agent_command" in config
+            assert "variant: noop" not in config
         assert "variant: fixed" not in config
-        assert "variant: noop" not in config

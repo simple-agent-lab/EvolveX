@@ -3,6 +3,16 @@ from pathlib import Path
 
 from conftest import git, run_evolve
 
+from evolve.config import surface_lists
+
+
+def _miniswe_seed(root: Path) -> Path:
+    seed = root / "miniswe"
+    (seed / "mini_swe_agent").mkdir(parents=True)
+    (seed / "mini_swe_agent" / "__init__.py").write_text("__version__ = '0.test'\n")
+    (seed / "pyproject.toml").write_text("[project]\nname = 'mini-swe-agent'\nversion = '0.test'\n")
+    return seed
+
 
 def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
     workspace = tmp_path / "experiment"
@@ -110,3 +120,29 @@ def test_init_creates_generation_zero_git_snapshot_and_archive_event(tmp_path: P
     assert row["task_set_hash"]
     assert row["evaluator_tree"]
     assert row["cost"]["usd"] == 0
+
+
+def test_init_binds_real_hyperagents_method_surface_and_operators(tmp_path: Path) -> None:
+    workspace = tmp_path / "hyperagents"
+    seed = _miniswe_seed(tmp_path)
+
+    result = run_evolve(
+        "init",
+        str(workspace),
+        "--recipe",
+        "hyperagents",
+        "--seed",
+        str(seed),
+        env={"EVAL_STUB": "1", "EVOLVE_HOME": str(tmp_path / "evolve-home")},
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "score_child_prop" in (workspace / "operators/select.py").read_text()
+    assert "variant: hyperagents" in (workspace / "operators/meta_agent.py").read_text()
+    assert "HyperAgents Self-Improvement" in (workspace / "operators/meta_agent.md").read_text()
+    assert "HyperAgentsValidate" in (workspace / "operators/validate.py").read_text()
+    assert "HyperAgentsRecord" in (workspace / "operators/record.py").read_text()
+    assert surface_lists(workspace) == (
+        ["target/**", "operators/meta_agent.py", "operators/meta_agent.md"],
+        [],
+    )

@@ -22,10 +22,10 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `__main__.py` | 10 | `python -m evolve` entry |
 | `cli.py` | 200 | argument parsing and verb dispatch only — no logic |
 | `config.py` | 300 | read/render `evolve.yaml`: recipes, experiment values, surface lists, operator blocks |
-| `driver.py` | 1330 | the generation sequencer: orchestrates verbs + operators (incl. candidate validation, novelty, and atomic self-modification admission gates); validates operator file outputs at the seam; computes verified_fixes; audit quarantine; doctor repair |
+| `driver.py` | 1541 | the generation sequencer: orchestrates verbs + operators (incl. candidate validation, novelty, and atomic self-modification admission gates); validates operator file outputs at the seam; computes verified_fixes; audit quarantine; doctor repair |
 | `operators.py` | 150 | subprocess runner for workspace operator scripts (contract: env vars, --config, timeout) |
 | `population.py` | 150 | genid/lineage bookkeeping for fan-out generations |
-| `archive.py` | 270 | append-only event store: merge semantics, stamped-field protection, mirroring, integrity fsck |
+| `archive.py` | 292 | append-only event store: merge semantics, stamped-field protection, mirroring, integrity fsck |
 | `agent.py` | 180 | meta-agent command runner: prompt-file setup, timeout/process-group handling, output + usage capture |
 | `evaluator.py` | 150 | clean-checkout canonical evaluation: tree assertion, exit-code contract, score parsing |
 | `git.py` | 150 | thin git subprocess helpers — nothing evolve-specific |
@@ -48,7 +48,7 @@ each workspace, immutable there because it sits outside the mutable surface
 | `frozen/sdk.py` | 420 | Python operator entrypoint and file-contract IO; no library algorithm policy |
 | `frozen/meta_eval.py` | 130 | self-modification admission gate: confound-free replay of old vs new operator surface (mechanism 1) |
 
-Total `src/evolve/` budget: **4180 lines**. If the mechanism wants to
+Total `src/evolve/` budget: **4461 lines**. If the mechanism wants to
 grow past that, something belongs in a workspace operator instead —
 that is the spec's rule, not a style preference.
 

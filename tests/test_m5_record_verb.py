@@ -8,10 +8,8 @@ from conftest import git, init_workspace, rows_by_genid, smoke_agent_command
 
 from evolve.archive import archive_path, read_events
 from evolve.config import experiment_id, operator_blocks
-from evolve.driver import RunOptions
-from evolve.driver import _run_terminal_record
+from evolve.driver import RunOptions, _run_terminal_record
 from evolve.driver import run as driver_run
-
 
 _NO_PATCH_META_AGENT = """
 import os

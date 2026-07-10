@@ -20,11 +20,12 @@ See `DESIGN.md` §7 for the full rationale. In short:
 
 ```
 library/
-├─ select/   greedy · newest · random · score_weighted
-├─ meta_agent/   agent_command
+├─ select/   greedy · newest · random · score_weighted · score_child_prop
+├─ meta_agent/   agent_command · hyperagents
+├─ validate/ hyperagents
 ├─ gate/     hillclimb · parent_eligible
 ├─ rollout/  failure_focused · noop
-├─ record/   jsonl
+├─ record/   jsonl · hyperagents
 └─ _skeletons/   "write a new operator of verb X" starting points   (planned move)
 ```
 

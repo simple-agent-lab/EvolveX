@@ -97,7 +97,10 @@ def merged_rows(path: Path) -> list[dict[str, Any]]:
             order.append(genid)
         if _is_keyed_evaluation(event):
             if event.get("kind") == "anchor":
-                _merge_anchor_evaluation(rows[genid], evals_by_genid[genid], event)
+                _merge_auxiliary_evaluation(rows[genid], evals_by_genid[genid], event, prefix="anchor")
+                continue
+            if event.get("kind") == "genesis_eval" and not _is_genesis_replacement(rows[genid], genid, event):
+                _merge_auxiliary_evaluation(rows[genid], evals_by_genid[genid], event, prefix="genesis")
                 continue
             auxiliary_hash = genid in top_eval_hash and str(event["task_set_hash"]) != top_eval_hash[genid]
             if auxiliary_hash and not _has_evaluation_provenance(event, genid, receipts):
@@ -224,10 +227,12 @@ def _merge_keyed_evaluation(
     row["evals"] = list(evals.values())
 
 
-def _merge_anchor_evaluation(row: dict[str, Any], evals: dict[str, dict[str, Any]], event: dict[str, Any]) -> None:
+def _merge_auxiliary_evaluation(
+    row: dict[str, Any], evals: dict[str, dict[str, Any]], event: dict[str, Any], *, prefix: str
+) -> None:
     if "genid" not in row:
         row["genid"] = event["genid"]
-    key = f"anchor:{event['task_set_hash']}"
+    key = f"{prefix}:{event['task_set_hash']}"
     evals[key] = _evaluation_entry(event)
     row["evals"] = list(evals.values())
 
@@ -237,7 +242,13 @@ def _evaluation_entry(event: dict[str, Any]) -> dict[str, Any]:
 
 
 def _is_genesis_replacement(row: dict[str, Any], genid: str, event: dict[str, Any]) -> bool:
-    return genid == "0" and row.get("note") == "initial scaffold" and event.get("kind") == "genesis_eval"
+    return (
+        genid == "0"
+        and row.get("note") == "initial scaffold"
+        and event.get("kind") == "genesis_eval"
+        and event.get("status") in {"complete", "partial"}
+        and event.get("score") is not None
+    )
 
 
 def _replace_top_evaluation(row: dict[str, Any], event: dict[str, Any]) -> None:

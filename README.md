@@ -63,7 +63,7 @@ complete, honest evolution loop.
 | 0 · run the loop | generations, lineage, champion tracking | `evolve init` → `evolve run . --max-generations N` |
 | 1 · be the meta-agent | your agent makes the edits; the mechanism keeps the books | `mode: agent` recipe + `program.md`; drive the verbs by hand |
 | 2 · shape the search | select/gate variants; six published systems as recipes | `--recipe <name>`, or edit `evolve.yaml` |
-| 3 · let it self-modify | widen the surface so the agent evolves its own operators (scripts + strategy prose) | `surface.include` adds `operators/**` (e.g. the `hyperagents` recipe) |
+| 3 · let it self-modify | expose a bounded part of the agent workflow as the candidate genome | `surface.include` can add specific operator files such as `operators/meta_agent.py` and `operators/meta_agent.md` |
 
 Evolving weights is not a separate level: a checkpoint is just a candidate —
 a candidate edit that produces new weights re-enters at level 1/2 like any
@@ -153,7 +153,7 @@ shape, and evaluator template.
 | `hill_climb` | 1 | driver | Harbor MiniSWE source agent (`target.harbor_agent:MiniSweSourceAgent`) | target |
 | `dgm` | 4 | driver | Harbor MiniSWE source agent (`target.harbor_agent:MiniSweSourceAgent`) | target |
 | `ahe` | 1 | driver | Harbor MiniSWE source agent (`target.harbor_agent:MiniSweSourceAgent`) | target |
-| `hyperagents` | 2 | driver | Harbor MiniSWE source agent (`target.harbor_agent:MiniSweSourceAgent`) | target + operators |
+| `hyperagents` | 1 | driver | Harbor MiniSWE source agent (`target.harbor_agent:MiniSweSourceAgent`) | target + meta-agent workflow |
 | `autoresearch` | 1 | agent | Harbor MiniSWE source agent (`target.harbor_agent:MiniSweSourceAgent`) | target |
 | `metaagent` | 1 | driver | Harbor MiniSWE source agent (`target.harbor_agent:MiniSweSourceAgent`) | target + operator prompts |
 
@@ -163,10 +163,12 @@ For MiniSWE source evolution, `target/` is the MiniSWE source checkout plus
 task container, installs that source, and then reuses Harbor's MiniSWE run
 behavior.
 
-All real recipes use `meta_agent: {variant: agent_command, ...}`. Before running
-them, provide a meta-agent command with either `EVOLVE_AGENT_COMMAND` in the
-environment or `operators.meta_agent.command` in config. The recipes do not
-ship a default command.
+Most real recipes use `meta_agent: {variant: agent_command, ...}`. The
+`hyperagents` recipe uses its method-specific `hyperagents` meta-agent plus a
+fixed selector/validator/gate/record and the atomic surface `target/**`,
+`operators/meta_agent.py`, `operators/meta_agent.md`. For any recipe that calls
+an external meta-agent command, provide `EVOLVE_AGENT_COMMAND` in the
+environment or `operators.meta_agent.command` in config.
 
 Example:
 
@@ -300,8 +302,10 @@ thermal pressure, and get more predictable long-running Docker behavior.
 
 - The quickstart local smoke path uses `EVAL_STUB=1` for deterministic
   mechanism evaluation.
-- `agent_command` is the only shipped meta-agent adapter. Repeatable milestone
-  tests provide a tiny `EVOLVE_AGENT_COMMAND` under explicit smoke recipes.
+- `agent_command` is the generic shipped meta-agent adapter; HyperAgents also
+  ships a method-specific adapter, validator, and record operator. Repeatable
+  milestone tests provide a tiny `EVOLVE_AGENT_COMMAND` under explicit smoke
+  recipes such as `hyperagents-smoke`.
 - Archive provenance is protected by mechanism stamps and receipt
   sidecars for auxiliary evals, not by cryptographic signatures.
 - Harbor is verified for Mac development smoke tests, but production

@@ -132,14 +132,16 @@ def _configured_timeout(config: dict[str, Any]) -> float | None:
 def _timeout_float(value: object) -> float | None:
     if isinstance(value, bool) or value in (None, ""):
         return None
+    if not isinstance(value, (int, float, str)):
+        return None
     try:
         return float(value)
     except (TypeError, ValueError):
         return None
 
 
-def _timeout_headroom(timeout: float | None) -> float | None:
-    if timeout is None or timeout <= 0:
+def _timeout_headroom(timeout: float) -> float:
+    if timeout <= 0:
         return timeout
     if timeout < 1:
         return max(0.001, timeout * 0.05)
