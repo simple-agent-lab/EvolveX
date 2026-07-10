@@ -7,6 +7,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import sys
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -14,7 +15,22 @@ from pathlib import Path
 from typing import Any
 
 sys.path = [path for path in sys.path if os.path.abspath(path or os.getcwd()) != os.path.dirname(os.path.abspath(__file__))]
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+
+def _runtime_paths(script: Path) -> tuple[Path, Path]:
+    resolved = script.resolve()
+    candidates = (
+        (resolved.parents[1], resolved.parent / "prompts"),
+        (resolved.parent.parent / "library", resolved.parent.parent / "library" / "rollout" / "prompts"),
+    )
+    for support_dir, prompts_dir in candidates:
+        if (support_dir / "ahe_support.py").is_file() and prompts_dir.is_dir():
+            return support_dir, prompts_dir
+    raise ImportError("cannot locate AHE support and prompt assets")
+
+
+_SUPPORT_DIR, _PROMPTS = _runtime_paths(Path(__file__))
+sys.path.insert(0, str(_SUPPORT_DIR))
 
 from ahe_support import compare_states, evaluate_manifest, select_debugger_tasks, task_states, verify_relative_hash
 
@@ -30,18 +46,22 @@ PROXY_REMOVALS = {
     "all_proxy": None,
     "ALL_PROXY": None,
 }
-_PROMPTS = Path(__file__).with_name("prompts")
 _REASON_NAMES = {
     "failure": "failure",
     "regression": "regression",
     "risk": "predicted_risk",
     "control": "successful_control",
 }
+_SAFE_TASK_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,199}")
 
 
 def _write_json(path: Path, payload: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+
+
+def _read_prompt(name: str) -> str:
+    return (_PROMPTS / name).read_text()
 
 
 def _config_dict(config: dict[str, Any], name: str) -> dict[str, Any]:
@@ -88,9 +108,28 @@ def _manifest(parent: dict[str, Any], workspace: Path) -> dict[str, Any] | None:
     return loaded
 
 
+def _verified_bytes(root: Path, reference: object) -> tuple[Path, bytes]:
+    verified = verify_relative_hash(root, reference)
+    resolved_root = root.resolve()
+    resolved = verified.resolve()
+    try:
+        resolved.relative_to(resolved_root)
+    except ValueError as error:
+        raise ValueError("verified artifact escaped its root") from error
+    assert isinstance(reference, dict)
+    payload = resolved.read_bytes()
+    if hashlib.sha256(payload).hexdigest() != reference.get("sha256"):
+        raise ValueError("artifact sha256 does not match verified bytes")
+    return resolved, payload
+
+
+def _has_sealed_component(path: Path) -> bool:
+    return any(part.casefold() == "sealed" for part in path.parts)
+
+
 def _artifact_index(row: dict[str, Any], workspace: Path) -> dict[str, Any]:
-    verified = verify_relative_hash(workspace, row.get("evaluation_artifacts"))
-    loaded = json.loads(verified.read_text())
+    _verified, payload = _verified_bytes(workspace, row.get("evaluation_artifacts"))
+    loaded = json.loads(payload.decode())
     if not isinstance(loaded, dict):
         raise ValueError("evaluation artifact index must be an object")
     return loaded
@@ -103,6 +142,8 @@ def _task_artifacts(index: dict[str, Any], task_id: str) -> list[tuple[str, str]
     artifact_root = Path(jobs_dir).resolve()
     if not artifact_root.is_dir():
         raise ValueError("evaluation artifact jobs_dir does not exist")
+    if _has_sealed_component(artifact_root):
+        raise ValueError("sealed artifact jobs_dir is not available to AHE rollout")
     trials = index.get("trials")
     if not isinstance(trials, list):
         raise ValueError("evaluation artifact index trials must be a list")
@@ -119,8 +160,10 @@ def _task_artifacts(index: dict[str, Any], task_id: str) -> list[tuple[str, str]
             relative = reference.get("path")
             if not isinstance(relative, str) or "sealed" in Path(relative).parts:
                 raise ValueError("sealed artifacts are not available to AHE rollout")
-            verified = verify_relative_hash(artifact_root, reference)
-            evidence.append((verified.relative_to(artifact_root).as_posix(), verified.read_text()))
+            verified, payload = _verified_bytes(artifact_root, reference)
+            if _has_sealed_component(verified):
+                raise ValueError("sealed artifacts are not available to AHE rollout")
+            evidence.append((verified.relative_to(artifact_root).as_posix(), payload.decode()))
     if not evidence:
         raise ValueError(f"no verified training artifacts for task {task_id}")
     return evidence
@@ -162,7 +205,7 @@ def _selection_payload(generation: str, selected: dict[str, list[str]]) -> dict[
 
 
 def _detail_prompt(task_id: str, reasons: list[str], evidence: list[tuple[str, str]]) -> str:
-    template = (_PROMPTS / "ahe_debugger.md").read_text().rstrip()
+    template = _read_prompt("ahe_debugger.md").rstrip()
     traces = "\n\n".join("## %s\n%s" % (path, text.rstrip()) for path, text in evidence)
     return "%s\n\n# Assigned Task\n%s\n\n# Selection Reasons\n%s\n\n# Verified Training Artifacts\n%s\n" % (
         template,
@@ -172,10 +215,17 @@ def _detail_prompt(task_id: str, reasons: list[str], evidence: list[tuple[str, s
     )
 
 
-def _overview_prompt(detail_dir: Path, attribution: dict[str, Any]) -> str:
-    template = (_PROMPTS / "ahe_debugger_overview.md").read_text().rstrip()
+def _report_filename(task_id: str) -> str:
+    if _SAFE_TASK_ID.fullmatch(task_id):
+        return f"{task_id}.md"
+    return f"task-{hashlib.sha256(task_id.encode()).hexdigest()}.md"
+
+
+def _overview_prompt(detail_reports: list[Path], attribution: dict[str, Any]) -> str:
+    template = _read_prompt("ahe_debugger_overview.md").rstrip()
     reports = "\n\n".join(
-        "## %s\n%s" % (report.name, report.read_text().rstrip()) for report in sorted(detail_dir.glob("*.md"))
+        "## %s\n%s" % (report.name, report.read_text().rstrip())
+        for report in sorted(detail_reports, key=lambda path: path.name)
     )
     return "%s\n\n# Attribution\n```json\n%s\n```\n\n# Detail Reports\n%s\n" % (
         template,
@@ -244,8 +294,10 @@ class AheTraceAnalysisRollout(RolloutOperator):
         command = _command(debugger)
         timeout_s = debugger.get("timeout_s")
         failures: list[dict[str, Any]] = []
+        report_paths = {task_id: detail_dir / _report_filename(task_id) for task_id in payload["tasks"]}
+        successful_reports: dict[str, Path] = {}
 
-        def analyze(task_id: str, reasons: list[str]) -> tuple[str, dict[str, Any] | None]:
+        def analyze(task_id: str, reasons: list[str]) -> tuple[str, Path | None, dict[str, Any] | None]:
             try:
                 scratch_dir = scratch_root / hashlib.sha256(task_id.encode()).hexdigest()
                 scratch_dir.mkdir(parents=True, exist_ok=True)
@@ -254,7 +306,7 @@ class AheTraceAnalysisRollout(RolloutOperator):
                 evidence = _task_artifacts(artifact_index, task_id)
                 prompt = _detail_prompt(task_id, reasons, evidence)
             except Exception as error:
-                return task_id, _failure_record(task_id, 0, error)
+                return task_id, None, _failure_record(task_id, 0, error)
             last_error: Exception | None = None
             for _attempt in range(1, attempts + 1):
                 try:
@@ -270,17 +322,20 @@ class AheTraceAnalysisRollout(RolloutOperator):
                         },
                     )
                     detail_dir.mkdir(parents=True, exist_ok=True)
-                    (detail_dir / f"{task_id}.md").write_text(result.stdout)
-                    return task_id, None
+                    report_path = report_paths[task_id]
+                    report_path.write_text(result.stdout)
+                    return task_id, report_path, None
                 except Exception as error:  # Record a terminal source-agent failure instead of dropping a diagnosis.
                     last_error = error
             assert last_error is not None
-            return task_id, _failure_record(task_id, attempts, last_error)
+            return task_id, None, _failure_record(task_id, attempts, last_error)
 
         with ThreadPoolExecutor(max_workers=workers) as executor:
             futures = [executor.submit(analyze, task_id, reasons) for task_id, reasons in payload["tasks"].items()]
             for future in as_completed(futures):
-                _task_id, failure = future.result()
+                task_id, report_path, failure = future.result()
+                if report_path is not None:
+                    successful_reports[task_id] = report_path
                 if failure is not None:
                     failures.append(failure)
 
@@ -291,7 +346,7 @@ class AheTraceAnalysisRollout(RolloutOperator):
             if "regression" in reasons or "predicted_risk" in reasons
         }
         for task_id in sorted(required):
-            if not (detail_dir / f"{task_id}.md").is_file() and task_id not in failure_ids:
+            if task_id not in successful_reports and task_id not in failure_ids:
                 failures.append({"task_id": task_id, "attempts": 0, "error": "missing required analysis outcome"})
         _write_json(analysis_dir / "failures.json", {"failures": sorted(failures, key=lambda failure: str(failure["task_id"]))})
 
@@ -299,7 +354,7 @@ class AheTraceAnalysisRollout(RolloutOperator):
         overview_scratch.mkdir(parents=True, exist_ok=True)
         overview = run_meta_agent(
             workspace=overview_scratch,
-            prompt=_overview_prompt(detail_dir, attribution),
+            prompt=_overview_prompt(list(successful_reports.values()), attribution),
             config={"command": command, "timeout_s": timeout_s},
             env_overrides={
                 **PROXY_REMOVALS,
@@ -312,7 +367,7 @@ class AheTraceAnalysisRollout(RolloutOperator):
 
         artifacts = [
             "rollout/analysis/selection.json",
-            *[f"rollout/analysis/detail/{task_id}.md" for task_id in sorted(payload["tasks"]) if (detail_dir / f"{task_id}.md").is_file()],
+            *[successful_reports[task_id].relative_to(ctx.run_dir).as_posix() for task_id in sorted(successful_reports)],
             "rollout/analysis/failures.json",
             "rollout/analysis/overview.md",
             "rollout/attribution.json",

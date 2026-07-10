@@ -1,11 +1,16 @@
+import copy
 import hashlib
 import importlib.util
 import json
 import random
+import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
 from types import SimpleNamespace
+
+import pytest
 
 from evolve.frozen.interfaces import OperatorContext
 
@@ -39,10 +44,11 @@ def _write_artifacts(workspace: Path, generation: str, task_ids: list[str]) -> d
     artifact_dir = workspace / "runs" / f"gen-{generation}" / "eval" / "artifacts"
     files = []
     for task_id in task_ids:
-        trace = artifact_dir / f"{task_id}.md"
+        trace_name = task_id if "/" not in task_id and "\\" not in task_id else hashlib.sha256(task_id.encode()).hexdigest()
+        trace = artifact_dir / f"{trace_name}.md"
         trace.parent.mkdir(parents=True, exist_ok=True)
         trace.write_text(f"training trace for {task_id}\n")
-        files.append({"path": f"artifacts/{task_id}.md", "sha256": _sha256(trace)})
+        files.append({"path": f"artifacts/{trace_name}.md", "sha256": _sha256(trace)})
     index = artifact_dir.parent / "evaluation_artifacts.json"
     index.write_text(
         json.dumps(
@@ -60,6 +66,9 @@ def test_ahe_rollout_parallel_trace_analysis_is_hashed_and_isolated(tmp_path: Pa
     checkout = workspace / "candidate-checkout"
     run_dir = workspace / "runs" / "gen-2"
     checkout.mkdir(parents=True)
+    stale_report = run_dir / "rollout" / "analysis" / "detail" / "stale.md"
+    stale_report.parent.mkdir(parents=True)
+    stale_report.write_text("STALE REPORT MUST NOT BE READ\n")
     task_ids = ["failed-task", "regressed-task", "risk-task", "stable-pass"]
     grandparent_artifacts = _write_artifacts(workspace, "0", task_ids)
     parent_artifacts = _write_artifacts(workspace, "1", task_ids)
@@ -136,6 +145,8 @@ def test_ahe_rollout_parallel_trace_analysis_is_hashed_and_isolated(tmp_path: Pa
     for call in calls:
         env = call["env"]
         assert all(env[name] is None for name in AHE_ROLLOUT.PROXY_REMOVALS)
+    overview_call = next(call for call in calls if call["env"]["EVOLVE_SOURCE_AGENT_ROLE"] == "debugger_overview")
+    assert "STALE REPORT MUST NOT BE READ" not in overview_call["prompt"]
     assert result.summary["analyzed"] == 4
     assert "rollout/analysis/overview.md" in result.artifacts
 
@@ -196,3 +207,174 @@ def test_ahe_rollout_caps_parallel_debuggers_at_five(tmp_path: Path, monkeypatch
     AHE_ROLLOUT.AheTraceAnalysisRollout().rollout(checkout, ctx)
 
     assert maximum == 5
+
+
+def test_installed_rollout_imports_support_and_reads_copied_prompts(tmp_path: Path, monkeypatch) -> None:
+    from evolve import workspace as workspace_module
+
+    config = workspace_module.default_config("ahe-smoke", "installed-ahe")
+    config["operators"]["rollout"] = {"variant": "ahe_trace_analysis"}
+    monkeypatch.setattr(workspace_module, "default_config", lambda _recipe, _experiment: copy.deepcopy(config))
+    workspace = tmp_path / "installed-ahe"
+    workspace_module.init_workspace(workspace_module.InitOptions(workspace=workspace, recipe="ahe-smoke"))
+
+    installed_rollout = workspace / "operators" / "rollout.py"
+    code = (
+        "import importlib.util\n"
+        f"path = {str(installed_rollout)!r}\n"
+        "spec = importlib.util.spec_from_file_location('installed_ahe_rollout', path)\n"
+        "module = importlib.util.module_from_spec(spec)\n"
+        "spec.loader.exec_module(module)\n"
+        "print(module._read_prompt('ahe_debugger.md').splitlines()[0])\n"
+        "print(module._read_prompt('ahe_debugger_overview.md').splitlines()[0])\n"
+    )
+    result = subprocess.run([sys.executable, "-c", code], text=True, capture_output=True, check=False, cwd=tmp_path)
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == ["# AHE Trace Debugger", "# AHE Trace Analysis Overview"]
+    assert (workspace / "library" / "ahe_support.py").is_file()
+    assert (workspace / "library" / "rollout" / "prompts" / "ahe_debugger.md").is_file()
+
+
+def test_artifact_index_rejects_forged_hash(tmp_path: Path) -> None:
+    index = tmp_path / "index.json"
+    index.write_text('{"jobs_dir": "/tmp", "trials": []}\n')
+
+    with pytest.raises(ValueError, match="sha256"):
+        AHE_ROLLOUT._artifact_index(
+            {"evaluation_artifacts": {"path": "index.json", "sha256": "0" * 64}},
+            tmp_path,
+        )
+
+
+def test_verified_bytes_rehashes_exact_returned_bytes(tmp_path: Path, monkeypatch) -> None:
+    artifact = tmp_path / "trace.txt"
+    authentic = b"authentic trace\n"
+    artifact.write_bytes(b"forged after verification\n")
+    reference = {"path": "trace.txt", "sha256": hashlib.sha256(authentic).hexdigest()}
+    monkeypatch.setattr(AHE_ROLLOUT, "verify_relative_hash", lambda _root, _reference: artifact)
+
+    with pytest.raises(ValueError, match="sha256"):
+        AHE_ROLLOUT._verified_bytes(tmp_path, reference)
+
+
+def test_task_artifacts_reject_forged_trace_hash(tmp_path: Path) -> None:
+    jobs = tmp_path / "jobs"
+    trace = jobs / "trace.txt"
+    trace.parent.mkdir()
+    trace.write_text("forged trace\n")
+    index = {
+        "jobs_dir": str(jobs),
+        "trials": [{"task_name": "task", "files": [{"path": "trace.txt", "sha256": "0" * 64}]}],
+    }
+
+    with pytest.raises(ValueError, match="sha256"):
+        AHE_ROLLOUT._task_artifacts(index, "task")
+
+
+def test_task_artifacts_reject_sealed_jobs_dir(tmp_path: Path) -> None:
+    jobs = tmp_path / "sealed" / "jobs"
+    trace = jobs / "trace.txt"
+    trace.parent.mkdir(parents=True)
+    trace.write_text("sealed trace\n")
+    index = {
+        "jobs_dir": str(jobs),
+        "trials": [{"task_name": "task", "files": [{"path": "trace.txt", "sha256": _sha256(trace)}]}],
+    }
+
+    with pytest.raises(ValueError, match="sealed"):
+        AHE_ROLLOUT._task_artifacts(index, "task")
+
+
+def test_task_artifacts_reject_symlink_alias_to_sealed_path(tmp_path: Path) -> None:
+    jobs = tmp_path / "jobs"
+    sealed = jobs / "sealed"
+    trace = sealed / "trace.txt"
+    trace.parent.mkdir(parents=True)
+    trace.write_text("sealed trace\n")
+    (jobs / "alias").symlink_to(sealed, target_is_directory=True)
+    index = {
+        "jobs_dir": str(jobs),
+        "trials": [{"task_name": "task", "files": [{"path": "alias/trace.txt", "sha256": _sha256(trace)}]}],
+    }
+
+    with pytest.raises(ValueError, match="sealed"):
+        AHE_ROLLOUT._task_artifacts(index, "task")
+
+
+def test_unsafe_task_id_uses_hashed_report_path(tmp_path: Path, monkeypatch) -> None:
+    workspace = tmp_path / "workspace"
+    checkout = workspace / "candidate-checkout"
+    run_dir = workspace / "runs" / "gen-2"
+    checkout.mkdir(parents=True)
+    task_id = "../escape"
+    artifacts = _write_artifacts(workspace, "1", [task_id])
+    (workspace / "archive.jsonl").write_text(
+        json.dumps({"genid": "1", "task_vector": _vector({task_id: [0, 0]}), "evaluation_artifacts": artifacts}) + "\n"
+    )
+
+    monkeypatch.setattr(
+        AHE_ROLLOUT,
+        "run_meta_agent",
+        lambda **_kwargs: SimpleNamespace(stdout="report\n"),
+    )
+    ctx = OperatorContext(
+        workspace=workspace,
+        checkout=checkout,
+        run_dir=run_dir,
+        genid="2",
+        parent="1",
+        round=None,
+        fan_out=1,
+        config={"debugger": {"command": "fake-debugger", "control_count": 0}},
+        rng=random.Random(0),
+    )
+
+    result = AHE_ROLLOUT.AheTraceAnalysisRollout().rollout(checkout, ctx)
+
+    detail_dir = (run_dir / "rollout" / "analysis" / "detail").resolve()
+    reports = list(detail_dir.glob("*.md"))
+    assert len(reports) == 1
+    assert reports[0].resolve().parent == detail_dir
+    assert reports[0].name == f"task-{hashlib.sha256(task_id.encode()).hexdigest()}.md"
+    assert not (run_dir / "rollout" / "analysis" / "escape.md").exists()
+    assert f"rollout/analysis/detail/{reports[0].name}" in result.artifacts
+
+
+def test_terminal_debugger_failure_records_attempts(tmp_path: Path, monkeypatch) -> None:
+    workspace = tmp_path / "workspace"
+    checkout = workspace / "candidate-checkout"
+    run_dir = workspace / "runs" / "gen-2"
+    checkout.mkdir(parents=True)
+    artifacts = _write_artifacts(workspace, "1", ["failed-task"])
+    (workspace / "archive.jsonl").write_text(
+        json.dumps({"genid": "1", "task_vector": _vector({"failed-task": [0, 0]}), "evaluation_artifacts": artifacts}) + "\n"
+    )
+    attempts = 0
+
+    def fake_run_meta_agent(*, env_overrides: dict, **_kwargs):
+        nonlocal attempts
+        if env_overrides["EVOLVE_SOURCE_AGENT_ROLE"] == "debugger":
+            attempts += 1
+            raise RuntimeError("debugger failed")
+        return SimpleNamespace(stdout="overview\n")
+
+    monkeypatch.setattr(AHE_ROLLOUT, "run_meta_agent", fake_run_meta_agent)
+    ctx = OperatorContext(
+        workspace=workspace,
+        checkout=checkout,
+        run_dir=run_dir,
+        genid="2",
+        parent="1",
+        round=None,
+        fan_out=1,
+        config={"debugger": {"command": "fake-debugger", "attempts": 2, "control_count": 0}},
+        rng=random.Random(0),
+    )
+
+    result = AHE_ROLLOUT.AheTraceAnalysisRollout().rollout(checkout, ctx)
+
+    failures = json.loads((run_dir / "rollout" / "analysis" / "failures.json").read_text())
+    assert attempts == 2
+    assert failures == {"failures": [{"attempts": 2, "error": "debugger failed", "task_id": "failed-task"}]}
+    assert result.summary["failed"] == 1
