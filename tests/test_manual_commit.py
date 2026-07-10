@@ -1,0 +1,34 @@
+from pathlib import Path
+
+from conftest import git, init_workspace, rows_by_genid, run_evolve
+
+
+def test_manual_commit_rejects_surface_violation_without_child_commit_or_tag(tmp_path: Path) -> None:
+    workspace, evolve_home = init_workspace(tmp_path)
+    child = tmp_path / "child"
+
+    fork = run_evolve("fork", str(workspace), "0", str(child), env={"EVOLVE_HOME": str(evolve_home)})
+    assert fork.returncode == 0, fork.stderr
+    parent_commit = git(workspace, "rev-parse", "gen/0")
+
+    (child / "README.md").write_text("out of surface\n")
+
+    result = run_evolve(
+        "commit",
+        str(workspace),
+        str(child),
+        "--parent",
+        "0",
+        "--genid",
+        "1",
+        env={"EVOLVE_HOME": str(evolve_home)},
+    )
+
+    assert result.returncode == 0, result.stderr
+    row = rows_by_genid(workspace)["1"]
+    assert row["status"] == "invalid_proposal"
+    assert row["valid_parent"] is False
+    assert row["mutated"] == ["README.md"]
+    assert row["surface_violations"] == ["README.md"]
+    assert git(workspace, "tag", "--list", "gen/1") == ""
+    assert git(child, "rev-parse", "HEAD") == parent_commit

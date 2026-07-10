@@ -564,32 +564,21 @@ def commit_child(workspace: Path, child_worktree: Path, parent: str, genid: str)
 
     include, exclude = surface_patterns(workspace)
     violations = check_paths(mutated, include, exclude)
-    commit_paths(child_worktree, mutated, f"evolve gen {genid}")
-    create_tag(child_worktree, tag)
     if violations:
-        append_event(
+        _append_candidate_rejected(
             workspace,
             exp_id,
-            {
-                "genid": genid,
-                "parent": parent,
-                "tag": tag,
-                "score": None,
-                "status": "invalid_proposal",
-                "task_set_hash": None,
-                "evaluator_tree": None,
-                "valid_parent": False,
-                "verdict": "discard",
-                "reason": "changed paths outside mutable surface",
-                "mutated": mutated,
-                "surface_violations": violations,
-                "predicted_fixes": [],
-                "note": "commit rejected by surface",
-                "cost": {"usd": 0, "wall_s": 0},
-            },
+            genid,
+            parent,
+            status="invalid_proposal",
+            reason="changed paths outside mutable surface",
+            mutated=mutated,
+            violations=violations,
         )
         return
 
+    commit_paths(child_worktree, mutated, f"evolve gen {genid}")
+    create_tag(child_worktree, tag)
     append_event(
         workspace,
         exp_id,
