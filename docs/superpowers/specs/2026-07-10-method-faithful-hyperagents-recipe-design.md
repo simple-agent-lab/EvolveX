@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-10
 
-**Status:** Awaiting written-spec review
+**Status:** Approved for implementation
 
 **Scope:** Replace the current HyperAgents placeholder with a framework-native,
 behaviorally faithful implementation of the original HyperAgents generation loop.
