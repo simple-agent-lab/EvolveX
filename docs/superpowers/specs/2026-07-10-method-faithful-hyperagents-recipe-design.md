@@ -26,11 +26,12 @@ archive even when they score below their parents.
 
 ## Context
 
-The existing `hyperagents` recipe is a scaffold, not a method-faithful
-implementation. It uses the generic MiniSWE editor, random parent selection, a
-minimal framework-written feedback bundle, and the same broad operator surface
-as other recipes. Its defining behavior is currently represented only by a test
-showing that an edited meta-agent operator affects a later generation.
+Before this design, the `hyperagents` recipe was only a scaffold: it used the
+generic MiniSWE editor, random parent selection, a framework-written feedback
+bundle, and a broad operator surface. The method-faithful recipe replaces that
+with fixed `score_child_prop` selection, the dedicated HyperAgents meta-agent,
+validation and record variants, and the atomic surface `target/**`,
+`operators/meta_agent.py`, and `operators/meta_agent.md`.
 
 The replacement should preserve the framework's git-tag lineage, operator
 protocol, Harbor evaluator, and append-only archive. It should reproduce the

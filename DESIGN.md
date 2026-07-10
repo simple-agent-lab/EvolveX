@@ -249,11 +249,12 @@ at runtime. So they are neither harness (`src/`) nor per-workspace genome
   get promoted back into `library/`, closing the loop
   `framework seeds → workspace evolves → good variants flow back` (M8).
 
-HyperAgents can evolve `operators/**`. A changed `operators/meta_agent.py`
-affects later children forked from the accepted generation; changed gate or
-record code can affect the same generation because those operators run after
-the candidate edit. The driver checks the mutable surface immediately after the
-proposal, runs optional candidate validation, and rejects a failed
+HyperAgents uses a bounded atomic genome: `target/**`,
+`operators/meta_agent.py`, and `operators/meta_agent.md`. A changed meta-agent
+workflow affects later children forked from the accepted generation; fixed
+selection, validation, gate, record, evaluator, and archive code remain outside
+the V1 mutable surface. The driver checks the mutable surface immediately after
+the proposal, runs optional candidate validation, and rejects a failed
 self-modification admission atomically: no part of the child is committed.
 
 ## 8. The learning ladder (every rung above 0 is opt-in)

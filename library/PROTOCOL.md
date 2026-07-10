@@ -191,11 +191,12 @@ appending the remaining object to the archive.
 The shipped library uses canonical algorithm names only. Recipe research names
 may appear in recipe prose, but `variant:` values point to these files:
 
-- select: `greedy`, `random`, `score_weighted`, `newest`
+- select: `greedy`, `random`, `score_weighted`, `newest`, `score_child_prop`
 - rollout: `failure_focused`, `noop`
-- meta_agent: `agent_command`
+- meta_agent: `agent_command`, `hyperagents`
+- validate: `hyperagents`
 - gate: `hillclimb`, `parent_eligible`
-- record: `jsonl`
+- record: `jsonl`, `hyperagents`
 
 ## Stability Tiers
 
