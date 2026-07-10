@@ -195,6 +195,21 @@ def test_build_ahe_prompt_reads_only_explicit_ahe_artifacts(tmp_path: Path) -> N
     assert "ROLLBACK + PIVOT" in prompt
 
 
+def test_build_ahe_prompt_binds_immutable_manifest_identity(tmp_path: Path) -> None:
+    checkout, run_dir = _checkout(tmp_path)
+    module = _editor_module()
+    ctx = _ctx(checkout, run_dir, f"{sys.executable} -c 'pass'")
+    parent_ref = module.patch_parent_ref(checkout, ctx)
+
+    prompt = module.build_ahe_prompt(checkout, ctx, parent_ref)
+
+    assert "# Immutable Manifest Identity" in prompt
+    assert "Generation ID: `1`" in prompt
+    assert "Parent generation ID: `0`" in prompt
+    assert f"Parent git ref: `{parent_ref}`" in prompt
+    assert 'Copy exactly `"generation": "1"` and `"parent": "0"` into `change_manifest.json`.' in prompt
+
+
 def test_installed_editor_imports_support_and_reads_copied_prompt(tmp_path: Path, monkeypatch) -> None:
     from evolve import workspace as workspace_module
 

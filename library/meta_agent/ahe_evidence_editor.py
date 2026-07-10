@@ -86,14 +86,24 @@ def _manifest_path(ctx: OperatorContext) -> Path:
     return ctx.run_dir / "meta_agent" / "change_manifest.json"
 
 
-def build_ahe_prompt(checkout: Path, ctx: OperatorContext) -> str:
+def build_ahe_prompt(checkout: Path, ctx: OperatorContext, parent_ref: str | None = None) -> str:
     run_dir = ctx.run_dir
     overview = run_dir / "rollout" / "analysis" / "overview.md"
     attribution = run_dir / "rollout" / "attribution.json"
     attempts = run_dir / "feedback" / "attempts.md"
     manifest_path = _manifest_path(ctx)
+    parent_ref = parent_ref or patch_parent_ref(checkout, ctx)
+    parent = str(ctx.parent)
     prompt_chunks = [
         _read_prompt("ahe_evolve.md").rstrip(),
+        (
+            "# Immutable Manifest Identity\n\n"
+            "- Generation ID: `%s`\n"
+            "- Parent generation ID: `%s`\n"
+            "- Parent git ref: `%s`\n\n"
+            "Copy exactly `\"generation\": \"%s\"` and `\"parent\": \"%s\"` into `change_manifest.json`."
+        )
+        % (ctx.genid, parent, parent_ref, ctx.genid, parent),
         "# Experiment Config\n\n```yaml\n%s\n```" % (checkout / "evolve.yaml").read_text().rstrip(),
         "# Analysis Overview\n\n%s" % overview.read_text().rstrip(),
         "# Previous Change Attribution\n\n```json\n%s\n```" % attribution.read_text().rstrip(),
@@ -189,7 +199,7 @@ class AheEvidenceEditor(MetaAgentOperator):
             manifest_path.parent.mkdir(parents=True, exist_ok=True)
             agent_run = run_meta_agent(
                 workspace=checkout,
-                prompt=build_ahe_prompt(checkout, ctx),
+                prompt=build_ahe_prompt(checkout, ctx, parent_ref),
                 config={"command": command, "timeout_s": ctx.config.get("timeout_s")},
                 env_overrides={
                     **PROXY_REMOVALS,
