@@ -38,6 +38,7 @@ class _OperatorBinding:
     kind: str
     source: str
     text: str
+    companion_text: str | None
 
 
 def init_workspace(options: InitOptions) -> None:
@@ -162,6 +163,8 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
     bindings = _operator_bindings(config, recipe=recipe, init_cwd=init_cwd)
     for binding in bindings:
         files[f"operators/{binding.kind}.py"] = _with_provenance(binding.kind, binding.source, binding.text)
+        if binding.companion_text is not None:
+            files[f"operators/{binding.kind}.md"] = binding.companion_text
     if any(binding.kind == "novelty" for binding in bindings):
         files["operators/novelty.md"] = _template("workspace/operators/novelty.md")
     files["operators/README.md"] = _operator_index(bindings, recipe)
@@ -192,10 +195,14 @@ def _operator_bindings(config: dict[str, object], *, recipe: str, init_cwd: Path
             source_path = source if source.is_absolute() else init_cwd / source
             if not source_path.is_file():
                 raise ValueError(f"operators.{kind} script not found: {script}")
-            bindings.append(_OperatorBinding(kind, str(source_path), source_path.read_text()))
+            companion = source_path.with_suffix(".md")
+            companion_text = companion.read_text() if companion.is_file() else None
+            bindings.append(_OperatorBinding(kind, str(source_path), source_path.read_text(), companion_text))
             continue
         source = _resolve_operator_variant(recipe, kind, str(variant or "default"))
-        bindings.append(_OperatorBinding(kind, _source_label(source), source.read_text()))
+        companion = source.with_suffix(".md")
+        companion_text = companion.read_text() if companion.is_file() else None
+        bindings.append(_OperatorBinding(kind, _source_label(source), source.read_text(), companion_text))
     return bindings
 
 
@@ -206,7 +213,7 @@ def _operator_palette(recipe: str) -> dict[str, str]:
     self-modifying agent can copy over and evolve. Keeping them in separate
     trees is what makes `operators/` scannable at a glance."""
     palette: dict[str, str] = {}
-    for kind in OPERATOR_KINDS:
+    for kind in (*OPERATOR_KINDS, *OPTIONAL_OPERATOR_KINDS):
         for directory in (recipe_root() / recipe / "operators" / kind, library_root() / kind):
             if not directory.is_dir():
                 continue

@@ -4,6 +4,9 @@ from pathlib import Path
 
 import pytest
 
+from evolve.frozen import sdk
+from evolve.frozen.interfaces import ValidateOperator, ValidateResult
+
 
 def test_operator_abcs_have_one_kind_specific_abstract_method():
     from evolve.frozen import interfaces
@@ -12,6 +15,7 @@ def test_operator_abcs_have_one_kind_specific_abstract_method():
         interfaces.SelectOperator: {"pick"},
         interfaces.RolloutOperator: {"rollout"},
         interfaces.MetaAgentOperator: {"run"},
+        interfaces.ValidateOperator: {"validate"},
         interfaces.GateOperator: {"decide"},
         interfaces.RecordOperator: {"annotate"},
     }
@@ -81,6 +85,25 @@ def test_sdk_main_runs_meta_agent_operator_and_writes_meta_agent_artifacts(
     assert json.loads((meta_agent_dir / "predicted_fixes.json").read_text()) == ["target/agent.py"]
     assert json.loads((meta_agent_dir / "usage.json").read_text()) == {"usd": 1.25}
     assert (meta_agent_dir / "rationale.md").read_text() == "edited target\n"
+
+
+def test_sdk_main_runs_validate_operator_and_writes_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run_dir = tmp_path / "run"
+    _set_sdk_env(monkeypatch, tmp_path)
+
+    class TinyValidate(ValidateOperator):
+        def validate(self, checkout: Path, ctx) -> ValidateResult:
+            return ValidateResult(accept=True, reason="imports pass", artifacts=["validate/imports.log"])
+
+    sdk.main(TinyValidate)
+
+    assert json.loads((run_dir / "validate" / "result.json").read_text()) == {
+        "accept": True,
+        "artifacts": ["validate/imports.log"],
+        "reason": "imports pass",
+    }
 
 
 def _set_sdk_env(

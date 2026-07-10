@@ -30,6 +30,7 @@ from .interfaces import (
     RolloutOperator,
     Row,
     SelectOperator,
+    ValidateOperator,
     validate_gate_payload,
     validate_meta_agent_payload,
     validate_novelty_payload,
@@ -37,6 +38,7 @@ from .interfaces import (
     validate_reflect_payload,
     validate_rollout_payload,
     validate_select_payload,
+    validate_validate_payload,
 )
 
 RECORD_STRIPPED_FIELDS = STAMPED_FIELDS | {
@@ -109,6 +111,9 @@ def main(operator_cls: type[object]) -> None:
             (meta_agent_dir / "rationale.md").write_text("\n".join(payload["notes"]) + "\n")
         if not (meta_agent_dir / "usage.json").exists():
             _write_json(meta_agent_dir / "usage.json", payload["usage"])
+    elif issubclass(operator_cls, ValidateOperator):
+        payload = validate_validate_payload(operator.validate(ctx.checkout, ctx))
+        _write_json(ctx.run_dir / "validate" / "result.json", payload)
     elif issubclass(operator_cls, NoveltyOperator):
         payload = validate_novelty_payload(operator.assess(ctx.checkout, ctx))
         _write_json(ctx.run_dir / "novelty.json", payload)

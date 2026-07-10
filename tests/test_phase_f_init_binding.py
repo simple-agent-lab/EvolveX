@@ -54,3 +54,32 @@ def test_real_recipe_binds_meta_agent_to_agent_command_library_variant(tmp_path:
     assert "library/meta_agent/fixed.py" not in palette
     assert "library/meta_agent/noop.py" not in palette
     assert "library/meta_agent/llm.py" not in palette
+
+
+def test_variant_markdown_companion_becomes_active_operator_prompt(tmp_path: Path, monkeypatch) -> None:
+    from evolve import workspace as workspace_module
+
+    library = tmp_path / "library"
+    (library / "meta_agent").mkdir(parents=True)
+    (library / "meta_agent" / "custom.py").write_text("# custom operator\n")
+    (library / "meta_agent" / "custom.md").write_text("CUSTOM STRATEGY\n")
+    monkeypatch.setattr(workspace_module, "library_root", lambda: library)
+
+    config = {
+        "operators": {
+            "select": {"script": str(tmp_path / "select.py")},
+            "rollout": {"script": str(tmp_path / "rollout.py")},
+            "meta_agent": {"variant": "custom"},
+            "gate": {"script": str(tmp_path / "gate.py")},
+            "record": {"script": str(tmp_path / "record.py")},
+        }
+    }
+    for name in ("select", "rollout", "gate", "record"):
+        (tmp_path / f"{name}.py").write_text(f"# {name}\n")
+    binding = next(
+        item
+        for item in workspace_module._operator_bindings(config, recipe="test", init_cwd=tmp_path)
+        if item.kind == "meta_agent"
+    )
+
+    assert binding.companion_text == "CUSTOM STRATEGY\n"
