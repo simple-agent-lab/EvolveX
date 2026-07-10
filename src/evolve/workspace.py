@@ -9,6 +9,7 @@ import stat
 import subprocess
 import tempfile
 from dataclasses import dataclass
+from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import Any, cast
 
@@ -91,10 +92,7 @@ exit 1
 
 
 def _vendor_mechanism(workspace: Path) -> None:
-    """Copy the evolve mechanism package into the workspace so it is
-    self-driving (mechanism-in-workspace). The vendored copy lives under
-    .evolve/ and, together with the root `evolve` console, is protected from
-    candidate edits by the surface's implicit excludes."""
+    """Vendor the self-driving mechanism under the workspace's protected .evolve/ tree."""
     package_src = Path(__file__).resolve().parent
     shutil.copytree(
         package_src,
@@ -118,8 +116,6 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
     partial_floor = float(evaluator.get("partial_floor", 0.8))
     files = {
         "evolve.yaml": render_yaml(_runtime_config(config)),
-        # Static skeleton — the browsable shape of a workspace lives as real files
-        # under templates/workspace/ (single source; no drift from generation).
         "README.md": _template("workspace/README.md"),
         "AGENTS.md": _template("workspace/AGENTS.md"),
         "program.md": _template("workspace/program.md"),
@@ -127,19 +123,13 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
         ".evolve-protocol-version": "1\n",
         "operators/engines/local.sh": _shell_script("operator local engine"),
         "operators/preflight.sh": _shell_script("operator preflight"),
-        # Per-verb strategy prose lives beside the active scripts (not a parallel
-        # meta/ tree) so code + policy travel as one pair.
         "operators/select.md": _template("workspace/operators/select.md"),
         "operators/rollout.md": _template("workspace/operators/rollout.md"),
         "operators/meta_agent.md": _template("workspace/operators/meta_agent.md"),
         "operators/gate.md": _template("workspace/operators/gate.md"),
         "operators/record.md": _template("workspace/operators/record.md"),
         "operators/meta_agent_brief.md": _template("workspace/operators/meta_agent_brief.md"),
-        # Inner skill: travels into the workspace under a unified, tool-agnostic
-        # `skills/` folder (not `.claude/skills/`) so Claude Code AND codex (and
-        # others) can find the meta-agent's manual (DESIGN §4, template = skill).
         "skills/evolve-workspace/SKILL.md": _skill("evolve-workspace/SKILL.md"),
-        # Human-readable operator protocol the inner skill points meta-agents at.
         "PROTOCOL.md": (library_root() / "PROTOCOL.md").read_text(),
         "evaluator/eval.sh": _eval_sh(evaluator_engine, evaluator_dataset),
         "evaluator/eval.env": _eval_env(
@@ -166,7 +156,7 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
     if any(binding.kind == "novelty" for binding in bindings):
         files["operators/novelty.md"] = _template("workspace/operators/novelty.md")
     files["operators/README.md"] = _operator_index(bindings, recipe)
-    files.update(_operator_palette(recipe))
+    files.update(_operator_palette(recipe) | _operator_assets(recipe) | _recipe_evaluator_assets(recipe))
     for relative_path, content in files.items():
         path = workspace / relative_path
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -201,27 +191,54 @@ def _operator_bindings(config: dict[str, object], *, recipe: str, init_cwd: Path
 
 
 def _operator_palette(recipe: str) -> dict[str, str]:
-    """Vendor the per-kind variant catalog into the workspace's own `library/`,
-    mirroring the framework's `library/`. `operators/` holds only the active
-    scripts the driver runs; `library/<kind>/` holds the swap-in alternatives a
-    self-modifying agent can copy over and evolve. Keeping them in separate
-    trees is what makes `operators/` scannable at a glance."""
-    palette: dict[str, str] = {}
+    return {
+        f"library/{kind}/{path.name}": _with_provenance(kind, _source_label(path), path.read_text())
+        for kind in OPERATOR_KINDS
+        for directory in (library_root() / kind, recipe_root() / recipe / "operators" / kind)
+        if directory.is_dir()
+        for path in sorted(directory.iterdir())
+        if path.name.endswith(".py")
+    }
+
+
+def _walk_files(root: Path | Traversable, prefix: Path = Path("")):
+    for item in sorted(root.iterdir(), key=lambda entry: entry.name):
+        relative = prefix / item.name
+        if any(part.startswith(".") for part in relative.parts):
+            continue
+        if isinstance(item, Path) and item.is_symlink():
+            raise ValueError(f"operator asset may not be a symlink: {item}")
+        if item.is_dir():
+            yield from _walk_files(item, relative)
+        elif item.is_file():
+            yield relative, item
+
+
+def _text_files(root: Path | Traversable):
+    for relative, source in _walk_files(root):
+        try:
+            yield relative, source.read_text()
+        except UnicodeDecodeError:
+            continue
+
+
+def _operator_assets(recipe: str) -> dict[str, str]:
+    assets: dict[str, str] = {}
     for kind in OPERATOR_KINDS:
         for directory in (recipe_root() / recipe / "operators" / kind, library_root() / kind):
-            if not directory.is_dir():
-                continue
-            for path in sorted(directory.iterdir()):
-                if path.name.endswith(".py"):
-                    palette.setdefault(
-                        f"library/{kind}/{path.name}", _with_provenance(kind, _source_label(path), path.read_text())
-                    )
-    return palette
+            if directory.is_dir():
+                for relative, text in _text_files(directory):
+                    if relative.suffix != ".py":
+                        assets.setdefault(f"library/{kind}/{relative.as_posix()}", text)
+    return assets | {f"library/{relative.as_posix()}": text for relative, text in _text_files(library_root()) if len(relative.parts) == 1 and relative.suffix == ".py" and not relative.name.startswith("_")}
+
+
+def _recipe_evaluator_assets(recipe: str) -> dict[str, str]:
+    root = recipe_root() / recipe / "evaluator"
+    return {} if not root.is_dir() else {f"evaluator/{relative.as_posix()}": text for relative, text in _text_files(root)}
 
 
 def _operator_index(bindings: list[_OperatorBinding], recipe: str) -> str:
-    """Generated map of the active operator set, derived from the bindings +
-    catalog — one glance tells you what runs and what you could swap in."""
     rows = []
     for binding in bindings:
         active = Path(binding.source).stem

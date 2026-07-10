@@ -20,7 +20,13 @@ def test_all_recipes_are_recipe_artifacts_only() -> None:
         recipe = RECIPES / name
         assert (recipe / "README.md").is_file()
         assert (recipe / "evolve.yaml").is_file()
-        assert {path.name for path in recipe.iterdir()} <= {"README.md", "evolve.yaml", "notes.md"}
+        assert {path.name for path in recipe.iterdir()} <= {
+            "README.md",
+            "evolve.yaml",
+            "notes.md",
+            "evaluator",
+            "sealed",
+        }
         config = _config(name)
         for section in ("experiment:", "target:", "surface:", "operators:", "evaluator:"):
             assert section in config
