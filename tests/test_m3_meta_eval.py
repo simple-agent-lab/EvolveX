@@ -71,6 +71,7 @@ def test_meta_eval_replay_does_not_inject_eval_stub(tmp_path: Path, monkeypatch)
     captured_env = {}
 
     def fake_sh(cmd, cwd, *, check=True, env=None, timeout=600):
+        assert cmd != ["git", "init", "-q", "-b", "main"]
         if cmd[:3] == [sys.executable, "-m", "evolve"]:
             captured_env.update(env or {})
             (cwd / "archive.jsonl").write_text(json.dumps({"score": 1.0}) + "\n")
@@ -84,6 +85,8 @@ def test_meta_eval_replay_does_not_inject_eval_stub(tmp_path: Path, monkeypatch)
     assert score == 1.0
     assert "EVAL_STUB" not in captured_env
     assert captured_env["EVOLVE_HOME"] == str(tmp_path / ".meta-home")
+    assert captured_env["GIT_AUTHOR_NAME"] == "meta-eval"
+    assert captured_env["GIT_COMMITTER_EMAIL"] == "meta@local"
 
 
 def test_meta_eval_admits_noninferior_operator_edit(tmp_path: Path, monkeypatch) -> None:

@@ -1,5 +1,8 @@
 import stat
+import json
 from pathlib import Path
+
+from evolve.archive import MECHANISM_EVAL_FIELD, append_event
 
 from conftest import init_workspace, rows_by_genid, run_evolve, smoke_agent_command
 
@@ -82,3 +85,74 @@ def test_infra_failed_eval_is_scoreless_invalid_parent_and_retryable(tmp_path: P
     assert repaired["status"] == "complete"
     assert repaired["score"] == 1.0
     assert repaired["valid_parent"] is True
+
+
+def test_mechanism_eval_can_replace_initial_scaffold_score(tmp_path: Path) -> None:
+    workspace, _evolve_home = init_workspace(tmp_path, experiment="manual-attempt")
+    initial = rows_by_genid(workspace)["0"]
+
+    append_event(
+        workspace,
+        workspace.name,
+        {
+            **initial,
+            "score": 0.75,
+            "reason": "manual archive write",
+            "note": "manual attempt",
+        },
+    )
+    assert rows_by_genid(workspace)["0"]["score"] == 1.0
+
+    workspace, _evolve_home = init_workspace(tmp_path, experiment="mechanism-attempt")
+    initial = rows_by_genid(workspace)["0"]
+    append_event(
+        workspace,
+        workspace.name,
+        {
+            **initial,
+            "score": None,
+            "status": "infra_failed",
+            "valid_parent": False,
+            "verdict": "discard",
+            "reason": "mechanism evaluation stamp",
+            "note": "mechanism evaluation recorded before gate/record",
+            "cost": {"usd": 0, "wall_s": 1.0},
+            MECHANISM_EVAL_FIELD: True,
+        },
+    )
+    append_event(
+        workspace,
+        workspace.name,
+        {
+            **initial,
+            "score": 0.25,
+            "task_vector": {"baseline": False},
+            "reason": "mechanism evaluation stamp",
+            "note": "real baseline eval",
+            "cost": {"usd": 0, "wall_s": 1.2},
+            MECHANISM_EVAL_FIELD: True,
+        },
+    )
+
+    row = rows_by_genid(workspace)["0"]
+    assert row["score"] == 0.25
+    assert row["task_vector"] == {"baseline": False}
+    assert row["note"] == "real baseline eval"
+
+
+def test_eval_force_re_evaluates_completed_generation_zero(tmp_path: Path) -> None:
+    workspace, evolve_home = init_workspace(tmp_path)
+
+    result = run_evolve(
+        "eval",
+        str(workspace),
+        "0",
+        "--force",
+        env={"EVAL_STUB": "1", "EVOLVE_HOME": str(evolve_home)},
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert (workspace / "runs" / "gen-0" / "eval" / "score").exists()
+    last_event = json.loads((workspace / "archive.jsonl").read_text().splitlines()[-1])
+    assert last_event["genid"] == "0"
+    assert last_event[MECHANISM_EVAL_FIELD] is True

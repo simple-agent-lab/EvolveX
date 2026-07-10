@@ -195,7 +195,7 @@ def _merge_keyed_evaluation(
         return
 
     if task_hash == top_eval_hash[genid]:
-        _merge_event_fields(row, _top_eval(row), event)
+        _merge_event_fields(row, row, event)
         return
 
     current = evals.get(task_hash)
@@ -236,6 +236,19 @@ def _top_eval(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def _can_replace_stamped(current: dict[str, Any], event: dict[str, Any]) -> bool:
+    if (
+        (
+            current.get("note") in {"initial scaffold", "mechanism evaluation recorded before gate/record"}
+            or current.get("pending_gate_record") is True
+        )
+        and event.get(MECHANISM_EVAL_FIELD) is True
+        and event.get("genid") == current.get("genid")
+        and event.get("tag") == current.get("tag")
+        and event.get("status") in {"complete", "partial"}
+        and event.get("score") is not None
+        and event.get("valid_parent") is True
+    ):
+        return True
     if (
         current.get("pending_gate_record") is True
         and event.get("status") == "operator_failed"

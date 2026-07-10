@@ -61,6 +61,7 @@ def test_harbor_registry_dataset_uses_dataset_flag_and_task_file(tmp_path: Path)
         "HARBOR_DOCKER_HOST_CAPTURE": str(docker_host_capture),
         "EVOLVE_RUN_DIR": str(tmp_path / "run"),
         "OPENAI_MODEL": "smoke-model",
+        "EVOLVE_HARBOR_AGENT_SETUP_TIMEOUT_MULTIPLIER": "3",
     }
     result = subprocess.run([str(evaluator / "eval.sh")], cwd=tmp_path, env=env, text=True, capture_output=True)
 
@@ -73,5 +74,6 @@ def test_harbor_registry_dataset_uses_dataset_flag_and_task_file(tmp_path: Path)
     assert args[args.index("--include-task-name", args.index("--include-task-name") + 1) + 1] == "task-b"
     assert args[args.index("--agent") + 1] == "mini-swe-agent"
     assert args[args.index("--model") + 1] == "openai/smoke-model"
+    assert args[args.index("--agent-setup-timeout-multiplier") + 1] == "3"
     assert docker_host_capture.read_text() == "unset\n"
     assert (tmp_path / "run" / "status").read_text() == "complete\n"

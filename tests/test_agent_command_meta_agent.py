@@ -10,7 +10,7 @@ from evolve.frozen.interfaces import OperatorContext
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def _agent_command_meta_agent_cls():
+def _agent_command_module():
     spec = importlib.util.spec_from_file_location(
         "agent_command_under_test",
         ROOT / "library" / "meta_agent" / "agent_command.py",
@@ -18,7 +18,11 @@ def _agent_command_meta_agent_cls():
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module.AgentCommandMetaAgent
+    return module
+
+
+def _agent_command_meta_agent_cls():
+    return _agent_command_module().AgentCommandMetaAgent
 
 
 def _git(root: Path, *args: str) -> str:
@@ -87,6 +91,23 @@ def test_agent_command_meta_agent_runs_command_and_writes_artifacts(tmp_path: Pa
     rationale = (run_dir / "meta_agent" / "rationale.md").read_text()
     assert "written-by: operators/meta_agent.py" in rationale
     assert "variant: agent_command" in rationale
+
+
+def test_build_meta_agent_prompt_includes_config_and_ahe_contract(tmp_path: Path) -> None:
+    checkout, run_dir = _checkout(tmp_path)
+    prompt = _agent_command_module().build_meta_agent_prompt(
+        checkout,
+        "Task task-a failed during evaluation.",
+        _ctx(checkout, run_dir, f"{sys.executable} -c 'pass'"),
+    )
+
+    assert "# Experiment Config" in prompt
+    assert "target.harbor_agent:MiniSweSourceAgent" in prompt
+    assert "MiniSWE source" in prompt
+    assert "Failure evidence" in prompt
+    assert "Root cause" in prompt
+    assert "predicted_fixes" in prompt
+    assert "risk_tasks" in prompt
 
 
 def test_agent_command_meta_agent_exits_nonzero_after_writing_failure_artifacts(tmp_path: Path) -> None:

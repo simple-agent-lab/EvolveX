@@ -69,6 +69,25 @@ def _surface_rules(checkout: Path) -> str:
     return "- Surface include: %s\n- Surface exclude: %s" % (surface.include, surface.exclude)
 
 
+def _experiment_config(checkout: Path) -> str:
+    path = checkout / "evolve.yaml"
+    if not path.exists():
+        return ""
+    return "# Experiment Config\n\n```yaml\n%s\n```" % path.read_text().rstrip()
+
+
+def _evidence_contract() -> str:
+    return (
+        "# Evidence Contract\n\n"
+        "You are editing the MiniSWE source checkout under `target/`, not wrapping a CLI. "
+        "Use source-code changes that can be committed inside the mutable surface. Before changing files, identify:\n\n"
+        "1. Failure evidence: which task behavior or feedback motivates the edit.\n"
+        "2. Root cause: why the current MiniSWE source likely failed.\n"
+        "3. Targeted fix: the smallest source change that addresses that root cause.\n"
+        "4. Predicted impact: final output must include `predicted_fixes: [...]`; include `risk_tasks: [...]` if known.\n"
+    )
+
+
 def build_meta_agent_prompt(checkout: Path, observation: str, ctx: OperatorContext) -> str:
     feedback = _feedback_text(ctx.run_dir) or observation.strip()
     return (
@@ -76,7 +95,9 @@ def build_meta_agent_prompt(checkout: Path, observation: str, ctx: OperatorConte
             chunk
             for chunk in [
                 (checkout / "operators" / "meta_agent.md").read_text().rstrip(),
+                _experiment_config(checkout),
                 feedback,
+                _evidence_contract(),
                 "# Surface Rules\n\n%s" % _surface_rules(checkout),
                 '# Output Contract\n\nEdit the checkout directly. Do not output patches, diffs, or fenced file blocks. Optional final line: predicted_fixes: ["task-id"].',
             ]

@@ -71,7 +71,7 @@ def _write_genesis(tree: Path) -> None:
 def _replay(tree: Path, k: int, seed: str) -> float:
     """Fresh repo plus K micro-generations; return the best score."""
     git = ["git", "-c", "user.name=meta-eval", "-c", "user.email=meta@local"]
-    _sh(["git", "init", "-q", "-b", "main"], tree)
+    _sh(["git", "init", "-q"], tree)
     _sh(git + ["add", "-A"], tree)
     _sh(git + ["commit", "-qm", "replay-genesis"], tree)
     _sh(["git", "tag", "gen/0"], tree)
@@ -80,7 +80,7 @@ def _replay(tree: Path, k: int, seed: str) -> float:
         [sys.executable, "-m", "evolve", "run", ".", "--max-generations", str(k)],
         tree,
         check=False,
-        env={"EVOLVE_HOME": str(tree / ".meta-home"), "EVOLVE_SEED": str(seed)},
+        env={"EVOLVE_HOME": str(tree / ".meta-home"), "EVOLVE_SEED": str(seed), "GIT_AUTHOR_NAME": "meta-eval", "GIT_AUTHOR_EMAIL": "meta@local", "GIT_COMMITTER_NAME": "meta-eval", "GIT_COMMITTER_EMAIL": "meta@local"},
     )
     if result.returncode != 0:
         raise RuntimeError(f"replay run failed: {result.stderr.strip()[:300]}")

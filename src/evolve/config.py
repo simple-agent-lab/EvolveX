@@ -113,43 +113,46 @@ def _read_section_file(config: Resource, name: str) -> dict[str, Any]:
         return {}
     values: dict[str, Any] = {}
     in_section = False
-    current_list: str | None = None
+    current_container: tuple[str, int] | None = None
     for line in config.read_text().splitlines():
         stripped = line.strip()
         if stripped.startswith(f"{name}:"):
             inline = stripped.split(":", 1)[1].strip()
             if inline:
                 return {key: _coerce_scalar(value) for key, value in _parse_inline_mapping(inline).items()}
-            in_section = True
-            current_list = None
+            in_section, current_container = True, None
             continue
         if in_section and line and not line.startswith(" "):
             break
         if not in_section or not stripped:
             continue
-        if current_list and stripped.startswith("- "):
-            values[current_list].append(stripped[2:].strip().strip("\"'"))
+        indent = len(line) - len(line.lstrip(" "))
+        if current_container and indent > current_container[1]:
+            container_key, _container_indent = current_container
+            if stripped.startswith("- "):
+                if not isinstance(values.get(container_key), list):
+                    values[container_key] = []
+                values[container_key].append(stripped[2:].strip().strip("\"'"))
+                continue
+            if ":" in stripped:
+                nested_key, nested_raw = (part.strip() for part in stripped.split(":", 1))
+                if not isinstance(values.get(container_key), dict):
+                    values[container_key] = {}
+                values[container_key][nested_key] = _parse_value(nested_raw)  # type: ignore[index]
+                continue
+        if indent > 2 or ":" not in stripped:
             continue
-        if ":" not in stripped:
-            continue
-        key, raw = stripped.split(":", 1)
-        key = key.strip()
-        raw = raw.strip()
-        current_list = None
+        key, raw = (part.strip() for part in stripped.split(":", 1))
+        current_container = None
         if not raw:
-            values[key] = []
-            current_list = key
+            values[key], current_container = [], (key, indent)
             continue
-        if raw.startswith("{"):
-            values[key] = {
-                item_key: _coerce_scalar(item_value) for item_key, item_value in _parse_inline_mapping(raw).items()
-            }
-            continue
-        if raw.startswith("["):
-            values[key] = _parse_inline_list(raw)
-            continue
-        values[key] = _coerce_scalar(raw)
+        values[key] = _parse_value(raw)
     return values
+
+
+def _parse_value(raw: str) -> Any:
+    return {k: _coerce_scalar(v) for k, v in _parse_inline_mapping(raw).items()} if raw.startswith("{") else _parse_inline_list(raw) if raw.startswith("[") else _coerce_scalar(raw)
 
 
 def _parse_inline_mapping(value: str) -> dict[str, str]:

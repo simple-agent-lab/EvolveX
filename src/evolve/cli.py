@@ -97,9 +97,10 @@ def eval_cmd(
     workspace: Path,
     genid: str,
     round_number: int | None = typer.Option(None, "--round"),
+    force: bool = typer.Option(False, "--force", help="re-run evaluation even when a scored row already exists"),
 ) -> None:
     """Evaluate a tagged child version."""
-    eval_child(workspace, genid, round_number=round_number)
+    eval_child(workspace, genid, round_number=round_number, force=force)
     print(f"Evaluated gen/{genid}")
 
 

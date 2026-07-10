@@ -25,6 +25,7 @@ from .config import (
     resource_root,
 )
 
+_SEED_IGNORE_PATTERNS = (".git", ".venv", "__pycache__", "*.pyc", ".pytest_cache", ".mypy_cache", ".ruff_cache", "node_modules")
 
 @dataclass(frozen=True)
 class InitOptions:
@@ -337,7 +338,7 @@ def _write_target_harbor_agent(workspace: Path, target_config: dict[str, Any]) -
 
 
 def _vendor_seed(workspace: Path, source: Path, fallback_remote: str) -> None:
-    shutil.copytree(source, workspace / "target", ignore=shutil.ignore_patterns(".git"))
+    shutil.copytree(source, workspace / "target", ignore=shutil.ignore_patterns(*_SEED_IGNORE_PATTERNS))
     upstream = _git_upstream(source, fallback_remote)
     if upstream:
         (workspace / "target" / "UPSTREAM.json").write_text(json.dumps(upstream, sort_keys=True) + "\n")
