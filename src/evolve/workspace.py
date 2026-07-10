@@ -77,15 +77,15 @@ _CONSOLE = """#!/usr/bin/env bash
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export PYTHONPATH="$HERE/.evolve${PYTHONPATH:+:$PYTHONPATH}"
-# The console (cli.py) uses Typer; the driver/operators stay stdlib-only. uv
-# supplies Typer on the fly via --with, so the workspace needs no install step.
+# The console uses Typer and PyYAML; the driver/operators stay stdlib-only. uv
+# supplies both on the fly via --with, so the workspace needs no install step.
 if command -v uv >/dev/null 2>&1; then
-  exec uv run --quiet --with "typer>=0.8" --python ">=3.11" python -m evolve "$@"
+  exec uv run --quiet --with "typer>=0.12" --with "PyYAML>=6.0" --python ">=3.11" python -m evolve "$@"
 fi
 for py in python3.13 python3.12 python3.11 python3; do
   if command -v "$py" >/dev/null 2>&1; then exec "$py" -m evolve "$@"; fi
 done
-echo "evolve: need uv (recommended) or Python >=3.11 with typer on PATH" >&2
+echo "evolve: need uv (recommended) or Python >=3.11 with typer and PyYAML on PATH" >&2
 exit 1
 """
 

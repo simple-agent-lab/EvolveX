@@ -1,6 +1,8 @@
 from pathlib import Path
 
-from evolve.config import operator_blocks
+import pytest
+
+from evolve.config import CONFIG_SECTIONS, operator_blocks, render_yaml
 
 
 def test_operator_blocks_parse_nested_operator_config(tmp_path: Path) -> None:
@@ -23,3 +25,48 @@ def test_operator_blocks_parse_nested_operator_config(tmp_path: Path) -> None:
         "command": "uv run --project /opt/miniswe python /opt/meta.py",
     }
     assert operators["timeout_s"] == 900
+
+
+def test_operator_blocks_preserve_arbitrary_nested_yaml(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "evolve.yaml").write_text(
+        "experiment:\n  id: test\n"
+        "target: {}\n"
+        "surface: {include: [target/**], exclude: []}\n"
+        "operators:\n"
+        "  rollout:\n"
+        "    variant: ahe_trace_analysis\n"
+        "    controls:\n"
+        "      successful: 3\n"
+        "      labels: [stable, 'contains: colon']\n"
+        "    analyze:\n"
+        "      failures: true\n"
+        "      thresholds: {partial: 0.5, retry: null}\n"
+        "evaluator: {}\n"
+    )
+
+    assert operator_blocks(workspace)["rollout"] == {
+        "variant": "ahe_trace_analysis",
+        "controls": {"successful": 3, "labels": ["stable", "contains: colon"]},
+        "analyze": {"failures": True, "thresholds": {"partial": 0.5, "retry": None}},
+    }
+
+
+def test_render_yaml_round_trips_all_five_sections() -> None:
+    config = {section: {} for section in CONFIG_SECTIONS}
+    config["operators"] = {"rollout": {"custom": {"list": [1, "two"], "flag": True}}}
+
+    rendered = render_yaml(config)
+
+    assert "custom:" in rendered
+    assert "- two" in rendered
+
+
+def test_unknown_top_level_section_is_rejected(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "evolve.yaml").write_text("experiment: {}\nahe: {}\n")
+
+    with pytest.raises(ValueError, match="unknown top-level config sections: ahe"):
+        operator_blocks(workspace)

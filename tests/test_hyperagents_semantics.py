@@ -14,7 +14,7 @@ def test_hyperagents_meta_agent_change_affects_later_generation_not_current_one(
     monkeypatch.setenv("EVOLVE_HOME", str(evolve_home))
     evolve_yaml = (workspace / "evolve.yaml").read_text()
     (workspace / "evolve.yaml").write_text(
-        evolve_yaml.replace("    - target/**\n  exclude: []", "    - target/**\n    - operators/**\n  exclude: []")
+        evolve_yaml.replace("  - target/**\n  exclude: []", "  - target/**\n  - operators/**\n  exclude: []")
     )
     (workspace / "operators" / "select.py").write_text(
         "import os, sys\n"
