@@ -37,6 +37,14 @@ def test_init_binds_dgm_select_to_score_weighted_library_variant_and_stamps_prot
     assert (workspace / ".evolve-protocol-version").read_text() == "1\n"
 
 
+def test_ahe_latest_selector_is_available_as_a_library_variant() -> None:
+    from evolve import workspace as workspace_module
+
+    palette = workspace_module._operator_palette("ahe")
+
+    assert "library/select/ahe_latest.py" in palette
+
+
 def test_real_recipe_binds_meta_agent_to_agent_command_library_variant(tmp_path: Path) -> None:
     from evolve import workspace as workspace_module
 
@@ -82,6 +90,4 @@ def test_recipe_evaluator_assets_copy_training_but_not_sealed_files(tmp_path: Pa
     (recipes / "ahe" / "sealed" / "test-30.txt").write_text("secret-task\n")
     monkeypatch.setattr(workspace_module, "recipe_root", lambda: recipes)
 
-    assert workspace_module._recipe_evaluator_assets("ahe") == {
-        "evaluator/tasks/train-30.txt": "task-a\n"
-    }
+    assert workspace_module._recipe_evaluator_assets("ahe") == {"evaluator/tasks/train-30.txt": "task-a\n"}
