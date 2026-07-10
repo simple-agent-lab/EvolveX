@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from evolve.config import CONFIG_SECTIONS, operator_blocks, render_yaml
+from evolve.config import CONFIG_SECTIONS, load_config, operator_blocks, render_yaml
 
 
 def test_operator_blocks_parse_nested_operator_config(tmp_path: Path) -> None:
@@ -53,14 +53,13 @@ def test_operator_blocks_preserve_arbitrary_nested_yaml(tmp_path: Path) -> None:
     }
 
 
-def test_render_yaml_round_trips_all_five_sections() -> None:
+def test_render_yaml_round_trips_all_five_sections(tmp_path: Path) -> None:
     config = {section: {} for section in CONFIG_SECTIONS}
     config["operators"] = {"rollout": {"custom": {"list": [1, "two"], "flag": True}}}
-
     rendered = render_yaml(config)
-
-    assert "custom:" in rendered
-    assert "- two" in rendered
+    config_path = tmp_path / "evolve.yaml"
+    config_path.write_text(rendered)
+    assert load_config(config_path) == config
 
 
 def test_unknown_top_level_section_is_rejected(tmp_path: Path) -> None:
