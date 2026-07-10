@@ -32,6 +32,7 @@ APPROVED_MODULES = {
     "population.py",
     "report.py",
     "surface.py",
+    "task_vectors.py",
     "workspace.py",
     # the frozen ring — the invariant-enforcers, grouped under frozen/
     "frozen/__init__.py",

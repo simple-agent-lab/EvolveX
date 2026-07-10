@@ -22,13 +22,14 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `__main__.py` | 10 | `python -m evolve` entry |
 | `cli.py` | 200 | argument parsing and verb dispatch only — no logic |
 | `config.py` | 300 | read/render `evolve.yaml`: recipes, experiment values, surface lists, operator blocks |
-| `driver.py` | 1220 | the generation sequencer: orchestrates verbs + operators (incl. novelty + self-modification admission gates); validates operator file outputs at the seam; computes verified_fixes; audit quarantine; doctor repair |
+| `driver.py` | 1220 | the generation sequencer: orchestrates verbs + operators (incl. novelty + self-modification admission gates); validates operator file outputs at the seam; audit quarantine; doctor repair |
 | `feedback.py` | 150 | the ledger-derived feedback bundle the meta-agent reads (retired `observe`); written by the driver after rollout |
 | `operators.py` | 150 | subprocess runner for workspace operator scripts (contract: env vars, --config, timeout) |
 | `population.py` | 150 | genid/lineage bookkeeping for fan-out generations |
 | `archive.py` | 270 | append-only event store: merge semantics, stamped-field protection, mirroring, integrity fsck |
 | `agent.py` | 180 | meta-agent command runner: prompt-file setup, timeout/process-group handling, output + usage capture |
 | `evaluator.py` | 150 | clean-checkout canonical evaluation: tree assertion, exit-code contract, score parsing |
+| `task_vectors.py` | 80 | generic task-vector schema normalization, validation, and tri-state per-task pass lookup |
 | `git.py` | 150 | thin git subprocess helpers — nothing evolve-specific |
 | `patching.py` | 120 | candidate patch assembly: changed paths, diffs, surface-violation repair |
 | `surface.py` | 150 | mutable-surface pattern matching and violation checks |
