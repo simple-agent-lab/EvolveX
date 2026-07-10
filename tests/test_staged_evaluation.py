@@ -6,6 +6,7 @@ from evolve.archive import read_events
 from evolve.driver import RunOptions, eval_child
 from evolve.driver import run as driver_run
 from evolve.evaluator import EvaluationResult
+from evolve.population import valid_parent_rows
 
 
 def result(score: float, *, status: str = "complete") -> EvaluationResult:
@@ -138,3 +139,52 @@ def test_final_anchor_runs_after_children_and_is_idempotent(tmp_path: Path, monk
     assert len(anchor_events) == 1
     assert events[-1]["kind"] == "anchor"
     assert "gen 2" in git_show(workspace, "gen/2:target/agent.py").decode()
+
+
+def test_infra_failed_final_anchor_stays_auxiliary_and_is_idempotent(tmp_path: Path, monkeypatch) -> None:
+    workspace, evolve_home = init_workspace(tmp_path)
+    calls: list[tuple[str, str, str]] = []
+
+    def fake_evaluate(workspace, tag, genid, *, round_number=None, run_name="eval", task_limit=None, eval_kind="research"):
+        calls.append((genid, run_name, eval_kind))
+        if eval_kind == "anchor":
+            return EvaluationResult(
+                score=None,
+                status="infra_failed",
+                task_set_hash="tasks",
+                evaluator_tree="tree",
+                wall_s=0.01,
+                task_vector=None,
+            )
+        return result(1.0)
+
+    monkeypatch.setattr("evolve.driver.evaluate", fake_evaluate)
+    monkeypatch.setenv("EVAL_STUB", "1")
+    monkeypatch.setenv("EVOLVE_HOME", str(evolve_home))
+    monkeypatch.setenv("EVOLVE_AGENT_COMMAND", smoke_env(evolve_home)["EVOLVE_AGENT_COMMAND"])
+
+    driver_run(RunOptions(workspace=workspace, max_generations=2))
+    driver_run(RunOptions(workspace=workspace, max_generations=2))
+
+    row = rows_by_genid(workspace)["2"]
+    assert row["score"] == 1.0
+    assert row["status"] == "complete"
+    assert row["valid_parent"] is True
+    assert row["verdict"] == "keep"
+    assert row["reason"] == "score 1.0 >= parent 1.0"
+    assert row["note"] != "final anchor evaluation"
+    assert any(str(candidate["genid"]) == "2" for candidate in valid_parent_rows(workspace))
+    assert any(
+        entry.get("kind") == "anchor"
+        and entry.get("status") == "infra_failed"
+        and entry.get("score") is None
+        and entry.get("verdict") == "discard"
+        for entry in row.get("evals", [])
+    )
+
+    events = read_events(workspace / "archive.jsonl")
+    anchor_events = [event for event in events if event.get("kind") == "anchor"]
+    assert [call for call in calls if call[2] == "anchor"] == [("2", "eval-anchor", "anchor")]
+    assert len(anchor_events) == 1
+    assert anchor_events[0]["status"] == "infra_failed"
+    assert anchor_events[0]["score"] is None

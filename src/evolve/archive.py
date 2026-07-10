@@ -96,6 +96,9 @@ def merged_rows(path: Path) -> list[dict[str, Any]]:
             evals_by_genid[genid] = {}
             order.append(genid)
         if _is_keyed_evaluation(event):
+            if event.get("kind") == "anchor":
+                _merge_anchor_evaluation(rows[genid], evals_by_genid[genid], event)
+                continue
             auxiliary_hash = genid in top_eval_hash and str(event["task_set_hash"]) != top_eval_hash[genid]
             if auxiliary_hash and not _has_evaluation_provenance(event, genid, receipts):
                 _merge_auxiliary_non_stamped_fields(rows[genid], event)
@@ -218,6 +221,14 @@ def _merge_keyed_evaluation(
             continue
         current[key] = value
     _merge_auxiliary_non_stamped_fields(row, event)
+    row["evals"] = list(evals.values())
+
+
+def _merge_anchor_evaluation(row: dict[str, Any], evals: dict[str, dict[str, Any]], event: dict[str, Any]) -> None:
+    if "genid" not in row:
+        row["genid"] = event["genid"]
+    key = f"anchor:{event['task_set_hash']}"
+    evals[key] = _evaluation_entry(event)
     row["evals"] = list(evals.values())
 
 

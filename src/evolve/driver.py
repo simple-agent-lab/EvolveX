@@ -896,7 +896,7 @@ def _final_anchor_row(workspace: Path) -> dict[str, Any] | None:
 
 def _generation_has_anchor_event(workspace: Path, genid: str) -> bool:
     return any(
-        str(event.get("genid")) == genid and event.get("kind") == "anchor" and _is_scored_evaluation(event)
+        str(event.get("genid")) == genid and event.get("kind") == "anchor"
         for event in read_events(archive_path(workspace))
     )
 
