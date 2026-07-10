@@ -73,6 +73,7 @@ class HyperAgentsMetaAgent(MetaAgentOperator):
             checkout=checkout,
             parent_ref=parent_ref,
             surface=load_surface_policy(checkout),
+            repair=False,
         )
         usage = _safe_usage(agent_run.usage)
         notes = ["written-by: operators/meta_agent.py", "variant: hyperagents", *patch.notes]

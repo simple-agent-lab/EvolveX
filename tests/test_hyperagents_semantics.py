@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 
 from conftest import git, git_show, rows_by_genid, run_evolve
@@ -104,24 +105,16 @@ def test_hyperagents_forbidden_operator_edit_rejects_entire_child(
     workspace, evolve_home = _init_hyperagents_smoke(tmp_path)
     monkeypatch.setenv("EVAL_STUB", "1")
     monkeypatch.setenv("EVOLVE_HOME", str(evolve_home))
-    _write_newest_select(workspace)
-    (workspace / "operators" / "meta_agent.py").write_text(
-        "import os, sys\n"
-        "sys.path = [p for p in sys.path if os.path.abspath(p or os.getcwd()) != os.path.dirname(os.path.abspath(__file__))]\n"
-        "from evolve.frozen import sdk\n"
-        "from evolve.frozen.interfaces import MetaAgentOperator, MetaAgentResult\n"
-        "class M(MetaAgentOperator):\n"
-        "    def run(self, checkout, observation, ctx):\n"
-        "        agent = checkout / 'target' / 'agent.py'\n"
-        "        agent.write_text(agent.read_text() + '\\n# target edit\\n')\n"
-        "        gate = checkout / 'operators' / 'gate.py'\n"
-        "        gate.write_text(gate.read_text() + '\\n# forbidden gate edit\\n')\n"
-        "        return MetaAgentResult(changed=['target/agent.py', 'operators/gate.py'], notes=['gate edit'], usage={'usd': 0})\n"
-        "if __name__ == '__main__':\n"
-        "    sdk.main(M)\n"
+    command = (
+        f"{sys.executable} -c "
+        "\"from pathlib import Path; "
+        "agent=Path('target/agent.py'); "
+        "agent.write_text(agent.read_text() + '\\n# target edit\\n'); "
+        "gate=Path('operators/gate.py'); "
+        "gate.write_text(gate.read_text() + '\\n# forbidden gate edit\\n')\""
     )
-    git(workspace, "add", "operators/select.py", "operators/meta_agent.py")
-    git(workspace, "commit", "-qm", "enable forbidden hyperagents edit")
+    monkeypatch.setenv("EVOLVE_AGENT_COMMAND", command)
+    git(workspace, "commit", "--allow-empty", "-qm", "use real hyperagents forbidden edit command")
     git(workspace, "tag", "-f", "gen/0")
 
     driver_run(RunOptions(workspace=workspace, max_generations=1, children_per_gen=1))
@@ -131,3 +124,5 @@ def test_hyperagents_forbidden_operator_edit_rejects_entire_child(
     assert child["valid_parent"] is False
     assert child["score"] is None
     assert "operators/gate.py" in child["surface_violations"]
+    assert not git(workspace, "tag", "--list", "gen/1")
+    assert "# target edit" not in git(workspace, "show", "gen/0:target/agent.py")
