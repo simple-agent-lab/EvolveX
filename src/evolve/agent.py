@@ -35,7 +35,13 @@ class AgentCommandError(RuntimeError):
         self.returncode = returncode if isinstance(returncode, int) and returncode else 1
 
 
-def run_meta_agent(workspace: Path | str, prompt: str, config: dict[str, Any] | None = None) -> AgentRunResult:
+def run_meta_agent(
+    workspace: Path | str,
+    prompt: str,
+    config: dict[str, Any] | None = None,
+    *,
+    env_overrides: dict[str, str | None] | None = None,
+) -> AgentRunResult:
     root = Path(workspace).resolve()
     config = config or {}
     command = _resolve_command(config)
@@ -49,6 +55,11 @@ def run_meta_agent(workspace: Path | str, prompt: str, config: dict[str, Any] | 
         prompt_file = handle.name
 
     env = {**os.environ, "EVOLVE_PROMPT_FILE": prompt_file}
+    for key, value in (env_overrides or {}).items():
+        if value is None:
+            env.pop(key, None)
+        else:
+            env[key] = value
     proc: subprocess.Popen[str] | None = None
     stdout = ""
     stderr = ""
