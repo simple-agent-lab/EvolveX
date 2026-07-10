@@ -1,11 +1,11 @@
-"""The feedback bundle the mutator reads — mechanism bookkeeping, not an operator.
+"""The feedback bundle the mutator reads — mechanism-owned assembly.
 
 Folded out of the retired `observe` operator (DESIGN §7: the canonical verb set
 is select/rollout/mutate/…/gate/record). The bundle is derived from the ledger +
-workspace, so the mechanism owns it: the driver calls `write_feedback_bundle`
-after rollout and before mutate, and mutate reads `runs/gen-<id>/feedback/`. It
-therefore exists even when rollout is a noop variant, and no operator can
-suppress it. This is the one home for the logic — `library/observe/*` is deleted.
+workspace, plus bounded evidence emitted by the current rollout. The driver calls
+`write_feedback_bundle` after rollout and before mutate, and mutate reads
+`runs/gen-<id>/feedback/`. It therefore exists even when rollout is a noop
+variant. This is the one home for the logic — `library/observe/*` is deleted.
 """
 
 from __future__ import annotations
@@ -59,6 +59,15 @@ def _surface_rule_lists(workspace: Path) -> tuple[list[str], list[str]]:
         return ["target/**"], []
 
 
+def _copy_rollout_feedback(run_dir: Path, failures: Path) -> str | None:
+    source = run_dir / "rollout" / "feedback.md"
+    if not source.is_file():
+        return None
+    destination = failures / "rollout.md"
+    destination.write_text(source.read_text())
+    return "feedback/failures/rollout.md"
+
+
 def write_feedback_bundle(*, workspace: Path, run_dir: Path, history_k: int = 8) -> list[str]:
     """Write the feedback bundle under run_dir/feedback/ and return its manifest.
 
@@ -82,6 +91,7 @@ def write_feedback_bundle(*, workspace: Path, run_dir: Path, history_k: int = 8)
     failures = feedback / "failures"
     failures.mkdir(exist_ok=True)
     (failures / "README.md").write_text("The feedback bundle writes a minimal failure summary.\n")
+    rollout_feedback = _copy_rollout_feedback(run_dir, failures)
     (feedback / "last_accepted.diff").write_text(_latest_accepted_diff(workspace, rows))
 
     prior = [row for row in rows if row.get("predicted_fixes")]
@@ -100,11 +110,13 @@ def write_feedback_bundle(*, workspace: Path, run_dir: Path, history_k: int = 8)
         "# Rules\n\n- Surface include: %s\n- Surface exclude: %s\n- Self-check: `evolve surface-check`\n"
         % (include, exclude)
     )
+    rollout_link = "- [current rollout](failures/rollout.md)\n" if rollout_feedback else ""
     (feedback / "index.md").write_text(
         "# Feedback Bundle\n\n"
         "- [lineage](lineage.json)\n"
         "- [attempts](attempts.md)\n"
         "- [failures](failures/)\n"
+        f"{rollout_link}"
         "- [last accepted diff](last_accepted.diff)\n"
         "- [falsification](falsification.md)\n"
         "- [rules](rules.md)\n"
@@ -118,5 +130,7 @@ def write_feedback_bundle(*, workspace: Path, run_dir: Path, history_k: int = 8)
         "feedback/falsification.md",
         "feedback/rules.md",
     ]
+    if rollout_feedback:
+        manifest.append(rollout_feedback)
     _write_json(run_dir / "feedback" / "manifest.json", manifest)
     return manifest

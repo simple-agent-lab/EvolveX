@@ -74,7 +74,9 @@ artifact paths or labels.
 
 The mechanism (not an operator) writes the feedback bundle under
 `runs/gen-<id>/feedback/` after rollout, from the ledger, for the mutator to
-read (the retired `observe` operator's job).
+read (the retired `observe` operator's job). If the rollout writes a bounded
+`rollout/feedback.md`, the mechanism copies it into `feedback/failures/` and
+links it from the bundle index.
 
 ### Mutate
 
@@ -174,7 +176,7 @@ The shipped library uses canonical algorithm names only. Recipe research names
 may appear in recipe prose, but `variant:` values point to these files:
 
 - select: `greedy`, `random`, `score_weighted`, `newest`
-- rollout: `failure_focused`, `noop`
+- rollout: `failure_focused`, `harbor`, `noop`
 - mutate: `fixed`, `noop`, `llm`, `agent_command`
 - gate: `hillclimb`, `parent_eligible`
 - record: `jsonl`

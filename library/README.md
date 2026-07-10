@@ -23,7 +23,7 @@ library/
 ├─ select/   greedy · newest · random · score_weighted
 ├─ mutate/   fixed · noop · llm · agent_command
 ├─ gate/     hillclimb · parent_eligible
-├─ rollout/  failure_focused · noop
+├─ rollout/  failure_focused · harbor · noop
 ├─ record/   jsonl
 └─ _skeletons/   "write a new operator of verb X" starting points   (planned move)
 ```
@@ -32,3 +32,32 @@ library/
 
 `select · rollout · mutate · novelty · gate · record · reflect` (+ `distill`,
 deferred with weights). The authority is `src/evolve/frozen/interfaces.py`.
+
+## Harbor rollout
+
+`rollout/harbor.py` is an opt-in live variant. It runs the current candidate
+through an explicit Harbor training task path, then distills trial results into
+`rollout/cases.json` and bounded mutation evidence in
+`rollout/feedback.md`. The distillation keeps task instructions, rewards,
+agent messages, tool calls and observations, verifier output, exception class,
+timings, tokens, and cost. It excludes system prompts, environment values, and
+full tracebacks, and marks verifier/environment failures as infrastructure
+evidence rather than candidate failures.
+
+Select it in a recipe before `evolve init`:
+
+```yaml
+operators:
+  rollout: {variant: harbor, path: /path/to/train-tasks, budget_tasks: 8, n_concurrent: 2}
+```
+
+The train `path` is required in config or through `EVOLVE_HARBOR_ROLLOUT_TASKS`.
+Optional keys are `agent`, `model`, `include_task_name`, `jobs_dir`,
+`field_limit`, and `pass_threshold` (default `1.0`). The custom checkout agent
+defaults to `evaluator/eval.env`; `EVOLVE_HARBOR_MODEL` and
+`EVOLVE_ROLLOUT_JOBS_DIR` are additional environment overrides.
+
+The rollout path is intentionally not inherited from `EVOLVE_HARBOR_TASKS`:
+verifier output is mutation feedback and may reveal tests. Set `path` or
+`EVOLVE_HARBOR_ROLLOUT_TASKS` to a train-only task set, never the gate or sealed
+set used for final evaluation.
