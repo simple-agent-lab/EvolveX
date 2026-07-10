@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
 from pathlib import Path
 from typing import Any
@@ -92,8 +91,8 @@ def _run() -> int:
         )
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    result = _build_agent(output_path).run(_prompt())
-    print(json.dumps(result, default=str))
+    _build_agent(output_path).run(_prompt())
+    print(f"miniswe-source-agent-complete role={role}")
     print("predicted_fixes: []")
     return 0
 
