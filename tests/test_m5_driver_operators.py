@@ -55,3 +55,84 @@ def test_run_records_operator_failed_when_meta_agent_operator_crashes(tmp_path: 
     assert row["valid_parent"] is False
     assert row["verdict"] == "discard"
     assert row["reason"] == "operator meta_agent failed"
+
+
+def test_jsonl_record_computes_verified_fixes_from_task_vectors(tmp_path: Path) -> None:
+    workspace, evolve_home = init_workspace(tmp_path)
+    parent = rows_by_genid(workspace)["0"]
+    parent["task_vector"]["task-0"] = False
+    (workspace / "archive.jsonl").write_text(json.dumps(parent) + "\n")
+
+    _rewrite(
+        workspace,
+        "operators/meta_agent.py",
+        "import json\n"
+        "import os\n"
+        "from pathlib import Path\n"
+        "run_dir = Path(os.environ['EVOLVE_RUN_DIR']) / 'meta_agent'\n"
+        "run_dir.mkdir(parents=True, exist_ok=True)\n"
+        "(run_dir / 'predicted_fixes.json').write_text(json.dumps(['task-0']))\n"
+        "(run_dir / 'usage.json').write_text(json.dumps({'usd': 0}))\n"
+        "Path('target/agent.py').write_text(Path('target/agent.py').read_text() + '\\n# update\\n')\n",
+    )
+    _commit_and_retag_gen0(workspace, "operators/meta_agent.py")
+
+    result = run_evolve(
+        "run",
+        str(workspace),
+        "--max-generations",
+        "1",
+        env=smoke_env(evolve_home),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert rows_by_genid(workspace)["1"]["verified_fixes"] == ["task-0"]
+
+
+def test_driver_does_not_inject_verified_fixes_for_other_record_operators(tmp_path: Path) -> None:
+    workspace, evolve_home = init_workspace(tmp_path)
+    parent = rows_by_genid(workspace)["0"]
+    parent["task_vector"]["task-0"] = False
+    (workspace / "archive.jsonl").write_text(json.dumps(parent) + "\n")
+
+    _rewrite(
+        workspace,
+        "operators/meta_agent.py",
+        "import json\n"
+        "import os\n"
+        "from pathlib import Path\n"
+        "run_dir = Path(os.environ['EVOLVE_RUN_DIR']) / 'meta_agent'\n"
+        "run_dir.mkdir(parents=True, exist_ok=True)\n"
+        "(run_dir / 'predicted_fixes.json').write_text(json.dumps(['task-0']))\n"
+        "(run_dir / 'usage.json').write_text(json.dumps({'usd': 0}))\n"
+        "Path('target/agent.py').write_text(Path('target/agent.py').read_text() + '\\n# update\\n')\n",
+    )
+    _rewrite(
+        workspace,
+        "operators/record.py",
+        "from evolve.frozen import sdk\n"
+        "from evolve.frozen.interfaces import RecordOperator, RecordResult\n"
+        "\n"
+        "class BareRecord(RecordOperator):\n"
+        "    def annotate(self, child, ctx):\n"
+        "        return RecordResult(fields={\n"
+        "            'valid_parent': True,\n"
+        "            'verdict': 'keep',\n"
+        "            'reason': 'score 1.0 >= parent 1.0',\n"
+        "            'predicted_fixes': ['task-0'],\n"
+        "        })\n"
+        "\n"
+        "sdk.main(BareRecord)\n",
+    )
+    _commit_and_retag_gen0(workspace, "operators/meta_agent.py", "operators/record.py")
+
+    result = run_evolve(
+        "run",
+        str(workspace),
+        "--max-generations",
+        "1",
+        env=smoke_env(evolve_home),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "verified_fixes" not in rows_by_genid(workspace)["1"]

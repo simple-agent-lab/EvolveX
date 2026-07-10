@@ -17,6 +17,13 @@ from pathlib import Path
 K = 8
 
 
+def _attempts() -> int:
+    for line in Path("evaluator/eval.env").read_text().splitlines():
+        if line.startswith("EVOLVE_HARBOR_ATTEMPTS="):
+            return max(1, int(line.split("=", 1)[1]))
+    return 1
+
+
 def main() -> int:
     run_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("runs/gen-0/eval")
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -29,8 +36,20 @@ def main() -> int:
         if stripped.startswith("# FAIL "):
             failed.update(stripped[len("# FAIL ") :].split())
 
-    task_vector = {f"task-{i}": (f"task-{i}" not in failed) for i in range(K)}
-    passed = sum(1 for ok in task_vector.values() if ok)
+    task_results = {f"task-{i}": (f"task-{i}" not in failed) for i in range(K)}
+    task_vector = {
+        "schema_version": 1,
+        "tasks": {
+            task_id: {
+                "trials": [
+                    {"trial": trial, "status": "complete", "reward": 1.0 if passed else 0.0}
+                    for trial in range(_attempts())
+                ]
+            }
+            for task_id, passed in task_results.items()
+        },
+    }
+    passed = sum(task_results.values())
     score = passed / K
 
     (run_dir / "score").write_text(f"{score}\n")

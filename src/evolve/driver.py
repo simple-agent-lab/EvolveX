@@ -262,12 +262,9 @@ def _run_child(
     _run_gate_and_record(workspace, exp_id, genid, parent, operators_config, round_number=round_number)
     if operator_reverted:
         record_fields(workspace, genid, {"operator_reverted": True})
-    verified = _verified_fixes(workspace, genid, parent)
-    if verified is not None:
-        record_fields(workspace, genid, {"verified_fixes": verified})
 
     # Reflect (mechanism 2, DESIGN §7) — optional, off unless the recipe configures
-    # `operators.reflect`. Reads the ledger (incl. the just-recorded verified_fixes)
+    # `operators.reflect`. Reads the ledger after the record operator annotates it
     # and appends playbook insights. Best-effort: a reflect failure never unwinds
     # the recorded generation. Runs against the workspace (it needs the ledger,
     # not the candidate worktree).
@@ -322,21 +319,6 @@ def _maybe_quarantine(workspace: Path, genid: str) -> None:
     ]
     if isinstance(score, (int, float)) and prior and float(score) - max(prior) > float(margin):
         record_fields(workspace, genid, {"audit": "pending"})
-
-
-def _verified_fixes(workspace: Path, genid: str, parent: str) -> list[str] | None:
-    """Falsification (mechanism 2, DESIGN §2/§7): of the tasks this generation
-    predicted it would fix, which ones did its eval actually flip from fail (in
-    the parent) to pass? A frozen rule over the two task vectors — not something
-    an operator reports. Returns None when it cannot be computed (no task
-    vectors / no predictions)."""
-    rows = rows_by_genid(workspace)
-    child, parent_row = rows.get(genid, {}), rows.get(parent, {})
-    child_tv, parent_tv = child.get("task_vector"), parent_row.get("task_vector")
-    predicted = child.get("predicted_fixes") or []
-    if not isinstance(child_tv, dict) or not isinstance(parent_tv, dict) or not predicted:
-        return None
-    return [t for t in predicted if child_tv.get(t) is True and parent_tv.get(t) is False]
 
 
 def _resume_tagged_child(
