@@ -509,6 +509,7 @@ def _run_gate_and_record(
                 checkout,
                 round_number=round_number,
                 operator_ref=f"gen/{genid}",
+                gate_payload=gate_payload,
             )
             row = rows_by_genid(workspace).get(genid, {})
             if "record_error" not in row and not _row_matches_gate_payload(row, gate_payload):
@@ -533,6 +534,7 @@ def _run_terminal_record(
     candidate_checkout: Path | None,
     round_number: int | None = None,
     operator_ref: str | None = None,
+    gate_payload: dict[str, Any] | None = None,
 ) -> None:
     if not _operator_present(operators_config, "record") or _record_attempted(workspace, genid):
         return
@@ -563,7 +565,13 @@ def _run_terminal_record(
             if error is not None or fields is None:
                 _append_record_error(workspace, exp_id, genid, _operator_output_note(error))
                 return
-            _record_terminal_fields(workspace, exp_id, genid, _strip_record_fields(fields))
+            _record_terminal_fields(
+                workspace,
+                exp_id,
+                genid,
+                _record_fields_for_terminal_append(fields, gate_payload),
+                allowed_fields=_trusted_gate_record_fields() if gate_payload is not None else frozenset(),
+            )
         finally:
             remove_worktree(workspace, operator_checkout)
 
@@ -1208,10 +1216,17 @@ def _append_record_error(workspace: Path, exp_id: str, genid: str, note: str) ->
     append_event(workspace, exp_id, {"genid": genid, "record_error": note})
 
 
-def _record_terminal_fields(workspace: Path, exp_id: str, genid: str, fields: dict[str, object]) -> None:
+def _record_terminal_fields(
+    workspace: Path,
+    exp_id: str,
+    genid: str,
+    fields: dict[str, object],
+    *,
+    allowed_fields: frozenset[str] = frozenset(),
+) -> None:
     workspace = workspace.resolve()
     genid = _validate_genid(genid)
-    forbidden = sorted(set(fields) & RECORD_FORBIDDEN_FIELDS)
+    forbidden = sorted(set(fields) & (RECORD_FORBIDDEN_FIELDS - allowed_fields))
     if forbidden:
         raise RuntimeError(f"record refuses protected fields: {', '.join(forbidden)}")
     if genid not in rows_by_genid(workspace):
@@ -1227,6 +1242,29 @@ def _operator_output_note(error: OperatorOutputError | None) -> str:
 
 def _strip_record_fields(fields: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in fields.items() if key not in RECORD_FORBIDDEN_FIELDS}
+
+
+def _record_fields_for_terminal_append(
+    fields: dict[str, Any], gate_payload: dict[str, Any] | None
+) -> dict[str, object]:
+    stripped = _strip_record_fields(fields)
+    if gate_payload is None:
+        return stripped
+    trusted_gate_fields = {
+        "valid_parent": gate_payload["valid_parent"],
+        "verdict": gate_payload["verdict"],
+        "reason": gate_payload["reason"],
+    }
+    extras = {
+        key: value
+        for key, value in fields.items()
+        if key in {"predicted_fixes", "note"} and key not in stripped
+    }
+    return {**stripped, **trusted_gate_fields, **extras}
+
+
+def _trusted_gate_record_fields() -> frozenset[str]:
+    return frozenset({"valid_parent", "verdict", "reason", "predicted_fixes", "note"})
 
 
 def _operator_config_block(operators_config: dict[str, Any], name: str) -> dict[str, Any]:
