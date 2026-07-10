@@ -33,9 +33,10 @@ Precise meanings for the domain terms this project uses.
   seeded RNG. It tells an operator where it is and which generation it is
   handling.
 
-- **Meta-agent operator** — the loop step that changes the candidate. It is a
-  protocol adapter around the `agent_command` variant, which delegates to
-  `run_meta_agent`, then the mechanism applies surface enforcement before it
+- **Meta-agent operator** — the loop step that changes the candidate. The
+  default `agent_command` variant delegates to `run_meta_agent`; method recipes
+  may provide dedicated variants such as `hyperagents`. After the operator
+  edits the checkout, the mechanism applies surface enforcement before it
   inspects the result.
 
 - **Evaluator / ruler** — the frozen scorer, wired to **Harbor**. Runs a

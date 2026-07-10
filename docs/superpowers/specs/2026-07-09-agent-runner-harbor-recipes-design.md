@@ -8,11 +8,12 @@ The current framework mixes three concepts that should be separate:
 - The meta-agent, which edits a local git checkout.
 - Smoke scaffolding, which exists to make CI and local mechanism tests cheap.
 
-This causes confusing behavior. `CheckoutTargetAgent` can fall back to arbitrary
-scripts such as `solve.sh` or `run.sh`; production recipe names still use
-deterministic meta-agent edits; HyperAgents exposes `operators/**` but the
-default meta-agent does not actually evolve those operators; and `meta_eval`
-currently forces `EVAL_STUB=1` during operator-surface admission replay.
+Before the method-faithful HyperAgents replacement, this caused confusing
+behavior. `CheckoutTargetAgent` could fall back to arbitrary scripts such as
+`solve.sh` or `run.sh`; production recipe names still used deterministic
+meta-agent edits; the HyperAgents scaffold exposed `operators/**` without a
+method-faithful meta-agent; and `meta_eval` forced `EVAL_STUB=1` during
+operator-surface admission replay.
 
 ## Goals
 
@@ -24,9 +25,9 @@ currently forces `EVAL_STUB=1` during operator-surface admission replay.
    diff logic.
 4. Split real recipes from smoke recipes. Real recipes should be structurally
    real and fail fast if required live agent or Harbor configuration is missing.
-5. Make HyperAgents truthful: changed meta-agent workflow is used in later
-   generations, and changed gate or record workflow may affect the same
-   generation. The docs must say this plainly.
+5. Make HyperAgents truthful: the V1 bounded meta-agent workflow is inherited
+   by later generations, while gate and record remain fixed outside the
+   mutable surface. The docs must say this plainly.
 6. Stop real self-modification admission from using the stub evaluator unless a
    smoke or test run explicitly opts into `EVAL_STUB=1`.
 
