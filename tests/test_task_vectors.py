@@ -1,3 +1,8 @@
+import json
+import subprocess
+import sys
+from pathlib import Path
+
 import pytest
 
 from evolve.task_vectors import TaskVectorError, normalize_task_vector, task_passed
@@ -49,3 +54,58 @@ def test_invalid_task_vector_rejects_duplicate_trial_numbers() -> None:
                 },
             }
         )
+
+
+def test_invalid_task_vector_rejects_non_string_task_ids() -> None:
+    with pytest.raises(TaskVectorError, match="invalid task entry: 1"):
+        normalize_task_vector(
+            {
+                "schema_version": 1,
+                "tasks": {
+                    "task-a": {"trials": []},
+                    1: {"trials": []},
+                },
+            }
+        )
+
+
+def test_invalid_task_vector_rejects_boolean_trial_ids() -> None:
+    with pytest.raises(TaskVectorError, match="invalid trial for task-a"):
+        normalize_task_vector(
+            {
+                "schema_version": 1,
+                "tasks": {
+                    "task-a": {
+                        "trials": [
+                            {"trial": True, "status": "complete", "reward": 1.0},
+                        ]
+                    }
+                },
+            }
+        )
+
+
+def test_stub_eval_emits_configured_completed_trials_without_changing_score(tmp_path: Path) -> None:
+    evaluator_dir = tmp_path / "evaluator"
+    evaluator_dir.mkdir()
+    (evaluator_dir / "eval.env").write_text("EVOLVE_HARBOR_ATTEMPTS=3\n")
+    target_dir = tmp_path / "target"
+    target_dir.mkdir()
+    (target_dir / "agent.py").write_text("# FAIL task-0\n")
+    run_dir = tmp_path / "run"
+    script = Path(__file__).resolve().parents[1] / "templates" / "evaluator" / "stub_eval.py"
+
+    result = subprocess.run(
+        [sys.executable, str(script), str(run_dir)],
+        cwd=tmp_path,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 2, result.stderr
+    assert float((run_dir / "score").read_text()) == 7 / 8
+    vector = json.loads((run_dir / "task_vector.json").read_text())
+    for task in vector["tasks"].values():
+        assert [trial["trial"] for trial in task["trials"]] == [0, 1, 2]
+        assert all(trial["status"] == "complete" for trial in task["trials"])

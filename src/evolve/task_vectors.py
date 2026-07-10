@@ -24,6 +24,9 @@ def normalize_task_vector(payload: object) -> dict[str, Any]:
         }
     if payload.get("schema_version") != 1 or not isinstance(payload.get("tasks"), dict):
         raise TaskVectorError("unsupported task vector schema")
+    for task_id in payload["tasks"]:
+        if not isinstance(task_id, str):
+            raise TaskVectorError(f"invalid task entry: {task_id}")
     tasks: dict[str, Any] = {}
     for task_id, task in sorted(payload["tasks"].items()):
         if not isinstance(task_id, str) or not isinstance(task, dict) or not isinstance(task.get("trials"), list):
@@ -31,7 +34,11 @@ def normalize_task_vector(payload: object) -> dict[str, Any]:
         seen: set[int] = set()
         trials = []
         for raw in task["trials"]:
-            if not isinstance(raw, dict) or not isinstance(raw.get("trial"), int):
+            if (
+                not isinstance(raw, dict)
+                or isinstance(raw.get("trial"), bool)
+                or not isinstance(raw.get("trial"), int)
+            ):
                 raise TaskVectorError(f"invalid trial for {task_id}")
             trial = int(raw["trial"])
             if trial in seen:

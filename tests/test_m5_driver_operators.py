@@ -1,7 +1,11 @@
 import json
+import random
+import runpy
 from pathlib import Path
 
 from conftest import git, init_workspace, rows_by_genid, run_evolve, smoke_env
+
+from evolve.frozen.interfaces import OperatorContext
 
 
 def _rewrite(workspace: Path, relative_path: str, content: str) -> None:
@@ -136,3 +140,34 @@ def test_driver_does_not_inject_verified_fixes_for_other_record_operators(tmp_pa
 
     assert result.returncode == 0, result.stderr
     assert "verified_fixes" not in rows_by_genid(workspace)["1"]
+
+
+def test_jsonl_record_omits_verified_fixes_when_prediction_artifact_is_missing(tmp_path: Path) -> None:
+    workspace, _evolve_home = init_workspace(tmp_path)
+    run_dir = workspace / "runs" / "record-without-predictions"
+    run_dir.mkdir(parents=True)
+    (run_dir / "gate.json").write_text(
+        json.dumps({"valid_parent": True, "verdict": "keep", "reason": "no predictions"}) + "\n"
+    )
+    ctx = OperatorContext(
+        workspace=workspace,
+        checkout=workspace,
+        run_dir=run_dir,
+        genid="1",
+        parent="0",
+        round=None,
+        fan_out=1,
+        config={},
+        rng=random.Random(0),
+    )
+    child = {
+        "genid": "1",
+        "parent": "0",
+        "predicted_fixes": [],
+        "task_vector": {"task-0": True},
+    }
+    module = runpy.run_path(str(Path(__file__).resolve().parents[1] / "library" / "record" / "jsonl.py"))
+
+    fields = module["JsonlRecord"]().annotate(child, ctx).fields
+
+    assert "verified_fixes" not in fields

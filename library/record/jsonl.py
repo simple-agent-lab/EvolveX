@@ -49,9 +49,12 @@ def _record_fields_from_run_dir(run_dir: Path) -> dict[str, Any]:
 
 def _verified_fixes(child: Row, ctx: OperatorContext) -> list[str] | None:
     parent = ArchiveView(ctx.workspace).row(str(child.get("parent"))) if child.get("parent") is not None else None
-    predicted = child.get("predicted_fixes") or json.loads(
-        (ctx.run_dir / "meta_agent" / "predicted_fixes.json").read_text()
-    )
+    predicted = child.get("predicted_fixes")
+    if not predicted:
+        predicted_path = ctx.run_dir / "meta_agent" / "predicted_fixes.json"
+        if not predicted_path.exists():
+            return None
+        predicted = json.loads(predicted_path.read_text())
     if parent is None or not predicted or child.get("task_vector") is None or parent.get("task_vector") is None:
         return None
     return [
