@@ -24,7 +24,14 @@ class EvaluationResult:
 
 
 def evaluate(
-    workspace: Path, tag: str, genid: str, *, round_number: int | None = None, run_name: str = "eval"
+    workspace: Path,
+    tag: str,
+    genid: str,
+    *,
+    round_number: int | None = None,
+    run_name: str = "eval",
+    task_limit: int | None = None,
+    eval_kind: str = "research",
 ) -> EvaluationResult:
     start = time.monotonic()
     run_dir = workspace / "runs" / f"gen-{genid}" / run_name
@@ -40,7 +47,7 @@ def evaluate(
         checkout = Path(tempdir) / "checkout"
         git(workspace, "worktree", "add", "--detach", str(checkout), tag)
         try:
-            status, score = _run_eval_script(checkout, run_dir, genid, round_number)
+            status, score = _run_eval_script(checkout, run_dir, genid, round_number, task_limit, eval_kind)
             task_hash_path = run_dir / "task_set_hash"
             if round_number is None:
                 task_set_hash = _sha256_file(checkout / "evaluator" / "splits.json")
@@ -70,8 +77,18 @@ def _read_task_vector(run_dir: Path) -> dict | None:
     return data if isinstance(data, dict) else None
 
 
-def _run_eval_script(checkout: Path, run_dir: Path, genid: str, round_number: int | None) -> tuple[str, float | None]:
+def _run_eval_script(
+    checkout: Path,
+    run_dir: Path,
+    genid: str,
+    round_number: int | None,
+    task_limit: int | None,
+    eval_kind: str,
+) -> tuple[str, float | None]:
     env: dict[str, str] = {**os.environ.copy(), "EVOLVE_RUN_DIR": str(run_dir), "EVOLVE_GENID": genid}
+    env["EVOLVE_EVAL_KIND"] = eval_kind
+    if task_limit is not None:
+        env["EVOLVE_TASK_LIMIT"] = str(task_limit)
     env.pop("EVOLVE_ROUND", None)
     if round_number is not None:
         env["EVOLVE_ROUND"] = str(round_number)

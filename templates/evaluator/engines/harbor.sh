@@ -28,6 +28,9 @@ case "${EVOLVE_HARBOR_DATASET_MODE:-path}" in
     exit 3
     ;;
 esac
+if [ "${EVOLVE_EVAL_KIND:-research}" = "anchor" ] && [ -n "${EVOLVE_HARBOR_ANCHOR_TASK_FILE:-}" ]; then
+  EVOLVE_HARBOR_TASK_FILE=$EVOLVE_HARBOR_ANCHOR_TASK_FILE
+fi
 if [ -n "${EVOLVE_HARBOR_TASK_FILE:-}" ]; then
   while IFS= read -r task_name || [ -n "$task_name" ]; do
     case "$task_name" in
@@ -35,6 +38,10 @@ if [ -n "${EVOLVE_HARBOR_TASK_FILE:-}" ]; then
     esac
     set -- "$@" --include-task-name "$task_name"
   done < "$EVOLVE_HARBOR_TASK_FILE"
+fi
+if [ -n "${EVOLVE_TASK_LIMIT:-}" ]; then
+  set -- "$@" --n-tasks "$EVOLVE_TASK_LIMIT"
+  export EVOLVE_HARBOR_EXPECTED_TRIALS=$((EVOLVE_TASK_LIMIT * EVOLVE_HARBOR_N))
 fi
 set -- "$@" --agent "$EVOLVE_HARBOR_AGENT"
 if [ -n "${EVOLVE_HARBOR_MODEL:-}" ]; then

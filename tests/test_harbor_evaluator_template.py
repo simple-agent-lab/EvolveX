@@ -75,3 +75,65 @@ def test_harbor_registry_dataset_uses_dataset_flag_and_task_file(tmp_path: Path)
     assert args[args.index("--model") + 1] == "openai/smoke-model"
     assert docker_host_capture.read_text() == "unset\n"
     assert (tmp_path / "run" / "status").read_text() == "complete\n"
+
+
+def test_harbor_stage_limit_and_anchor_task_file_override(tmp_path: Path) -> None:
+    evaluator = tmp_path / "evaluator"
+    (evaluator / "tasks").mkdir(parents=True)
+    _write_executable(evaluator / "eval.sh", _eval_sh("harbor", "swebenchpro@1.0"))
+    (evaluator / "eval.env").write_text(
+        _eval_env(
+            "experiment",
+            "swebenchpro@1.0",
+            n_concurrent=1,
+            tasks_per_round=4,
+            trials=1,
+            partial_floor=0.8,
+            agent="mini-swe-agent",
+            dataset_mode="registry",
+            task_file="evaluator/tasks/train.txt",
+        )
+        + "EVOLVE_HARBOR_ANCHOR_TASK_FILE=evaluator/tasks/sealed.txt\n"
+    )
+    (evaluator / "tasks" / "train.txt").write_text("train-task\n")
+    (evaluator / "tasks" / "sealed.txt").write_text("sealed-a\nsealed-b\n")
+    (evaluator / "parse_score.py").write_text((resource_root("templates") / "evaluator/parse_score.py").read_text())
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    _write_executable(
+        fake_bin / "harbor",
+        "#!/bin/sh\n"
+        "printf '%s\\n' \"$@\" > \"$HARBOR_ARGS_CAPTURE\"\n"
+        "jobs_dir=\n"
+        "while [ \"$#\" -gt 0 ]; do\n"
+        "  if [ \"$1\" = \"--jobs-dir\" ]; then\n"
+        "    shift\n"
+        "    jobs_dir=$1\n"
+        "  fi\n"
+        "  shift || true\n"
+        "done\n"
+        "mkdir -p \"$jobs_dir/trial-a\" \"$jobs_dir/trial-b\"\n"
+        "printf '%s\\n' '{\"verifier_result\":{\"rewards\":{\"reward\":1}}}' > \"$jobs_dir/trial-a/result.json\"\n"
+        "printf '%s\\n' '{\"verifier_result\":{\"rewards\":{\"reward\":1}}}' > \"$jobs_dir/trial-b/result.json\"\n",
+    )
+
+    args_capture = tmp_path / "harbor-args.txt"
+    env = {
+        **os.environ,
+        "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
+        "HARBOR_ARGS_CAPTURE": str(args_capture),
+        "EVOLVE_RUN_DIR": str(tmp_path / "run"),
+        "EVOLVE_EVAL_KIND": "anchor",
+        "EVOLVE_TASK_LIMIT": "2",
+    }
+    result = subprocess.run([str(evaluator / "eval.sh")], cwd=tmp_path, env=env, text=True, capture_output=True)
+
+    assert result.returncode == 0, result.stderr
+    args = args_capture.read_text().splitlines()
+    assert args.count("--include-task-name") == 2
+    assert "sealed-a" in args
+    assert "sealed-b" in args
+    assert "train-task" not in args
+    assert args[args.index("--n-tasks") + 1] == "2"
+    assert (tmp_path / "run" / "metrics.json").read_text().count('"expected_trials": 2') == 1

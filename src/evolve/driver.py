@@ -22,7 +22,7 @@ from .archive import (
     read_events,
     rows_by_genid,
 )
-from .config import evaluator_sampling, experiment_id, operator_blocks
+from .config import evaluator_anchor, evaluator_sampling, evaluator_stage, experiment_id, operator_blocks
 from .evaluator import evaluate
 from .frozen import meta_eval
 from .frozen.interfaces import (
@@ -89,6 +89,7 @@ def run(options: RunOptions) -> None:
         raise RuntimeError("children_per_gen must be at least 1")
     exp_id = experiment_id(workspace)
     ensure_local_archive(workspace, exp_id)
+    _ensure_genesis_evaluated(workspace, exp_id)
     operators_config = operator_blocks(workspace)
 
     for gen in range(1, options.max_generations + 1):
@@ -131,6 +132,7 @@ def run(options: RunOptions) -> None:
                 _resume_tagged_child(workspace, exp_id, genid, parent, round_number, operators_config)
                 continue
             _run_child(workspace, exp_id, genid, parent, round_number, operators_config)
+    _maybe_run_final_anchor(workspace, exp_id)
 
 
 def _run_operator_or_fail(
@@ -750,7 +752,7 @@ def _stamp_evaluation(
     round_number: int | None = None,
     kind: str = "eval",
 ) -> None:
-    result = evaluate(workspace, tag, genid, round_number=round_number)
+    result, stage_score, run_full_eval = _evaluate_candidate(workspace, tag, genid, round_number)
     valid_parent = result.status in {"complete", "partial"}
     event: dict[str, Any] = {
         "genid": genid,
@@ -766,6 +768,8 @@ def _stamp_evaluation(
         "reason": DEFAULT_EVAL_REASON,
         "mutated": mutated,
         "surface_violations": [],
+        "stage_score": stage_score,
+        "run_full_eval": run_full_eval,
         "pending_gate_record": True,
         "predicted_fixes": [],
         "note": PENDING_GATE_RECORD_NOTE,
@@ -776,6 +780,125 @@ def _stamp_evaluation(
         event["round"] = round_number
         event[MECHANISM_EVAL_FIELD] = True
     append_event(workspace, exp_id, event)
+
+
+def _evaluate_candidate(
+    workspace: Path,
+    tag: str,
+    genid: str,
+    round_number: int | None,
+):
+    stage = evaluator_stage(workspace)
+    if stage is None:
+        return evaluate(workspace, tag, genid, round_number=round_number), None, True
+    staged = evaluate(
+        workspace,
+        tag,
+        genid,
+        round_number=round_number,
+        run_name="eval-stage",
+        task_limit=stage["tasks"],
+        eval_kind="stage",
+    )
+    if staged.status not in {"complete", "partial"} or staged.score is None or staged.score <= 0:
+        return staged, staged.score, False
+    full = evaluate(workspace, tag, genid, round_number=round_number, eval_kind="research")
+    return full, staged.score, True
+
+
+def _ensure_genesis_evaluated(workspace: Path, exp_id: str) -> None:
+    row = rows_by_genid(workspace).get("0", {})
+    if row.get("note") != "initial scaffold":
+        return
+    result = evaluate(workspace, "gen/0", "0", run_name="eval-genesis", eval_kind="genesis")
+    valid_parent = result.status in {"complete", "partial"}
+    append_event(
+        workspace,
+        exp_id,
+        {
+            "genid": "0",
+            "parent": row.get("parent"),
+            "tag": "gen/0",
+            "score": result.score,
+            "status": result.status,
+            "task_set_hash": result.task_set_hash,
+            "task_vector": result.task_vector,
+            "evaluator_tree": result.evaluator_tree,
+            "valid_parent": valid_parent,
+            "verdict": "keep" if valid_parent else "discard",
+            "reason": "mechanism genesis evaluation stamp",
+            "mutated": row.get("mutated", []),
+            "surface_violations": row.get("surface_violations", []),
+            "predicted_fixes": row.get("predicted_fixes", []),
+            "note": "genesis evaluated",
+            "pending_gate_record": False,
+            "kind": "genesis_eval",
+            "cost": {"usd": 0, "wall_s": result.wall_s},
+            MECHANISM_EVAL_FIELD: True,
+        },
+    )
+
+
+def _maybe_run_final_anchor(workspace: Path, exp_id: str) -> None:
+    anchor = evaluator_anchor(workspace)
+    if anchor.get("final") is not True:
+        return
+    row = _final_anchor_row(workspace)
+    if row is None:
+        return
+    genid = str(row["genid"])
+    if _generation_has_anchor_event(workspace, genid):
+        return
+    result = evaluate(workspace, f"gen/{genid}", genid, run_name="eval-anchor", eval_kind="anchor")
+    valid_parent = result.status in {"complete", "partial"}
+    append_event(
+        workspace,
+        exp_id,
+        {
+            "genid": genid,
+            "parent": row.get("parent"),
+            "tag": f"gen/{genid}",
+            "score": result.score,
+            "status": result.status,
+            "task_set_hash": result.task_set_hash,
+            "task_vector": result.task_vector,
+            "evaluator_tree": result.evaluator_tree,
+            "valid_parent": valid_parent,
+            "verdict": "keep" if valid_parent else "discard",
+            "reason": "mechanism final anchor evaluation stamp",
+            "mutated": row.get("mutated", []),
+            "surface_violations": row.get("surface_violations", []),
+            "predicted_fixes": row.get("predicted_fixes", []),
+            "note": "final anchor evaluation",
+            "kind": "anchor",
+            "cost": {"usd": 0, "wall_s": result.wall_s},
+            MECHANISM_EVAL_FIELD: True,
+        },
+    )
+
+
+def _final_anchor_row(workspace: Path) -> dict[str, Any] | None:
+    best = best_row(workspace)
+    if best is None:
+        return None
+    best_score = best.get("score")
+    if not isinstance(best_score, (int, float)) or isinstance(best_score, bool):
+        return best
+    tied_rows = [
+        row
+        for row in valid_parent_rows(workspace)
+        if isinstance(row.get("score"), (int, float))
+        and not isinstance(row.get("score"), bool)
+        and float(row["score"]) == float(best_score)
+    ]
+    return max(tied_rows, key=lambda row: (generation_number(str(row.get("genid"))) or -1, str(row.get("genid"))))
+
+
+def _generation_has_anchor_event(workspace: Path, genid: str) -> bool:
+    return any(
+        str(event.get("genid")) == genid and event.get("kind") == "anchor" and _is_scored_evaluation(event)
+        for event in read_events(archive_path(workspace))
+    )
 
 
 def _ensure_selected_parent_round_evaluations(

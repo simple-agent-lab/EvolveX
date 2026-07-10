@@ -21,6 +21,8 @@ EVALUATION_FIELDS = STAMPED_FIELDS | {
     "mutated",
     "surface_violations",
     "predicted_fixes",
+    "stage_score",
+    "run_full_eval",
     "note",
     "kind",
     "round",
@@ -190,6 +192,10 @@ def _merge_keyed_evaluation(
     event: dict[str, Any],
 ) -> None:
     task_hash = str(event["task_set_hash"])
+    if _is_genesis_replacement(row, genid, event):
+        top_eval_hash[genid] = task_hash
+        _replace_top_evaluation(row, event)
+        return
     if genid not in top_eval_hash:
         top_eval_hash[genid] = task_hash
         _merge_event_fields(row, row, event)
@@ -217,6 +223,16 @@ def _merge_keyed_evaluation(
 
 def _evaluation_entry(event: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in event.items() if key in EVALUATION_FIELDS}
+
+
+def _is_genesis_replacement(row: dict[str, Any], genid: str, event: dict[str, Any]) -> bool:
+    return genid == "0" and row.get("note") == "initial scaffold" and event.get("kind") == "genesis_eval"
+
+
+def _replace_top_evaluation(row: dict[str, Any], event: dict[str, Any]) -> None:
+    for key, value in event.items():
+        if key not in RESERVED_AUXILIARY_FIELDS:
+            row[key] = value
 
 
 def _merge_event_fields(row: dict[str, Any], current: dict[str, Any], event: dict[str, Any]) -> None:
