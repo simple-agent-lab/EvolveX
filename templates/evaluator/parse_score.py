@@ -5,6 +5,8 @@ import json
 import sys
 from pathlib import Path
 
+from harbor_artifacts import write_harbor_artifacts
+
 
 def _load_eval_env(path: Path) -> dict[str, str]:
     values: dict[str, str] = {}
@@ -17,26 +19,6 @@ def _load_eval_env(path: Path) -> dict[str, str]:
         key, value = stripped.split("=", 1)
         values[key] = value.strip().strip('"').strip("'")
     return values
-
-
-def _reward_from_trial(trial_dir: Path) -> float | None:
-    result_path = trial_dir / "result.json"
-    if result_path.exists():
-        try:
-            payload = json.loads(result_path.read_text())
-        except json.JSONDecodeError:
-            payload = {}
-        rewards = (payload.get("verifier_result") or {}).get("rewards", {})
-        reward = rewards.get("reward")
-        if isinstance(reward, (int, float)):
-            return float(reward)
-    reward_path = trial_dir / "verifier" / "reward.txt"
-    if reward_path.exists():
-        try:
-            return float(reward_path.read_text().strip())
-        except ValueError:
-            return None
-    return None
 
 
 def _write_outputs(run_dir: Path, *, status: str, metrics: dict[str, object], score: float | None = None) -> None:
@@ -57,16 +39,7 @@ def main(argv: list[str]) -> int:
         1, int(env_values.get("EVOLVE_HARBOR_EXPECTED_TRIALS", env_values.get("EVOLVE_HARBOR_N", "1")))
     )
     partial_floor = float(env_values.get("EVOLVE_PARTIAL_FLOOR", "0.8"))
-    rewards = []
-    pending = list(sorted(jobs_dir.iterdir())) if jobs_dir.exists() else []
-    for child in pending:
-        if not child.is_dir():
-            continue
-        reward = _reward_from_trial(child)
-        if reward is not None:
-            rewards.append(reward)
-            continue
-        pending.extend(sorted(grandchild for grandchild in child.iterdir() if grandchild.is_dir()))
+    rewards = write_harbor_artifacts(jobs_dir, run_dir)
     completed_trials = len(rewards)
     missing_trials = max(expected_trials - completed_trials, 0)
     if completed_trials == 0:

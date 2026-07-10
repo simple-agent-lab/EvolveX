@@ -1,0 +1,145 @@
+from __future__ import annotations
+
+import hashlib
+import json
+from pathlib import Path
+from typing import Any
+
+SAFE_ARTIFACTS = (
+    "agent/mini-swe-agent.trajectory.json",
+    "agent/mini-swe-agent.txt",
+    "agent/trajectory.json",
+    "trial.log",
+    "verifier/reward.txt",
+    "verifier/test-stdout.txt",
+    "result.json",
+    "exception.txt",
+)
+
+
+def collect_harbor_artifacts(jobs_dir: Path) -> tuple[dict[str, Any], dict[str, Any], list[float]]:
+    trials = _load_task_trials(jobs_dir)
+    return _build_task_vector(trials), _build_artifact_index(jobs_dir, trials), _scoring_rewards(trials)
+
+
+def write_harbor_artifacts(jobs_dir: Path, run_dir: Path) -> list[float]:
+    task_vector, artifact_index, rewards = collect_harbor_artifacts(jobs_dir)
+    run_dir.mkdir(parents=True, exist_ok=True)
+    (run_dir / "task_vector.json").write_text(json.dumps(task_vector, indent=2, sort_keys=True) + "\n")
+    (run_dir / "evaluation_artifacts.json").write_text(json.dumps(artifact_index, indent=2, sort_keys=True) + "\n")
+    return rewards
+
+
+def _load_task_trials(jobs_dir: Path) -> list[dict[str, Any]]:
+    if not jobs_dir.exists():
+        return []
+    trials: list[dict[str, Any]] = []
+    for result_path in sorted(jobs_dir.rglob("result.json")):
+        try:
+            result = json.loads(result_path.read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(result, dict):
+            continue
+        task_name = result.get("task_name")
+        trial_name = result.get("trial_name")
+        if not isinstance(task_name, str) or not isinstance(trial_name, str):
+            continue
+        reward = _reward(result)
+        status, reward = _trial_status(result, reward)
+        exception_info = result.get("exception_info")
+        exception_type = None
+        exception_message = None
+        if isinstance(exception_info, dict):
+            raw_type = exception_info.get("exception_type")
+            raw_message = exception_info.get("exception_message")
+            exception_type = str(raw_type) if raw_type else None
+            exception_message = _exception_message(raw_message)
+        trial_dir = result_path.parent
+        trials.append(
+            {
+                "task_name": task_name,
+                "trial_name": trial_name,
+                "status": status,
+                "reward": reward,
+                "exception_type": exception_type,
+                "exception_message": exception_message,
+                "trial_dir": trial_dir,
+                "artifacts": _safe_artifacts(jobs_dir, trial_dir),
+            }
+        )
+    return sorted(trials, key=lambda trial: (str(trial["task_name"]), str(trial["trial_name"])))
+
+
+def _build_task_vector(trials: list[dict[str, Any]]) -> dict[str, Any]:
+    tasks: dict[str, list[dict[str, Any]]] = {}
+    for entry in trials:
+        tasks.setdefault(str(entry["task_name"]), []).append(entry)
+    serialized_tasks: dict[str, dict[str, list[dict[str, Any]]]] = {}
+    for task_name, task_trials in sorted(tasks.items()):
+        serialized_trials: list[dict[str, Any]] = []
+        for index, entry in enumerate(sorted(task_trials, key=lambda trial: str(trial["trial_name"]))):
+            serialized = {"trial": index, "status": entry["status"], "reward": entry["reward"]}
+            if entry["exception_type"] is not None:
+                serialized["exception_type"] = entry["exception_type"]
+            if entry["exception_message"] is not None:
+                serialized["exception_message"] = entry["exception_message"]
+            serialized_trials.append(serialized)
+        serialized_tasks[task_name] = {"trials": serialized_trials}
+    return {"schema_version": 1, "tasks": serialized_tasks}
+
+
+def _build_artifact_index(jobs_dir: Path, trials: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "jobs_dir": str(jobs_dir.resolve()),
+        "trials": [
+            {
+                "task_name": entry["task_name"],
+                "trial_name": entry["trial_name"],
+                "files": entry["artifacts"],
+            }
+            for entry in trials
+        ],
+    }
+
+
+def _scoring_rewards(trials: list[dict[str, Any]]) -> list[float]:
+    return [float(entry["reward"]) for entry in trials if entry["reward"] is not None]
+
+
+def _reward(result: dict[str, Any]) -> float | None:
+    reward = ((result.get("verifier_result") or {}).get("rewards") or {}).get("reward")
+    return float(reward) if isinstance(reward, (int, float)) and not isinstance(reward, bool) else None
+
+
+def _trial_status(result: dict[str, Any], reward: float | None) -> tuple[str, float | None]:
+    if reward is not None:
+        return "complete", reward
+    exception_type = str((result.get("exception_info") or {}).get("exception_type") or "")
+    if exception_type in {"AgentTimeoutError", "AgentExecutionTimeoutError"}:
+        return "agent_timeout", 0.0
+    return "infra_failed", None
+
+
+def _exception_message(value: object) -> str | None:
+    if not value:
+        return None
+    message = str(value).strip().splitlines()[0].strip()
+    return None if message.startswith("Traceback") else message or None
+
+
+def _safe_artifacts(jobs_dir: Path, trial_dir: Path) -> list[dict[str, Any]]:
+    files: list[dict[str, Any]] = []
+    for relative_path in SAFE_ARTIFACTS:
+        path = trial_dir / relative_path
+        if not path.is_file():
+            continue
+        payload = path.read_bytes()
+        files.append(
+            {
+                "path": path.relative_to(jobs_dir).as_posix(),
+                "bytes": len(payload),
+                "sha256": hashlib.sha256(payload).hexdigest(),
+            }
+        )
+    return files

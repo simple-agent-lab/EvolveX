@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .git import evaluator_tree, git
+from .task_vectors import validate_task_vector
 
 
 @dataclass(frozen=True)
@@ -21,6 +22,7 @@ class EvaluationResult:
     evaluator_tree: str
     wall_s: float
     task_vector: dict | None = None  # per-task pass/fail, when the evaluator emits it
+    evaluation_artifacts: dict[str, str] | None = None
 
 
 def evaluate(
@@ -49,6 +51,7 @@ def evaluate(
             else:
                 raise RuntimeError("per-round evaluator did not write task_set_hash")
             task_vector = _read_task_vector(run_dir)
+            evaluation_artifacts = _evaluation_artifact_reference(workspace, run_dir)
         finally:
             git(workspace, "worktree", "remove", "--force", str(checkout), check=False)
 
@@ -59,6 +62,7 @@ def evaluate(
         evaluator_tree=tag_evaluator_tree,
         wall_s=time.monotonic() - start,
         task_vector=task_vector,
+        evaluation_artifacts=evaluation_artifacts,
     )
 
 
@@ -67,7 +71,14 @@ def _read_task_vector(run_dir: Path) -> dict | None:
     if not path.exists():
         return None
     data = json.loads(path.read_text())
-    return data if isinstance(data, dict) else None
+    return validate_task_vector(data)
+
+
+def _evaluation_artifact_reference(workspace: Path, run_dir: Path) -> dict[str, str] | None:
+    path = run_dir / "evaluation_artifacts.json"
+    if not path.exists():
+        return None
+    return {"path": path.relative_to(workspace).as_posix(), "sha256": _sha256_file(path)}
 
 
 def _run_eval_script(checkout: Path, run_dir: Path, genid: str, round_number: int | None) -> tuple[str, float | None]:

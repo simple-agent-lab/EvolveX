@@ -1,10 +1,14 @@
-import stat
+import hashlib
 import json
+import stat
 from pathlib import Path
 
-from evolve.archive import MECHANISM_EVAL_FIELD, append_event
-
+import pytest
 from conftest import init_workspace, rows_by_genid, run_evolve, smoke_agent_command
+
+from evolve.archive import MECHANISM_EVAL_FIELD, append_event
+from evolve.evaluator import _evaluation_artifact_reference, _read_task_vector
+from evolve.task_vectors import TaskVectorError
 
 
 def make_eval_script(path: Path, body: str) -> None:
@@ -156,3 +160,60 @@ def test_eval_force_re_evaluates_completed_generation_zero(tmp_path: Path) -> No
     last_event = json.loads((workspace / "archive.jsonl").read_text().splitlines()[-1])
     assert last_event["genid"] == "0"
     assert last_event[MECHANISM_EVAL_FIELD] is True
+
+
+def test_evaluator_validates_task_vectors_and_compacts_artifact_references(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    run_dir = workspace / "runs" / "gen-1" / "eval"
+    run_dir.mkdir(parents=True)
+    vector_path = run_dir / "task_vector.json"
+    vector_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "tasks": {"case-a": {"trials": [{"trial": 0, "status": "complete", "reward": 1.0}]}},
+            }
+        )
+    )
+    artifacts_path = run_dir / "evaluation_artifacts.json"
+    artifacts_path.write_text('{"jobs_dir":"/retained/jobs","trials":[]}\n')
+
+    assert _read_task_vector(run_dir) == json.loads(vector_path.read_text())
+    assert _evaluation_artifact_reference(workspace, run_dir) == {
+        "path": "runs/gen-1/eval/evaluation_artifacts.json",
+        "sha256": hashlib.sha256(artifacts_path.read_bytes()).hexdigest(),
+    }
+
+    vector_path.write_text('{"schema_version": 99, "tasks": {}}\n')
+    with pytest.raises(TaskVectorError, match="unsupported task vector schema"):
+        _read_task_vector(run_dir)
+
+
+def test_hand_edited_artifact_hash_cannot_replace_mechanism_stamp(tmp_path: Path) -> None:
+    workspace, _evolve_home = init_workspace(tmp_path)
+    initial = rows_by_genid(workspace)["0"]
+    expected = {"path": "runs/gen-0/eval/evaluation_artifacts.json", "sha256": "authentic"}
+    append_event(
+        workspace,
+        workspace.name,
+        {
+            **initial,
+            "evaluation_artifacts": expected,
+            "reason": "mechanism evaluation stamp",
+            "note": "real baseline eval",
+            "cost": {"usd": 0, "wall_s": 1.0},
+            MECHANISM_EVAL_FIELD: True,
+        },
+    )
+    append_event(
+        workspace,
+        workspace.name,
+        {
+            **initial,
+            "evaluation_artifacts": {**expected, "sha256": "forged"},
+            "reason": "hand-edited artifact hash",
+            "note": "manual attempt",
+        },
+    )
+
+    assert rows_by_genid(workspace)["0"]["evaluation_artifacts"] == expected

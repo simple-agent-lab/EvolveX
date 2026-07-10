@@ -145,6 +145,7 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
         ),
         "evaluator/splits.json": json.dumps({"train": 0.5, "gate": 0.4, "sealed": 0.1, "seed": 0}, indent=2) + "\n",
         "evaluator/dataset.pin": f"dataset={evaluator_dataset}\nchecksum=sha256:stub\n",
+        "evaluator/harbor_artifacts.py": _template("evaluator/harbor_artifacts.py"),
         "evaluator/parse_score.py": _template("evaluator/parse_score.py"),
         "evaluator/stub_eval.py": _template("evaluator/stub_eval.py"),
         "evaluator/engines/local.sh": _shell_script("canonical local engine"),
@@ -448,15 +449,12 @@ def _make_executable(*paths: Path) -> None:
 
 
 def _eval_env(
-    workspace_name: str,
-    dataset: str,
+    workspace_name: str, dataset: str,
     n_concurrent: int,
     tasks_per_round: int,
     trials: int,
     partial_floor: float,
-    agent: str,
-    *,
-    dataset_mode: str = "path", task_file: str | None = None,
+    agent: str, *, dataset_mode: str = "path", task_file: str | None = None,
 ) -> str:
     expected_trials = tasks_per_round * max(trials, 1)
     text = (
@@ -464,6 +462,7 @@ def _eval_env(
         f"EVOLVE_HARBOR_TASKS={shlex.quote(dataset)}\n"
         f"EVOLVE_HARBOR_DATASET_MODE={shlex.quote(dataset_mode)}\n"
         f"EVOLVE_HARBOR_N_CONCURRENT={n_concurrent}\n"
+        f"EVOLVE_HARBOR_ATTEMPTS={max(trials, 1)}\n"
         f"EVOLVE_HARBOR_EXPECTED_TRIALS={expected_trials}\n"
         f"EVOLVE_HARBOR_N={n_concurrent}\n"
         f'EVOLVE_JOBS_DIR="$HOME/.evolve/harbor-jobs/{workspace_name}"\n'

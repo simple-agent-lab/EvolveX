@@ -20,16 +20,19 @@ def test_harbor_registry_dataset_uses_dataset_flag_and_task_file(tmp_path: Path)
         _eval_env(
             "experiment",
             "swebenchpro@1.0",
-            n_concurrent=1,
-            tasks_per_round=1,
-            trials=1,
+            n_concurrent=5,
+            tasks_per_round=2,
+            trials=2,
             partial_floor=0.8,
             agent="mini-swe-agent",
             dataset_mode="registry",
             task_file="evaluator/tasks/train.txt",
         )
     )
-    (evaluator / "tasks" / "train.txt").write_text("task-a\n# comment\n\ntask-b\n")
+    (evaluator / "tasks" / "train.txt").write_text("case-a\n# comment\n\ncase-b\n")
+    (evaluator / "harbor_artifacts.py").write_text(
+        (resource_root("templates") / "evaluator/harbor_artifacts.py").read_text()
+    )
     (evaluator / "parse_score.py").write_text((resource_root("templates") / "evaluator/parse_score.py").read_text())
 
     fake_bin = tmp_path / "bin"
@@ -47,8 +50,12 @@ def test_harbor_registry_dataset_uses_dataset_flag_and_task_file(tmp_path: Path)
         "  fi\n"
         "  shift || true\n"
         "done\n"
-        "mkdir -p \"$jobs_dir/trial\"\n"
-        "printf '%s\\n' '{\"verifier_result\":{\"rewards\":{\"reward\":1}}}' > \"$jobs_dir/trial/result.json\"\n",
+        "for task in case-a case-b; do\n"
+        "  for trial in one two; do\n"
+        "    mkdir -p \"$jobs_dir/${task}__${trial}\"\n"
+        "    printf '%s\\n' \"{\\\"task_name\\\":\\\"$task\\\",\\\"trial_name\\\":\\\"$trial\\\",\\\"verifier_result\\\":{\\\"rewards\\\":{\\\"reward\\\":1}}}\" > \"$jobs_dir/${task}__${trial}/result.json\"\n"
+        "  done\n"
+        "done\n",
     )
 
     args_capture = tmp_path / "harbor-args.txt"
@@ -70,10 +77,11 @@ def test_harbor_registry_dataset_uses_dataset_flag_and_task_file(tmp_path: Path)
     assert args[:3] == ["run", "--dataset", "swebenchpro@1.0"]
     assert "-p" not in args
     assert args.count("--include-task-name") == 2
-    assert args[args.index("--include-task-name") + 1] == "task-a"
-    assert args[args.index("--include-task-name", args.index("--include-task-name") + 1) + 1] == "task-b"
+    assert args[args.index("--include-task-name") + 1] == "case-a"
+    assert args[args.index("--include-task-name", args.index("--include-task-name") + 1) + 1] == "case-b"
     assert args[args.index("--agent") + 1] == "mini-swe-agent"
     assert args[args.index("--model") + 1] == "openai/smoke-model"
     assert args[args.index("--agent-setup-timeout-multiplier") + 1] == "3"
+    assert args[args.index("--n-attempts") + 1] == "2"
     assert docker_host_capture.read_text() == "unset\n"
     assert (tmp_path / "run" / "status").read_text() == "complete\n"
