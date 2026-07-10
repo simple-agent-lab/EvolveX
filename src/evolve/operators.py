@@ -49,9 +49,11 @@ def run_operator(
     config_block: dict[str, Any],
     timeout_s: float,
     round_number: int | None = None,
+    operator_checkout: Path | None = None,
 ) -> OperatorResult:
     start = time.monotonic()
-    script = checkout / "operators" / f"{name}.py"
+    source_checkout = operator_checkout or checkout
+    script = source_checkout / "operators" / f"{name}.py"
     if not script.exists():
         return OperatorResult(
             name=name,
@@ -87,7 +89,7 @@ def run_operator(
                 sys.executable,
                 "-c",
                 _OPERATOR_WRAPPER,
-                "operators/%s.py" % name,
+                str(script.resolve()),
                 "--config",
                 json.dumps(config_block),
             ],

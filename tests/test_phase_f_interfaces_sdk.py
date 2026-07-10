@@ -6,6 +6,7 @@ import pytest
 
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import ValidateOperator, ValidateResult
+from evolve.operators import run_operator
 
 
 def test_operator_abcs_have_one_kind_specific_abstract_method():
@@ -103,6 +104,46 @@ def test_sdk_main_runs_validate_operator_and_writes_result(
         "accept": True,
         "artifacts": ["validate/imports.log"],
         "reason": "imports pass",
+    }
+
+
+def test_run_operator_can_use_trusted_operator_source_with_candidate_context(tmp_path: Path) -> None:
+    candidate_checkout = tmp_path / "candidate"
+    operator_checkout = tmp_path / "trusted"
+    workspace = tmp_path / "ws"
+    run_dir = tmp_path / "run"
+    (candidate_checkout / "target").mkdir(parents=True)
+    (operator_checkout / "operators").mkdir(parents=True)
+    workspace.mkdir()
+    (operator_checkout / "operators" / "record.py").write_text(
+        "import json, os\n"
+        "from pathlib import Path\n"
+        "Path(os.environ['EVOLVE_RUN_DIR']).mkdir(parents=True, exist_ok=True)\n"
+        "Path(os.environ['EVOLVE_RUN_DIR'], 'probe.json').write_text(json.dumps({\n"
+        "    'checkout': os.environ['EVOLVE_CHECKOUT'],\n"
+        "    'cwd': os.getcwd(),\n"
+        "    'script': __file__,\n"
+        "}))\n"
+    )
+
+    result = run_operator(
+        name="record",
+        checkout=candidate_checkout,
+        operator_checkout=operator_checkout,
+        workspace=workspace,
+        genid="1",
+        parent="0",
+        run_dir=run_dir,
+        config_block={},
+        timeout_s=30,
+    )
+
+    assert result.returncode == 0, result.stderr
+    probe = json.loads((run_dir / "probe.json").read_text())
+    assert probe == {
+        "checkout": str(candidate_checkout.resolve()),
+        "cwd": str(candidate_checkout.resolve()),
+        "script": str((operator_checkout / "operators" / "record.py").resolve()),
     }
 
 

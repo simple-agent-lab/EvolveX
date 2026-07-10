@@ -9,7 +9,8 @@ from typing import Any
 
 STAMPED_FIELDS = {"score", "status", "task_set_hash", "task_vector", "evaluator_tree", "cost"}
 MECHANISM_EVAL_FIELD = "_evolve_mechanism_eval"
-RESERVED_AUXILIARY_FIELDS = {"evals", "kind", "round", MECHANISM_EVAL_FIELD}
+RECORD_ATTEMPT_FIELD = "_evolve_record_attempted"
+RESERVED_AUXILIARY_FIELDS = {"evals", "kind", "round", MECHANISM_EVAL_FIELD, RECORD_ATTEMPT_FIELD}
 EVALUATION_FIELDS = STAMPED_FIELDS | {
     "genid",
     "parent",

@@ -10,6 +10,7 @@ from typing import Any
 
 from .archive import (
     MECHANISM_EVAL_FIELD,
+    RECORD_ATTEMPT_FIELD,
     STAMPED_FIELDS,
     append_event,
     archive_path,
@@ -64,6 +65,7 @@ TERMINAL_STATUSES = {
 }
 UNRETRYABLE_STATUSES = TERMINAL_STATUSES - {"complete", "partial"}
 RECORD_FORBIDDEN_FIELDS = STAMPED_FIELDS | {
+    RECORD_ATTEMPT_FIELD,
     "genid",
     "parent",
     "tag",
@@ -187,6 +189,15 @@ def _run_child(
     operators_config: dict[str, Any],
 ) -> None:
     child = _child_worktree_path(workspace, genid)
+    recorded = False
+
+    def record_terminal_attempt(candidate_checkout: Path | None = child) -> None:
+        nonlocal recorded
+        if recorded:
+            return
+        recorded = True
+        _run_terminal_record(workspace, exp_id, genid, parent, operators_config, candidate_checkout, round_number)
+
     if child.exists():
         remove_worktree(workspace, child)
     try:
@@ -201,6 +212,7 @@ def _run_child(
                 "select",
                 note=str(exc),
             )
+            record_terminal_attempt(None)
             return
 
         for name in ("rollout", "meta_agent"):
@@ -215,6 +227,7 @@ def _run_child(
                 operators_config=operators_config,
                 round_number=round_number,
             ):
+                record_terminal_attempt()
                 return
 
         mutated_paths = working_tree_changed_paths(child, f"gen/{parent}")
@@ -228,6 +241,7 @@ def _run_child(
                 reason="no changes to commit",
                 mutated=[],
             )
+            record_terminal_attempt()
             return
         include, exclude = surface_patterns(workspace)
         violations = check_paths(mutated_paths, include, exclude)
@@ -242,6 +256,7 @@ def _run_child(
                 mutated=mutated_paths,
                 violations=violations,
             )
+            record_terminal_attempt()
             return
 
         if _operator_present(operators_config, "validate"):
@@ -256,6 +271,7 @@ def _run_child(
                 operators_config=operators_config,
                 round_number=round_number,
             ):
+                record_terminal_attempt()
                 return
             validation, _error = _load_validate_payload(_run_dir(workspace, genid))
             if validation is not None and not validation["accept"]:
@@ -268,6 +284,7 @@ def _run_child(
                     reason=f"candidate validation rejected: {validation['reason']}",
                     mutated=mutated_paths,
                 )
+                record_terminal_attempt()
                 return
 
         # Self-modification admission gate (mechanism 1, DESIGN §2/§7). When a
@@ -288,6 +305,7 @@ def _run_child(
                     reason="self-modification admission rejected complete child",
                     mutated=mutated_paths,
                 )
+                record_terminal_attempt()
                 return
 
         # Novelty gate (mechanism 5, DESIGN §7) — optional, off unless the recipe
@@ -306,10 +324,12 @@ def _run_child(
                 operators_config=operators_config,
                 round_number=round_number,
             ):
+                record_terminal_attempt()
                 return
             nov_payload, _ = _load_novelty_payload(run_dir)
             if nov_payload is not None and not nov_payload["accept"]:
                 _append_novelty_rejected(workspace, exp_id, genid, parent, nov_payload)
+                record_terminal_attempt()
                 return
 
         commit_child(workspace, child, parent, genid)
@@ -469,41 +489,18 @@ def _run_gate_and_record(
                 )
                 return
 
-            record_result = _run_operator_guarded(
-                name="record",
-                checkout=checkout,
-                workspace=workspace,
-                exp_id=exp_id,
-                genid=genid,
-                parent=parent,
-                run_dir=run_dir,
-                config_block=_operator_config_block(operators_config, "record"),
-                timeout_s=operator_timeout(operators_config, "record"),
+            _run_terminal_record(
+                workspace,
+                exp_id,
+                genid,
+                parent,
+                operators_config,
+                checkout,
                 round_number=round_number,
+                operator_ref=f"gen/{genid}",
             )
-            if record_result.returncode != 0:
-                _append_operator_failed(
-                    workspace,
-                    exp_id,
-                    genid,
-                    parent,
-                    "record",
-                    note=_operator_failure_note(record_result),
-                )
-                return
-            record_fields_payload, record_error = _load_record_fields(run_dir)
-            if record_error is not None or record_fields_payload is None:
-                _append_operator_failed(
-                    workspace,
-                    exp_id,
-                    genid,
-                    parent,
-                    "record",
-                    note=_operator_output_note(record_error),
-                )
-                return
-            record_fields(workspace, genid, _strip_record_fields(record_fields_payload))
-            if not _row_matches_gate_payload(rows_by_genid(workspace).get(genid, {}), gate_payload):
+            row = rows_by_genid(workspace).get(genid, {})
+            if "record_error" not in row and not _row_matches_gate_payload(row, gate_payload):
                 _append_operator_failed(
                     workspace,
                     exp_id,
@@ -514,6 +511,50 @@ def _run_gate_and_record(
                 )
         finally:
             remove_worktree(workspace, checkout)
+
+
+def _run_terminal_record(
+    workspace: Path,
+    exp_id: str,
+    genid: str,
+    parent: str,
+    operators_config: dict[str, Any],
+    candidate_checkout: Path | None,
+    round_number: int | None = None,
+    operator_ref: str | None = None,
+) -> None:
+    if not _operator_present(operators_config, "record") or _record_attempted(workspace, genid):
+        return
+    ref = operator_ref or f"gen/{parent}"
+    with tempfile.TemporaryDirectory(prefix=f"evolve-record-{genid}-") as tempdir:
+        operator_checkout = Path(tempdir) / "operator"
+        add_worktree(workspace, operator_checkout, ref)
+        try:
+            context_checkout = candidate_checkout if candidate_checkout and candidate_checkout.exists() else operator_checkout
+            run_dir = _run_dir(workspace, genid)
+            result = _run_operator_guarded(
+                name="record",
+                checkout=context_checkout,
+                operator_checkout=operator_checkout,
+                workspace=workspace,
+                exp_id=exp_id,
+                genid=genid,
+                parent=parent,
+                run_dir=run_dir,
+                config_block=_operator_config_block(operators_config, "record"),
+                timeout_s=operator_timeout(operators_config, "record"),
+                round_number=round_number,
+            )
+            if result.returncode != 0:
+                _append_record_error(workspace, exp_id, genid, _operator_failure_note(result))
+                return
+            fields, error = _load_record_fields(run_dir)
+            if error is not None or fields is None:
+                _append_record_error(workspace, exp_id, genid, _operator_output_note(error))
+                return
+            _record_terminal_fields(workspace, exp_id, genid, _strip_record_fields(fields))
+        finally:
+            remove_worktree(workspace, operator_checkout)
 
 
 def fork_child(workspace: Path, parent: str, child_worktree: Path) -> None:
@@ -921,6 +962,8 @@ def _event_marks_pending_gate_record(event: dict[str, Any]) -> bool:
 
 
 def _event_is_gate_record_event(event: dict[str, Any]) -> bool:
+    if STAMPED_FIELDS.isdisjoint(event) and "record_error" in event:
+        return True
     return STAMPED_FIELDS.isdisjoint(event) and {"valid_parent", "verdict", "reason"} <= set(event)
 
 
@@ -1120,6 +1163,21 @@ def _append_novelty_rejected(
     )
 
 
+def _append_record_error(workspace: Path, exp_id: str, genid: str, note: str) -> None:
+    append_event(workspace, exp_id, {"genid": genid, "record_error": note})
+
+
+def _record_terminal_fields(workspace: Path, exp_id: str, genid: str, fields: dict[str, object]) -> None:
+    workspace = workspace.resolve()
+    genid = _validate_genid(genid)
+    forbidden = sorted(set(fields) & RECORD_FORBIDDEN_FIELDS)
+    if forbidden:
+        raise RuntimeError(f"record refuses protected fields: {', '.join(forbidden)}")
+    if genid not in rows_by_genid(workspace):
+        raise RuntimeError(f"unknown generation: {genid}")
+    append_event(workspace, exp_id, {"genid": genid, **fields, RECORD_ATTEMPT_FIELD: True})
+
+
 def _operator_output_note(error: OperatorOutputError | None) -> str:
     if error is None:
         return "operator output missing or malformed"
@@ -1128,26 +1186,6 @@ def _operator_output_note(error: OperatorOutputError | None) -> str:
 
 def _strip_record_fields(fields: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in fields.items() if key not in RECORD_FORBIDDEN_FIELDS}
-
-
-def _gate_fallback_fields(
-    *,
-    gate_payload: dict[str, Any] | None,
-    default_reason: str,
-    note: str | None = None,
-) -> dict[str, object]:
-    fields: dict[str, object] = {
-        "valid_parent": False,
-        "verdict": "discard",
-        "reason": default_reason,
-    }
-    if gate_payload is not None:
-        fields["valid_parent"] = gate_payload["valid_parent"]
-        fields["verdict"] = gate_payload["verdict"]
-        fields["reason"] = gate_payload["reason"]
-    if note:
-        fields["note"] = note
-    return fields
 
 
 def _operator_config_block(operators_config: dict[str, Any], name: str) -> dict[str, Any]:
@@ -1161,10 +1199,19 @@ def _operator_present(operators_config: dict[str, Any], name: str) -> bool:
     return isinstance(operators_config.get(name), dict)
 
 
+def _record_attempted(workspace: Path, genid: str) -> bool:
+    return any(
+        str(event.get("genid")) == genid
+        and (event.get(RECORD_ATTEMPT_FIELD) is True or "record_error" in event)
+        for event in read_events(archive_path(workspace))
+    )
+
+
 def _run_operator_guarded(
     *,
     name: str,
     checkout: Path,
+    operator_checkout: Path | None = None,
     workspace: Path,
     exp_id: str,
     genid: str,
@@ -1172,7 +1219,6 @@ def _run_operator_guarded(
     run_dir: Path,
     config_block: dict[str, Any],
     timeout_s: float,
-    allow_record: bool = False,
     round_number: int | None = None,
 ) -> OperatorResult:
     before = _archive_line_snapshots(workspace, exp_id)
@@ -1191,15 +1237,9 @@ def _run_operator_guarded(
         config_block=config_block,
         timeout_s=timeout_s,
         round_number=round_number,
+        operator_checkout=operator_checkout,
     )
-    if allow_record and checkout.resolve() != workspace.resolve():
-        kept = [
-            line
-            for line in _archive_lines(archive_path(checkout))[len(before[archive_path(workspace)]) :]
-            if _allowed_record_line(line, genid)
-        ]
-        before = {path: lines + kept for path, lines in before.items()}
-    _restore_operator_archive_writes(before, genid, allow_record)
+    _restore_operator_archive_writes(before)
     return result
 
 
@@ -1211,12 +1251,9 @@ def _archive_lines(path: Path) -> list[str]:
     return path.read_text().splitlines() if path.exists() else []
 
 
-def _restore_operator_archive_writes(before: dict[Path, list[str]], genid: str, allow_record: bool) -> None:
+def _restore_operator_archive_writes(before: dict[Path, list[str]]) -> None:
     for path, original in before.items():
-        current = _archive_lines(path)
-        appended = current[len(original) :] if current[: len(original)] == original else []
-        kept = [line for line in appended if allow_record and _allowed_record_line(line, genid)]
-        _write_archive_lines(path, original + kept)
+        _write_archive_lines(path, original)
 
 
 def _write_archive_lines(path: Path, lines: list[str]) -> None:
@@ -1227,16 +1264,6 @@ def _write_archive_lines(path: Path, lines: list[str]) -> None:
 def _write_json(path: Path, payload: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
-
-
-def _allowed_record_line(line: str, genid: str) -> bool:
-    try:
-        event = json.loads(line)
-    except json.JSONDecodeError:
-        return False
-    if str(event.get("genid")) != genid:
-        return False
-    return not ((set(event) - {"genid"}) & RECORD_FORBIDDEN_FIELDS)
 
 
 def _run_dir(workspace: Path, genid: str) -> Path:
