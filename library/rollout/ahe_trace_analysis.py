@@ -101,8 +101,8 @@ def _manifest(parent: dict[str, Any], workspace: Path) -> dict[str, Any] | None:
     digest = parent.get("ahe_manifest_sha256")
     if path is None or digest is None:
         return None
-    verified = verify_relative_hash(workspace, {"path": path, "sha256": digest})
-    loaded = json.loads(verified.read_text())
+    _verified, payload = _verified_bytes(workspace, {"path": path, "sha256": digest})
+    loaded = json.loads(payload.decode())
     if not isinstance(loaded, dict):
         raise ValueError("AHE manifest must be an object")
     return loaded
@@ -125,6 +125,24 @@ def _verified_bytes(root: Path, reference: object) -> tuple[Path, bytes]:
 
 def _has_sealed_component(path: Path) -> bool:
     return any(part.casefold() == "sealed" for part in path.parts)
+
+
+def _resolved_reference_path(root: Path, reference: object) -> Path:
+    if not isinstance(reference, dict):
+        raise ValueError("artifact reference must be an object")
+    relative = reference.get("path")
+    if not isinstance(relative, str) or not relative or "\\" in relative:
+        raise ValueError("artifact path has an unsafe path")
+    path = Path(relative)
+    if path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
+        raise ValueError("unsafe path")
+    resolved_root = root.resolve()
+    candidate = (resolved_root / path).resolve()
+    try:
+        candidate.relative_to(resolved_root)
+    except ValueError as error:
+        raise ValueError("unsafe path") from error
+    return candidate
 
 
 def _artifact_index(row: dict[str, Any], workspace: Path) -> dict[str, Any]:
@@ -157,8 +175,8 @@ def _task_artifacts(index: dict[str, Any], task_id: str) -> list[tuple[str, str]
         for reference in files:
             if not isinstance(reference, dict):
                 raise ValueError("evaluation artifact file must be an object")
-            relative = reference.get("path")
-            if not isinstance(relative, str) or "sealed" in Path(relative).parts:
+            candidate = _resolved_reference_path(artifact_root, reference)
+            if _has_sealed_component(candidate):
                 raise ValueError("sealed artifacts are not available to AHE rollout")
             verified, payload = _verified_bytes(artifact_root, reference)
             if _has_sealed_component(verified):
@@ -218,7 +236,7 @@ def _detail_prompt(task_id: str, reasons: list[str], evidence: list[tuple[str, s
 def _report_filename(task_id: str) -> str:
     if _SAFE_TASK_ID.fullmatch(task_id):
         return f"{task_id}.md"
-    return f"task-{hashlib.sha256(task_id.encode()).hexdigest()}.md"
+    return f"_task-{hashlib.sha256(task_id.encode()).hexdigest()}.md"
 
 
 def _overview_prompt(detail_reports: list[Path], attribution: dict[str, Any]) -> str:

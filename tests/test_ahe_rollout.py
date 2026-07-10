@@ -286,7 +286,7 @@ def test_task_artifacts_reject_sealed_jobs_dir(tmp_path: Path) -> None:
         AHE_ROLLOUT._task_artifacts(index, "task")
 
 
-def test_task_artifacts_reject_symlink_alias_to_sealed_path(tmp_path: Path) -> None:
+def test_task_artifacts_reject_symlink_alias_to_sealed_path(tmp_path: Path, monkeypatch) -> None:
     jobs = tmp_path / "jobs"
     sealed = jobs / "sealed"
     trace = sealed / "trace.txt"
@@ -297,9 +297,18 @@ def test_task_artifacts_reject_symlink_alias_to_sealed_path(tmp_path: Path) -> N
         "jobs_dir": str(jobs),
         "trials": [{"task_name": "task", "files": [{"path": "alias/trace.txt", "sha256": _sha256(trace)}]}],
     }
+    verified_calls = 0
+
+    def unexpected_verified_bytes(_root: Path, _reference: object):
+        nonlocal verified_calls
+        verified_calls += 1
+        raise AssertionError("sealed evidence reached verification/read helper")
+
+    monkeypatch.setattr(AHE_ROLLOUT, "_verified_bytes", unexpected_verified_bytes)
 
     with pytest.raises(ValueError, match="sealed"):
         AHE_ROLLOUT._task_artifacts(index, "task")
+    assert verified_calls == 0
 
 
 def test_unsafe_task_id_uses_hashed_report_path(tmp_path: Path, monkeypatch) -> None:
@@ -336,9 +345,63 @@ def test_unsafe_task_id_uses_hashed_report_path(tmp_path: Path, monkeypatch) -> 
     reports = list(detail_dir.glob("*.md"))
     assert len(reports) == 1
     assert reports[0].resolve().parent == detail_dir
-    assert reports[0].name == f"task-{hashlib.sha256(task_id.encode()).hexdigest()}.md"
+    assert reports[0].name == f"_task-{hashlib.sha256(task_id.encode()).hexdigest()}.md"
     assert not (run_dir / "rollout" / "analysis" / "escape.md").exists()
     assert f"rollout/analysis/detail/{reports[0].name}" in result.artifacts
+
+
+def test_unsafe_and_safe_hash_like_task_ids_use_distinct_reports(tmp_path: Path, monkeypatch) -> None:
+    workspace = tmp_path / "workspace"
+    checkout = workspace / "candidate-checkout"
+    run_dir = workspace / "runs" / "gen-2"
+    checkout.mkdir(parents=True)
+    unsafe_id = "../escape"
+    digest = hashlib.sha256(unsafe_id.encode()).hexdigest()
+    safe_id = f"task-{digest}"
+    artifacts = _write_artifacts(workspace, "1", [unsafe_id, safe_id])
+    (workspace / "archive.jsonl").write_text(
+        json.dumps(
+            {
+                "genid": "1",
+                "task_vector": _vector({unsafe_id: [0, 0], safe_id: [0, 0]}),
+                "evaluation_artifacts": artifacts,
+            }
+        )
+        + "\n"
+    )
+    monkeypatch.setattr(AHE_ROLLOUT, "run_meta_agent", lambda **_kwargs: SimpleNamespace(stdout="report\n"))
+    ctx = OperatorContext(
+        workspace=workspace,
+        checkout=checkout,
+        run_dir=run_dir,
+        genid="2",
+        parent="1",
+        round=None,
+        fan_out=1,
+        config={"debugger": {"command": "fake-debugger", "control_count": 0}},
+        rng=random.Random(0),
+    )
+
+    result = AHE_ROLLOUT.AheTraceAnalysisRollout().rollout(checkout, ctx)
+
+    detail_dir = run_dir / "rollout" / "analysis" / "detail"
+    expected = {f"_task-{digest}.md", f"{safe_id}.md"}
+    assert {path.name for path in detail_dir.glob("*.md")} == expected
+    assert {Path(path).name for path in result.artifacts if path.startswith("rollout/analysis/detail/")} == expected
+
+
+def test_manifest_rehashes_exact_returned_bytes(tmp_path: Path, monkeypatch) -> None:
+    manifest = tmp_path / "manifest.json"
+    authentic = b'{"changes": []}\n'
+    manifest.write_bytes(b'{"changes": [{"id": "forged"}]}\n')
+    parent = {
+        "ahe_manifest_path": "manifest.json",
+        "ahe_manifest_sha256": hashlib.sha256(authentic).hexdigest(),
+    }
+    monkeypatch.setattr(AHE_ROLLOUT, "verify_relative_hash", lambda _root, _reference: manifest)
+
+    with pytest.raises(ValueError, match="sha256"):
+        AHE_ROLLOUT._manifest(parent, tmp_path)
 
 
 def test_terminal_debugger_failure_records_attempts(tmp_path: Path, monkeypatch) -> None:
