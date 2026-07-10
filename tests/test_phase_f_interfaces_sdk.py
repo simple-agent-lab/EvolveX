@@ -74,9 +74,9 @@ def test_sdk_main_runs_meta_agent_operator_and_writes_meta_agent_artifacts(
             )
 
     _set_sdk_env(monkeypatch, tmp_path, parent="0")
-    feedback_dir = tmp_path / "run" / "feedback"
-    feedback_dir.mkdir(parents=True)
-    (feedback_dir / "summary.json").write_text('{"failed": ["task-1"]}\n')
+    rollout_dir = tmp_path / "run" / "rollout"
+    rollout_dir.mkdir(parents=True)
+    (rollout_dir / "summary.json").write_text('{"failed": ["task-1"]}\n')
 
     sdk.main(TinyMetaAgent)
 

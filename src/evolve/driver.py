@@ -21,7 +21,6 @@ from .archive import (
 )
 from .config import evaluator_sampling, experiment_id, operator_blocks
 from .evaluator import evaluate
-from .feedback import write_feedback_bundle
 from .frozen import meta_eval
 from .frozen.interfaces import (
     PayloadValidationError,
@@ -33,6 +32,7 @@ from .frozen.interfaces import (
     validate_rollout_artifacts_payload,
     validate_rollout_summary_payload,
     validate_select_payload,
+    validate_validate_file_payload,
 )
 from .git import (
     add_worktree,
@@ -52,8 +52,17 @@ from .surface import check_paths, surface_patterns
 
 DEFAULT_EVAL_REASON = "mechanism evaluation stamp"
 PENDING_GATE_RECORD_NOTE = "mechanism evaluation recorded before gate/record"
-TERMINAL_STATUSES = {"complete", "partial", "invalid_proposal", "no_proposal", "operator_failed", "rejected_duplicate"}
-UNRETRYABLE_STATUSES = {"invalid_proposal", "no_proposal", "operator_failed", "rejected_duplicate"}
+TERMINAL_STATUSES = {
+    "complete",
+    "partial",
+    "invalid_proposal",
+    "no_proposal",
+    "operator_failed",
+    "rejected_admission",
+    "rejected_duplicate",
+    "rejected_validation",
+}
+UNRETRYABLE_STATUSES = TERMINAL_STATUSES - {"complete", "partial"}
 RECORD_FORBIDDEN_FIELDS = STAMPED_FIELDS | {
     "genid",
     "parent",
@@ -180,7 +189,6 @@ def _run_child(
     child = _child_worktree_path(workspace, genid)
     if child.exists():
         remove_worktree(workspace, child)
-    operator_reverted = False
     try:
         try:
             fork_child(workspace, parent, child)
@@ -196,11 +204,6 @@ def _run_child(
             return
 
         for name in ("rollout", "meta_agent"):
-            if name == "meta_agent":
-                # The feedback bundle (retired `observe`) is ledger-derived
-                # mechanism bookkeeping: written after rollout, before meta_agent,
-                # so it exists regardless of the rollout variant.
-                write_feedback_bundle(workspace=workspace, run_dir=_run_dir(workspace, genid))
             if not _run_operator_or_fail(
                 name=name,
                 checkout=child,
@@ -214,18 +217,78 @@ def _run_child(
             ):
                 return
 
+        mutated_paths = working_tree_changed_paths(child, f"gen/{parent}")
+        if not mutated_paths:
+            _append_candidate_rejected(
+                workspace,
+                exp_id,
+                genid,
+                parent,
+                status="no_proposal",
+                reason="no changes to commit",
+                mutated=[],
+            )
+            return
+        include, exclude = surface_patterns(workspace)
+        violations = check_paths(mutated_paths, include, exclude)
+        if violations:
+            _append_candidate_rejected(
+                workspace,
+                exp_id,
+                genid,
+                parent,
+                status="invalid_proposal",
+                reason="changed paths outside mutable surface",
+                mutated=mutated_paths,
+                violations=violations,
+            )
+            return
+
+        if _operator_present(operators_config, "validate"):
+            if not _run_operator_or_fail(
+                name="validate",
+                checkout=child,
+                workspace=workspace,
+                exp_id=exp_id,
+                genid=genid,
+                parent=parent,
+                run_dir=_run_dir(workspace, genid),
+                operators_config=operators_config,
+                round_number=round_number,
+            ):
+                return
+            validation, _error = _load_validate_payload(_run_dir(workspace, genid))
+            if validation is not None and not validation["accept"]:
+                _append_candidate_rejected(
+                    workspace,
+                    exp_id,
+                    genid,
+                    parent,
+                    status="rejected_validation",
+                    reason=f"candidate validation rejected: {validation['reason']}",
+                    mutated=mutated_paths,
+                )
+                return
+
         # Self-modification admission gate (mechanism 1, DESIGN §2/§7). When a
         # candidate edit touches the operator surface, a confound-free replay
-        # decides whether the new operators are non-inferior; if not, only the
-        # operator part of the diff is reverted (target/ changes are kept).
+        # decides whether the complete child is non-inferior; rejection discards
+        # the target and operator changes together.
         # Skipped inside a replay (recursion guard) and cheap when unchanged.
-        if not os.environ.get("EVOLVE_IN_META_EVAL"):
-            mutated_paths = working_tree_changed_paths(child, f"gen/{parent}")
-            if meta_eval.operator_surface_changed(mutated_paths):
-                if not meta_eval.admit(workspace, f"gen/{parent}", child).get("admitted"):
-                    for rel in meta_eval.OPERATOR_PATHS:
-                        git(child, "checkout", f"gen/{parent}", "--", rel, check=False)
-                    operator_reverted = True
+        if not os.environ.get("EVOLVE_IN_META_EVAL") and meta_eval.operator_surface_changed(mutated_paths):
+            verdict = meta_eval.admit(workspace, f"gen/{parent}", child)
+            if not verdict.get("admitted"):
+                _write_json(_run_dir(workspace, genid) / "meta_eval.json", verdict)
+                _append_candidate_rejected(
+                    workspace,
+                    exp_id,
+                    genid,
+                    parent,
+                    status="rejected_admission",
+                    reason="self-modification admission rejected complete child",
+                    mutated=mutated_paths,
+                )
+                return
 
         # Novelty gate (mechanism 5, DESIGN §7) — optional, off unless the recipe
         # configures `operators.novelty`. Runs on the uncommitted candidate diff;
@@ -260,8 +323,6 @@ def _run_child(
 
     eval_child(workspace, genid, round_number=round_number)
     _run_gate_and_record(workspace, exp_id, genid, parent, operators_config, round_number=round_number)
-    if operator_reverted:
-        record_fields(workspace, genid, {"operator_reverted": True})
     verified = _verified_fixes(workspace, genid, parent)
     if verified is not None:
         record_fields(workspace, genid, {"verified_fixes": verified})
@@ -887,6 +948,15 @@ def _load_novelty_payload(run_dir: Path) -> tuple[dict[str, Any] | None, Operato
     return _load_validated_json(run_dir, Path("novelty.json"), "accept", validate_novelty_file_payload)
 
 
+def _load_validate_payload(run_dir: Path) -> tuple[dict[str, Any] | None, OperatorOutputError | None]:
+    return _load_validated_json(
+        run_dir,
+        Path("validate") / "result.json",
+        "accept",
+        validate_validate_file_payload,
+    )
+
+
 def _load_record_fields(run_dir: Path) -> tuple[dict[str, Any] | None, OperatorOutputError | None]:
     return _load_validated_json(run_dir, Path("record") / "fields.json", "fields", validate_record_fields_payload)
 
@@ -933,6 +1003,8 @@ def _operator_output_error(name: str, run_dir: Path) -> OperatorOutputError | No
             ),
             (Path("meta_agent") / "usage.json", "usage", validate_meta_agent_usage_payload),
         )
+    elif name == "validate":
+        checks = ((Path("validate") / "result.json", "accept", validate_validate_file_payload),)
     elif name == "novelty":
         checks = ((Path("novelty.json"), "accept", validate_novelty_file_payload),)
     else:
@@ -991,6 +1063,40 @@ def _append_operator_failed(
             "surface_violations": [],
             "predicted_fixes": [],
             "note": note,
+            "cost": {"usd": 0, "wall_s": 0},
+        },
+    )
+
+
+def _append_candidate_rejected(
+    workspace: Path,
+    exp_id: str,
+    genid: str,
+    parent: str,
+    *,
+    status: str,
+    reason: str,
+    mutated: list[str],
+    violations: list[str] | None = None,
+) -> None:
+    append_event(
+        workspace,
+        exp_id,
+        {
+            "genid": genid,
+            "parent": parent,
+            "tag": f"gen/{genid}",
+            "score": None,
+            "status": status,
+            "task_set_hash": None,
+            "evaluator_tree": None,
+            "valid_parent": False,
+            "verdict": "discard",
+            "reason": reason,
+            "mutated": mutated,
+            "surface_violations": list(violations or []),
+            "predicted_fixes": [],
+            "note": reason,
             "cost": {"usd": 0, "wall_s": 0},
         },
     )

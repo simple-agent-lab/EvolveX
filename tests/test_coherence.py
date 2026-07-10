@@ -25,7 +25,6 @@ APPROVED_MODULES = {
     "config.py",
     "driver.py",
     "evaluator.py",
-    "feedback.py",
     "git.py",
     "operators.py",
     "patching.py",

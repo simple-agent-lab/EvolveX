@@ -22,8 +22,7 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `__main__.py` | 10 | `python -m evolve` entry |
 | `cli.py` | 200 | argument parsing and verb dispatch only — no logic |
 | `config.py` | 300 | read/render `evolve.yaml`: recipes, experiment values, surface lists, operator blocks |
-| `driver.py` | 1220 | the generation sequencer: orchestrates verbs + operators (incl. novelty + self-modification admission gates); validates operator file outputs at the seam; computes verified_fixes; audit quarantine; doctor repair |
-| `feedback.py` | 150 | the ledger-derived feedback bundle the meta-agent reads (retired `observe`); written by the driver after rollout |
+| `driver.py` | 1330 | the generation sequencer: orchestrates verbs + operators (incl. candidate validation, novelty, and atomic self-modification admission gates); validates operator file outputs at the seam; computes verified_fixes; audit quarantine; doctor repair |
 | `operators.py` | 150 | subprocess runner for workspace operator scripts (contract: env vars, --config, timeout) |
 | `population.py` | 150 | genid/lineage bookkeeping for fan-out generations |
 | `archive.py` | 270 | append-only event store: merge semantics, stamped-field protection, mirroring, integrity fsck |

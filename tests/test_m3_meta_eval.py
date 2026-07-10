@@ -1,9 +1,9 @@
 """Self-modification admission gate (mechanism 1, DESIGN §2/§7): a confound-free
-replay admits or reverts operator-surface changes.
+replay admits or rejects operator-surface changes.
 
 Note: the stub harness scores every generation 1.0, so a replay can never make
 the new operators look *worse* — meta_eval always admits under the stub (real
-score-based rejection needs a live harness). So the driver's revert path is
+score-based rejection needs a live harness). So the driver's rejection path is
 tested by mocking `admit`, and the admit-keep path is exercised for real.
 """
 
@@ -18,9 +18,8 @@ from evolve.driver import RunOptions
 from evolve.driver import run as driver_run
 from evolve.frozen import meta_eval
 
-# A meta-agent operator that edits the operator surface (operators/select.py) and the
-# candidate (target/agent.py), so we can watch the operator part get reverted
-# while the candidate part survives.
+# A meta-agent operator that edits itself and the target so a rejected admission
+# proves the complete child is discarded atomically.
 _SELF_MOD_META_AGENT = """
 import os
 import sys
@@ -31,11 +30,12 @@ from evolve.frozen.interfaces import MetaAgentOperator, MetaAgentResult
 
 class SelfModMetaAgent(MetaAgentOperator):
     def run(self, checkout, observation, ctx):
-        sel = checkout / "operators" / "select.py"
-        sel.write_text(sel.read_text() + "\\n# self-mod operator edit\\n")
+        workflow = checkout / "operators" / "meta_agent.py"
+        workflow_marker = "child-" + "workflow-change"
+        workflow.write_text(workflow.read_text() + "\\n# " + workflow_marker + "\\n")
         agent = checkout / "target" / "agent.py"
-        agent.write_text(agent.read_text() + "\\n# candidate edit\\n")
-        return MetaAgentResult(changed=["operators/select.py", "target/agent.py"], notes=["self-mod"], usage={"usd": 0})
+        agent.write_text(agent.read_text() + "\\n# child-target-change\\n")
+        return MetaAgentResult(changed=["operators/meta_agent.py", "target/agent.py"], notes=["self-mod"], usage={"usd": 0})
 
 
 if __name__ == "__main__":
@@ -96,7 +96,7 @@ def test_meta_eval_admits_noninferior_operator_edit(tmp_path: Path, monkeypatch)
     assert verdict["old_best"] == 1.0 and verdict["new_best"] == 1.0
 
 
-def test_driver_reverts_rejected_operator_change_but_keeps_candidate(tmp_path: Path, monkeypatch) -> None:
+def test_driver_rejects_complete_child_when_self_modification_is_not_admitted(tmp_path: Path, monkeypatch) -> None:
     workspace, evolve_home = _setup_self_mod_workspace(tmp_path)
     monkeypatch.setenv("EVAL_STUB", "1")
     monkeypatch.setenv("EVOLVE_HOME", str(evolve_home))
@@ -104,9 +104,9 @@ def test_driver_reverts_rejected_operator_change_but_keeps_candidate(tmp_path: P
     monkeypatch.setattr(meta_eval, "admit", lambda *a, **k: {"admitted": False, "error": "forced-for-test"})
     driver_run(RunOptions(workspace=workspace, max_generations=1, children_per_gen=1))
 
-    child = rows_by_genid(workspace).get("1")
-    assert child is not None, "gen 1 was not recorded"
-    assert child.get("operator_reverted") is True, child
-    # operator change reverted, candidate change kept
-    assert "self-mod operator edit" not in _git(workspace, "show", "gen/1:operators/select.py")
-    assert "candidate edit" in _git(workspace, "show", "gen/1:target/agent.py")
+    rows = rows_by_genid(workspace)
+    assert rows["1"]["status"] == "rejected_admission"
+    assert rows["1"]["valid_parent"] is False
+    assert not _git(workspace, "tag", "--list", "gen/1")
+    assert "child-target-change" not in _git(workspace, "show", "gen/0:target/agent.py")
+    assert "child-workflow-change" not in _git(workspace, "show", "gen/0:operators/meta_agent.py")

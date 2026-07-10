@@ -124,7 +124,6 @@ simple-evolve-agent/
 │   ├─ cli.py                     console dispatch — parsing only, no logic
 │   ├─ driver.py                  the generation sequencer (the 10-step loop)
 │   ├─ operators.py               subprocess runner for workspace operators
-│   ├─ feedback.py                the ledger-derived feedback bundle (retired `observe`)
 │   ├─ archive.py  population.py  ledger store · lineage bookkeeping
 │   ├─ evaluator.py  git.py  surface.py  report.py  config.py
 │   └─ frozen/                    Ring 0 — the invariant-enforcers, vendored into each workspace
@@ -151,7 +150,7 @@ simple-evolve-agent/
 │        operators/README.md · library/<verb>/ palette · evaluator/… · target/ seed · skills/ · PROTOCOL.md)
 │
 ├─ library/                       the framework's operator catalog (consult & adapt)
-│   ├─ select/ meta_agent/ gate/ rollout/ record/ novelty/ reflect/   variants, each with a _skeleton.py
+│   ├─ select/ rollout/ meta_agent/ validate/ novelty/ gate/ record/ reflect/   variants, each with a _skeleton.py
 │   └─ README.md                  how the meta-agent draws from here (surfaced via the skill)
 │       init vendors a per-recipe subset into the workspace's OWN library/
 │
@@ -176,7 +175,7 @@ simple-evolve-agent/
 ├─ skills/evolve-workspace/        the meta-agent's manual (tool-agnostic: Claude Code + codex)
 ├─ PROTOCOL.md                     the operator contract in prose
 ├─ archive.jsonl                   the ledger (append-only, via record; frozen fields only from stamp)
-├─ runs/gen-<id>/                  per-gen scratch: feedback.json · <op>.json · stamp.json · novelty.json
+├─ runs/gen-<id>/                  per-gen scratch: rollout/ · meta_agent/ · validate/ · gate.json · novelty.json
 └─ insights/playbook.jsonl         the insight pool (written only by reflect)
 ```
 
@@ -206,14 +205,12 @@ deploy — never two lineages.
 Canonical verb set — this supersedes any earlier "six-verb" list:
 
 ```
-select · rollout · meta_agent · novelty · gate · record · reflect     (+ distill, deferred with weights)
+select · rollout · meta_agent · validate · novelty · gate · record · reflect     (+ distill, deferred with weights)
 ```
 
-`observe` is retired (migration step S5): the feedback bundle is ledger-derived,
-so the mechanism writes it after rollout and before meta_agent (a new
-`src/evolve/feedback.py`) — it exists even when rollout is a noop variant, and no
-operator can suppress it. The meta-agent reads files with its own tools; the
-workspace is the medium between operators — nothing is pre-chewed.
+`observe` is retired. The rollout summary is passed directly to `meta_agent` as
+its observation, and other run artifacts remain available through the workspace
+file contract. The mechanism does not synthesize a framework feedback bundle.
 
 For MiniSWE source evolution, `target/` is the MiniSWE source checkout plus
 `target/harbor_agent.py`. Harbor imports
@@ -255,7 +252,9 @@ at runtime. So they are neither harness (`src/`) nor per-workspace genome
 HyperAgents can evolve `operators/**`. A changed `operators/meta_agent.py`
 affects later children forked from the accepted generation; changed gate or
 record code can affect the same generation because those operators run after
-the candidate edit.
+the candidate edit. The driver checks the mutable surface immediately after the
+proposal, runs optional candidate validation, and rejects a failed
+self-modification admission atomically: no part of the child is committed.
 
 ## 8. The learning ladder (every rung above 0 is opt-in)
 
@@ -264,7 +263,7 @@ the candidate edit.
 | 0 · run the loop | generations, lineage, champion tracking | `./evolve run N` |
 | 1 · be the meta-agent | your agent edits the candidate; the machine keeps the books | edit within surface, then `./evolve run` (interactive `gen begin`/`finish` planned) |
 | 2 · shape the search | select/gate/meta_agent behaviors; paradigms as recipes | edit `evolve.yaml` / `evolve init --recipe <name>` |
-| 3 · self-modify | `operators/` (scripts + strategy prose) and `program.md` become mutable, behind contract tests + the meta_eval admission gate + novelty rejection; islands | a candidate edit touches `operators/` (gated automatically) |
+| 3 · self-modify | `operators/` (scripts + strategy prose) and `program.md` become mutable, behind surface checks + optional validation + the atomic meta_eval admission gate + novelty rejection; islands | a candidate edit touches `operators/` (gated automatically) |
 | 4 · auto-train | plateau → distill → decontam-stamped data → train engine → checkpoint re-enters as a candidate | `EVOLVE_TRAIN_PLATEAU=K` (weights infra required) |
 
 ## 9. Versioning

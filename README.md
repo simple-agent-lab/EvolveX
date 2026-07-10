@@ -34,7 +34,7 @@ Inside that generated workspace, the six core concepts are:
 | --- | --- |
 | workspace | The generated experiment repository. |
 | target | The code or agent being improved. |
-| operator | Evolvable scripts for select, rollout, meta_agent, gate, and record. |
+| operator | Evolvable scripts for select, rollout, meta_agent, optional validation, gate, and record. |
 | evaluator | A pinned black-box evaluator contract. |
 | archive | `archive.jsonl` plus `gen/<id>` git tags. |
 | mutable surface | The paths proposals are allowed to change. |
@@ -77,7 +77,7 @@ Milestones M0-M6 are implemented and tested in the mechanism suite:
 | --- | --- |
 | M0 | Stub loop, generation snapshots, resume, and archive mirroring. |
 | M1 | Evaluator invariants, clean-checkout eval, surface enforcement, infra failure status. |
-| M2 | Feedback bundle shape and early deterministic candidate-edit mechanics; real operator-authored edits landed later in M5. |
+| M2 | Rollout observation and early deterministic candidate-edit mechanics; real operator-authored edits landed later in M5. |
 | M3 | Population fan-out and early widened-surface self-reference tests; real child-gate self-reference landed later in M5. |
 | M4 | Six recipes, agent bootstrapping instructions, `status`, and `report`. |
 | M5 | Real subprocess operator runtime, `evolve record`, `evolve.sdk`, operator config variants, and child-owned gate/record self-reference. |
@@ -222,7 +222,7 @@ mechanism-written receipt sidecar before they are trusted.
 | `src/evolve/cli.py` | CLI argument parsing and verb dispatch. |
 | `src/evolve/workspace.py` | Workspace scaffolding and generation-zero archive event. |
 | `src/evolve/config.py` | Recipe config rendering and lightweight config readers. |
-| `src/evolve/driver.py` | Built-in loop, fork/commit/eval orchestration, feedback bundles. |
+| `src/evolve/driver.py` | Built-in loop, proposal surface/validation/admission gates, and commit/eval orchestration. |
 | `src/evolve/evaluator.py` | Clean-checkout evaluator execution and exit-code contract. |
 | `src/evolve/archive.py` | Append-only archive, mirror reconciliation, stamped-field merge rules. |
 | `src/evolve/surface.py` | Mutable-surface include/exclude checking. |
@@ -299,7 +299,7 @@ thermal pressure, and get more predictable long-running Docker behavior.
 ## Current Limitations
 
 - The quickstart local smoke path uses `EVAL_STUB=1` for deterministic
-  framework feedback.
+  mechanism evaluation.
 - `agent_command` is the only shipped meta-agent adapter. Repeatable milestone
   tests provide a tiny `EVOLVE_AGENT_COMMAND` under explicit smoke recipes.
 - Archive provenance is protected by mechanism stamps and receipt

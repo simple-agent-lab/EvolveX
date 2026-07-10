@@ -175,13 +175,8 @@ def _assert_protocol_version(ctx: OperatorContext) -> None:
 
 
 def _observation(run_dir: Path) -> str:
-    manifest = _read_json_if_exists(run_dir / "feedback" / "manifest.json")
-    if isinstance(manifest, list):
-        return "\n".join(str(item) for item in manifest)
-    summary_path = run_dir / "feedback" / "summary.json"
-    if summary_path.exists():
-        return summary_path.read_text()
-    return ""
+    summary_path = run_dir / "rollout" / "summary.json"
+    return summary_path.read_text() if summary_path.exists() else ""
 
 
 def _child_row(archive: ArchiveView, ctx: OperatorContext) -> Row:
