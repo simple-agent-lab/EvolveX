@@ -568,7 +568,7 @@ task_vector = {
 passed = sum(task_results.values())
 ```
 
-- [ ] **Step 5: Move `verified_fixes` computation from the driver to `jsonl` record policy**
+- [ ] **Step 5: Move legacy `verified_fixes` computation from the driver to the non-AHE `jsonl` record policy**
 
 Delete `_verified_fixes` and its call from `src/evolve/driver.py`. In `library/record/jsonl.py`, import `ArchiveView` and `task_passed`, then add:
 
@@ -587,7 +587,7 @@ def _verified_fixes(child: Row, ctx: OperatorContext) -> list[str] | None:
     ]
 ```
 
-Include `verified_fixes` in record fields only when the helper returns a list. This preserves existing behavior while removing method policy from the mechanism.
+Include `verified_fixes` in record fields only when the helper returns a list. This preserves existing hillclimb and generic-JSONL behavior while removing method policy from the mechanism. The AHE recipe does not compose this record variant; `library/record/ahe_manifest.py` exclusively owns AHE attribution and AHE record fields.
 
 - [ ] **Step 6: Run task-vector and driver tests**
 
@@ -855,8 +855,8 @@ env = {**os.environ, "EVOLVE_PROMPT_FILE": prompt_file}
 for key, value in (env_overrides or {}).items():
     if value is None:
         env.pop(key, None)
-        else:
-            env[key] = value
+    else:
+        env[key] = value
 ```
 
 The helper remains generic; AHE operators decide which keys to remove.
