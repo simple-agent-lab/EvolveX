@@ -286,7 +286,7 @@ def _run_child(
         # the target and operator changes together.
         # Skipped inside a replay (recursion guard) and cheap when unchanged.
         if not os.environ.get("EVOLVE_IN_META_EVAL") and meta_eval.operator_surface_changed(mutated_paths):
-            verdict = meta_eval.admit(workspace, f"gen/{parent}", child)
+            verdict = meta_eval.admit(workspace, f"gen/{parent}", child, timeout_s=operator_timeout(operators_config, "meta_agent"))
             if not verdict.get("admitted"):
                 _write_json(_run_dir(workspace, genid) / "meta_eval.json", verdict)
                 _append_candidate_rejected(
