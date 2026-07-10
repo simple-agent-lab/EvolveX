@@ -9,8 +9,10 @@ from pathlib import Path
 from typing import Any
 
 from .archive import (
+    EVALUATION_FIELDS,
     MECHANISM_EVAL_FIELD,
     RECORD_ATTEMPT_FIELD,
+    RESERVED_AUXILIARY_FIELDS,
     STAMPED_FIELDS,
     append_event,
     archive_path,
@@ -64,18 +66,7 @@ TERMINAL_STATUSES = {
     "rejected_validation",
 }
 UNRETRYABLE_STATUSES = TERMINAL_STATUSES - {"complete", "partial"}
-RECORD_FORBIDDEN_FIELDS = STAMPED_FIELDS | {
-    RECORD_ATTEMPT_FIELD,
-    "genid",
-    "parent",
-    "tag",
-    "mutated",
-    "surface_violations",
-    "evals",
-    "kind",
-    "round",
-    MECHANISM_EVAL_FIELD,
-}
+RECORD_FORBIDDEN_FIELDS = EVALUATION_FIELDS | RESERVED_AUXILIARY_FIELDS
 
 
 @dataclass(frozen=True)
@@ -476,6 +467,16 @@ def _run_gate_and_record(
                     "gate",
                     note=_operator_failure_note(gate_result),
                 )
+                _run_terminal_record(
+                    workspace,
+                    exp_id,
+                    genid,
+                    parent,
+                    operators_config,
+                    checkout,
+                    round_number=round_number,
+                    operator_ref=f"gen/{genid}",
+                )
                 return
             gate_payload, gate_error = _load_gate_payload(run_dir)
             if gate_error is not None or gate_payload is None:
@@ -486,6 +487,16 @@ def _run_gate_and_record(
                     parent,
                     "gate",
                     note=_operator_output_note(gate_error),
+                )
+                _run_terminal_record(
+                    workspace,
+                    exp_id,
+                    genid,
+                    parent,
+                    operators_config,
+                    checkout,
+                    round_number=round_number,
+                    operator_ref=f"gen/{genid}",
                 )
                 return
 
@@ -517,7 +528,7 @@ def _run_terminal_record(
     workspace: Path,
     exp_id: str,
     genid: str,
-    parent: str,
+    parent: str | None,
     operators_config: dict[str, Any],
     candidate_checkout: Path | None,
     round_number: int | None = None,
@@ -888,6 +899,16 @@ def _select_generation_parents(
                 "select",
                 note=_operator_failure_note(result),
             )
+            _run_terminal_record(
+                workspace,
+                exp_id,
+                genid,
+                None,
+                operators_config,
+                candidate_checkout=None,
+                round_number=generation if evaluator_sampling(workspace) == "per_round" else None,
+                operator_ref=select_tag,
+            )
         return {}
 
     parents, parents_error = _load_parents(run_dir)
@@ -900,6 +921,16 @@ def _select_generation_parents(
                 None,
                 "select",
                 note=_operator_output_note(parents_error),
+            )
+            _run_terminal_record(
+                workspace,
+                exp_id,
+                genid,
+                None,
+                operators_config,
+                candidate_checkout=None,
+                round_number=generation if evaluator_sampling(workspace) == "per_round" else None,
+                operator_ref=select_tag,
             )
         return {}
 
@@ -922,6 +953,16 @@ def _select_generation_parents(
             None,
             "select",
             note="parents.json missing child slot",
+        )
+        _run_terminal_record(
+            workspace,
+            exp_id,
+            genid,
+            None,
+            operators_config,
+            candidate_checkout=None,
+            round_number=generation if evaluator_sampling(workspace) == "per_round" else None,
+            operator_ref=select_tag,
         )
     return selected
 

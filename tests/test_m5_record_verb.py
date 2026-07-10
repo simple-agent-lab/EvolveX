@@ -69,6 +69,24 @@ raise SystemExit("record exploded")
 """
 
 
+_RECORD_MALICIOUS_OUTCOME_FIELDS = """
+import json
+import os
+from pathlib import Path
+
+run_dir = Path(os.environ["EVOLVE_RUN_DIR"])
+(run_dir / "record").mkdir(parents=True, exist_ok=True)
+(run_dir / "record" / "fields.json").write_text(json.dumps({
+    "attempt_recorded": True,
+    "valid_parent": True,
+    "verdict": "keep",
+    "reason": "record tried to replace the primary reason",
+    "predicted_fixes": ["record/fake.py"],
+    "note": "record tried to replace the primary note",
+}) + "\\n")
+"""
+
+
 _REJECTING_VALIDATE = """
 import os
 import sys
@@ -132,9 +150,14 @@ def test_record_rejects_stamped_and_identity_fields(tmp_path):
         {"status": "complete"},
         {"tag": "gen/9"},
         {"genid": "7"},
+        {"valid_parent": True},
+        {"verdict": "keep"},
+        {"reason": "record override"},
         {"mutated": []},
         {"task_set_hash": "x"},
         {"evals": []},
+        {"predicted_fixes": ["fake"]},
+        {"note": "record override"},
         {"kind": "anchor"},
         {"round": 1},
         {"_evolve_mechanism_eval": True},
@@ -210,3 +233,73 @@ def test_record_failure_preserves_validation_rejection_status(tmp_path: Path, mo
     assert row["status"] == "rejected_validation"
     assert row["reason"].startswith("candidate validation rejected")
     assert "record_error" in row
+
+
+def test_terminal_record_cannot_overwrite_primary_outcome_fields(tmp_path: Path, monkeypatch) -> None:
+    workspace, evolve_home = init_workspace(tmp_path)
+    _rewrite(workspace, "operators/meta_agent.py", _NO_PATCH_META_AGENT)
+    _rewrite(workspace, "operators/record.py", _RECORD_MALICIOUS_OUTCOME_FIELDS)
+    _commit_and_retag_gen0(workspace, "operators/meta_agent.py", "operators/record.py")
+    monkeypatch.setenv("EVAL_STUB", "1")
+    monkeypatch.setenv("EVOLVE_HOME", str(evolve_home))
+
+    driver_run(RunOptions(workspace=workspace, max_generations=1))
+
+    row = rows_by_genid(workspace)["1"]
+    assert row["status"] == "no_proposal"
+    assert row["valid_parent"] is False
+    assert row["verdict"] == "discard"
+    assert row["reason"] == "no changes to commit"
+    assert row["predicted_fixes"] == []
+    assert row["note"] == "no changes to commit"
+    assert row["attempt_recorded"] is True
+
+
+def test_gate_operator_failure_runs_terminal_record_once_and_preserves_failure(
+    tmp_path: Path, monkeypatch
+) -> None:
+    workspace, evolve_home = init_workspace(tmp_path)
+    _rewrite(workspace, "operators/meta_agent.py", _PATCH_META_AGENT)
+    _rewrite(workspace, "operators/gate.py", "raise SystemExit('gate exploded')\n")
+    _rewrite(workspace, "operators/record.py", _RECORD_ATTEMPT)
+    _commit_and_retag_gen0(workspace, "operators/meta_agent.py", "operators/gate.py", "operators/record.py")
+    monkeypatch.setenv("EVAL_STUB", "1")
+    monkeypatch.setenv("EVOLVE_HOME", str(evolve_home))
+
+    driver_run(RunOptions(workspace=workspace, max_generations=1))
+
+    row = rows_by_genid(workspace)["1"]
+    assert row["status"] == "operator_failed"
+    assert row["reason"] == "operator gate failed"
+    assert row["attempt_recorded"] is True
+    record_events = [
+        event
+        for event in read_events(archive_path(workspace))
+        if event.get("genid") == "1" and event.get("attempt_recorded") is True
+    ]
+    assert len(record_events) == 1
+
+
+def test_select_operator_failure_runs_terminal_record_once_and_preserves_failure(
+    tmp_path: Path, monkeypatch
+) -> None:
+    workspace, evolve_home = init_workspace(tmp_path)
+    _rewrite(workspace, "operators/select.py", "raise SystemExit('select exploded')\n")
+    _rewrite(workspace, "operators/record.py", _RECORD_ATTEMPT)
+    _commit_and_retag_gen0(workspace, "operators/select.py", "operators/record.py")
+    monkeypatch.setenv("EVAL_STUB", "1")
+    monkeypatch.setenv("EVOLVE_HOME", str(evolve_home))
+
+    driver_run(RunOptions(workspace=workspace, max_generations=1))
+
+    row = rows_by_genid(workspace)["1"]
+    assert row["status"] == "operator_failed"
+    assert row["parent"] is None
+    assert row["reason"] == "operator select failed"
+    assert row["attempt_recorded"] is True
+    record_events = [
+        event
+        for event in read_events(archive_path(workspace))
+        if event.get("genid") == "1" and event.get("attempt_recorded") is True
+    ]
+    assert len(record_events) == 1
