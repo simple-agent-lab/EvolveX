@@ -3,6 +3,9 @@ from pathlib import Path
 
 from conftest import ahe_debugger_command, ahe_editor_command, git, rows_by_genid, run_evolve
 
+SEALED_TEST_FILENAME = "heldout-ahe-evaluation.txt"
+SEALED_TEST_CONTENT = "SEALED-SIDECAR-CONTENT-MUST-NOT-REACH-AHE-PROMPTS"
+
 
 def _write_executable(path: Path, content: str) -> None:
     path.write_text(content)
@@ -10,7 +13,7 @@ def _write_executable(path: Path, content: str) -> None:
 
 
 def _deterministic_evaluator() -> str:
-    return """#!/usr/bin/env python3
+    script = """#!/usr/bin/env python3
 import hashlib
 import json
 import os
@@ -32,6 +35,7 @@ tasks = {
 }
 artifacts = run_dir / "artifacts"
 artifacts.mkdir(exist_ok=True)
+(artifacts / __SEALED_TEST_FILENAME__).write_text(__SEALED_TEST_CONTENT__)
 trials = []
 for task_id in outcomes:
     trace = artifacts / f"{task_id}.md"
@@ -50,6 +54,9 @@ for task_id in outcomes:
 (run_dir / "status").write_text("partial\\n")
 raise SystemExit(2)
 """
+    return script.replace("__SEALED_TEST_FILENAME__", repr(SEALED_TEST_FILENAME)).replace(
+        "__SEALED_TEST_CONTENT__", repr(SEALED_TEST_CONTENT)
+    )
 
 
 def _configure_baseline_evaluator(workspace: Path) -> None:
@@ -62,7 +69,6 @@ def _configure_baseline_evaluator(workspace: Path) -> None:
 def test_ahe_two_iteration_loop_attributes_harm_and_rolls_back(tmp_path: Path) -> None:
     workspace = tmp_path / "ahe"
     evolve_home = tmp_path / "evolve-home"
-    sealed_test_filename = "heldout-ahe-evaluation.txt"
     proxy_value = "http://proxy.example:8118"
 
     initialized = run_evolve(
@@ -83,6 +89,10 @@ def test_ahe_two_iteration_loop_attributes_harm_and_rolls_back(tmp_path: Path) -
         env={"EVOLVE_HOME": str(evolve_home)},
     )
     assert baseline.returncode == 0, baseline.stderr
+    sealed_sidecar = workspace / "runs/gen-0/eval/artifacts" / SEALED_TEST_FILENAME
+    assert sealed_sidecar.is_file()
+    assert sealed_sidecar.read_text() == SEALED_TEST_CONTENT
+    assert SEALED_TEST_FILENAME not in (workspace / "runs/gen-0/eval/evaluation_artifacts.json").read_text()
 
     result = run_evolve(
         "run",
@@ -112,5 +122,6 @@ def test_ahe_two_iteration_loop_attributes_harm_and_rolls_back(tmp_path: Path) -
     assert (workspace / "runs/gen-2/rollout/attribution.json").exists()
 
     prompts = "\n".join(path.read_text() for path in workspace.glob("runs/**/received-prompt.md"))
-    assert sealed_test_filename not in prompts
+    assert SEALED_TEST_FILENAME not in prompts
+    assert SEALED_TEST_CONTENT not in prompts
     assert proxy_value not in prompts
