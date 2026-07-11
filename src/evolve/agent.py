@@ -54,20 +54,20 @@ def run_meta_agent(
         os.fsync(handle.fileno())
         prompt_file = handle.name
 
-    env = {**os.environ, "EVOLVE_PROMPT_FILE": prompt_file}
+    env: dict[str, str] = dict(os.environ)
+    env["EVOLVE_PROMPT_FILE"] = prompt_file
     for key, value in (env_overrides or {}).items():
         if value is None:
             env.pop(key, None)
         else:
             env[key] = value
-    proc: subprocess.Popen[str] | None = None
     stdout = ""
     stderr = ""
     try:
         if timeout is not None and timeout <= 0.01:
             raise AgentCommandError(f"meta-agent timeout after {timeout}s", usage=_usage(start))
 
-        proc = subprocess.Popen(
+        proc: subprocess.Popen[str] = subprocess.Popen(
             ["sh", "-c", command],
             cwd=root,
             env=env,
@@ -98,8 +98,6 @@ def run_meta_agent(
     stderr = stderr or ""
     output = _combined_output(stdout, stderr)
     usage = _usage(start)
-    if proc is None:
-        raise AgentCommandError("meta-agent command failed", usage=usage)
     if proc.returncode != 0:
         raise AgentCommandError(
             stderr.strip() or stdout.strip() or "meta-agent command failed",
@@ -137,11 +135,15 @@ def _configured_timeout(config: dict[str, Any]) -> float | None:
     if inherited is None:
         return timeout
     cap = _timeout_headroom(inherited)
+    if cap is None:
+        return timeout
     return cap if timeout is None else min(timeout, cap)
 
 
 def _timeout_float(value: object) -> float | None:
     if isinstance(value, bool) or value in (None, ""):
+        return None
+    if not isinstance(value, (str, int, float)):
         return None
     try:
         return float(value)

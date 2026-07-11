@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 TRIAL_STATUSES = {"complete", "agent_timeout", "infra_failed", "cancelled"}
 
@@ -12,23 +12,24 @@ class TaskVectorError(ValueError):
 def normalize_task_vector(payload: object) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise TaskVectorError("task vector must be an object")
-    if "schema_version" not in payload:
-        if not all(isinstance(key, str) and isinstance(value, bool) for key, value in payload.items()):
+    data = cast("dict[str, Any]", payload)
+    if "schema_version" not in data:
+        if not all(isinstance(key, str) and isinstance(value, bool) for key, value in data.items()):
             raise TaskVectorError("legacy task vector must map strings to booleans")
         return {
             "schema_version": 1,
             "tasks": {
                 key: {"trials": [{"trial": 0, "status": "complete", "reward": 1.0 if value else 0.0}]}
-                for key, value in sorted(payload.items())
+                for key, value in sorted(data.items())
             },
         }
-    if payload.get("schema_version") != 1 or not isinstance(payload.get("tasks"), dict):
+    if data.get("schema_version") != 1 or not isinstance(data.get("tasks"), dict):
         raise TaskVectorError("unsupported task vector schema")
-    for task_id in payload["tasks"]:
+    for task_id in data["tasks"]:
         if not isinstance(task_id, str):
             raise TaskVectorError(f"invalid task entry: {task_id}")
     tasks: dict[str, Any] = {}
-    for task_id, task in sorted(payload["tasks"].items()):
+    for task_id, task in sorted(data["tasks"].items()):
         if not isinstance(task_id, str) or not isinstance(task, dict) or not isinstance(task.get("trials"), list):
             raise TaskVectorError(f"invalid task entry: {task_id}")
         seen: set[int] = set()

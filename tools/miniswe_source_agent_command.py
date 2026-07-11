@@ -5,7 +5,6 @@ import os
 from pathlib import Path
 from typing import Any
 
-
 PROXY_ENV = ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY", "all_proxy", "ALL_PROXY")
 
 

@@ -6,7 +6,6 @@ from pathlib import Path
 
 from harbor.agents.installed.mini_swe_agent import MiniSweAgent
 
-
 SOURCE_DIR = "/installed-agent/miniswe-source"
 RUNNER_PATH = "/tmp/miniswe-source-run.py"
 TASK_PATH = "/tmp/miniswe-source-task.txt"
