@@ -44,6 +44,7 @@ PROXY_REMOVALS = {
     "all_proxy": None,
     "ALL_PROXY": None,
 }
+_AGENT_MANIFEST_NAME = ".evolve-ahe-change-manifest.json"
 _AHE_PROTECTED_PATHS = (
     "target/harbor_agent.py",
     "target/.env",
@@ -185,12 +186,15 @@ def _manifest_path(ctx: OperatorContext) -> Path:
     return ctx.run_dir / "meta_agent" / "change_manifest.json"
 
 
+def _agent_manifest_path(checkout: Path) -> Path:
+    return checkout / _AGENT_MANIFEST_NAME
+
+
 def build_ahe_prompt(checkout: Path, ctx: OperatorContext, parent_ref: str | None = None) -> str:
     run_dir = ctx.run_dir
     overview = run_dir / "rollout" / "analysis" / "overview.md"
     attribution = run_dir / "rollout" / "attribution.json"
     attempts = run_dir / "feedback" / "attempts.md"
-    manifest_path = _manifest_path(ctx)
     parent_ref = parent_ref or patch_parent_ref(checkout, ctx)
     parent = str(ctx.parent)
     prompt_chunks = [
@@ -203,6 +207,11 @@ def build_ahe_prompt(checkout: Path, ctx: OperatorContext, parent_ref: str | Non
             "Copy exactly `\"generation\": \"%s\"` and `\"parent\": \"%s\"` into `change_manifest.json`."
         )
         % (ctx.genid, parent, parent_ref, ctx.genid, parent),
+        (
+            "# Candidate Checkout\n\n"
+            "The current working directory is the only mutable candidate checkout. Edit `target/` relative to it. "
+            "Do not `cd` to experiment or run-artifact directories, and do not edit absolute paths outside this checkout."
+        ),
         "# Experiment Config\n\n```yaml\n%s\n```" % _sanitize_text((checkout / "evolve.yaml").read_text()).rstrip(),
         "# Analysis Overview\n\n%s" % _sanitize_text(overview.read_text()).rstrip(),
         "# Previous Change Attribution\n\n```json\n%s\n```" % _sanitize_text(attribution.read_text()).rstrip(),
@@ -210,7 +219,7 @@ def build_ahe_prompt(checkout: Path, ctx: OperatorContext, parent_ref: str | Non
         "# Evolution History\n\n%s" % _sanitize_text(attempts.read_text()).rstrip(),
         "# Rollback Policy\n\n%s" % _rollback_policy(ctx.config),
         "# Surface Rules\n\n%s" % _surface_rules(checkout),
-        "# Required Manifest Path\n\n%s" % manifest_path,
+        "# Required Manifest Path\n\n`%s` (relative to the candidate checkout)" % _AGENT_MANIFEST_NAME,
     ]
     return "\n\n".join(prompt_chunks) + "\n"
 
@@ -225,6 +234,16 @@ def _load_manifest(path: Path) -> dict[str, Any]:
     if not isinstance(manifest, dict):
         raise ValueError("AHE change manifest must be an object")
     return manifest
+
+
+def _consume_agent_manifest(checkout: Path) -> dict[str, Any] | None:
+    path = _agent_manifest_path(checkout)
+    if not path.is_file():
+        return None
+    try:
+        return _load_manifest(path)
+    finally:
+        path.unlink(missing_ok=True)
 
 
 def _task_union(manifest: dict[str, Any], field: str) -> list[str]:
@@ -292,12 +311,14 @@ class AheEvidenceEditor(MetaAgentOperator):
         del observation
         parent_ref = patch_parent_ref(checkout, ctx)
         manifest_path = _manifest_path(ctx)
+        agent_manifest_path = _agent_manifest_path(checkout)
         agent_run: AgentRunResult | None = None
         try:
             command = _command(ctx)
             if not command:
                 raise AgentCommandError("missing AHE evolution command; set EVOLVE_AGENT_COMMAND or operators.meta_agent.command", returncode=2)
             manifest_path.parent.mkdir(parents=True, exist_ok=True)
+            agent_manifest_path.unlink(missing_ok=True)
             agent_run = run_meta_agent(
                 workspace=checkout,
                 prompt=build_ahe_prompt(checkout, ctx, parent_ref),
@@ -306,10 +327,11 @@ class AheEvidenceEditor(MetaAgentOperator):
                     **PROXY_REMOVALS,
                     "EVOLVE_SOURCE_AGENT_ROLE": "evolution",
                     "EVOLVE_SOURCE_AGENT_OUTPUT_PATH": str(ctx.run_dir / "meta_agent" / "evolution.trajectory.json"),
-                    "EVOLVE_AHE_MANIFEST_PATH": str(manifest_path),
+                    "EVOLVE_AHE_MANIFEST_PATH": _AGENT_MANIFEST_NAME,
                     "EVOLVE_RUN_DIR": str(ctx.run_dir),
                 },
             )
+            manifest = _consume_agent_manifest(checkout)
             patch = create_candidate_patch(
                 checkout=checkout,
                 parent_ref=parent_ref,
@@ -318,7 +340,8 @@ class AheEvidenceEditor(MetaAgentOperator):
             )
             if not patch.changed_paths:
                 return _write_result(ctx.run_dir, agent_run, patch, ["no source proposal"])
-            manifest = _load_manifest(manifest_path)
+            if manifest is None:
+                raise ValueError("AHE change manifest is required")
             validate_change_manifest(
                 manifest=manifest,
                 generation=ctx.genid,
@@ -327,6 +350,7 @@ class AheEvidenceEditor(MetaAgentOperator):
                 run_dir=ctx.run_dir,
                 surface_report=patch.surface_report,
             )
+            _write_json(manifest_path, manifest)
             return _write_result(ctx.run_dir, agent_run, patch, [], manifest=manifest)
         except AgentCommandError as error:
             patch = _empty_failure_patch(checkout, parent_ref, error)

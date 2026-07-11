@@ -156,6 +156,7 @@ def test_ahe_evidence_editor_writes_evidence_backed_artifacts(tmp_path: Path, mo
         "violations": [],
     }
     assert (meta_agent / "change_manifest.json").is_file()
+    assert not (checkout / ".evolve-ahe-change-manifest.json").exists()
     assert (meta_agent / "evolution.trajectory.json").read_text() == "trajectory\n"
     assert "variant: ahe_evidence_editor" in (meta_agent / "rationale.md").read_text()
 
@@ -202,7 +203,9 @@ def test_build_ahe_prompt_reads_only_explicit_ahe_artifacts(tmp_path: Path) -> N
     assert "UNSELECTED DETAIL MUST NOT APPEAR" not in prompt
     assert "# Evolution History\n\n# Attempts" in prompt
     assert "target/harbor_agent.py" in prompt
-    assert str(run_dir / "meta_agent" / "change_manifest.json") in prompt
+    assert ".evolve-ahe-change-manifest.json" in prompt
+    assert str(run_dir) not in prompt
+    assert "Do not `cd` to experiment or run-artifact directories" in prompt
     assert "KEEP" in prompt
     assert "ROLLBACK + PIVOT" in prompt
     assert "Partial rollback is allowed" in prompt
