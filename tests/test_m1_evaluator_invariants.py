@@ -7,7 +7,7 @@ import pytest
 from conftest import init_workspace, rows_by_genid, run_evolve, smoke_agent_command
 
 from evolve.archive import MECHANISM_EVAL_FIELD, append_event
-from evolve.evaluator import _evaluation_artifact_reference, _read_task_vector
+from evolve.evaluator import _effective_task_set_identity, _evaluation_artifact_reference, _read_task_vector
 from evolve.task_vectors import TaskVectorError
 
 
@@ -187,6 +187,45 @@ def test_evaluator_validates_task_vectors_and_compacts_artifact_references(tmp_p
     vector_path.write_text('{"schema_version": 99, "tasks": {}}\n')
     with pytest.raises(TaskVectorError, match="unsupported task vector schema"):
         _read_task_vector(run_dir)
+
+
+def test_effective_task_set_identity_uses_configured_names_dataset_and_attempts(tmp_path: Path) -> None:
+    checkout = tmp_path / "checkout"
+    tasks = checkout / "evaluator" / "tasks"
+    tasks.mkdir(parents=True)
+    (checkout / "evaluator" / "splits.json").write_text('{"unchanged": true}\n')
+    (tasks / "smoke.txt").write_text("task-a\ntask-b\n")
+    (tasks / "train.txt").write_text("task-a\ntask-b\ntask-c\n")
+
+    smoke = _effective_task_set_identity(
+        checkout,
+        {"dataset": "suite@1", "k": 2, "task_file": "evaluator/tasks/smoke.txt"},
+        None,
+    )
+    train = _effective_task_set_identity(
+        checkout,
+        {"dataset": "suite@1", "k": 2, "task_file": "evaluator/tasks/train.txt"},
+        None,
+    )
+    different_k = _effective_task_set_identity(
+        checkout,
+        {"dataset": "suite@1", "k": 1, "task_file": "evaluator/tasks/smoke.txt"},
+        None,
+    )
+
+    assert smoke.members == ("task-a", "task-b")
+    assert train.members == ("task-a", "task-b", "task-c")
+    assert len({smoke.digest, train.digest, different_k.digest}) == 3
+
+
+def test_effective_task_set_identity_accepts_explicit_configured_task_names(tmp_path: Path) -> None:
+    identity = _effective_task_set_identity(
+        tmp_path,
+        {"dataset": "stub", "k": 2, "task_names": ["task-b", "task-a"]},
+        None,
+    )
+
+    assert identity.members == ("task-a", "task-b")
 
 
 def test_hand_edited_artifact_hash_cannot_replace_mechanism_stamp(tmp_path: Path) -> None:
