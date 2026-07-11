@@ -1,3 +1,4 @@
+import json
 import stat
 from pathlib import Path
 
@@ -125,3 +126,46 @@ def test_ahe_two_iteration_loop_attributes_harm_and_rolls_back(tmp_path: Path) -
     assert SEALED_TEST_FILENAME not in prompts
     assert SEALED_TEST_CONTENT not in prompts
     assert proxy_value not in prompts
+
+
+def test_unmodified_ahe_smoke_runs_end_to_end_with_stub_evaluator(tmp_path: Path) -> None:
+    workspace = tmp_path / "ahe-smoke"
+    evolve_home = tmp_path / "evolve-home"
+    initialized = run_evolve(
+        "init",
+        str(workspace),
+        "--recipe",
+        "ahe-smoke",
+        env={"EVOLVE_HOME": str(evolve_home)},
+    )
+    assert initialized.returncode == 0, initialized.stderr
+
+    baseline = run_evolve(
+        "eval",
+        str(workspace),
+        "0",
+        "--force",
+        env={"EVAL_STUB": "1", "EVOLVE_HOME": str(evolve_home)},
+    )
+    assert baseline.returncode == 0, baseline.stderr
+    index = workspace / "runs" / "gen-0" / "eval" / "evaluation_artifacts.json"
+    assert index.is_file()
+    assert {trial["task_name"] for trial in json.loads(index.read_text())["trials"]} == {"task-0", "task-1"}
+
+    result = run_evolve(
+        "run",
+        str(workspace),
+        "--max-generations",
+        "1",
+        env={
+            "EVAL_STUB": "1",
+            "EVOLVE_HOME": str(evolve_home),
+            "EVOLVE_AGENT_COMMAND": ahe_editor_command(),
+            "EVOLVE_AHE_DEBUGGER_COMMAND": ahe_debugger_command(),
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert rows_by_genid(workspace)["1"]["status"] == "complete"
+    assert (workspace / "runs" / "gen-1" / "rollout" / "analysis" / "overview.md").is_file()
+    assert sorted((workspace / "runs" / "gen-1" / "eval" / "artifacts").glob("*.trace"))

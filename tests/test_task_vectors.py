@@ -109,3 +109,6 @@ def test_stub_eval_emits_configured_completed_trials_without_changing_score(tmp_
     for task in vector["tasks"].values():
         assert [trial["trial"] for trial in task["trials"]] == [0, 1, 2]
         assert all(trial["status"] == "complete" for trial in task["trials"])
+    artifacts = json.loads((run_dir / "evaluation_artifacts.json").read_text())
+    assert len(artifacts["trials"]) == 8 * 3
+    assert all((run_dir / "artifacts" / trial["files"][0]["path"]).is_file() for trial in artifacts["trials"])
