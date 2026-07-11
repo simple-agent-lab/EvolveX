@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 PROXY_ENV = ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY", "all_proxy", "ALL_PROXY")
+_ANALYSIS_ROLES = {"debugger", "overview", "debugger_overview"}
 _SECRET_NAME = re.compile(r"(?:api[_-]?key|token|secret|password|passwd|credential)", re.IGNORECASE)
 _TOKEN_PATTERNS = (
     re.compile(r"\bsk-[A-Za-z0-9_-]{8,}\b"),
@@ -117,6 +118,8 @@ def _run() -> int:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     result = _build_agent(output_path).run(_prompt())
     submission = _sanitized_submission(result)
+    if role in _ANALYSIS_ROLES and not submission:
+        return 2
     if submission:
         print(submission)
     print(f"miniswe-source-agent-complete role={role}")

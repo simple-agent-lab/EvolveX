@@ -566,3 +566,93 @@ def test_terminal_debugger_failure_records_attempts(tmp_path: Path, monkeypatch)
     failures = json.loads((run_dir / "rollout" / "analysis" / "failures.json").read_text())
     assert attempts == 2
     assert failures == {"failures": [{"attempts": 2, "error": "debugger failed", "task_id": "failed-task"}]}
+
+
+def test_protocol_only_detail_is_persisted_as_failure_and_rejected(tmp_path: Path, monkeypatch) -> None:
+    workspace = tmp_path / "workspace"
+    checkout = workspace / "candidate-checkout"
+    run_dir = workspace / "runs" / "gen-2"
+    checkout.mkdir(parents=True)
+    artifacts = _write_artifacts(workspace, "1", ["failed-task"])
+    (workspace / "archive.jsonl").write_text(
+        json.dumps(
+            {
+                "genid": "1",
+                **_scope(["failed-task"]),
+                "task_vector": _vector({"failed-task": [0, 0]}),
+                "evaluation_artifacts": artifacts,
+            }
+        )
+        + "\n"
+    )
+    monkeypatch.setattr(
+        AHE_ROLLOUT,
+        "run_meta_agent",
+        lambda **_kwargs: SimpleNamespace(
+            stdout="miniswe-source-agent-complete role=debugger\npredicted_fixes: []\n"
+        ),
+    )
+    ctx = OperatorContext(
+        workspace=workspace,
+        checkout=checkout,
+        run_dir=run_dir,
+        genid="2",
+        parent="1",
+        round=None,
+        fan_out=1,
+        config=_rollout_config(["failed-task"]),
+        rng=random.Random(0),
+    )
+
+    with pytest.raises(ValueError, match="no successful AHE detail report"):
+        AHE_ROLLOUT.AheTraceAnalysisRollout().rollout(checkout, ctx)
+
+    failures = json.loads((run_dir / "rollout" / "analysis" / "failures.json").read_text())
+    assert failures["failures"][0]["task_id"] == "failed-task"
+    assert "no actionable report" in failures["failures"][0]["error"]
+    assert not (run_dir / "rollout" / "analysis" / "detail" / "failed-task.md").exists()
+
+
+def test_protocol_only_overview_is_persisted_as_failure_and_rejected(tmp_path: Path, monkeypatch) -> None:
+    workspace = tmp_path / "workspace"
+    checkout = workspace / "candidate-checkout"
+    run_dir = workspace / "runs" / "gen-2"
+    checkout.mkdir(parents=True)
+    artifacts = _write_artifacts(workspace, "1", ["failed-task"])
+    (workspace / "archive.jsonl").write_text(
+        json.dumps(
+            {
+                "genid": "1",
+                **_scope(["failed-task"]),
+                "task_vector": _vector({"failed-task": [0, 0]}),
+                "evaluation_artifacts": artifacts,
+            }
+        )
+        + "\n"
+    )
+
+    def fake_run_meta_agent(*, env_overrides: dict, **_kwargs):
+        if env_overrides["EVOLVE_SOURCE_AGENT_ROLE"] == "debugger":
+            return SimpleNamespace(stdout="actionable detail diagnosis\n")
+        return SimpleNamespace(stdout="miniswe-source-agent-complete role=overview\npredicted_fixes: []\n")
+
+    monkeypatch.setattr(AHE_ROLLOUT, "run_meta_agent", fake_run_meta_agent)
+    ctx = OperatorContext(
+        workspace=workspace,
+        checkout=checkout,
+        run_dir=run_dir,
+        genid="2",
+        parent="1",
+        round=None,
+        fan_out=1,
+        config=_rollout_config(["failed-task"]),
+        rng=random.Random(0),
+    )
+
+    with pytest.raises(ValueError, match="no actionable AHE overview report"):
+        AHE_ROLLOUT.AheTraceAnalysisRollout().rollout(checkout, ctx)
+
+    failures = json.loads((run_dir / "rollout" / "analysis" / "failures.json").read_text())
+    assert failures["failures"][-1]["task_id"] == "__overview__"
+    assert "no actionable report" in failures["failures"][-1]["error"]
+    assert not (run_dir / "rollout" / "analysis" / "overview.md").exists()

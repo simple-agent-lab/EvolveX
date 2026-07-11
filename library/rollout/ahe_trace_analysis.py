@@ -60,6 +60,9 @@ _TOKEN_PATTERNS = (
     re.compile(r"(?i)\b(?:api[_-]?key|token|password|secret)\s*[:=]\s*[^\s,;]+"),
 )
 _CREDENTIAL_URL = re.compile(r"\b([A-Za-z][A-Za-z0-9+.-]*://)[^\s/@:]+:[^\s/@]+@([^\s]+)")
+_PROTOCOL_LINE = re.compile(
+    r"(?:miniswe-source-agent-complete role=[A-Za-z0-9_-]+|predicted_fixes:\s*\[[^\n]*\])"
+)
 
 
 def _write_json(path: Path, payload: object) -> None:
@@ -93,6 +96,16 @@ def _sanitize_text(text: str) -> str:
     for pattern in _TOKEN_PATTERNS:
         text = pattern.sub("[REDACTED]", text)
     return text
+
+
+def _actionable_report(text: str) -> str:
+    sanitized = _sanitize_text(text)
+    actionable = [
+        line
+        for line in sanitized.splitlines()
+        if line.strip() and not _PROTOCOL_LINE.fullmatch(line.strip())
+    ]
+    return sanitized if actionable else ""
 
 
 def _positive_int(value: object, default: int) -> int:
@@ -433,9 +446,12 @@ class AheTraceAnalysisRollout(RolloutOperator):
                             "EVOLVE_RUN_DIR": str(task_run_dir),
                         },
                     )
+                    report = _actionable_report(result.stdout)
+                    if not report:
+                        raise ValueError("debugger returned no actionable report")
                     detail_dir.mkdir(parents=True, exist_ok=True)
                     report_path = report_paths[task_id]
-                    report_path.write_text(_sanitize_text(result.stdout))
+                    report_path.write_text(report)
                     return task_id, report_path, None
                 except Exception as error:  # Record a terminal source-agent failure instead of dropping a diagnosis.
                     last_error = error
@@ -477,7 +493,15 @@ class AheTraceAnalysisRollout(RolloutOperator):
                 "EVOLVE_RUN_DIR": str(analysis_dir / "overview-run"),
             },
         )
-        (analysis_dir / "overview.md").write_text(_sanitize_text(overview.stdout))
+        overview_report = _actionable_report(overview.stdout)
+        if not overview_report:
+            failures.append(_failure_record("__overview__", 1, ValueError("overview returned no actionable report")))
+            _write_json(
+                analysis_dir / "failures.json",
+                {"failures": sorted(failures, key=lambda failure: str(failure["task_id"]))},
+            )
+            raise ValueError("no actionable AHE overview report")
+        (analysis_dir / "overview.md").write_text(overview_report)
 
         artifacts = [
             "rollout/analysis/selection.json",

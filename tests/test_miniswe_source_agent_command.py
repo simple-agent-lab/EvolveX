@@ -4,6 +4,8 @@ import sys
 import types
 from pathlib import Path
 
+import pytest
+
 
 def _install_fake_miniswe(monkeypatch, run_result=None):
     captured: dict[str, object] = {}
@@ -43,7 +45,7 @@ def _install_fake_miniswe(monkeypatch, run_result=None):
 
         def run(self, prompt: str):
             captured["prompt"] = prompt
-            return {"status": "ok"} if run_result is None else run_result
+            return {"exit_status": "submitted", "submission": "useful source-agent report"} if run_result is None else run_result
 
     def get_config_from_spec(spec: str):
         captured["config_spec"] = spec
@@ -151,3 +153,44 @@ def test_source_command_prints_only_sanitized_submission_and_protocol(tmp_path: 
     assert "[REDACTED]" in stdout
     assert "miniswe-source-agent-complete role=debugger" in stdout
     assert "predicted_fixes: []" in stdout
+
+
+@pytest.mark.parametrize(
+    ("role", "result"),
+    [
+        ("debugger", {"exit_status": "submitted"}),
+        ("overview", {"exit_status": "submitted", "submission": "  \n\t"}),
+    ],
+)
+def test_source_command_rejects_empty_analysis_submission(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+    role: str,
+    result: dict[str, str],
+) -> None:
+    _install_fake_miniswe(monkeypatch, run_result=result)
+    module = _load(Path("tools/miniswe_source_agent_command.py"))
+    prompt_file = tmp_path / "prompt.md"
+    prompt_file.write_text("Analyze the trace.\n")
+    monkeypatch.setenv("EVOLVE_PROMPT_FILE", str(prompt_file))
+    monkeypatch.setenv("EVOLVE_SOURCE_AGENT_ROLE", role)
+    monkeypatch.setenv("EVOLVE_META_MODEL", "test-model")
+    monkeypatch.chdir(tmp_path)
+
+    assert module.main([]) != 0
+    assert capsys.readouterr().out == ""
+
+
+def test_source_command_allows_empty_evolution_submission(tmp_path: Path, monkeypatch, capsys) -> None:
+    _install_fake_miniswe(monkeypatch, run_result={"exit_status": "submitted", "submission": "  \n"})
+    module = _load(Path("tools/miniswe_source_agent_command.py"))
+    prompt_file = tmp_path / "prompt.md"
+    prompt_file.write_text("Edit the source.\n")
+    monkeypatch.setenv("EVOLVE_PROMPT_FILE", str(prompt_file))
+    monkeypatch.setenv("EVOLVE_SOURCE_AGENT_ROLE", "evolution")
+    monkeypatch.setenv("EVOLVE_META_MODEL", "test-model")
+    monkeypatch.chdir(tmp_path)
+
+    assert module.main([]) == 0
+    assert capsys.readouterr().out == "miniswe-source-agent-complete role=evolution\npredicted_fixes: []\n"
