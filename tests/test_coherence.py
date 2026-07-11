@@ -14,13 +14,14 @@ from evolve.frozen import interfaces
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src" / "evolve"
-TOTAL_BUDGET = 4180  # includes agent/patching modules and current init scaffolding growth
+TOTAL_BUDGET = 4300  # includes generic task-set provenance and bounded asset discovery
 ROW = re.compile(r"^\| `([^`]+\.py)` \| (\d+) \|")
 APPROVED_MODULES = {
     "__init__.py",
     "__main__.py",
     "agent.py",
     "archive.py",
+    "asset_discovery.py",
     "cli.py",
     "config.py",
     "driver.py",
@@ -32,6 +33,7 @@ APPROVED_MODULES = {
     "population.py",
     "report.py",
     "surface.py",
+    "task_sets.py",
     "task_vectors.py",
     "workspace.py",
     # the frozen ring — the invariant-enforcers, grouped under frozen/

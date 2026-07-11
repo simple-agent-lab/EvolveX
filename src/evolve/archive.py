@@ -7,16 +7,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-STAMPED_FIELDS = {
-    "score",
-    "status",
-    "task_set_hash",
-    "task_set_members",
-    "task_vector",
-    "evaluation_artifacts",
-    "evaluator_tree",
-    "cost",
-}
+STAMPED_FIELDS = {"score", "status", "task_set_hash", "task_set_members", "task_vector", "evaluation_artifacts", "evaluator_tree", "cost"}
 MECHANISM_EVAL_FIELD = "_evolve_mechanism_eval"
 RESERVED_AUXILIARY_FIELDS = {"evals", "kind", "round", MECHANISM_EVAL_FIELD}
 EVALUATION_FIELDS = STAMPED_FIELDS | {
