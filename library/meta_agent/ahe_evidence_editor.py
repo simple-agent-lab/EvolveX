@@ -50,6 +50,8 @@ _AHE_PROTECTED_PATHS = (
     "target/.env.*",
     "target/**/.env",
     "target/**/.env.*",
+    "target/*.env",
+    "target/**/*.env",
     "target/model.env",
     "target/proxy.env",
     "target/**/model.env",
@@ -58,6 +60,10 @@ _AHE_PROTECTED_PATHS = (
     "target/proxy-config.*",
     "target/**/model-config.*",
     "target/**/proxy-config.*",
+    "target/model_config.*",
+    "target/proxy_config.*",
+    "target/**/model_config.*",
+    "target/**/proxy_config.*",
 )
 _SECRET_NAME = re.compile(r"(?:api[_-]?key|token|secret|password|passwd|credential)", re.IGNORECASE)
 _TOKEN_PATTERNS = (
@@ -197,11 +203,11 @@ def build_ahe_prompt(checkout: Path, ctx: OperatorContext, parent_ref: str | Non
             "Copy exactly `\"generation\": \"%s\"` and `\"parent\": \"%s\"` into `change_manifest.json`."
         )
         % (ctx.genid, parent, parent_ref, ctx.genid, parent),
-        "# Experiment Config\n\n```yaml\n%s\n```" % (checkout / "evolve.yaml").read_text().rstrip(),
+        "# Experiment Config\n\n```yaml\n%s\n```" % _sanitize_text((checkout / "evolve.yaml").read_text()).rstrip(),
         "# Analysis Overview\n\n%s" % _sanitize_text(overview.read_text()).rstrip(),
         "# Previous Change Attribution\n\n```json\n%s\n```" % _sanitize_text(attribution.read_text()).rstrip(),
         "# Selected Detail Reports\n\n%s" % _selected_detail_reports(run_dir, ctx.config),
-        "# Evolution History\n\n%s" % attempts.read_text().rstrip(),
+        "# Evolution History\n\n%s" % _sanitize_text(attempts.read_text()).rstrip(),
         "# Rollback Policy\n\n%s" % _rollback_policy(ctx.config),
         "# Surface Rules\n\n%s" % _surface_rules(checkout),
         "# Required Manifest Path\n\n%s" % manifest_path,

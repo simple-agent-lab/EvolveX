@@ -215,6 +215,12 @@ def test_build_ahe_prompt_sanitizes_and_bounds_selected_detail_reports(tmp_path:
     credential_url = "https://user:password@llm.example/v1"
     report = run_dir / "rollout" / "analysis" / "detail" / "task-1.md"
     report.write_text("useful debugger diagnosis\n" + secret + "\n" + credential_url + "\n" + ("x" * 5000))
+    (run_dir / "feedback" / "attempts.md").write_text(f"prior secret: {secret}\nprior proxy: {credential_url}\n")
+    config = (checkout / "evolve.yaml").read_text().replace(
+        "  agent: target.harbor_agent:MiniSweSourceAgent\n",
+        f"  agent: target.harbor_agent:MiniSweSourceAgent\n  proxy_url: {credential_url}\n  api_key: {secret}\n",
+    )
+    (checkout / "evolve.yaml").write_text(config)
     monkeypatch.setenv("EVOLVE_EDITOR_TOKEN", secret)
 
     prompt = _editor_module().build_ahe_prompt(checkout, _ctx(checkout, run_dir, "unused"))
@@ -246,8 +252,12 @@ def test_build_ahe_prompt_renders_disabled_rollback_policy(tmp_path: Path) -> No
         "target/config/.env.test",
         "target/model.env",
         "target/proxy.env",
+        "target/eval.env",
+        "target/config/runtime.env",
         "target/config/model-config.yaml",
         "target/config/proxy-config.json",
+        "target/config/model_config.yaml",
+        "target/config/proxy_config.json",
     ],
 )
 def test_ahe_effective_surface_excludes_operational_paths(tmp_path: Path, path: str) -> None:
