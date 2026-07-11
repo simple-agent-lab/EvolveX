@@ -59,13 +59,17 @@ def evaluate_manifest(manifest: dict[str, Any], previous: object, current: objec
         change = dict(raw_change)
         predicted_fixes = _task_list(change.get("predicted_fixes"), "predicted_fixes")
         risk_tasks = _task_list(change.get("risk_tasks"), "risk_tasks")
-        verified_fixes = [task_id for task_id in predicted_fixes if current_states.get(task_id) == "pass"]
+        verified_fixes = [
+            task_id
+            for task_id in predicted_fixes
+            if previous_states.get(task_id) in {"fail", "partial"} and current_states.get(task_id) == "pass"
+        ]
         still_failing = [task_id for task_id in predicted_fixes if task_id not in verified_fixes]
         realized_risks = [task_id for task_id in risk_tasks if task_id in regressed]
         unexpected_regressions = sorted(regressed - set(risk_tasks))
-        if realized_risks and not verified_fixes:
+        if regressed and not verified_fixes:
             verdict = "HARMFUL"
-        elif realized_risks:
+        elif regressed:
             verdict = "MIXED"
         elif verified_fixes and len(verified_fixes) == len(predicted_fixes):
             verdict = "EFFECTIVE"
@@ -73,6 +77,13 @@ def evaluate_manifest(manifest: dict[str, Any], previous: object, current: objec
             verdict = "PARTIALLY_EFFECTIVE"
         else:
             verdict = "INEFFECTIVE"
+        recommendation = {
+            "EFFECTIVE": "KEEP",
+            "PARTIALLY_EFFECTIVE": "REVISE",
+            "INEFFECTIVE": "REVISE",
+            "MIXED": "ROLLBACK_PIVOT",
+            "HARMFUL": "ROLLBACK_PIVOT",
+        }[verdict]
         changes.append(
             {
                 **change,
@@ -81,6 +92,7 @@ def evaluate_manifest(manifest: dict[str, Any], previous: object, current: objec
                 "realized_risks": realized_risks,
                 "unexpected_regressions": unexpected_regressions,
                 "verdict": verdict,
+                "recommendation": recommendation,
             }
         )
     return {**manifest, "changes": changes}
@@ -98,10 +110,11 @@ def select_debugger_tasks(
     """Choose all diagnostic tasks and a deterministic rotating pass-control sample."""
     if successful_controls < 0:
         raise ValueError("successful_controls must be non-negative")
-    successes = sorted(task_id for task_id, state in current_states.items() if state == "pass")
+    diagnostics = set(comparison.get("regressed", [])) | set(predicted_risks)
+    successes = sorted(task_id for task_id, state in current_states.items() if state == "pass" and task_id not in diagnostics)
     controls = random.Random(seed + generation).sample(successes, min(successful_controls, len(successes)))
     return {
-        "failure": sorted(task_id for task_id, state in current_states.items() if state == "fail"),
+        "failure": sorted(task_id for task_id, state in current_states.items() if state in {"fail", "partial"}),
         "regression": sorted(set(comparison.get("regressed", []))),
         "risk": sorted(set(predicted_risks)),
         "control": controls,

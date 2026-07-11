@@ -135,7 +135,7 @@ def test_ahe_rollout_parallel_trace_analysis_is_hashed_and_isolated(tmp_path: Pa
         "generation": "2",
         "tasks": {
             "failed-task": ["failure"],
-            "regressed-task": ["regression"],
+            "regressed-task": ["failure", "regression"],
             "risk-task": ["predicted_risk"],
             "stable-pass": ["successful_control"],
         },

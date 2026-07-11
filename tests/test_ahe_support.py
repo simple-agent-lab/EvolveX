@@ -68,23 +68,74 @@ def test_manifest_attribution_marks_harmful_change() -> None:
     )
 
     assert result["changes"][0]["verdict"] == "HARMFUL"
+    assert result["changes"][0]["recommendation"] == "ROLLBACK_PIVOT"
     assert result["changes"][0]["realized_risks"] == ["b"]
+
+
+def test_manifest_attribution_verifies_only_reliable_improvement_to_pass() -> None:
+    result = evaluate_manifest(
+        {
+            "changes": [
+                {
+                    "id": "chg-1",
+                    "predicted_fixes": ["fail-to-pass", "partial-to-pass", "already-pass", "fail-to-partial"],
+                    "risk_tasks": [],
+                }
+            ]
+        },
+        make_vector(
+            {
+                "fail-to-pass": [0, 0],
+                "partial-to-pass": [1, 0],
+                "already-pass": [1, 1],
+                "fail-to-partial": [0, 0],
+            }
+        ),
+        make_vector(
+            {
+                "fail-to-pass": [1, 1],
+                "partial-to-pass": [1, 1],
+                "already-pass": [1, 1],
+                "fail-to-partial": [1, 0],
+            }
+        ),
+    )
+
+    change = result["changes"][0]
+    assert change["verified_fixes"] == ["fail-to-pass", "partial-to-pass"]
+    assert change["still_failing_predictions"] == ["already-pass", "fail-to-partial"]
+    assert change["verdict"] == "PARTIALLY_EFFECTIVE"
+    assert change["recommendation"] == "REVISE"
+
+
+def test_manifest_attribution_treats_every_reliable_regression_as_harm() -> None:
+    result = evaluate_manifest(
+        {"changes": [{"id": "chg-1", "predicted_fixes": ["fixed"], "risk_tasks": []}]},
+        make_vector({"fixed": [0, 0], "unexpected": [1, 1]}),
+        make_vector({"fixed": [1, 1], "unexpected": [1, 0]}),
+    )
+
+    change = result["changes"][0]
+    assert change["verified_fixes"] == ["fixed"]
+    assert change["unexpected_regressions"] == ["unexpected"]
+    assert change["verdict"] == "MIXED"
+    assert change["recommendation"] == "ROLLBACK_PIVOT"
 
 
 def test_select_debugger_tasks_uses_seeded_sorted_success_controls() -> None:
     selection = select_debugger_tasks(
-        {"a": "fail", "b": "pass", "c": "pass", "d": "pass", "e": "partial"},
+        {"a": "fail", "b": "pass", "c": "pass", "d": "pass", "e": "partial", "risk-pass": "pass"},
         {"improved": [], "regressed": ["e"], "unchanged": [], "unknown": []},
-        ["a"],
+        ["a", "risk-pass"],
         successful_controls=2,
         seed=7,
         generation=3,
     )
 
     assert selection == {
-        "failure": ["a"],
+        "failure": ["a", "e"],
         "regression": ["e"],
-        "risk": ["a"],
+        "risk": ["a", "risk-pass"],
         "control": ["d", "b"],
     }
 
