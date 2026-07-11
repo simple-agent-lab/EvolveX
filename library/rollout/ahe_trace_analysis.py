@@ -200,14 +200,14 @@ def _agent_timeouts(vector: object) -> list[str]:
 
 
 def _selection(
-    current_states: dict[str, str], comparison: dict[str, list[str]], predicted_risks: list[str], vector: object, debugger: dict[str, Any], generation: int
+    current_states: dict[str, str], comparison: dict[str, list[str]], predicted_risks: list[str], vector: object, controls: dict[str, Any], generation: int
 ) -> dict[str, list[str]]:
     selected = select_debugger_tasks(
         current_states,
         comparison,
         predicted_risks,
-        successful_controls=_nonnegative_int(debugger.get("control_count"), 3),
-        seed=_nonnegative_int(debugger.get("seed"), 0),
+        successful_controls=_nonnegative_int(controls.get("successful"), 3),
+        seed=_nonnegative_int(controls.get("rotation_seed"), 0),
         generation=generation,
     )
     selected["failure"] = sorted(set(selected["failure"]) | set(_agent_timeouts(vector)))
@@ -291,6 +291,7 @@ class AheTraceAnalysisRollout(RolloutOperator):
         attribution["summary"] = _verdict_summary(attribution)
 
         debugger = _config_dict(ctx.config, "debugger")
+        controls = _config_dict(ctx.config, "controls")
         generation = int(ctx.genid) if ctx.genid.isdigit() else 0
         predicted_risks = [
             task_id
@@ -299,7 +300,7 @@ class AheTraceAnalysisRollout(RolloutOperator):
             for task_id in change.get("risk_tasks", [])
             if isinstance(task_id, str)
         ]
-        selection = _selection(current_states, comparison, predicted_risks, parent_vector, debugger, generation)
+        selection = _selection(current_states, comparison, predicted_risks, parent_vector, controls, generation)
         payload = _selection_payload(ctx.genid, selection)
         analysis_dir = ctx.run_dir / "rollout" / "analysis"
         detail_dir = analysis_dir / "detail"

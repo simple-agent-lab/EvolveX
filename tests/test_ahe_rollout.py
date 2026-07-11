@@ -122,7 +122,10 @@ def test_ahe_rollout_parallel_trace_analysis_is_hashed_and_isolated(tmp_path: Pa
         parent="1",
         round=None,
         fan_out=1,
-        config={"debugger": {"command": "fake-debugger", "workers": 99, "attempts": 1, "control_count": 1, "seed": 7}},
+        config={
+            "debugger": {"command": "fake-debugger", "workers": 99, "attempts": 1},
+            "controls": {"successful": 1, "rotation_seed": 7},
+        },
         rng=random.Random(0),
     )
 
@@ -151,13 +154,31 @@ def test_ahe_rollout_parallel_trace_analysis_is_hashed_and_isolated(tmp_path: Pa
     assert "rollout/analysis/overview.md" in result.artifacts
 
 
+def test_ahe_rollout_selection_reads_successful_controls_from_controls_config() -> None:
+    config = {
+        "debugger": {"command": "fake-debugger", "workers": 5, "attempts": 3},
+        "controls": {"successful": 1, "rotation_seed": 7},
+    }
+
+    selection = AHE_ROLLOUT._selection(
+        {"alpha": "pass", "beta": "pass", "gamma": "pass", "delta": "pass"},
+        {"improved": [], "regressed": [], "unchanged": [], "unknown": []},
+        [],
+        _vector({task_id: [1, 1] for task_id in ("alpha", "beta", "gamma", "delta")}),
+        AHE_ROLLOUT._config_dict(config, "controls"),
+        2,
+    )
+
+    assert selection["control"] == ["gamma"]
+
+
 def test_ahe_rollout_selection_honors_zero_controls() -> None:
     selection = AHE_ROLLOUT._selection(
         {"failed": "fail", "passing": "pass"},
         {"improved": [], "regressed": [], "unchanged": [], "unknown": []},
         [],
         _vector({"failed": [0, 0], "passing": [1, 1]}),
-        {"control_count": 0, "seed": 0},
+        {"successful": 0, "rotation_seed": 0},
         2,
     )
 
@@ -200,7 +221,7 @@ def test_ahe_rollout_caps_parallel_debuggers_at_five(tmp_path: Path, monkeypatch
         parent="1",
         round=None,
         fan_out=1,
-        config={"debugger": {"command": "fake-debugger", "workers": 99, "control_count": 0}},
+        config={"debugger": {"command": "fake-debugger", "workers": 99}, "controls": {"successful": 0, "rotation_seed": 0}},
         rng=random.Random(0),
     )
 
@@ -335,7 +356,7 @@ def test_unsafe_task_id_uses_hashed_report_path(tmp_path: Path, monkeypatch) -> 
         parent="1",
         round=None,
         fan_out=1,
-        config={"debugger": {"command": "fake-debugger", "control_count": 0}},
+        config={"debugger": {"command": "fake-debugger"}, "controls": {"successful": 0, "rotation_seed": 0}},
         rng=random.Random(0),
     )
 
@@ -378,7 +399,7 @@ def test_unsafe_and_safe_hash_like_task_ids_use_distinct_reports(tmp_path: Path,
         parent="1",
         round=None,
         fan_out=1,
-        config={"debugger": {"command": "fake-debugger", "control_count": 0}},
+        config={"debugger": {"command": "fake-debugger"}, "controls": {"successful": 0, "rotation_seed": 0}},
         rng=random.Random(0),
     )
 
@@ -431,7 +452,7 @@ def test_terminal_debugger_failure_records_attempts(tmp_path: Path, monkeypatch)
         parent="1",
         round=None,
         fan_out=1,
-        config={"debugger": {"command": "fake-debugger", "attempts": 2, "control_count": 0}},
+        config={"debugger": {"command": "fake-debugger", "attempts": 2}, "controls": {"successful": 0, "rotation_seed": 0}},
         rng=random.Random(0),
     )
 
