@@ -61,6 +61,20 @@ def _write_artifacts(workspace: Path, generation: str, task_ids: list[str]) -> d
     return {"path": str(index.relative_to(workspace)), "sha256": _sha256(index)}
 
 
+def _scope(task_ids: list[str]) -> dict[str, object]:
+    return {"task_set_hash": "fixture-task-set", "task_set_members": sorted(task_ids)}
+
+
+def _rollout_config(task_ids: list[str], **overrides: object) -> dict[str, object]:
+    config: dict[str, object] = {
+        "debugger": {"command": "fake-debugger"},
+        "controls": {"successful": 0, "rotation_seed": 0},
+        "training": {"task_names": sorted(task_ids)},
+    }
+    config.update(overrides)
+    return config
+
+
 def test_ahe_rollout_parallel_trace_analysis_is_hashed_and_isolated(tmp_path: Path, monkeypatch) -> None:
     workspace = tmp_path / "workspace"
     checkout = workspace / "candidate-checkout"
@@ -79,12 +93,14 @@ def test_ahe_rollout_parallel_trace_analysis_is_hashed_and_isolated(tmp_path: Pa
     rows = [
         {
             "genid": "0",
+            **_scope(task_ids),
             "task_vector": _vector({"failed-task": [0, 0], "regressed-task": [1, 1], "risk-task": [1, 1], "stable-pass": [1, 1]}),
             "evaluation_artifacts": grandparent_artifacts,
         },
         {
             "genid": "1",
             "parent": "0",
+            **_scope(task_ids),
             "task_vector": _vector({"failed-task": [0, 0], "regressed-task": [1, 0], "risk-task": [1, 1], "stable-pass": [1, 1]}),
             "evaluation_artifacts": parent_artifacts,
             "ahe_manifest_path": str(manifest.relative_to(workspace)),
@@ -125,6 +141,7 @@ def test_ahe_rollout_parallel_trace_analysis_is_hashed_and_isolated(tmp_path: Pa
         config={
             "debugger": {"command": "fake-debugger", "workers": 99, "attempts": 1},
             "controls": {"successful": 1, "rotation_seed": 7},
+            "training": {"task_names": sorted(task_ids)},
         },
         rng=random.Random(0),
     )
@@ -166,6 +183,7 @@ def test_ahe_rollout_selection_reads_successful_controls_from_controls_config() 
         [],
         _vector({task_id: [1, 1] for task_id in ("alpha", "beta", "gamma", "delta")}),
         AHE_ROLLOUT._config_dict(config, "controls"),
+        {},
         2,
     )
 
@@ -179,10 +197,34 @@ def test_ahe_rollout_selection_honors_zero_controls() -> None:
         [],
         _vector({"failed": [0, 0], "passing": [1, 1]}),
         {"successful": 0, "rotation_seed": 0},
+        {},
         2,
     )
 
     assert selection["control"] == []
+
+
+def test_ahe_rollout_selection_respects_analyze_flags_with_true_defaults() -> None:
+    states = {"failed": "fail", "partial": "partial", "regressed": "fail", "risk": "pass", "timeout": "unknown"}
+    comparison = {"improved": [], "regressed": ["regressed"], "unchanged": [], "unknown": []}
+    vector = _vector({"failed": [0, 0], "partial": [1, 0], "regressed": [0, 0], "risk": [1, 1]})
+    vector["tasks"]["timeout"] = {"trials": [{"trial": 0, "status": "agent_timeout", "reward": None}]}
+
+    defaults = AHE_ROLLOUT._selection(states, comparison, ["risk"], vector, {}, {}, 2)
+    disabled = AHE_ROLLOUT._selection(
+        states,
+        comparison,
+        ["risk"],
+        vector,
+        {},
+        {"failures": False, "regressions": False, "timeouts": False, "predicted_risks": False},
+        2,
+    )
+
+    assert defaults["failure"] == ["failed", "partial", "regressed", "timeout"]
+    assert defaults["regression"] == ["regressed"]
+    assert defaults["risk"] == ["risk"]
+    assert disabled == {"failure": [], "regression": [], "risk": [], "control": []}
 
 
 def test_ahe_rollout_caps_parallel_debuggers_at_five(tmp_path: Path, monkeypatch) -> None:
@@ -193,7 +235,7 @@ def test_ahe_rollout_caps_parallel_debuggers_at_five(tmp_path: Path, monkeypatch
     task_ids = [f"failed-{index}" for index in range(6)]
     artifacts = _write_artifacts(workspace, "1", task_ids)
     (workspace / "archive.jsonl").write_text(
-        json.dumps({"genid": "1", "task_vector": _vector({task_id: [0, 0] for task_id in task_ids}), "evaluation_artifacts": artifacts})
+        json.dumps({"genid": "1", **_scope(task_ids), "task_vector": _vector({task_id: [0, 0] for task_id in task_ids}), "evaluation_artifacts": artifacts})
         + "\n"
     )
 
@@ -221,7 +263,7 @@ def test_ahe_rollout_caps_parallel_debuggers_at_five(tmp_path: Path, monkeypatch
         parent="1",
         round=None,
         fan_out=1,
-        config={"debugger": {"command": "fake-debugger", "workers": 99}, "controls": {"successful": 0, "rotation_seed": 0}},
+        config=_rollout_config(task_ids, debugger={"command": "fake-debugger", "workers": 99}),
         rng=random.Random(0),
     )
 
@@ -332,6 +374,67 @@ def test_task_artifacts_reject_symlink_alias_to_sealed_path(tmp_path: Path, monk
     assert verified_calls == 0
 
 
+def test_task_artifacts_sanitize_secret_and_proxy_credentials_before_prompt(tmp_path: Path, monkeypatch) -> None:
+    jobs = tmp_path / "jobs"
+    trace = jobs / "trace.txt"
+    trace.parent.mkdir()
+    secret = "opaque-debugger-secret"
+    proxy_url = "http://proxy-user:proxy-password@proxy.example:8118"
+    trace.write_text(f"Useful failure phase: parser\nsecret={secret}\nproxy={proxy_url}\nsk-live-token-value\n")
+    monkeypatch.setenv("EVOLVE_DEBUGGER_TOKEN", secret)
+    index = {
+        "jobs_dir": str(jobs),
+        "trials": [{"task_name": "task", "files": [{"path": "trace.txt", "sha256": _sha256(trace)}]}],
+    }
+
+    evidence = AHE_ROLLOUT._task_artifacts(index, "task")
+
+    assert "Useful failure phase: parser" in evidence[0][1]
+    assert secret not in evidence[0][1]
+    assert proxy_url not in evidence[0][1]
+    assert "sk-live-token-value" not in evidence[0][1]
+    assert "[REDACTED]" in evidence[0][1]
+
+
+def test_rollout_rejects_innocuous_heldout_task_before_prompt_construction(tmp_path: Path, monkeypatch) -> None:
+    workspace = tmp_path / "workspace"
+    checkout = workspace / "candidate-checkout"
+    run_dir = workspace / "runs" / "gen-2"
+    checkout.mkdir(parents=True)
+    task_ids = ["train-task", "heldout-test-task"]
+    artifacts = _write_artifacts(workspace, "1", task_ids)
+    (workspace / "archive.jsonl").write_text(
+        json.dumps(
+            {
+                "genid": "1",
+                **_scope(task_ids),
+                "task_vector": _vector({task_id: [0, 0] for task_id in task_ids}),
+                "evaluation_artifacts": artifacts,
+            }
+        )
+        + "\n"
+    )
+    monkeypatch.setattr(
+        AHE_ROLLOUT,
+        "_detail_prompt",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("heldout evidence reached prompt construction")),
+    )
+    ctx = OperatorContext(
+        workspace=workspace,
+        checkout=checkout,
+        run_dir=run_dir,
+        genid="2",
+        parent="1",
+        round=None,
+        fan_out=1,
+        config=_rollout_config(["train-task"]),
+        rng=random.Random(0),
+    )
+
+    with pytest.raises(ValueError, match="training allowlist"):
+        AHE_ROLLOUT.AheTraceAnalysisRollout().rollout(checkout, ctx)
+
+
 def test_unsafe_task_id_uses_hashed_report_path(tmp_path: Path, monkeypatch) -> None:
     workspace = tmp_path / "workspace"
     checkout = workspace / "candidate-checkout"
@@ -340,7 +443,7 @@ def test_unsafe_task_id_uses_hashed_report_path(tmp_path: Path, monkeypatch) -> 
     task_id = "../escape"
     artifacts = _write_artifacts(workspace, "1", [task_id])
     (workspace / "archive.jsonl").write_text(
-        json.dumps({"genid": "1", "task_vector": _vector({task_id: [0, 0]}), "evaluation_artifacts": artifacts}) + "\n"
+        json.dumps({"genid": "1", **_scope([task_id]), "task_vector": _vector({task_id: [0, 0]}), "evaluation_artifacts": artifacts}) + "\n"
     )
 
     monkeypatch.setattr(
@@ -356,7 +459,7 @@ def test_unsafe_task_id_uses_hashed_report_path(tmp_path: Path, monkeypatch) -> 
         parent="1",
         round=None,
         fan_out=1,
-        config={"debugger": {"command": "fake-debugger"}, "controls": {"successful": 0, "rotation_seed": 0}},
+        config=_rollout_config([task_id]),
         rng=random.Random(0),
     )
 
@@ -384,6 +487,7 @@ def test_unsafe_and_safe_hash_like_task_ids_use_distinct_reports(tmp_path: Path,
         json.dumps(
             {
                 "genid": "1",
+                **_scope([unsafe_id, safe_id]),
                 "task_vector": _vector({unsafe_id: [0, 0], safe_id: [0, 0]}),
                 "evaluation_artifacts": artifacts,
             }
@@ -399,7 +503,7 @@ def test_unsafe_and_safe_hash_like_task_ids_use_distinct_reports(tmp_path: Path,
         parent="1",
         round=None,
         fan_out=1,
-        config={"debugger": {"command": "fake-debugger"}, "controls": {"successful": 0, "rotation_seed": 0}},
+        config=_rollout_config([unsafe_id, safe_id]),
         rng=random.Random(0),
     )
 
@@ -432,7 +536,7 @@ def test_terminal_debugger_failure_records_attempts(tmp_path: Path, monkeypatch)
     checkout.mkdir(parents=True)
     artifacts = _write_artifacts(workspace, "1", ["failed-task"])
     (workspace / "archive.jsonl").write_text(
-        json.dumps({"genid": "1", "task_vector": _vector({"failed-task": [0, 0]}), "evaluation_artifacts": artifacts}) + "\n"
+        json.dumps({"genid": "1", **_scope(["failed-task"]), "task_vector": _vector({"failed-task": [0, 0]}), "evaluation_artifacts": artifacts}) + "\n"
     )
     attempts = 0
 
@@ -452,13 +556,13 @@ def test_terminal_debugger_failure_records_attempts(tmp_path: Path, monkeypatch)
         parent="1",
         round=None,
         fan_out=1,
-        config={"debugger": {"command": "fake-debugger", "attempts": 2}, "controls": {"successful": 0, "rotation_seed": 0}},
+        config=_rollout_config(["failed-task"], debugger={"command": "fake-debugger", "attempts": 2}),
         rng=random.Random(0),
     )
 
-    result = AHE_ROLLOUT.AheTraceAnalysisRollout().rollout(checkout, ctx)
+    with pytest.raises(ValueError, match="no successful AHE detail report"):
+        AHE_ROLLOUT.AheTraceAnalysisRollout().rollout(checkout, ctx)
 
     failures = json.loads((run_dir / "rollout" / "analysis" / "failures.json").read_text())
     assert attempts == 2
     assert failures == {"failures": [{"attempts": 2, "error": "debugger failed", "task_id": "failed-task"}]}
-    assert result.summary["failed"] == 1

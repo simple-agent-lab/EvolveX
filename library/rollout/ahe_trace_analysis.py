@@ -53,6 +53,13 @@ _REASON_NAMES = {
     "control": "successful_control",
 }
 _SAFE_TASK_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,199}")
+_SECRET_NAME = re.compile(r"(?:api[_-]?key|token|secret|password|passwd|credential)", re.IGNORECASE)
+_TOKEN_PATTERNS = (
+    re.compile(r"\bsk-[A-Za-z0-9_-]{8,}\b"),
+    re.compile(r"\b(?:gh[opusr]|github_pat)_[A-Za-z0-9_]{16,}\b"),
+    re.compile(r"(?i)\b(?:api[_-]?key|token|password|secret)\s*[:=]\s*[^\s,;]+"),
+)
+_CREDENTIAL_URL = re.compile(r"\b([A-Za-z][A-Za-z0-9+.-]*://)[^\s/@:]+:[^\s/@]+@([^\s]+)")
 
 
 def _write_json(path: Path, payload: object) -> None:
@@ -67,6 +74,25 @@ def _read_prompt(name: str) -> str:
 def _config_dict(config: dict[str, Any], name: str) -> dict[str, Any]:
     value = config.get(name)
     return dict(value) if isinstance(value, dict) else {}
+
+
+def _enabled(config: dict[str, Any], name: str) -> bool:
+    value = config.get(name)
+    return value if isinstance(value, bool) else True
+
+
+def _sanitize_text(text: str) -> str:
+    secret_values = {
+        value
+        for name, value in os.environ.items()
+        if value and (_SECRET_NAME.search(name) or name in PROXY_REMOVALS)
+    }
+    for value in sorted(secret_values, key=len, reverse=True):
+        text = text.replace(value, "[REDACTED]")
+    text = _CREDENTIAL_URL.sub(r"\1[REDACTED]@\2", text)
+    for pattern in _TOKEN_PATTERNS:
+        text = pattern.sub("[REDACTED]", text)
+    return text
 
 
 def _positive_int(value: object, default: int) -> int:
@@ -153,6 +179,58 @@ def _artifact_index(row: dict[str, Any], workspace: Path) -> dict[str, Any]:
     return loaded
 
 
+def _training_allowlist(config: dict[str, Any], workspace: Path) -> set[str]:
+    training = _config_dict(config, "training")
+    names = training.get("task_names")
+    if isinstance(names, list) and all(isinstance(name, str) and name for name in names):
+        allowed = set(names)
+    elif isinstance(training.get("task_file"), str) and training["task_file"]:
+        task_file = (workspace / training["task_file"]).resolve()
+        try:
+            task_file.relative_to(workspace.resolve())
+        except ValueError as error:
+            raise ValueError("AHE training task_file escapes workspace") from error
+        allowed = {
+            line.strip()
+            for line in task_file.read_text().splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        }
+    else:
+        raise ValueError("AHE training allowlist must configure task_names or task_file")
+    if not allowed:
+        raise ValueError("AHE training allowlist is empty")
+    return allowed
+
+
+def _validate_training_scope(
+    parent: dict[str, Any],
+    vector: object,
+    index: dict[str, Any],
+    config: dict[str, Any],
+    workspace: Path,
+) -> None:
+    allowed = _training_allowlist(config, workspace)
+    stamped = parent.get("task_set_members")
+    if not isinstance(parent.get("task_set_hash"), str) or not parent["task_set_hash"]:
+        raise ValueError("selected evaluation lacks a task-set identity")
+    if not isinstance(stamped, list) or not all(isinstance(task_id, str) and task_id for task_id in stamped):
+        raise ValueError("selected evaluation lacks task-set membership")
+    if set(stamped) != allowed:
+        raise ValueError("selected evaluation task-set membership differs from AHE training allowlist")
+    vector_tasks = set(task_states(vector))
+    trials = index.get("trials")
+    if not isinstance(trials, list):
+        raise ValueError("evaluation artifact index trials must be a list")
+    indexed_tasks = {
+        str(trial.get("task_name"))
+        for trial in trials
+        if isinstance(trial, dict) and isinstance(trial.get("task_name"), str)
+    }
+    outside = sorted((vector_tasks | indexed_tasks) - allowed)
+    if outside:
+        raise ValueError("evaluation evidence contains tasks outside AHE training allowlist: %s" % ", ".join(outside))
+
+
 def _task_artifacts(index: dict[str, Any], task_id: str) -> list[tuple[str, str]]:
     jobs_dir = index.get("jobs_dir")
     if not isinstance(jobs_dir, str) or not jobs_dir:
@@ -181,7 +259,7 @@ def _task_artifacts(index: dict[str, Any], task_id: str) -> list[tuple[str, str]
             verified, payload = _verified_bytes(artifact_root, reference)
             if _has_sealed_component(verified):
                 raise ValueError("sealed artifacts are not available to AHE rollout")
-            evidence.append((verified.relative_to(artifact_root).as_posix(), payload.decode()))
+            evidence.append((verified.relative_to(artifact_root).as_posix(), _sanitize_text(payload.decode())))
     if not evidence:
         raise ValueError(f"no verified training artifacts for task {task_id}")
     return evidence
@@ -200,7 +278,13 @@ def _agent_timeouts(vector: object) -> list[str]:
 
 
 def _selection(
-    current_states: dict[str, str], comparison: dict[str, list[str]], predicted_risks: list[str], vector: object, controls: dict[str, Any], generation: int
+    current_states: dict[str, str],
+    comparison: dict[str, list[str]],
+    predicted_risks: list[str],
+    vector: object,
+    controls: dict[str, Any],
+    analyze: dict[str, Any],
+    generation: int,
 ) -> dict[str, list[str]]:
     selected = select_debugger_tasks(
         current_states,
@@ -210,7 +294,14 @@ def _selection(
         seed=_nonnegative_int(controls.get("rotation_seed"), 0),
         generation=generation,
     )
-    selected["failure"] = sorted(set(selected["failure"]) | set(_agent_timeouts(vector)))
+    if not _enabled(analyze, "failures"):
+        selected["failure"] = []
+    if not _enabled(analyze, "regressions"):
+        selected["regression"] = []
+    if not _enabled(analyze, "predicted_risks"):
+        selected["risk"] = []
+    if _enabled(analyze, "timeouts"):
+        selected["failure"] = sorted(set(selected["failure"]) | set(_agent_timeouts(vector)))
     return selected
 
 
@@ -277,6 +368,7 @@ class AheTraceAnalysisRollout(RolloutOperator):
         if parent_vector is None:
             raise ValueError("selected AHE parent has no task vector")
         artifact_index = _artifact_index(parent, ctx.workspace)
+        _validate_training_scope(parent, parent_vector, artifact_index, ctx.config, ctx.workspace)
         parent_manifest = _manifest(parent, ctx.workspace)
         grandparent = ArchiveView(ctx.workspace).row(str(parent["parent"])) if parent.get("parent") is not None else None
         previous_vector = grandparent.get("task_vector") if grandparent else None
@@ -292,6 +384,7 @@ class AheTraceAnalysisRollout(RolloutOperator):
 
         debugger = _config_dict(ctx.config, "debugger")
         controls = _config_dict(ctx.config, "controls")
+        analyze_config = _config_dict(ctx.config, "analyze")
         generation = int(ctx.genid) if ctx.genid.isdigit() else 0
         predicted_risks = [
             task_id
@@ -300,7 +393,7 @@ class AheTraceAnalysisRollout(RolloutOperator):
             for task_id in change.get("risk_tasks", [])
             if isinstance(task_id, str)
         ]
-        selection = _selection(current_states, comparison, predicted_risks, parent_vector, controls, generation)
+        selection = _selection(current_states, comparison, predicted_risks, parent_vector, controls, analyze_config, generation)
         payload = _selection_payload(ctx.genid, selection)
         analysis_dir = ctx.run_dir / "rollout" / "analysis"
         detail_dir = analysis_dir / "detail"
@@ -342,7 +435,7 @@ class AheTraceAnalysisRollout(RolloutOperator):
                     )
                     detail_dir.mkdir(parents=True, exist_ok=True)
                     report_path = report_paths[task_id]
-                    report_path.write_text(result.stdout)
+                    report_path.write_text(_sanitize_text(result.stdout))
                     return task_id, report_path, None
                 except Exception as error:  # Record a terminal source-agent failure instead of dropping a diagnosis.
                     last_error = error
@@ -368,6 +461,8 @@ class AheTraceAnalysisRollout(RolloutOperator):
             if task_id not in successful_reports and task_id not in failure_ids:
                 failures.append({"task_id": task_id, "attempts": 0, "error": "missing required analysis outcome"})
         _write_json(analysis_dir / "failures.json", {"failures": sorted(failures, key=lambda failure: str(failure["task_id"]))})
+        if not successful_reports:
+            raise ValueError("no successful AHE detail report")
 
         overview_scratch = scratch_root / "overview"
         overview_scratch.mkdir(parents=True, exist_ok=True)
@@ -382,7 +477,7 @@ class AheTraceAnalysisRollout(RolloutOperator):
                 "EVOLVE_RUN_DIR": str(analysis_dir / "overview-run"),
             },
         )
-        (analysis_dir / "overview.md").write_text(overview.stdout)
+        (analysis_dir / "overview.md").write_text(_sanitize_text(overview.stdout))
 
         artifacts = [
             "rollout/analysis/selection.json",

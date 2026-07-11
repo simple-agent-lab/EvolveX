@@ -13,6 +13,11 @@ the compact AHE lineage. The configured prompt is
 the debugger prompt assets live under
 [`library/rollout/prompts/`](../../library/rollout/prompts/).
 
+The four `operators.rollout.analyze` switches independently control failures,
+regressions, timeouts, and predicted risks, and all default to enabled. Partial
+`k=2` outcomes are failure-bearing. The nested `training` allowlist must match
+the generic evaluator task-set stamp before retained evidence reaches a prompt.
+
 `target.harbor_agent:MiniSweSourceAgent` remains the Harbor adapter and is
 explicitly excluded from the mutable surface. Supply the source-agent command
 with `EVOLVE_AGENT_COMMAND` (or the configured AHE meta-agent/debugger command)

@@ -19,6 +19,7 @@ operators:
     debugger: {workers: 5, command: null, attempts: 3}
     controls: {successful: 3, rotation_seed: 0}
     analyze: {failures: true, regressions: true, timeouts: true, predicted_risks: true}
+    training: {task_file: evaluator/tasks/train-30.txt}
   meta_agent:
     variant: ahe_evidence_editor
     command: null

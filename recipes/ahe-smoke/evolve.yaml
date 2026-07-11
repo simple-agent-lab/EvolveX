@@ -18,6 +18,7 @@ operators:
     debugger: {workers: 5, command: null, attempts: 3}
     controls: {successful: 3, rotation_seed: 0}
     analyze: {failures: true, regressions: true, timeouts: true, predicted_risks: true}
+    training: {task_names: [task-0, task-1]}
   meta_agent:
     variant: ahe_evidence_editor
     command: null
@@ -29,6 +30,7 @@ operators:
 evaluator:
   engine: harbor
   dataset: pass@k
+  task_names: [task-0, task-1]
   agent: target.harbor_agent:MiniSweSourceAgent
   tasks_per_round: 2
   k: 2
