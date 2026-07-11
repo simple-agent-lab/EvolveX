@@ -45,6 +45,26 @@ def test_ahe_latest_selector_is_available_as_a_library_variant() -> None:
     assert "library/select/ahe_latest.py" in palette
 
 
+def test_ahe_smoke_init_binds_all_method_faithful_operator_sources(tmp_path: Path) -> None:
+    from evolve import workspace as workspace_module
+
+    config = workspace_module.default_config("ahe-smoke", "ahe")
+
+    bindings = workspace_module._operator_bindings(config, recipe="ahe-smoke", init_cwd=tmp_path)
+
+    assert {(binding.kind, binding.source) for binding in bindings} == {
+        ("select", "library/select/ahe_latest.py"),
+        ("rollout", "library/rollout/ahe_trace_analysis.py"),
+        ("meta_agent", "library/meta_agent/ahe_evidence_editor.py"),
+        ("gate", "library/gate/ahe_artifact_valid.py"),
+        ("record", "library/record/ahe_manifest.py"),
+    }
+    assets = workspace_module._operator_assets("ahe")
+    assert "library/meta_agent/prompts/ahe_evolve.md" in assets
+    assert "library/rollout/prompts/ahe_debugger.md" in assets
+    assert "library/rollout/prompts/ahe_debugger_overview.md" in assets
+
+
 def test_real_recipe_binds_meta_agent_to_agent_command_library_variant(tmp_path: Path) -> None:
     from evolve import workspace as workspace_module
 
@@ -87,7 +107,7 @@ def test_recipe_evaluator_assets_copy_training_but_not_sealed_files(tmp_path: Pa
     (recipes / "ahe" / "evaluator" / "tasks").mkdir(parents=True)
     (recipes / "ahe" / "evaluator" / "tasks" / "train-30.txt").write_text("task-a\n")
     (recipes / "ahe" / "sealed").mkdir()
-    (recipes / "ahe" / "sealed" / "test-30.txt").write_text("secret-task\n")
+    (recipes / "ahe" / "sealed" / "heldout.txt").write_text("secret-task\n")
     monkeypatch.setattr(workspace_module, "recipe_root", lambda: recipes)
 
     assert workspace_module._recipe_evaluator_assets("ahe") == {"evaluator/tasks/train-30.txt": "task-a\n"}

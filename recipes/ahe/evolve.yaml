@@ -10,24 +10,30 @@ target:
   seed: https://github.com/SWE-agent/mini-swe-agent.git
   harbor_agent: miniswe-source
 surface:
-  include:
-    - target/**
-  exclude: []
+  include: [target/**]
+  exclude: [target/harbor_agent.py]
 operators:
-  select: {variant: greedy}
-  rollout: {variant: failure_focused, budget_tasks: 32}
-  meta_agent: {variant: agent_command, timeout_s: 3600}
-  gate: {variant: parent_eligible}
-  record: {variant: jsonl}
-  timeout_s: 600
+  select: {variant: ahe_latest}
+  rollout:
+    variant: ahe_trace_analysis
+    debugger: {workers: 5, command: null, attempts: 3}
+    controls: {successful: 3, rotation_seed: 0}
+    analyze: {failures: true, regressions: true, timeouts: true, predicted_risks: true}
+  meta_agent:
+    variant: ahe_evidence_editor
+    command: null
+    prompt: library/meta_agent/prompts/ahe_evolve.md
+    rollback: {allow_partial: true, pivot_after_revert: true}
+  gate: {variant: ahe_artifact_valid}
+  record: {variant: ahe_manifest}
+  timeout_s: 3600
 evaluator:
   engine: harbor
-  dataset: swe-bench-lite
+  dataset: swebenchpro@1.0
+  dataset_mode: registry
+  task_file: evaluator/tasks/train-30.txt
   agent: target.harbor_agent:MiniSweSourceAgent
-  split: {train: 0.5, gate: 0.4, sealed: 0.1, seed: 0}
-  sampling: static
-  tasks_per_round: 16
-  anchor: {final: true, every_rounds: 0}
-  k: 1
-  n_concurrent: 16
+  tasks_per_round: 30
+  k: 2
+  n_concurrent: 5
   partial_floor: 0.8

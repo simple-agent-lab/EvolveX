@@ -20,11 +20,11 @@ See `DESIGN.md` §7 for the full rationale. In short:
 
 ```
 library/
-├─ select/   greedy · newest · random · score_weighted
-├─ meta_agent/   agent_command
-├─ gate/     hillclimb · parent_eligible
-├─ rollout/  failure_focused · noop
-├─ record/   jsonl
+├─ select/   greedy · newest · random · score_weighted · ahe_latest
+├─ meta_agent/   agent_command · ahe_evidence_editor · prompts/ahe_evolve.md
+├─ gate/     hillclimb · parent_eligible · ahe_artifact_valid
+├─ rollout/  failure_focused · noop · ahe_trace_analysis · prompts/ahe_debugger*.md
+├─ record/   jsonl · ahe_manifest
 └─ _skeletons/   "write a new operator of verb X" starting points   (planned move)
 ```
 
@@ -32,3 +32,9 @@ library/
 
 `select · rollout · meta_agent · novelty · gate · record · reflect` (+ `distill`,
 deferred with weights). The authority is `src/evolve/frozen/interfaces.py`.
+
+Method-faithful variants may use a research-method name when that name describes
+actual operator behavior and artifacts, not a preset label. The AHE family is
+one example: it consumes the generic evaluator `task_vector.json` and
+`evaluation_artifacts.json` contracts, produces trace-analysis and change
+manifest artifacts, and is selected as five distinct operator implementations.
