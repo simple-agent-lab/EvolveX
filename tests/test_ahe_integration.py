@@ -23,7 +23,7 @@ from pathlib import Path
 run_dir = Path(os.environ["EVOLVE_RUN_DIR"])
 run_dir.mkdir(parents=True, exist_ok=True)
 regressed = "# AHE_REGRESSION" in Path("target/agent.py").read_text()
-outcomes = {"task-0": 0.0, "task-1": 0.0 if regressed else 1.0, "task-2": 1.0}
+outcomes = {"task-0": 0.0, "task-1": 0.0 if regressed else 1.0}
 tasks = {
     task_id: {
         "trials": [

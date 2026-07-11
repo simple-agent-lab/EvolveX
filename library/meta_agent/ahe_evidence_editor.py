@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -44,6 +45,14 @@ PROXY_REMOVALS = {
     "ALL_PROXY": None,
 }
 _AHE_PROTECTED_PATHS = ("target/harbor_agent.py",)
+_SECRET_NAME = re.compile(r"(?:api[_-]?key|token|secret|password|passwd|credential)", re.IGNORECASE)
+_TOKEN_PATTERNS = (
+    re.compile(r"\bsk-[A-Za-z0-9_-]{8,}\b"),
+    re.compile(r"\b(?:gh[opusr]|github_pat)_[A-Za-z0-9_]{16,}\b"),
+    re.compile(r"(?i)\b(?:api[_-]?key|token|password|secret)\s*[:=]\s*[^\s,;]+"),
+)
+_CREDENTIAL_URL = re.compile(r"\b([A-Za-z][A-Za-z0-9+.-]*://)[^\s/@:]+:[^\s/@]+@([^\s]+)")
+_SAFE_TASK_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,199}")
 
 
 def _write_json(path: Path, payload: object) -> None:
@@ -62,6 +71,76 @@ def _safe_usage(usage: object) -> dict[str, Any]:
     usd = normalized.get("usd", 0)
     normalized["usd"] = usd if isinstance(usd, (int, float)) and not isinstance(usd, bool) else 0
     return normalized
+
+
+def _sanitize_text(text: str) -> str:
+    secret_values = {
+        value
+        for name, value in os.environ.items()
+        if value and (_SECRET_NAME.search(name) or name in PROXY_REMOVALS)
+    }
+    for value in sorted(secret_values, key=len, reverse=True):
+        text = text.replace(value, "[REDACTED]")
+    text = _CREDENTIAL_URL.sub(r"\1[REDACTED]@\2", text)
+    for pattern in _TOKEN_PATTERNS:
+        text = pattern.sub("[REDACTED]", text)
+    return text
+
+
+def _bounded_int(value: object, default: int, maximum: int) -> int:
+    if isinstance(value, bool):
+        return default
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return min(max(parsed, 0), maximum)
+
+
+def _detail_filename(task_id: str) -> str:
+    if _SAFE_TASK_ID.fullmatch(task_id):
+        return f"{task_id}.md"
+    import hashlib
+
+    return f"_task-{hashlib.sha256(task_id.encode()).hexdigest()}.md"
+
+
+def _selected_detail_reports(run_dir: Path, config: dict[str, Any]) -> str:
+    selection_path = run_dir / "rollout" / "analysis" / "selection.json"
+    selection = json.loads(selection_path.read_text())
+    tasks = selection.get("tasks") if isinstance(selection, dict) else None
+    if not isinstance(tasks, dict):
+        raise ValueError("AHE selection must contain tasks")
+    evidence = config.get("evidence")
+    evidence = dict(evidence) if isinstance(evidence, dict) else {}
+    max_reports = _bounded_int(evidence.get("max_detail_reports"), 8, 16)
+    max_report_chars = _bounded_int(evidence.get("max_report_chars"), 8000, 12000)
+    remaining = _bounded_int(evidence.get("max_total_chars"), 32000, 48000)
+    detail_dir = (run_dir / "rollout" / "analysis" / "detail").resolve()
+    chunks: list[str] = []
+    for task_id in sorted(str(task_id) for task_id in tasks)[:max_reports]:
+        report = (detail_dir / _detail_filename(task_id)).resolve()
+        try:
+            report.relative_to(detail_dir)
+        except ValueError as error:
+            raise ValueError("selected detail report escaped analysis directory") from error
+        if not report.is_file() or remaining <= 0:
+            continue
+        text = _sanitize_text(report.read_text())[:max_report_chars]
+        text = text[:remaining]
+        remaining -= len(text)
+        chunks.append("## %s\n%s" % (task_id, text.rstrip()))
+    return "\n\n".join(chunks)
+
+
+def _rollback_policy(config: dict[str, Any]) -> str:
+    rollback = config.get("rollback")
+    rollback = dict(rollback) if isinstance(rollback, dict) else {}
+    allow_partial = rollback.get("allow_partial") is True
+    pivot_after_revert = rollback.get("pivot_after_revert") is True
+    partial = "Partial rollback is allowed when evidence separates the reverted files." if allow_partial else "Partial rollback is prohibited; revert the complete harmful change."
+    pivot = "A distinct pivot after every revert is required." if pivot_after_revert else "A pivot after revert is optional."
+    return f"- {partial}\n- {pivot}"
 
 
 def _surface_rules(checkout: Path) -> str:
@@ -105,9 +184,11 @@ def build_ahe_prompt(checkout: Path, ctx: OperatorContext, parent_ref: str | Non
         )
         % (ctx.genid, parent, parent_ref, ctx.genid, parent),
         "# Experiment Config\n\n```yaml\n%s\n```" % (checkout / "evolve.yaml").read_text().rstrip(),
-        "# Analysis Overview\n\n%s" % overview.read_text().rstrip(),
-        "# Previous Change Attribution\n\n```json\n%s\n```" % attribution.read_text().rstrip(),
+        "# Analysis Overview\n\n%s" % _sanitize_text(overview.read_text()).rstrip(),
+        "# Previous Change Attribution\n\n```json\n%s\n```" % _sanitize_text(attribution.read_text()).rstrip(),
+        "# Selected Detail Reports\n\n%s" % _selected_detail_reports(run_dir, ctx.config),
         "# Evolution History\n\n%s" % attempts.read_text().rstrip(),
+        "# Rollback Policy\n\n%s" % _rollback_policy(ctx.config),
         "# Surface Rules\n\n%s" % _surface_rules(checkout),
         "# Required Manifest Path\n\n%s" % manifest_path,
     ]

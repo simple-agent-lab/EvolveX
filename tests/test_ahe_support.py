@@ -220,6 +220,54 @@ def test_validate_change_manifest_rejects_surface_mismatch(tmp_path: Path) -> No
         )
 
 
+@pytest.mark.parametrize(
+    ("types", "levels", "message"),
+    [
+        (["improvement", "new"], ["tool", "control_flow"], "rollback change"),
+        (["rollback", "rollback"], ["tool", "control_flow"], "non-rollback pivot"),
+        (["rollback", "improvement"], ["tool", "tool"], "distinct"),
+    ],
+)
+def test_rollback_pivot_manifest_requires_rollback_and_distinct_pivot(
+    tmp_path: Path,
+    types: list[str],
+    levels: list[str],
+    message: str,
+) -> None:
+    run_dir = tmp_path / "run"
+    for task_id in ("task-1", "task-2"):
+        report = run_dir / "analysis" / "detail" / f"{task_id}.md"
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text("evidence\n")
+    manifest = _manifest()
+    manifest["decision"] = "rollback_pivot"
+    first = manifest["changes"][0]
+    assert isinstance(first, dict)
+    first["type"] = types[0]
+    first["component_level"] = levels[0]
+    first["root_cause"] = "same hypothesis"
+    second = dict(first)
+    second.update(
+        id="chg-2",
+        type=types[1],
+        files=["target/pivot.py"],
+        failure_evidence=[{"task_id": "task-2", "report": "analysis/detail/task-2.md"}],
+        component_level=levels[1],
+        root_cause="same hypothesis" if levels[0] == levels[1] else "different hypothesis",
+    )
+    manifest["changes"] = [first, second]
+
+    with pytest.raises(ValueError, match=message):
+        validate_change_manifest(
+            manifest,
+            generation="2",
+            parent="1",
+            changed_paths=["target/agent.py", "target/pivot.py"],
+            run_dir=run_dir,
+            surface_report={"ok": True, "mutated": ["target/agent.py", "target/pivot.py"], "violations": []},
+        )
+
+
 def test_verify_relative_hash_requires_workspace_relative_matching_file(tmp_path: Path) -> None:
     artifact = tmp_path / "runs" / "gen-2" / "eval" / "evaluation_artifacts.json"
     artifact.parent.mkdir(parents=True)

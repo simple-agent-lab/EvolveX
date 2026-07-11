@@ -17,6 +17,10 @@ The four `operators.rollout.analyze` switches independently control failures,
 regressions, timeouts, and predicted risks, and all default to enabled. Partial
 `k=2` outcomes are failure-bearing. The nested `training` allowlist must match
 the generic evaluator task-set stamp before retained evidence reaches a prompt.
+The editor includes only selected current-run detail reports and bounds them with
+the nested `evidence` limits. `rollback.allow_partial` controls whether a subset
+may be reverted; `rollback.pivot_after_revert` requires a distinct non-rollback
+pivot, which the manifest validator enforces for `rollback_pivot` decisions.
 
 `target.harbor_agent:MiniSweSourceAgent` remains the Harbor adapter and is
 explicitly excluded from the mutable surface. Supply the source-agent command

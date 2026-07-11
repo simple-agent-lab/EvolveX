@@ -46,6 +46,10 @@ def _checkout(tmp_path: Path) -> tuple[Path, Path]:
     evidence = run_dir / "rollout" / "analysis" / "detail" / "task-1.md"
     evidence.parent.mkdir(parents=True)
     evidence.write_text("Task task-1 fails because the tool call is malformed.\n")
+    (evidence.parent / "unselected.md").write_text("UNSELECTED DETAIL MUST NOT APPEAR\n")
+    (run_dir / "rollout" / "analysis" / "selection.json").write_text(
+        json.dumps({"generation": "1", "tasks": {"task-1": ["failure"]}}) + "\n"
+    )
     (run_dir / "rollout" / "analysis" / "overview.md").write_text("Normalize tool calls.\n")
     (run_dir / "rollout" / "attribution.json").write_text('{"changes": []}\n')
     (run_dir / "feedback").mkdir()
@@ -68,7 +72,12 @@ def _ctx(checkout: Path, run_dir: Path, command: str) -> OperatorContext:
         parent="0",
         round=None,
         fan_out=1,
-        config={"command": command, "timeout_s": 30},
+        config={
+            "command": command,
+            "timeout_s": 30,
+            "evidence": {"max_detail_reports": 4, "max_report_chars": 2000, "max_total_chars": 4000},
+            "rollback": {"allow_partial": True, "pivot_after_revert": True},
+        },
         rng=random.Random(0),
     )
 
@@ -188,11 +197,45 @@ def test_build_ahe_prompt_reads_only_explicit_ahe_artifacts(tmp_path: Path) -> N
     assert "# Experiment Config" in prompt
     assert "# Analysis Overview\n\nNormalize tool calls." in prompt
     assert "# Previous Change Attribution" in prompt
+    assert "# Selected Detail Reports" in prompt
+    assert "Task task-1 fails because the tool call is malformed." in prompt
+    assert "UNSELECTED DETAIL MUST NOT APPEAR" not in prompt
     assert "# Evolution History\n\n# Attempts" in prompt
     assert "target/harbor_agent.py" in prompt
     assert str(run_dir / "meta_agent" / "change_manifest.json") in prompt
     assert "KEEP" in prompt
     assert "ROLLBACK + PIVOT" in prompt
+    assert "Partial rollback is allowed" in prompt
+    assert "A distinct pivot after every revert is required" in prompt
+
+
+def test_build_ahe_prompt_sanitizes_and_bounds_selected_detail_reports(tmp_path: Path, monkeypatch) -> None:
+    checkout, run_dir = _checkout(tmp_path)
+    secret = "opaque-editor-secret"
+    credential_url = "https://user:password@llm.example/v1"
+    report = run_dir / "rollout" / "analysis" / "detail" / "task-1.md"
+    report.write_text("useful debugger diagnosis\n" + secret + "\n" + credential_url + "\n" + ("x" * 5000))
+    monkeypatch.setenv("EVOLVE_EDITOR_TOKEN", secret)
+
+    prompt = _editor_module().build_ahe_prompt(checkout, _ctx(checkout, run_dir, "unused"))
+
+    assert "useful debugger diagnosis" in prompt
+    assert secret not in prompt
+    assert credential_url not in prompt
+    assert "[REDACTED]" in prompt
+    detail_section = prompt.split("# Selected Detail Reports", 1)[1].split("# Evolution History", 1)[0]
+    assert len(detail_section) < 4500
+
+
+def test_build_ahe_prompt_renders_disabled_rollback_policy(tmp_path: Path) -> None:
+    checkout, run_dir = _checkout(tmp_path)
+    ctx = _ctx(checkout, run_dir, "unused")
+    ctx.config["rollback"] = {"allow_partial": False, "pivot_after_revert": False}
+
+    prompt = _editor_module().build_ahe_prompt(checkout, ctx)
+
+    assert "Partial rollback is prohibited" in prompt
+    assert "A pivot after revert is optional" in prompt
 
 
 def test_build_ahe_prompt_binds_immutable_manifest_identity(tmp_path: Path) -> None:

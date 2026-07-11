@@ -267,8 +267,8 @@ For `k=2`, task states are conservative:
 
 An improvement is a movement from `fail -> partial/pass` or `partial -> pass`. A
 regression is the reverse. Unknown states are never counted as fixes or
-regressions. A predicted fix is verified only when the task reaches `pass`; a risk
-is realized when its state worsens.
+regressions. A predicted fix is verified only on a reliable `fail|partial -> pass`
+transition. Every reliable regression is harm, whether predicted or unexpected.
 
 The operator analyzes every failure, regression, agent timeout, and predicted-risk
 task, plus three successful control tasks. Controls rotate deterministically from
@@ -322,10 +322,12 @@ adapted from the official AHE evolve prompt and includes:
 
 The agent chooses `KEEP`, `REVISE`, or `ROLLBACK + PIVOT`. A rollback is an
 explicit source edit in the child worktree, using prior generation tags as the
-known-good reference. The agent may partially revert a multi-file change when the
-manifest and attribution provide enough separation. It must then pivot to a
-different component level or root-cause hypothesis rather than immediately
-reapplying the same change.
+known-good reference. When `rollback.allow_partial` is enabled, the agent may
+partially revert a multi-file change when the manifest and attribution provide
+enough separation; otherwise it must revert the complete harmful change. When
+`rollback.pivot_after_revert` is enabled, a `rollback_pivot` manifest must contain
+at least one rollback change and a distinct non-rollback pivot at another
+component level or root-cause hypothesis.
 
 The evolved surface is upstream MiniSWE source. `target/harbor_agent.py` is
 excluded because it is framework integration glue, not part of the upstream

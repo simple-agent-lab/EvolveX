@@ -24,6 +24,7 @@ operators:
     variant: ahe_evidence_editor
     command: null
     prompt: library/meta_agent/prompts/ahe_evolve.md
+    evidence: {max_detail_reports: 8, max_report_chars: 8000, max_total_chars: 32000}
     rollback: {allow_partial: true, pivot_after_revert: true}
   gate: {variant: ahe_artifact_valid}
   record: {variant: ahe_manifest}

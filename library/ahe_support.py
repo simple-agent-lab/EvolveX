@@ -165,6 +165,20 @@ def validate_change_manifest(
         raise ValueError("each changed path must appear exactly once")
     if set(covered) != expected_paths:
         raise ValueError("manifest files must cover changed paths exactly")
+    if manifest["decision"] == "rollback_pivot":
+        rollback_changes = [change for change in changes if isinstance(change, dict) and change.get("type") == "rollback"]
+        pivot_changes = [change for change in changes if isinstance(change, dict) and change.get("type") != "rollback"]
+        if not rollback_changes:
+            raise ValueError("rollback_pivot requires at least one rollback change")
+        if not pivot_changes:
+            raise ValueError("rollback_pivot requires a non-rollback pivot")
+        if not any(
+            pivot.get("component_level") != rollback.get("component_level")
+            or pivot.get("root_cause") != rollback.get("root_cause")
+            for pivot in pivot_changes
+            for rollback in rollback_changes
+        ):
+            raise ValueError("rollback_pivot requires a distinct component level or root-cause hypothesis")
     return dict(manifest)
 
 
