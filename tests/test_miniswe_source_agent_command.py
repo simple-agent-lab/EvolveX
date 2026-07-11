@@ -103,7 +103,12 @@ def test_source_command_runs_miniswe_from_source_with_proxy_safe_role_output(tmp
         "cost_limit": 3.0,
         "wall_time_limit_seconds": 900,
         "output_path": str(output_path),
+        "instance_template": module.ANALYSIS_INSTANCE_TEMPLATE,
+        "format_error_template": module.ANALYSIS_FORMAT_ERROR_TEMPLATE,
     }
+    assert "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT" in module.ANALYSIS_INSTANCE_TEMPLATE
+    assert "AHE_REPORT" in module.ANALYSIS_INSTANCE_TEMPLATE
+    assert "marker-only" in module.ANALYSIS_FORMAT_ERROR_TEMPLATE
     assert captured["proxies_before_model"] == set()
     assert output_path.parent.is_dir()
 
@@ -183,7 +188,7 @@ def test_source_command_rejects_empty_analysis_submission(
 
 
 def test_source_command_allows_empty_evolution_submission(tmp_path: Path, monkeypatch, capsys) -> None:
-    _install_fake_miniswe(monkeypatch, run_result={"exit_status": "submitted", "submission": "  \n"})
+    captured = _install_fake_miniswe(monkeypatch, run_result={"exit_status": "submitted", "submission": "  \n"})
     module = _load(Path("tools/miniswe_source_agent_command.py"))
     prompt_file = tmp_path / "prompt.md"
     prompt_file.write_text("Edit the source.\n")
@@ -193,4 +198,5 @@ def test_source_command_allows_empty_evolution_submission(tmp_path: Path, monkey
     monkeypatch.chdir(tmp_path)
 
     assert module.main([]) == 0
+    assert "instance_template" not in captured["agent_kwargs"]
     assert capsys.readouterr().out == "miniswe-source-agent-complete role=evolution\npredicted_fixes: []\n"

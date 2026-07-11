@@ -8,6 +8,28 @@ from typing import Any
 
 PROXY_ENV = ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY", "all_proxy", "ALL_PROXY")
 _ANALYSIS_ROLES = {"debugger", "overview", "debugger_overview"}
+ANALYSIS_INSTANCE_TEMPLATE = r"""
+You are a MiniSWE source analysis worker. Analyze the evidence in the task below without editing files.
+
+{{task}}
+
+Every response must include a bash tool call. When the report is ready, submit it through one final bash tool call whose
+stdout starts with the completion marker and continues with the report body. For example:
+
+```bash
+cat <<'AHE_REPORT'
+COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT
+Write the complete evidence report here.
+AHE_REPORT
+```
+
+The report body after the marker is mandatory. Do not use a marker-only `echo`. After the submission command, stop.
+""".strip()
+ANALYSIS_FORMAT_ERROR_TEMPLATE = r"""
+Your previous response did not satisfy the MiniSWE bash-tool protocol. Respond concisely with exactly one bash tool call.
+For a final answer, use a heredoc whose first output line is COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT and whose remaining
+lines contain the full evidence report. A marker-only submission is invalid.
+""".strip()
 _SECRET_NAME = re.compile(r"(?:api[_-]?key|token|secret|password|passwd|credential)", re.IGNORECASE)
 _TOKEN_PATTERNS = (
     re.compile(r"\bsk-[A-Za-z0-9_-]{8,}\b"),
@@ -60,7 +82,7 @@ def _filtered(payload: dict[str, Any], fields: object) -> dict[str, Any]:
     return {key: value for key, value in payload.items() if key in names}
 
 
-def _build_agent(output_path: Path):
+def _build_agent(output_path: Path, role: str):
     from minisweagent.agents.default import AgentConfig, DefaultAgent
     from minisweagent.config import get_config_from_spec
     from minisweagent.environments.local import LocalEnvironment, LocalEnvironmentConfig
@@ -75,6 +97,9 @@ def _build_agent(output_path: Path):
     agent_kwargs["cost_limit"] = _float_env("EVOLVE_META_AGENT_COST_LIMIT", float(agent_kwargs.get("cost_limit") or 3.0))
     agent_kwargs["wall_time_limit_seconds"] = _int_env("EVOLVE_META_AGENT_WALL_TIME_LIMIT", 900)
     agent_kwargs["output_path"] = str(output_path)
+    if role in _ANALYSIS_ROLES:
+        agent_kwargs["instance_template"] = ANALYSIS_INSTANCE_TEMPLATE
+        agent_kwargs["format_error_template"] = ANALYSIS_FORMAT_ERROR_TEMPLATE
     env_kwargs["cwd"] = str(Path.cwd())
     env_kwargs["timeout"] = _int_env("EVOLVE_META_ENV_TIMEOUT", int(env_kwargs.get("timeout") or 30))
     model_kwargs["model_name"] = _model_name()
@@ -116,7 +141,7 @@ def _run() -> int:
         )
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    result = _build_agent(output_path).run(_prompt())
+    result = _build_agent(output_path, role).run(_prompt())
     submission = _sanitized_submission(result)
     if role in _ANALYSIS_ROLES and not submission:
         return 2
