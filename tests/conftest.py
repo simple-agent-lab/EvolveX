@@ -44,6 +44,68 @@ def smoke_agent_command() -> str:
     return f"{shlex.quote(sys.executable)} -c {shlex.quote(code)}"
 
 
+def ahe_debugger_command() -> str:
+    code = (
+        "import os\n"
+        "from pathlib import Path\n"
+        "run_dir = Path(os.environ['EVOLVE_RUN_DIR'])\n"
+        "run_dir.mkdir(parents=True, exist_ok=True)\n"
+        "prompt = Path(os.environ['EVOLVE_PROMPT_FILE']).read_text()\n"
+        "(run_dir / 'received-prompt.md').write_text(prompt)\n"
+        "print('fixed debugger evidence report')\n"
+    )
+    return f"{shlex.quote(sys.executable)} -c {shlex.quote(code)}"
+
+
+def ahe_editor_command() -> str:
+    code = (
+        "import json\n"
+        "import os\n"
+        "from pathlib import Path\n"
+        "genid = os.environ['EVOLVE_GENID']\n"
+        "run_dir = Path(os.environ['EVOLVE_RUN_DIR'])\n"
+        "run_dir.mkdir(parents=True, exist_ok=True)\n"
+        "prompt = Path(os.environ['EVOLVE_PROMPT_FILE']).read_text()\n"
+        "(run_dir / 'received-prompt.md').write_text(prompt)\n"
+        "target = Path('target/agent.py')\n"
+        "if genid == '1':\n"
+        "    target.write_text(target.read_text() + '# AHE_REGRESSION\\n')\n"
+        "    decision = 'keep'\n"
+        "    change_type = 'improvement'\n"
+        "    evidence_task = 'task-0'\n"
+        "    predicted = ['task-0']\n"
+        "    risks = ['task-1']\n"
+        "else:\n"
+        "    target.write_text(target.read_text().replace('# AHE_REGRESSION\\n', ''))\n"
+        "    decision = 'rollback_pivot'\n"
+        "    change_type = 'rollback'\n"
+        "    evidence_task = 'task-1'\n"
+        "    predicted = ['task-1']\n"
+        "    risks = []\n"
+        "manifest = {\n"
+        "    'schema_version': 1,\n"
+        "    'generation': genid,\n"
+        "    'parent': os.environ['EVOLVE_PARENT'],\n"
+        "    'decision': decision,\n"
+        "    'changes': [{\n"
+        "        'id': f'change-{genid}',\n"
+        "        'type': change_type,\n"
+        "        'files': ['target/agent.py'],\n"
+        "        'failure_evidence': [{'task_id': evidence_task, 'report': f'rollout/analysis/detail/{evidence_task}.md'}],\n"
+        "        'root_cause': 'deterministic attribution fixture',\n"
+        "        'targeted_fix': 'deterministic source edit',\n"
+        "        'predicted_fixes': predicted,\n"
+        "        'risk_tasks': risks,\n"
+        "        'component_level': 'control_flow',\n"
+        "    }],\n"
+        "    'validation': {'status': 'passed', 'commands': ['python -m compileall target']},\n"
+        "}\n"
+        "Path(os.environ['EVOLVE_AHE_MANIFEST_PATH']).write_text(json.dumps(manifest) + '\\n')\n"
+        "print('fixed editor result')\n"
+    )
+    return f"{shlex.quote(sys.executable)} -c {shlex.quote(code)}"
+
+
 def smoke_env(evolve_home: Path) -> dict[str, str]:
     return {
         "EVAL_STUB": "1",
