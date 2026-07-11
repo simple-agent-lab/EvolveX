@@ -51,6 +51,10 @@ def normalize_task_vector(payload: object) -> dict[str, Any]:
                 raise TaskVectorError(f"invalid status {status!r} for {task_id}")
             if reward is not None and (isinstance(reward, bool) or not isinstance(reward, (int, float))):
                 raise TaskVectorError(f"invalid reward for {task_id} trial {trial}")
+            if status == "complete" and reward is None:
+                raise TaskVectorError(f"complete trial for {task_id} must have a numeric reward")
+            if status != "complete" and reward is not None:
+                raise TaskVectorError(f"non-complete trial for {task_id} must have a null reward")
             trials.append(dict(raw))
         tasks[task_id] = {**task, "trials": sorted(trials, key=lambda item: item["trial"])}
     return {"schema_version": 1, "tasks": tasks}

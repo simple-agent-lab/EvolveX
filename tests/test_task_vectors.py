@@ -85,6 +85,31 @@ def test_invalid_task_vector_rejects_boolean_trial_ids() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    ("status", "reward", "message"),
+    [
+        ("complete", None, "complete trial.*numeric reward"),
+        ("agent_timeout", 0.0, "non-complete trial.*null reward"),
+        ("infra_failed", 1.0, "non-complete trial.*null reward"),
+        ("cancelled", 0.0, "non-complete trial.*null reward"),
+    ],
+)
+def test_invalid_task_vector_rejects_inconsistent_status_reward(status: str, reward: float | None, message: str) -> None:
+    with pytest.raises(TaskVectorError, match=message):
+        normalize_task_vector(
+            {
+                "schema_version": 1,
+                "tasks": {
+                    "task-a": {
+                        "trials": [
+                            {"trial": 0, "status": status, "reward": reward},
+                        ]
+                    }
+                },
+            }
+        )
+
+
 def test_stub_eval_emits_configured_completed_trials_without_changing_score(tmp_path: Path) -> None:
     evaluator_dir = tmp_path / "evaluator"
     evaluator_dir.mkdir()
