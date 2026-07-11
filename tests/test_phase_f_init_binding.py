@@ -100,6 +100,31 @@ def test_operator_assets_vendor_nested_prompt_files(tmp_path: Path, monkeypatch)
     assert assets == {"library/meta_agent/prompts/ahe.md": "AHE prompt\n"}
 
 
+def test_operator_assets_reads_only_direct_root_python_helpers(tmp_path: Path, monkeypatch) -> None:
+    from evolve import workspace as workspace_module
+
+    library = tmp_path / "library"
+    library.mkdir()
+    helper = library / "ahe_support.py"
+    helper.write_text("ROOT_HELPER = True\n")
+    nested = library / "internal" / "credential_loader.py"
+    nested.parent.mkdir()
+    nested.write_text("MUST_NOT_BE_READ = True\n")
+    original_read_text = Path.read_text
+
+    def guarded_read_text(path: Path, *args, **kwargs):
+        if path == nested:
+            raise AssertionError("nested root helper candidate was read")
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(workspace_module, "library_root", lambda: library)
+    monkeypatch.setattr(Path, "read_text", guarded_read_text)
+
+    assets = workspace_module._operator_assets("ahe")
+
+    assert assets == {"library/ahe_support.py": "ROOT_HELPER = True\n"}
+
+
 def test_recipe_evaluator_assets_copy_training_but_not_sealed_files(tmp_path: Path, monkeypatch) -> None:
     from evolve import workspace as workspace_module
 

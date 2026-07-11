@@ -236,6 +236,18 @@ def _text_files(root: Path | Traversable):
             continue
 
 
+def _root_python_helpers(root: Path | Traversable):
+    for source in sorted(root.iterdir(), key=lambda entry: entry.name):
+        if source.name.startswith((".", "_")) or not source.name.endswith(".py") or not source.is_file():
+            continue
+        if isinstance(source, Path) and source.is_symlink():
+            raise ValueError(f"operator asset may not be a symlink: {source}")
+        try:
+            yield source.name, source.read_text()
+        except UnicodeDecodeError:
+            continue
+
+
 def _operator_assets(recipe: str) -> dict[str, str]:
     assets: dict[str, str] = {}
     for kind in OPERATOR_KINDS:
@@ -244,7 +256,7 @@ def _operator_assets(recipe: str) -> dict[str, str]:
                 for relative, text in _text_files(directory):
                     if relative.suffix != ".py":
                         assets.setdefault(f"library/{kind}/{relative.as_posix()}", text)
-    return assets | {f"library/{relative.as_posix()}": text for relative, text in _text_files(library_root()) if len(relative.parts) == 1 and relative.suffix == ".py" and not relative.name.startswith("_")}
+    return assets | {f"library/{name}": text for name, text in _root_python_helpers(library_root())}
 
 
 def _recipe_evaluator_assets(recipe: str) -> dict[str, str]:
