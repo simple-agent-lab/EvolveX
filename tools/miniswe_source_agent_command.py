@@ -2,10 +2,18 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 from pathlib import Path
 from typing import Any
 
 PROXY_ENV = ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY", "all_proxy", "ALL_PROXY")
+_SECRET_NAME = re.compile(r"(?:api[_-]?key|token|secret|password|passwd|credential)", re.IGNORECASE)
+_TOKEN_PATTERNS = (
+    re.compile(r"\bsk-[A-Za-z0-9_-]{8,}\b"),
+    re.compile(r"\b(?:gh[opusr]|github_pat)_[A-Za-z0-9_]{16,}\b"),
+    re.compile(r"(?i)\b(?:api[_-]?key|token|password|secret)\s*[:=]\s*[^\s,;]+"),
+)
+_CREDENTIAL_URL = re.compile(r"\b([A-Za-z][A-Za-z0-9+.-]*://)[^\s/@:]+:[^\s/@]+@([^\s]+)")
 
 
 def _clear_proxy_env() -> None:
@@ -81,6 +89,23 @@ def _prompt() -> str:
     return Path(path).read_text()
 
 
+def _sanitized_submission(result: object) -> str:
+    if not isinstance(result, dict) or not isinstance(result.get("submission"), str):
+        return ""
+    text = result["submission"]
+    secret_values = {
+        value
+        for name, value in os.environ.items()
+        if value and (_SECRET_NAME.search(name) or name in PROXY_ENV)
+    }
+    for value in sorted(secret_values, key=len, reverse=True):
+        text = text.replace(value, "[REDACTED]")
+    text = _CREDENTIAL_URL.sub(r"\1[REDACTED]@\2", text)
+    for pattern in _TOKEN_PATTERNS:
+        text = pattern.sub("[REDACTED]", text)
+    return text.strip()
+
+
 def _run() -> int:
     role = os.environ.get("EVOLVE_SOURCE_AGENT_ROLE", "evolution")
     output_path = Path(
@@ -90,7 +115,10 @@ def _run() -> int:
         )
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    _build_agent(output_path).run(_prompt())
+    result = _build_agent(output_path).run(_prompt())
+    submission = _sanitized_submission(result)
+    if submission:
+        print(submission)
     print(f"miniswe-source-agent-complete role={role}")
     print("predicted_fixes: []")
     return 0

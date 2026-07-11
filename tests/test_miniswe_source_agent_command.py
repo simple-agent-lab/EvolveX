@@ -106,13 +106,25 @@ def test_source_command_runs_miniswe_from_source_with_proxy_safe_role_output(tmp
     assert output_path.parent.is_dir()
 
 
-def test_source_command_does_not_print_agent_result_secrets(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_source_command_prints_only_sanitized_submission_and_protocol(tmp_path: Path, monkeypatch, capsys) -> None:
     api_key = "sk-test-secret-value"
+    token = "ghp_abcdefghijklmnopqrstuvwxyz1234567890"
+    opaque_secret = "cobalt-eleven-private"
     credential_url = "https://api-user:api-password@llm.example/v1"
     result = {
+        "exit_status": "submitted",
+        "submission": (
+            "Useful debugger finding: retry the parser boundary.\n"
+            f"Leaked exact env value: {api_key}\n"
+            f"Leaked token pattern: {token}\n"
+            f"Leaked exact env secret: {opaque_secret}\n"
+            f"Leaked URL: {credential_url}\n"
+        ),
         "api_key": api_key,
         "base_url": credential_url,
         "environment": {"OPENAI_API_KEY": api_key, "OPENAI_BASE_URL": credential_url},
+        "messages": ["private transcript"],
+        "config": {"token": token},
     }
     _install_fake_miniswe(monkeypatch, run_result=result)
     module = _load(Path("tools/miniswe_source_agent_command.py"))
@@ -121,14 +133,21 @@ def test_source_command_does_not_print_agent_result_secrets(tmp_path: Path, monk
     monkeypatch.setenv("EVOLVE_PROMPT_FILE", str(prompt_file))
     monkeypatch.setenv("EVOLVE_SOURCE_AGENT_ROLE", "debugger")
     monkeypatch.setenv("EVOLVE_META_MODEL", "test-model")
+    monkeypatch.setenv("EVOLVE_DEBUGGER_PASSWORD", opaque_secret)
     monkeypatch.chdir(tmp_path)
 
     assert module.main([]) == 0
 
     stdout = capsys.readouterr().out
+    assert "Useful debugger finding: retry the parser boundary." in stdout
     assert api_key not in stdout
+    assert token not in stdout
+    assert opaque_secret not in stdout
     assert credential_url not in stdout
     assert "OPENAI_API_KEY" not in stdout
     assert "OPENAI_BASE_URL" not in stdout
+    assert "private transcript" not in stdout
+    assert "submitted" not in stdout
+    assert "[REDACTED]" in stdout
     assert "miniswe-source-agent-complete role=debugger" in stdout
     assert "predicted_fixes: []" in stdout
