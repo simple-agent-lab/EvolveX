@@ -215,6 +215,54 @@ def _training_allowlist(config: dict[str, Any], workspace: Path) -> set[str]:
     return allowed
 
 
+def _matching_training_evaluation(
+    row: dict[str, Any],
+    config: dict[str, Any],
+    workspace: Path,
+) -> dict[str, Any] | None:
+    allowed = _training_allowlist(config, workspace)
+    auxiliary = row.get("evals")
+    candidates = [row, *(auxiliary if isinstance(auxiliary, list) else [])]
+    for candidate in reversed(candidates):
+        if not isinstance(candidate, dict):
+            continue
+        members = candidate.get("task_set_members")
+        if not isinstance(members, list) or not all(isinstance(task_id, str) and task_id for task_id in members):
+            continue
+        if set(members) != allowed:
+            continue
+        if candidate.get("status") not in {"complete", "partial"} or candidate.get("score") is None:
+            continue
+        if not isinstance(candidate.get("task_set_hash"), str) or not candidate["task_set_hash"]:
+            continue
+        if not isinstance(candidate.get("task_vector"), dict):
+            continue
+        if not isinstance(candidate.get("evaluation_artifacts"), dict):
+            continue
+        return candidate
+    return None
+
+
+def _training_evaluation(row: dict[str, Any], config: dict[str, Any], workspace: Path) -> dict[str, Any]:
+    selected = _matching_training_evaluation(row, config, workspace)
+    if selected is None:
+        allowed = _training_allowlist(config, workspace)
+        auxiliary = row.get("evals")
+        candidates = [row, *(auxiliary if isinstance(auxiliary, list) else [])]
+        if any(
+            isinstance(candidate, dict)
+            and isinstance(candidate.get("task_set_members"), list)
+            and all(isinstance(task_id, str) for task_id in candidate["task_set_members"])
+            and set(candidate["task_set_members"]) != allowed
+            and isinstance(candidate.get("task_vector"), dict)
+            and isinstance(candidate.get("evaluation_artifacts"), dict)
+            for candidate in candidates
+        ):
+            raise ValueError("selected evaluation task-set membership differs from AHE training allowlist")
+        raise ValueError("selected AHE parent has no complete evaluation for the training task set")
+    return selected
+
+
 def _validate_training_scope(
     parent: dict[str, Any],
     vector: object,
@@ -377,14 +425,16 @@ class AheTraceAnalysisRollout(RolloutOperator):
         parent = ArchiveView(ctx.workspace).row(ctx.parent)
         if parent is None:
             raise ValueError("selected AHE parent is missing from archive")
-        parent_vector = parent.get("task_vector")
-        if parent_vector is None:
-            raise ValueError("selected AHE parent has no task vector")
-        artifact_index = _artifact_index(parent, ctx.workspace)
-        _validate_training_scope(parent, parent_vector, artifact_index, ctx.config, ctx.workspace)
+        parent_evaluation = _training_evaluation(parent, ctx.config, ctx.workspace)
+        parent_vector = parent_evaluation["task_vector"]
+        artifact_index = _artifact_index(parent_evaluation, ctx.workspace)
+        _validate_training_scope(parent_evaluation, parent_vector, artifact_index, ctx.config, ctx.workspace)
         parent_manifest = _manifest(parent, ctx.workspace)
         grandparent = ArchiveView(ctx.workspace).row(str(parent["parent"])) if parent.get("parent") is not None else None
-        previous_vector = grandparent.get("task_vector") if grandparent else None
+        grandparent_evaluation = (
+            _matching_training_evaluation(grandparent, ctx.config, ctx.workspace) if grandparent is not None else None
+        )
+        previous_vector = grandparent_evaluation.get("task_vector") if grandparent_evaluation is not None else None
         current_states = task_states(parent_vector)
         comparison = compare_states(task_states(previous_vector), current_states) if previous_vector is not None else {
             "improved": [],

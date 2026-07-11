@@ -62,7 +62,12 @@ def _write_artifacts(workspace: Path, generation: str, task_ids: list[str]) -> d
 
 
 def _scope(task_ids: list[str]) -> dict[str, object]:
-    return {"task_set_hash": "fixture-task-set", "task_set_members": sorted(task_ids)}
+    return {
+        "task_set_hash": "fixture-task-set",
+        "task_set_members": sorted(task_ids),
+        "status": "complete",
+        "score": 0.0,
+    }
 
 
 def _rollout_config(task_ids: list[str], **overrides: object) -> dict[str, object]:
@@ -308,6 +313,36 @@ def test_artifact_index_rejects_forged_hash(tmp_path: Path) -> None:
             {"evaluation_artifacts": {"path": "index.json", "sha256": "0" * 64}},
             tmp_path,
         )
+
+
+def test_training_evaluation_uses_matching_auxiliary_task_set(tmp_path: Path) -> None:
+    task_ids = ["task-a", "task-b"]
+    artifacts = _write_artifacts(tmp_path, "0", task_ids)
+    auxiliary = {
+        **_scope(task_ids),
+        "status": "complete",
+        "score": 0.5,
+        "task_vector": _vector({task_id: [1, 0] for task_id in task_ids}),
+        "evaluation_artifacts": artifacts,
+    }
+    parent = {
+        "genid": "0",
+        "task_set_hash": "scaffold-task-set",
+        "task_set_members": ["unrelated-task"],
+        "status": "complete",
+        "score": 1.0,
+        "task_vector": {"task-0": True},
+        "evaluation_artifacts": None,
+        "evals": [auxiliary],
+    }
+
+    selected = AHE_ROLLOUT._training_evaluation(
+        parent,
+        _rollout_config(task_ids),
+        tmp_path,
+    )
+
+    assert selected == auxiliary
 
 
 def test_verified_bytes_rehashes_exact_returned_bytes(tmp_path: Path, monkeypatch) -> None:
