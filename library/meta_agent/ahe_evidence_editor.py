@@ -150,7 +150,11 @@ def _selected_detail_reports(run_dir: Path, config: dict[str, Any]) -> str:
         text = _sanitize_text(report.read_text())[:max_report_chars]
         text = text[:remaining]
         remaining -= len(text)
-        chunks.append("## %s\n%s" % (task_id, text.rstrip()))
+        report_path = Path("rollout") / "analysis" / "detail" / report.name
+        chunks.append(
+            "## %s\nManifest report path: `%s`\n\n%s"
+            % (task_id, report_path.as_posix(), text.rstrip())
+        )
     return "\n\n".join(chunks)
 
 

@@ -200,6 +200,7 @@ def test_build_ahe_prompt_reads_only_explicit_ahe_artifacts(tmp_path: Path) -> N
     assert "# Previous Change Attribution" in prompt
     assert "# Selected Detail Reports" in prompt
     assert "Task task-1 fails because the tool call is malformed." in prompt
+    assert "Manifest report path: `rollout/analysis/detail/task-1.md`" in prompt
     assert "UNSELECTED DETAIL MUST NOT APPEAR" not in prompt
     assert "# Evolution History\n\n# Attempts" in prompt
     assert "target/harbor_agent.py" in prompt
