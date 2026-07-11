@@ -44,7 +44,21 @@ PROXY_REMOVALS = {
     "all_proxy": None,
     "ALL_PROXY": None,
 }
-_AHE_PROTECTED_PATHS = ("target/harbor_agent.py",)
+_AHE_PROTECTED_PATHS = (
+    "target/harbor_agent.py",
+    "target/.env",
+    "target/.env.*",
+    "target/**/.env",
+    "target/**/.env.*",
+    "target/model.env",
+    "target/proxy.env",
+    "target/**/model.env",
+    "target/**/proxy.env",
+    "target/model-config.*",
+    "target/proxy-config.*",
+    "target/**/model-config.*",
+    "target/**/proxy-config.*",
+)
 _SECRET_NAME = re.compile(r"(?:api[_-]?key|token|secret|password|passwd|credential)", re.IGNORECASE)
 _TOKEN_PATTERNS = (
     re.compile(r"\bsk-[A-Za-z0-9_-]{8,}\b"),

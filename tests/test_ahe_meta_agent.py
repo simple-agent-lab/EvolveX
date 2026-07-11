@@ -238,6 +238,27 @@ def test_build_ahe_prompt_renders_disabled_rollback_policy(tmp_path: Path) -> No
     assert "A pivot after revert is optional" in prompt
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        "target/.env",
+        "target/.env.local",
+        "target/config/.env.test",
+        "target/model.env",
+        "target/proxy.env",
+        "target/config/model-config.yaml",
+        "target/config/proxy-config.json",
+    ],
+)
+def test_ahe_effective_surface_excludes_operational_paths(tmp_path: Path, path: str) -> None:
+    from evolve.surface import check_paths
+
+    checkout, _run_dir = _checkout(tmp_path)
+    surface = _editor_module()._ahe_surface(checkout)
+
+    assert check_paths([path], surface.include, surface.exclude) == [path]
+
+
 def test_build_ahe_prompt_binds_immutable_manifest_identity(tmp_path: Path) -> None:
     checkout, run_dir = _checkout(tmp_path)
     module = _editor_module()

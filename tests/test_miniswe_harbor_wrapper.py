@@ -192,6 +192,9 @@ def test_init_with_local_miniswe_seed_excludes_virtualenv_cache(tmp_path: Path, 
     (seed / ".venv" / "bin").mkdir(parents=True)
     (seed / ".venv" / "bin" / "python").write_text("not source\n")
     (seed / ".pytest_cache").mkdir()
+    (seed / ".env").write_text("OPENAI_API_KEY=must-not-copy\n")
+    (seed / ".env.local").write_text("HTTPS_PROXY=http://user:pass@proxy.example\n")
+    (seed / "src" / "minisweagent" / ".env.test").write_text("TOKEN=must-not-copy\n")
     (seed / "pyproject.toml").write_text("[project]\nname = 'mini-swe-agent'\nversion = '0.test'\n")
     workspace = tmp_path / "workspace"
     config = workspace_module.default_config("hill_climb", workspace.name)
@@ -204,3 +207,6 @@ def test_init_with_local_miniswe_seed_excludes_virtualenv_cache(tmp_path: Path, 
     assert (workspace / "target" / "src" / "minisweagent" / "__init__.py").exists()
     assert not (workspace / "target" / ".venv").exists()
     assert not (workspace / "target" / ".pytest_cache").exists()
+    assert not (workspace / "target" / ".env").exists()
+    assert not (workspace / "target" / ".env.local").exists()
+    assert not (workspace / "target" / "src" / "minisweagent" / ".env.test").exists()

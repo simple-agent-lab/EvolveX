@@ -28,7 +28,18 @@ from .config import (
 )
 from .evaluator import _effective_task_set_identity
 
-_SEED_IGNORE_PATTERNS = (".git", ".venv", "__pycache__", "*.pyc", ".pytest_cache", ".mypy_cache", ".ruff_cache", "node_modules")
+_SEED_IGNORE_PATTERNS = (
+    ".git",
+    ".venv",
+    ".env",
+    ".env.*",
+    "__pycache__",
+    "*.pyc",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    "node_modules",
+)
 
 @dataclass(frozen=True)
 class InitOptions:
