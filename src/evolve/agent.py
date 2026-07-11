@@ -7,7 +7,7 @@ import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, SupportsFloat, SupportsIndex, cast
 
 
 @dataclass(frozen=True)
@@ -143,10 +143,8 @@ def _configured_timeout(config: dict[str, Any]) -> float | None:
 def _timeout_float(value: object) -> float | None:
     if isinstance(value, bool) or value in (None, ""):
         return None
-    if not isinstance(value, (str, int, float)):
-        return None
     try:
-        return float(value)
+        return float(cast(str | SupportsFloat | SupportsIndex, value))
     except (TypeError, ValueError):
         return None
 

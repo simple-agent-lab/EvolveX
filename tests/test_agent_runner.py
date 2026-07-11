@@ -1,10 +1,15 @@
 import json
 import sys
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
 
-from evolve.agent import AgentCommandError, run_meta_agent
+from evolve.agent import AgentCommandError, _timeout_float, run_meta_agent
+
+
+def test_timeout_float_accepts_decimal() -> None:
+    assert _timeout_float(Decimal("1.5")) == 1.5
 
 
 def test_run_meta_agent_runs_command_in_workspace_with_prompt_file(tmp_path: Path) -> None:
