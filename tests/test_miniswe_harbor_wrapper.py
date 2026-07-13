@@ -31,6 +31,8 @@ def _install_fake_harbor(monkeypatch):
         async def exec_as_agent(self, environment, command: str, env=None):
             environment.commands.append(command)
             environment.envs.append(env or {})
+            if getattr(environment, "fail_on", None) and environment.fail_on in command:
+                raise getattr(environment, "failure", RuntimeError("simulated command failure"))
 
         async def exec_as_root(self, environment, command: str, env=None):
             environment.commands.append(command)
@@ -60,6 +62,7 @@ def test_miniswe_wrapper_subclasses_harbor_miniswe_and_installs_candidate_source
     target = tmp_path / "target"
     target.mkdir()
     (target / "pyproject.toml").write_text("[project]\nname = 'mini-swe-agent'\nversion = '0.test'\n")
+    (target / "uv.lock").write_text("version = 1\nrevision = 1\nrequires-python = '>=3.11'\n")
     (target / "src" / "minisweagent").mkdir(parents=True)
     wrapper = target / "harbor_agent.py"
     wrapper.write_text(Path("templates/target/harbor/miniswe_source_agent.py").read_text())
@@ -94,9 +97,23 @@ def test_miniswe_wrapper_subclasses_harbor_miniswe_and_installs_candidate_source
     assert "uv tool install" not in joined
     assert "mini-swe-agent --" not in joined
     assert "curl -LsSf https://astral.sh/uv/0.7.13/install.sh" in joined
-    assert "uv run --project /installed-agent/miniswe-source python -c" in joined
-    assert "import minisweagent" in joined
-    assert environment.envs[-1]["http_proxy"] == "http://proxy.example:8118"
+    assert "uv sync --project /installed-agent/miniswe-source --frozen" in joined
+    assert "/installed-agent/miniswe-source/.venv/bin/python" in joined
+    assert "uv run --project /installed-agent/miniswe-source" not in joined
+    assert "from minisweagent.agents.default import DefaultAgent" in joined
+    assert sum("uv sync" in command for command in environment.commands) == 1
+    sync_index = next(index for index, command in enumerate(environment.commands) if "uv sync" in command)
+    assert 'export PATH="$HOME/.local/bin:$PATH"' in environment.commands[sync_index]
+    assert environment.envs[sync_index]["http_proxy"] == "http://proxy.example:8118"
+    assert environment.envs[sync_index]["UV_CACHE_DIR"] == "/installed-agent/uv-cache"
+    model_index = next(
+        index for index, command in enumerate(environment.commands) if "EVOLVE_PREFLIGHT_MODEL" in command
+    )
+    proxy_names = {"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"}
+    assert proxy_names.isdisjoint(environment.envs[model_index])
+    assert environment.envs[model_index]["OPENAI_API_KEY"] == "test-key"
+    assert environment.envs[model_index]["OPENAI_BASE_URL"] == "https://llm.example/v1"
+    assert f"unset {' '.join(module.PROXY_NAMES)}" in environment.commands[model_index]
 
 
 def test_miniswe_wrapper_runs_candidate_source_api_not_cli(tmp_path: Path, monkeypatch) -> None:
@@ -118,7 +135,8 @@ def test_miniswe_wrapper_runs_candidate_source_api_not_cli(tmp_path: Path, monke
 
     joined = "\n".join(environment.commands)
     assert "mini-swe-agent --" not in joined
-    assert "uv run --project /installed-agent/miniswe-source python" in joined
+    assert "/installed-agent/miniswe-source/.venv/bin/python /tmp/miniswe-source-run.py" in joined
+    assert "uv run --project /installed-agent/miniswe-source" not in joined
     assert "get_config_from_spec" in joined
     assert "DefaultAgent" in joined
     assert "from minisweagent.environments.local import LocalEnvironment" in joined
@@ -154,7 +172,7 @@ def test_miniswe_runtime_unsets_inherited_proxies_but_install_keeps_proxy(tmp_pa
     unset_command = f"unset {' '.join(proxy_names)}"
     runtime_command = environment.commands[-1]
     assert unset_command in runtime_command
-    assert runtime_command.index(unset_command) < runtime_command.index("uv run --project")
+    assert runtime_command.index(unset_command) < runtime_command.index(".venv/bin/python")
     assert set(proxy_names).isdisjoint(environment.envs[-1])
 
     install_env = agent._install_env()
@@ -162,6 +180,63 @@ def test_miniswe_runtime_unsets_inherited_proxies_but_install_keeps_proxy(tmp_pa
     assert install_env["HTTPS_PROXY"] == "http://proxy.example:8118"
     assert install_env["http_proxy"] == "http://proxy.example:8118"
     assert install_env["https_proxy"] == "http://proxy.example:8118"
+
+
+@pytest.mark.parametrize(
+    ("fragment", "code", "failure"),
+    [
+        ("uv sync", "frozen_sync_failed", RuntimeError("failed building litellm==1.92.0")),
+        ("EVOLVE_PREFLIGHT_MINISWE", "miniswe_import_failed", ImportError("minisweagent")),
+        ("EVOLVE_PREFLIGHT_MODEL", "model_path_import_failed", ModuleNotFoundError("fastapi")),
+    ],
+    ids=["litellm-build-failure", "miniswe-import-failure", "missing-fastapi"],
+)
+def test_miniswe_install_classifies_candidate_phase_failures(
+    tmp_path: Path,
+    monkeypatch,
+    fragment: str,
+    code: str,
+    failure: Exception,
+) -> None:
+    _install_fake_harbor(monkeypatch)
+    target = write_locked_miniswe_seed(tmp_path / "target")
+    wrapper = target / "harbor_agent.py"
+    wrapper.write_text(Path("templates/target/harbor/miniswe_source_agent.py").read_text())
+    module = _load(wrapper)
+
+    class Environment:
+        def __init__(self) -> None:
+            self.commands = []
+            self.envs = []
+            self.uploads = []
+            self.fail_on = fragment
+            self.failure = failure
+
+        async def upload_dir(self, source_dir, target_dir):
+            self.uploads.append((Path(source_dir), target_dir))
+
+        async def upload_file(self, source_path, target_path):
+            self.uploads.append((Path(source_path), target_path))
+
+    with pytest.raises(RuntimeError, match=f"EVOLVE_CANDIDATE_INVALID: {code}"):
+        asyncio.run(module.MiniSweSourceAgent().install(Environment()))
+
+
+def test_miniswe_install_rejects_missing_lock_before_upload(tmp_path: Path, monkeypatch) -> None:
+    _install_fake_harbor(monkeypatch)
+    target = write_locked_miniswe_seed(tmp_path / "target")
+    (target / "uv.lock").unlink()
+    wrapper = target / "harbor_agent.py"
+    wrapper.write_text(Path("templates/target/harbor/miniswe_source_agent.py").read_text())
+    module = _load(wrapper)
+
+    class Environment:
+        uploads = []
+
+    with pytest.raises(RuntimeError, match="EVOLVE_CANDIDATE_INVALID: lock_missing"):
+        asyncio.run(module.MiniSweSourceAgent().install(Environment()))
+
+    assert Environment.uploads == []
 
 
 def test_init_with_local_miniswe_seed_writes_target_harbor_wrapper(tmp_path: Path, monkeypatch) -> None:
