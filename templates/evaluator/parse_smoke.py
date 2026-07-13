@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -20,7 +21,24 @@ def _results(jobs_dir: Path) -> list[dict[str, object]]:
     return results
 
 
-def _classify(results: list[dict[str, object]], harbor_rc: int) -> tuple[str, str, str, int]:
+def _evidence(jobs_dir: Path) -> list[dict[str, object]]:
+    evidence: list[dict[str, object]] = []
+    for path in sorted(jobs_dir.rglob("evolve-runtime.json")):
+        try:
+            payload = json.loads(path.read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(payload, dict):
+            evidence.append(payload)
+    return evidence
+
+
+def _classify(
+    results: list[dict[str, object]],
+    evidence: list[dict[str, object]],
+    harbor_rc: int,
+    mode: str,
+) -> tuple[str, str, str, int]:
     for result in results:
         code = candidate_error_code(result.get("exception_info"))
         if code:
@@ -28,6 +46,17 @@ def _classify(results: list[dict[str, object]], harbor_rc: int) -> tuple[str, st
     has_exception = any(isinstance(result.get("exception_info"), dict) for result in results)
     if harbor_rc or not results or has_exception:
         return "infrastructure_failed", "infrastructure", "setup_failed", 3
+    if not evidence:
+        return "infrastructure_failed", "infrastructure", "preflight_evidence_missing", 3
+    expected = {
+        "schema_version": 1,
+        "mode": mode,
+        "frozen_sync": True,
+        "miniswe_import": True,
+        "model_path_init": mode == "full",
+    }
+    if len(evidence) != 1 or evidence[0] != expected:
+        return "infrastructure_failed", "infrastructure", "preflight_evidence_invalid", 3
     return "passed", "none", "none", 0
 
 
@@ -38,7 +67,9 @@ def main(argv: list[str]) -> int:
     output = Path(argv[2])
     harbor_rc = int(argv[3])
     results = _results(jobs_dir)
-    status, owner, category, exit_code = _classify(results, harbor_rc)
+    evidence = _evidence(jobs_dir)
+    mode = os.environ.get("EVOLVE_CANDIDATE_SMOKE_MODE", "full")
+    status, owner, category, exit_code = _classify(results, evidence, harbor_rc, mode)
     payload = {
         "schema_version": 1,
         "status": status,

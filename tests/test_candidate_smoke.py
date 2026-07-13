@@ -31,12 +31,21 @@ def _smoke_checkout(tmp_path: Path) -> Path:
     return checkout
 
 
-def _run_parser(tmp_path: Path, result: dict[str, object] | None, harbor_rc: int = 0) -> subprocess.CompletedProcess[str]:
+def _run_parser(
+    tmp_path: Path,
+    result: dict[str, object] | None,
+    harbor_rc: int = 0,
+    evidence: dict[str, object] | None = None,
+) -> subprocess.CompletedProcess[str]:
     jobs = tmp_path / "jobs"
     if result is not None:
         trial = jobs / "trial"
         trial.mkdir(parents=True)
         (trial / "result.json").write_text(json.dumps(result))
+        if evidence is not None:
+            artifact = trial / "artifacts" / "logs" / "artifacts" / "agent" / "evolve-runtime.json"
+            artifact.parent.mkdir(parents=True)
+            artifact.write_text(json.dumps(evidence))
     output = tmp_path / "smoke.json"
     return subprocess.run(
         [
@@ -89,6 +98,35 @@ def test_smoke_parser_does_not_guess_from_fastapi_traceback(tmp_path: Path) -> N
         "status": "infrastructure_failed",
         "trial_results_seen": 1,
     }
+
+
+def test_smoke_parser_requires_completed_preflight_evidence(tmp_path: Path) -> None:
+    completed = _run_parser(tmp_path, result={})
+
+    assert completed.returncode == 3
+    payload = json.loads((tmp_path / "smoke.json").read_text())
+    assert payload["status"] == "infrastructure_failed"
+    assert payload["category"] == "preflight_evidence_missing"
+
+
+def test_smoke_parser_accepts_complete_full_preflight_evidence(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("EVOLVE_CANDIDATE_SMOKE_MODE", "full")
+
+    completed = _run_parser(
+        tmp_path,
+        result={},
+        evidence={
+            "schema_version": 1,
+            "mode": "full",
+            "frozen_sync": True,
+            "miniswe_import": True,
+            "model_path_init": True,
+        },
+    )
+
+    assert completed.returncode == 0
+    payload = json.loads((tmp_path / "smoke.json").read_text())
+    assert payload["status"] == "passed"
 
 
 def test_quick_smoke_is_append_only_and_does_not_invoke_evaluator(tmp_path: Path) -> None:

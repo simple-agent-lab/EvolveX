@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import shlex
 import shutil
 from pathlib import Path
@@ -12,6 +13,7 @@ UV_CACHE_DIR = "/installed-agent/uv-cache"
 RUNNER_PATH = "/tmp/miniswe-source-run.py"
 TASK_PATH = "/tmp/miniswe-source-task.txt"
 LOG_PATH = "/logs/agent/mini-swe-agent.txt"
+RUNTIME_EVIDENCE_PATH = "/logs/agent/evolve-runtime.json"
 HOST_UV_PATH = "/tmp/evolve-uv"
 PROXY_NAMES = ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy")
 
@@ -132,6 +134,11 @@ class MiniSweSourceAgent(MiniSweAgent):
                 "model_path_import_failed",
                 env=self._source_env(),
             )
+        await self.exec_as_agent(
+            environment,
+            command=self._runtime_evidence_command(),
+            env=self._source_env(),
+        )
 
     async def _candidate_phase(self, environment, command: str, code: str, *, env: dict[str, str]) -> None:
         try:
@@ -146,6 +153,21 @@ class MiniSweSourceAgent(MiniSweAgent):
             f"echo {shlex.quote(marker)} >/dev/null; "
             f"{VENV_PYTHON} -c {shlex.quote(script)}"
         )
+
+    def _runtime_evidence_command(self) -> str:
+        mode = self._get_env("EVOLVE_CANDIDATE_SMOKE_MODE") or "normal"
+        payload = json.dumps(
+            {
+                "schema_version": 1,
+                "mode": mode,
+                "frozen_sync": True,
+                "miniswe_import": True,
+                "model_path_init": mode != "container",
+            },
+            sort_keys=True,
+        ) + "\n"
+        script = f"from pathlib import Path; Path({RUNTIME_EVIDENCE_PATH!r}).write_text({payload!r})"
+        return f"mkdir -p /logs/agent; {VENV_PYTHON} -c {shlex.quote(script)}"
 
     def _host_uv_binary(self) -> Path | None:
         candidates = [self._get_env("EVOLVE_UV_BINARY") or "", shutil.which("uv") or ""]

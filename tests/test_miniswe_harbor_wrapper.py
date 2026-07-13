@@ -110,6 +110,13 @@ def test_miniswe_wrapper_subclasses_harbor_miniswe_and_installs_candidate_source
     model_index = next(
         index for index, command in enumerate(environment.commands) if "EVOLVE_PREFLIGHT_MODEL" in command
     )
+    evidence_index = next(
+        index for index, command in enumerate(environment.commands) if "evolve-runtime.json" in command
+    )
+    assert model_index < evidence_index
+    assert '"frozen_sync": true' in environment.commands[evidence_index]
+    assert '"miniswe_import": true' in environment.commands[evidence_index]
+    assert '"model_path_init": true' in environment.commands[evidence_index]
     proxy_names = {"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"}
     assert proxy_names.isdisjoint(environment.envs[model_index])
     assert environment.envs[model_index]["OPENAI_API_KEY"] == "test-key"

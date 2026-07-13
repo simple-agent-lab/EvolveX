@@ -240,8 +240,9 @@ def test_harbor_smoke_is_install_only_and_uses_shared_cache(tmp_path: Path) -> N
         '  if [ "$1" = "--jobs-dir" ]; then shift; jobs_dir=$1; fi\n'
         "  shift || true\n"
         "done\n"
-        'mkdir -p "$jobs_dir/trial"\n'
-        'printf \'%s\\n\' \'{"task_name":"case-a","trial_name":"trial"}\' > "$jobs_dir/trial/result.json"\n',
+        'mkdir -p "$jobs_dir/trial/artifacts/logs/artifacts/agent"\n'
+        'printf \'%s\\n\' \'{"task_name":"case-a","trial_name":"trial"}\' > "$jobs_dir/trial/result.json"\n'
+        'printf \'%s\\n\' \'{"schema_version":1,"mode":"full","frozen_sync":true,"miniswe_import":true,"model_path_init":true}\' > "$jobs_dir/trial/artifacts/logs/artifacts/agent/evolve-runtime.json"\n',
     )
     run_dir = tmp_path / "run"
     jobs_dir = run_dir / "jobs"
