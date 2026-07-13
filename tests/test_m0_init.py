@@ -1,17 +1,13 @@
 import json
 from pathlib import Path
 
-from conftest import git, run_evolve
+from conftest import git, run_evolve, write_locked_miniswe_seed
 
 from evolve.config import surface_lists
 
 
 def _miniswe_seed(root: Path) -> Path:
-    seed = root / "miniswe"
-    (seed / "mini_swe_agent").mkdir(parents=True)
-    (seed / "mini_swe_agent" / "__init__.py").write_text("__version__ = '0.test'\n")
-    (seed / "pyproject.toml").write_text("[project]\nname = 'mini-swe-agent'\nversion = '0.test'\n")
-    return seed
+    return write_locked_miniswe_seed(root / "miniswe")
 
 
 def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:

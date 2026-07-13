@@ -14,7 +14,7 @@ from evolve.frozen import interfaces
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src" / "evolve"
-TOTAL_BUDGET = 4540  # simplified integrated framework with certified archive eligibility
+TOTAL_BUDGET = 4800  # includes protected candidate dependency materialization and smoke
 ROW = re.compile(r"^\| `([^`]+\.py)` \| (\d+) \|")
 APPROVED_MODULES = {
     "__init__.py",
@@ -22,6 +22,7 @@ APPROVED_MODULES = {
     "agent.py",
     "archive.py",
     "asset_discovery.py",
+    "candidate_runtime.py",
     "cli.py",
     "config.py",
     "driver.py",
