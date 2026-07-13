@@ -7,7 +7,12 @@ import re
 from pathlib import Path
 from typing import Any
 
-STAMPED_FIELDS = {"score", "status", "task_set_hash", "task_set_members", "task_vector", "evaluation_artifacts", "evaluator_tree", "cost"}
+from .evaluation import EvaluationCertificate
+
+STAMPED_FIELDS = {
+    "score", "status", "task_set_hash", "task_set_members", "task_vector", "evaluation_artifacts", "evaluator_tree", "cost",
+    "epoch", "attempt", "purpose", "evaluator_fingerprint", "candidate_fingerprint", "outcome", "selection_eligible",
+}
 MECHANISM_EVAL_FIELD = "_evolve_mechanism_eval"
 RECORD_ATTEMPT_FIELD = "_evolve_record_attempted"
 RESERVED_AUXILIARY_FIELDS = {"evals", "kind", "round", MECHANISM_EVAL_FIELD, RECORD_ATTEMPT_FIELD}
@@ -71,6 +76,28 @@ def append_event(workspace: Path, experiment_id: str, event: dict[str, Any]) -> 
     if event.get(MECHANISM_EVAL_FIELD) is True:
         for target in targets:
             _append_eval_receipt(target, event)
+
+
+def append_certificate(
+    workspace: Path,
+    certificate: EvaluationCertificate,
+    *,
+    current_epoch: int,
+) -> dict[str, Any]:
+    valid_parent = certificate.selection_eligible and certificate.epoch == current_epoch
+    event = {
+        **certificate.to_dict(),
+        "genid": certificate.generation,
+        "tag": f"gen/{certificate.generation}",
+        "status": "complete" if valid_parent else certificate.outcome.value,
+        "valid_parent": valid_parent,
+        "verdict": "keep" if valid_parent else "discard",
+        "cost": {"usd": certificate.cost_usd, "wall_s": certificate.wall_s},
+        MECHANISM_EVAL_FIELD: True,
+    }
+    event.pop("generation", None)
+    append_event(workspace, certificate.experiment_id, event)
+    return event
 
 
 def read_events(path: Path) -> list[dict[str, Any]]:
@@ -258,6 +285,8 @@ def _replace_top_evaluation(row: dict[str, Any], event: dict[str, Any]) -> None:
 def _merge_event_fields(row: dict[str, Any], current: dict[str, Any], event: dict[str, Any]) -> None:
     replace_stamped = _can_replace_stamped(current, event)
     for key, value in event.items():
+        if key == "valid_parent" and value is True and row.get("selection_eligible") is False:
+            continue
         if key not in RESERVED_AUXILIARY_FIELDS and not (key in STAMPED_FIELDS and key in row and not replace_stamped):
             row[key] = value
 

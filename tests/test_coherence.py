@@ -14,7 +14,7 @@ from evolve.frozen import interfaces
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src" / "evolve"
-TOTAL_BUDGET = 4500  # simplified integrated framework with certificates and runtime identity
+TOTAL_BUDGET = 4540  # simplified integrated framework with certified archive eligibility
 ROW = re.compile(r"^\| `([^`]+\.py)` \| (\d+) \|")
 APPROVED_MODULES = {
     "__init__.py",

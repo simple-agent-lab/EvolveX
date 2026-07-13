@@ -96,6 +96,18 @@ def valid_parent_rows(workspace: Path, rows_: list[dict[str, Any]] | None = None
     return valid
 
 
+def certified_parent_rows(workspace: Path, *, epoch: int) -> list[dict[str, Any]]:
+    return [
+        row
+        for row in rows(workspace)
+        if row.get("selection_eligible") is True
+        and row.get("valid_parent") is True
+        and row.get("epoch") == epoch
+        and isinstance(row.get("score"), (int, float))
+        and not isinstance(row.get("score"), bool)
+    ]
+
+
 def best_row(workspace: Path, rows_: list[dict[str, Any]] | None = None) -> dict[str, Any] | None:
     if evaluator_sampling(workspace) == "per_round":
         return None

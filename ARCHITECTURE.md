@@ -25,7 +25,7 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `driver.py` | 1541 | the generation sequencer: orchestrates verbs + operators, validates operator file outputs at the seam, and owns audit quarantine/doctor repair |
 | `operators.py` | 150 | subprocess runner for workspace operator scripts (contract: env vars, --config, timeout) |
 | `population.py` | 150 | genid/lineage bookkeeping for fan-out generations |
-| `archive.py` | 305 | append-only event store: merge semantics, stamped-field protection, mirroring, integrity fsck |
+| `archive.py` | 335 | append-only event store: certificate stamping, merge semantics, stamped-field protection, mirroring, integrity fsck |
 | `asset_discovery.py` | 30 | bounded direct-root Python helper discovery without recursive pre-reading |
 | `agent.py` | 180 | meta-agent command runner: prompt-file setup, timeout/process-group handling, output + usage capture |
 | `evaluator.py` | 151 | clean-checkout canonical evaluation: tree assertion, exit-code contract, score parsing |
@@ -52,7 +52,7 @@ each workspace, immutable there because it sits outside the mutable surface
 | `frozen/interfaces.py` | 320 | operator ABCs (incl. novelty + reflect), the OPERATORS registry (single source), context/archive view, result schemas, payload validation |
 | `frozen/sdk.py` | 420 | Python operator entrypoint and file-contract IO; no library algorithm policy |
 
-Total `src/evolve/` budget: **4500 lines**. If the mechanism wants to
+Total `src/evolve/` budget: **4540 lines**. If the mechanism wants to
 grow past that, something belongs in a workspace operator instead —
 that is the spec's rule, not a style preference.
 
