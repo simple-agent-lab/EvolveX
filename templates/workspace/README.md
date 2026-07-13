@@ -25,6 +25,10 @@ PROTOCOL.md      the operator contract in prose (authority: the framework)
 archive.jsonl    append-only event ledger (gitignored; the source of truth)
 ```
 
+Analysis code should read generations through `ArchiveView` rather than parse
+raw `archive.jsonl` events. Raw event fields are internal and may differ across
+framework versions; `ArchiveView` preserves compatibility with older ledgers.
+
 ## The one rule
 
 Evolve `target/` and the `operators/`; never the `evaluator/` that judges them —

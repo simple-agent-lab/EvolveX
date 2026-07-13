@@ -13,12 +13,49 @@ from evolve.evaluator import (
     _read_task_vector,
     _run_eval_script,
 )
+from evolve.frozen.interfaces import ArchiveView
 from evolve.task_vectors import TaskVectorError
 
 
 def make_eval_script(path: Path, body: str) -> None:
     path.write_text(body)
     path.chmod(path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+
+def test_archive_view_reads_markerless_legacy_evaluation_without_rewrite(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    archive = workspace / "archive.jsonl"
+    archive.write_text(
+        json.dumps(
+            {
+                "genid": "1",
+                "parent": "0",
+                "tag": "gen/1",
+                "score": 0.0,
+                "status": "complete",
+                "task_set_hash": "legacy-task-set",
+                "task_vector": None,
+                "evaluator_tree": "legacy-evaluator",
+                "valid_parent": True,
+                "verdict": "keep",
+                "reason": "mechanism evaluation stamp",
+                "pending_gate_record": True,
+                "note": "mechanism evaluation recorded before gate/record",
+                "cost": {"usd": 0, "wall_s": 1.0},
+            }
+        )
+        + "\n"
+    )
+    before = archive.read_bytes()
+
+    row = ArchiveView(workspace).row("1")
+
+    assert row is not None
+    assert row["status"] == "complete"
+    assert row["score"] == 0.0
+    assert row["valid_parent"] is True
+    assert archive.read_bytes() == before
 
 
 def test_eval_script_receives_persistent_workspace_uv_cache(tmp_path: Path) -> None:
