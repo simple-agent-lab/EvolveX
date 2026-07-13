@@ -71,10 +71,16 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
     assert "seed: builtin-dummy" in config
     assert "variant:" not in config
     assert "script:" not in config
-    assert "meta_agent: {timeout_s: 3600}" in config
+    assert "meta_agent:\n    timeout_s: 3600" in config
     assert "mutate:" not in config
     assert "- target/**" in config
     assert (workspace / ".evolve-protocol-version").read_text() == "1\n"
+    meta_agent_prompt = (workspace / "operators" / "meta_agent.md").read_text()
+    assert "MiniSWE source" in meta_agent_prompt
+    assert "Failure evidence" in meta_agent_prompt
+    assert "Root cause" in meta_agent_prompt
+    assert "predicted_fixes" in meta_agent_prompt
+    assert "risk_tasks" in meta_agent_prompt
 
     upstream = json.loads((workspace / "target" / "UPSTREAM.json").read_text())
     assert upstream == {"kind": "builtin", "seed": "builtin-dummy"}

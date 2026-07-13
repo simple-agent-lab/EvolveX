@@ -1,10 +1,13 @@
 import json
+import random
+import runpy
 from pathlib import Path
 
 from conftest import git, init_workspace, rows_by_genid, run_evolve, smoke_env
 
 from evolve.driver import RunOptions
 from evolve.driver import run as driver_run
+from evolve.frozen.interfaces import OperatorContext
 
 _REJECTING_VALIDATE = """
 import os
@@ -94,3 +97,121 @@ def test_validate_rejection_happens_before_candidate_commit(tmp_path: Path, monk
     assert row["reason"] == "candidate validation rejected: broken imports"
     assert not git(workspace, "tag", "--list", "gen/1")
     assert json.loads((workspace / "runs/gen-1/validate/result.json").read_text())["accept"] is False
+
+
+def test_jsonl_record_computes_verified_fixes_from_task_vectors(tmp_path: Path) -> None:
+    workspace, evolve_home = init_workspace(tmp_path)
+    parent = rows_by_genid(workspace)["0"]
+    parent["task_vector"]["task-0"] = False
+    parent["note"] = "baseline evaluated"
+    archive = json.dumps(parent) + "\n"
+    (workspace / "archive.jsonl").write_text(archive)
+    (evolve_home / "mirrors" / workspace.name / "archive.jsonl").write_text(archive)
+
+    _rewrite(
+        workspace,
+        "operators/meta_agent.py",
+        "import json\n"
+        "import os\n"
+        "from pathlib import Path\n"
+        "run_dir = Path(os.environ['EVOLVE_RUN_DIR']) / 'meta_agent'\n"
+        "run_dir.mkdir(parents=True, exist_ok=True)\n"
+        "(run_dir / 'predicted_fixes.json').write_text(json.dumps(['task-0']))\n"
+        "(run_dir / 'usage.json').write_text(json.dumps({'usd': 0}))\n"
+        "Path('target/agent.py').write_text(Path('target/agent.py').read_text() + '\\n# update\\n')\n",
+    )
+    _commit_and_retag_gen0(workspace, "operators/meta_agent.py")
+
+    result = run_evolve(
+        "run",
+        str(workspace),
+        "--max-generations",
+        "1",
+        env=smoke_env(evolve_home),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert rows_by_genid(workspace)["1"]["verified_fixes"] == ["task-0"]
+
+
+def test_driver_does_not_inject_verified_fixes_for_other_record_operators(tmp_path: Path) -> None:
+    workspace, evolve_home = init_workspace(tmp_path)
+    parent = rows_by_genid(workspace)["0"]
+    parent["task_vector"]["task-0"] = False
+    parent["note"] = "baseline evaluated"
+    archive = json.dumps(parent) + "\n"
+    (workspace / "archive.jsonl").write_text(archive)
+    (evolve_home / "mirrors" / workspace.name / "archive.jsonl").write_text(archive)
+
+    _rewrite(
+        workspace,
+        "operators/meta_agent.py",
+        "import json\n"
+        "import os\n"
+        "from pathlib import Path\n"
+        "run_dir = Path(os.environ['EVOLVE_RUN_DIR']) / 'meta_agent'\n"
+        "run_dir.mkdir(parents=True, exist_ok=True)\n"
+        "(run_dir / 'predicted_fixes.json').write_text(json.dumps(['task-0']))\n"
+        "(run_dir / 'usage.json').write_text(json.dumps({'usd': 0}))\n"
+        "Path('target/agent.py').write_text(Path('target/agent.py').read_text() + '\\n# update\\n')\n",
+    )
+    _rewrite(
+        workspace,
+        "operators/record.py",
+        "from evolve.frozen import sdk\n"
+        "from evolve.frozen.interfaces import RecordOperator, RecordResult\n"
+        "\n"
+        "class BareRecord(RecordOperator):\n"
+        "    def annotate(self, child, ctx):\n"
+        "        return RecordResult(fields={\n"
+        "            'valid_parent': True,\n"
+        "            'verdict': 'keep',\n"
+        "            'reason': 'score 1.0 >= parent 1.0',\n"
+        "            'predicted_fixes': ['task-0'],\n"
+        "        })\n"
+        "\n"
+        "sdk.main(BareRecord)\n",
+    )
+    _commit_and_retag_gen0(workspace, "operators/meta_agent.py", "operators/record.py")
+
+    result = run_evolve(
+        "run",
+        str(workspace),
+        "--max-generations",
+        "1",
+        env=smoke_env(evolve_home),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "verified_fixes" not in rows_by_genid(workspace)["1"]
+
+
+def test_jsonl_record_omits_verified_fixes_when_prediction_artifact_is_missing(tmp_path: Path) -> None:
+    workspace, _evolve_home = init_workspace(tmp_path)
+    run_dir = workspace / "runs" / "record-without-predictions"
+    run_dir.mkdir(parents=True)
+    (run_dir / "gate.json").write_text(
+        json.dumps({"valid_parent": True, "verdict": "keep", "reason": "no predictions"}) + "\n"
+    )
+    ctx = OperatorContext(
+        workspace=workspace,
+        checkout=workspace,
+        run_dir=run_dir,
+        genid="1",
+        parent="0",
+        round=None,
+        fan_out=1,
+        config={},
+        rng=random.Random(0),
+    )
+    child = {
+        "genid": "1",
+        "parent": "0",
+        "predicted_fixes": [],
+        "task_vector": {"task-0": True},
+    }
+    module = runpy.run_path(str(Path(__file__).resolve().parents[1] / "library" / "record" / "jsonl.py"))
+
+    fields = module["JsonlRecord"]().annotate(child, ctx).fields
+
+    assert "verified_fixes" not in fields

@@ -14,6 +14,17 @@ The mechanism, method, and benchmark stay separate:
 
 ## V1: five flagship recipes
 
+The non-AHE real recipes use the `agent_command` meta-agent variant. The AHE
+recipe instead routes through `ahe_evidence_editor` and `ahe_trace_analysis`;
+all of these source-agent integrations intentionally leave their commands unset
+until `EVOLVE_AGENT_COMMAND` or the corresponding operator command is supplied.
+
+`ahe` is the fixed 30-task SWE-bench Pro training recipe (`k: 2`, Harbor
+`n_concurrent: 5`); `ahe-smoke` keeps the same AHE operator family with the
+builtin dummy target and `pass@k`. The AHE prompts are library assets, and its
+trace, manifest, task-vector, and evaluation-artifact evidence remains in the
+generated workspace rather than the recipe directory.
+
 V1 favors depth over coverage. Existing recipe directories are scaffolds until
 they satisfy the method conditions below; a real Harbor call does not by itself
 make a recipe method-faithful.

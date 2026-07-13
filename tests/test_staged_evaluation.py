@@ -92,10 +92,7 @@ def test_positive_stage_score_runs_full_evaluation(tmp_path: Path, monkeypatch) 
 def test_run_zero_generations_replaces_initial_scaffold_with_genesis_evaluation(tmp_path: Path, monkeypatch) -> None:
     workspace, evolve_home = init_workspace(tmp_path)
     monkeypatch.setenv("EVOLVE_HOME", str(evolve_home))
-    config = (workspace / "evolve.yaml").read_text().replace(
-        "  anchor: {final: true, every_rounds: 0}\n",
-        "  anchor: {final: false, every_rounds: 0}\n",
-    )
+    config = (workspace / "evolve.yaml").read_text().replace("    final: true\n", "    final: false\n")
     _rewrite(workspace, "evolve.yaml", config)
     calls: list[tuple[str, str]] = []
 

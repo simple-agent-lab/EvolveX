@@ -22,17 +22,20 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `__main__.py` | 10 | `python -m evolve` entry |
 | `cli.py` | 200 | argument parsing and verb dispatch only — no logic |
 | `config.py` | 300 | read/render `evolve.yaml`: recipes, experiment values, surface lists, operator blocks |
-| `driver.py` | 1541 | the generation sequencer: orchestrates verbs + operators (incl. candidate validation, novelty, and atomic self-modification admission gates); validates operator file outputs at the seam; computes verified_fixes; audit quarantine; doctor repair |
+| `driver.py` | 1541 | the generation sequencer: orchestrates verbs + operators (incl. candidate validation, novelty, and atomic self-modification admission gates); validates operator file outputs at the seam; audit quarantine; doctor repair |
 | `operators.py` | 150 | subprocess runner for workspace operator scripts (contract: env vars, --config, timeout) |
 | `population.py` | 150 | genid/lineage bookkeeping for fan-out generations |
-| `archive.py` | 292 | append-only event store: merge semantics, stamped-field protection, mirroring, integrity fsck |
+| `archive.py` | 305 | append-only event store: merge semantics, stamped-field protection, mirroring, integrity fsck |
+| `asset_discovery.py` | 30 | bounded direct-root Python helper discovery without recursive pre-reading |
 | `agent.py` | 180 | meta-agent command runner: prompt-file setup, timeout/process-group handling, output + usage capture |
-| `evaluator.py` | 150 | clean-checkout canonical evaluation: tree assertion, exit-code contract, score parsing |
+| `evaluator.py` | 151 | clean-checkout canonical evaluation: tree assertion, exit-code contract, score parsing |
+| `task_sets.py` | 60 | canonical evaluator task-set membership and dataset/attempt identity stamps |
+| `task_vectors.py` | 80 | generic task-vector schema normalization, validation, and tri-state per-task pass lookup |
 | `git.py` | 150 | thin git subprocess helpers — nothing evolve-specific |
 | `patching.py` | 120 | candidate patch assembly: changed paths, diffs, surface-violation repair |
 | `surface.py` | 150 | mutable-surface pattern matching and violation checks |
 | `report.py` | 182 | status/report rendering, best-ever recomputation, claim checklist |
-| `workspace.py` | 500 | `evolve init` scaffolding: file copies, operator binding (required + optional), the generated `operators/README.md` index + `library/` variant palette, protocol stamping, seed + mechanism vendoring, inner-skill copy |
+| `workspace.py` | 520 | `evolve init` scaffolding: file copies, operator binding (required + optional), the generated `operators/README.md` index + `library/` variant palette, protocol stamping, seed + mechanism vendoring, inner-skill copy |
 
 ### The frozen ring (`src/evolve/frozen/`)
 
@@ -48,7 +51,7 @@ each workspace, immutable there because it sits outside the mutable surface
 | `frozen/sdk.py` | 420 | Python operator entrypoint and file-contract IO; no library algorithm policy |
 | `frozen/meta_eval.py` | 130 | self-modification admission gate: confound-free replay of old vs new operator surface (mechanism 1) |
 
-Total `src/evolve/` budget: **4461 lines**. If the mechanism wants to
+Total `src/evolve/` budget: **4566 lines**. If the mechanism wants to
 grow past that, something belongs in a workspace operator instead —
 that is the spec's rule, not a style preference.
 

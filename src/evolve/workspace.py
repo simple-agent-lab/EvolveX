@@ -9,22 +9,27 @@ import stat
 import subprocess
 import tempfile
 from dataclasses import dataclass
+from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import Any, cast
 
 from . import __version__ as _EVOLVE_VERSION
 from .archive import append_event
+from .asset_discovery import root_python_helpers
 from .config import (
     OPERATOR_KINDS,
     OPTIONAL_OPERATOR_KINDS,
     SOURCE_ROOT,
     default_config,
     library_root,
+    load_config,
     recipe_root,
     render_yaml,
     resource_root,
 )
+from .task_sets import effective_task_set_identity
 
+_SEED_IGNORE_PATTERNS = (".git", ".venv", ".env", ".env.*", "__pycache__", "*.pyc", ".pytest_cache", ".mypy_cache", ".ruff_cache", "node_modules")
 
 @dataclass(frozen=True)
 class InitOptions:
@@ -77,24 +82,21 @@ _CONSOLE = """#!/usr/bin/env bash
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export PYTHONPATH="$HERE/.evolve${PYTHONPATH:+:$PYTHONPATH}"
-# The console (cli.py) uses Typer; the driver/operators stay stdlib-only. uv
-# supplies Typer on the fly via --with, so the workspace needs no install step.
+# The console uses Typer and PyYAML; the driver/operators stay stdlib-only. uv
+# supplies both on the fly via --with, so the workspace needs no install step.
 if command -v uv >/dev/null 2>&1; then
-  exec uv run --quiet --with "typer>=0.8" --python ">=3.11" python -m evolve "$@"
+  exec uv run --quiet --with "typer>=0.12" --with "PyYAML>=6.0" --python ">=3.11" python -m evolve "$@"
 fi
 for py in python3.13 python3.12 python3.11 python3; do
   if command -v "$py" >/dev/null 2>&1; then exec "$py" -m evolve "$@"; fi
 done
-echo "evolve: need uv (recommended) or Python >=3.11 with typer on PATH" >&2
+echo "evolve: need uv (recommended) or Python >=3.11 with typer and PyYAML on PATH" >&2
 exit 1
 """
 
 
 def _vendor_mechanism(workspace: Path) -> None:
-    """Copy the evolve mechanism package into the workspace so it is
-    self-driving (mechanism-in-workspace). The vendored copy lives under
-    .evolve/ and, together with the root `evolve` console, is protected from
-    candidate edits by the surface's implicit excludes."""
+    """Vendor the self-driving mechanism under the workspace's protected .evolve/ tree."""
     package_src = Path(__file__).resolve().parent
     shutil.copytree(
         package_src,
@@ -118,8 +120,6 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
     partial_floor = float(evaluator.get("partial_floor", 0.8))
     files = {
         "evolve.yaml": render_yaml(_runtime_config(config)),
-        # Static skeleton — the browsable shape of a workspace lives as real files
-        # under templates/workspace/ (single source; no drift from generation).
         "README.md": _template("workspace/README.md"),
         "AGENTS.md": _template("workspace/AGENTS.md"),
         "program.md": _template("workspace/program.md"),
@@ -127,19 +127,13 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
         ".evolve-protocol-version": "1\n",
         "operators/engines/local.sh": _shell_script("operator local engine"),
         "operators/preflight.sh": _shell_script("operator preflight"),
-        # Per-verb strategy prose lives beside the active scripts (not a parallel
-        # meta/ tree) so code + policy travel as one pair.
         "operators/select.md": _template("workspace/operators/select.md"),
         "operators/rollout.md": _template("workspace/operators/rollout.md"),
         "operators/meta_agent.md": _template("workspace/operators/meta_agent.md"),
         "operators/gate.md": _template("workspace/operators/gate.md"),
         "operators/record.md": _template("workspace/operators/record.md"),
         "operators/meta_agent_brief.md": _template("workspace/operators/meta_agent_brief.md"),
-        # Inner skill: travels into the workspace under a unified, tool-agnostic
-        # `skills/` folder (not `.claude/skills/`) so Claude Code AND codex (and
-        # others) can find the meta-agent's manual (DESIGN §4, template = skill).
         "skills/evolve-workspace/SKILL.md": _skill("evolve-workspace/SKILL.md"),
-        # Human-readable operator protocol the inner skill points meta-agents at.
         "PROTOCOL.md": (library_root() / "PROTOCOL.md").read_text(),
         "evaluator/eval.sh": _eval_sh(evaluator_engine, evaluator_dataset),
         "evaluator/eval.env": _eval_env(
@@ -155,6 +149,7 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
         ),
         "evaluator/splits.json": json.dumps({"train": 0.5, "gate": 0.4, "sealed": 0.1, "seed": 0}, indent=2) + "\n",
         "evaluator/dataset.pin": f"dataset={evaluator_dataset}\nchecksum=sha256:stub\n",
+        "evaluator/harbor_artifacts.py": _template("evaluator/harbor_artifacts.py"),
         "evaluator/parse_score.py": _template("evaluator/parse_score.py"),
         "evaluator/stub_eval.py": _template("evaluator/stub_eval.py"),
         "evaluator/engines/local.sh": _shell_script("canonical local engine"),
@@ -168,7 +163,7 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
     if any(binding.kind == "novelty" for binding in bindings):
         files["operators/novelty.md"] = _template("workspace/operators/novelty.md")
     files["operators/README.md"] = _operator_index(bindings, recipe)
-    files.update(_operator_palette(recipe))
+    files.update(_operator_palette(recipe) | _operator_assets(recipe) | _recipe_evaluator_assets(recipe))
     for relative_path, content in files.items():
         path = workspace / relative_path
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -225,9 +220,44 @@ def _operator_palette(recipe: str) -> dict[str, str]:
     return palette
 
 
+def _walk_files(root: Path | Traversable, prefix: Path = Path("")):
+    for item in sorted(root.iterdir(), key=lambda entry: entry.name):
+        relative = prefix / item.name
+        if any(part.startswith(".") for part in relative.parts):
+            continue
+        if isinstance(item, Path) and item.is_symlink():
+            raise ValueError(f"operator asset may not be a symlink: {item}")
+        if item.is_dir():
+            yield from _walk_files(item, relative)
+        elif item.is_file():
+            yield relative, item
+
+
+def _text_files(root: Path | Traversable):
+    for relative, source in _walk_files(root):
+        try:
+            yield relative, source.read_text()
+        except UnicodeDecodeError:
+            continue
+
+
+def _operator_assets(recipe: str) -> dict[str, str]:
+    assets: dict[str, str] = {}
+    for kind in (*OPERATOR_KINDS, *OPTIONAL_OPERATOR_KINDS):
+        for directory in (recipe_root() / recipe / "operators" / kind, library_root() / kind):
+            if directory.is_dir():
+                for relative, text in _text_files(directory):
+                    if relative.suffix != ".py":
+                        assets.setdefault(f"library/{kind}/{relative.as_posix()}", text)
+    return assets | {f"library/{name}": text for name, text in root_python_helpers(library_root())}
+
+
+def _recipe_evaluator_assets(recipe: str) -> dict[str, str]:
+    root = recipe_root() / recipe / "evaluator"
+    return {} if not root.is_dir() else {f"evaluator/{relative.as_posix()}": text for relative, text in _text_files(root)}
+
+
 def _operator_index(bindings: list[_OperatorBinding], recipe: str) -> str:
-    """Generated map of the active operator set, derived from the bindings +
-    catalog — one glance tells you what runs and what you could swap in."""
     rows = []
     for binding in bindings:
         active = Path(binding.source).stem
@@ -344,7 +374,7 @@ def _write_target_harbor_agent(workspace: Path, target_config: dict[str, Any]) -
 
 
 def _vendor_seed(workspace: Path, source: Path, fallback_remote: str) -> None:
-    shutil.copytree(source, workspace / "target", ignore=shutil.ignore_patterns(".git"))
+    shutil.copytree(source, workspace / "target", ignore=shutil.ignore_patterns(*_SEED_IGNORE_PATTERNS))
     upstream = _git_upstream(source, fallback_remote)
     if upstream:
         (workspace / "target" / "UPSTREAM.json").write_text(json.dumps(upstream, sort_keys=True) + "\n")
@@ -386,6 +416,8 @@ def _init_git(workspace: Path) -> None:
 
 
 def _write_gen0_archive(workspace: Path) -> None:
+    evaluator = load_config(workspace / "evolve.yaml")["evaluator"]
+    task_set = effective_task_set_identity(workspace, evaluator)
     append_event(
         workspace,
         workspace.name,
@@ -395,7 +427,8 @@ def _write_gen0_archive(workspace: Path) -> None:
             "tag": "gen/0",
             "score": 1.0,
             "status": "complete",
-            "task_set_hash": _sha256_file(workspace / "evaluator" / "splits.json"),
+            "task_set_hash": task_set.digest,
+            "task_set_members": list(task_set.members),
             "task_vector": {f"task-{i}": True for i in range(8)},
             "evaluator_tree": _git(workspace, "rev-parse", "HEAD:evaluator").strip(),
             "valid_parent": True,
@@ -437,15 +470,12 @@ def _make_executable(*paths: Path) -> None:
 
 
 def _eval_env(
-    workspace_name: str,
-    dataset: str,
+    workspace_name: str, dataset: str,
     n_concurrent: int,
     tasks_per_round: int,
     trials: int,
     partial_floor: float,
-    agent: str,
-    *,
-    dataset_mode: str = "path", task_file: str | None = None,
+    agent: str, *, dataset_mode: str = "path", task_file: str | None = None,
 ) -> str:
     expected_trials = tasks_per_round * max(trials, 1)
     text = (
@@ -453,6 +483,7 @@ def _eval_env(
         f"EVOLVE_HARBOR_TASKS={shlex.quote(dataset)}\n"
         f"EVOLVE_HARBOR_DATASET_MODE={shlex.quote(dataset_mode)}\n"
         f"EVOLVE_HARBOR_N_CONCURRENT={n_concurrent}\n"
+        f"EVOLVE_HARBOR_ATTEMPTS={max(trials, 1)}\n"
         f"EVOLVE_HARBOR_EXPECTED_TRIALS={expected_trials}\n"
         f"EVOLVE_HARBOR_N={n_concurrent}\n"
         f'EVOLVE_JOBS_DIR="$HOME/.evolve/harbor-jobs/{workspace_name}"\n'

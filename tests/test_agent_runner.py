@@ -1,10 +1,15 @@
 import json
 import sys
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
 
-from evolve.agent import AgentCommandError, run_meta_agent
+from evolve.agent import AgentCommandError, _timeout_float, run_meta_agent
+
+
+def test_timeout_float_accepts_decimal() -> None:
+    assert _timeout_float(Decimal("1.5")) == 1.5
 
 
 def test_run_meta_agent_runs_command_in_workspace_with_prompt_file(tmp_path: Path) -> None:
@@ -47,6 +52,28 @@ def test_run_meta_agent_uses_nested_meta_agent_command(tmp_path: Path) -> None:
     )
 
     assert (workspace / "nested-command-ran").read_text() == "yes\n"
+
+
+def test_run_meta_agent_applies_caller_owned_environment_overrides(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    script = tmp_path / "agent.py"
+    script.write_text(
+        "import os\n"
+        "for name in ('http_proxy', 'HTTPS_PROXY', 'ROLE'):\n"
+        "    print(f'{name}={os.environ.get(name, False)}')\n"
+    )
+
+    result = run_meta_agent(
+        workspace=workspace,
+        prompt="inspect env",
+        config={"command": f"{sys.executable} {script}"},
+        env_overrides={"http_proxy": None, "HTTPS_PROXY": None, "ROLE": "debugger"},
+    )
+
+    assert "http_proxy=False" in result.stdout
+    assert "HTTPS_PROXY=False" in result.stdout
+    assert "ROLE=debugger" in result.stdout
 
 
 def test_run_meta_agent_uses_env_command_and_reports_missing_command(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

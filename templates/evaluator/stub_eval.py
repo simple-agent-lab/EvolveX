@@ -10,12 +10,28 @@ stub. Writes score (pass rate), status, task_vector.json, and metrics.json;
 exits 0 (complete) when every task passes, else 2 (partial).
 """
 
+import hashlib
 import json
 import os
 import sys
 from pathlib import Path
 
 K = int(os.environ.get("EVOLVE_TASK_LIMIT", "8"))
+
+
+def _attempts() -> int:
+    for line in Path("evaluator/eval.env").read_text().splitlines():
+        if line.startswith("EVOLVE_HARBOR_ATTEMPTS="):
+            return max(1, int(line.split("=", 1)[1]))
+    return 1
+
+
+def _task_count(attempts: int) -> int:
+    for line in Path("evaluator/eval.env").read_text().splitlines():
+        if line.startswith("EVOLVE_HARBOR_EXPECTED_TRIALS="):
+            expected = int(line.split("=", 1)[1])
+            return max(1, expected // attempts)
+    return K
 
 
 def main() -> int:
@@ -31,15 +47,59 @@ def main() -> int:
             failed.update(stripped[len("# FAIL ") :].split())
 
     prefix = "sealed-task" if os.environ.get("EVOLVE_EVAL_KIND") == "anchor" else "task"
-    task_vector = {f"{prefix}-{i}": (f"{prefix}-{i}" not in failed) for i in range(K)}
-    passed = sum(1 for ok in task_vector.values() if ok)
-    score = passed / K
+    attempts = _attempts()
+    task_count = _task_count(attempts)
+    task_results = {f"{prefix}-{i}": (f"{prefix}-{i}" not in failed) for i in range(task_count)}
+    task_vector = {
+        "schema_version": 1,
+        "tasks": {
+            task_id: {
+                "trials": [
+                    {"trial": trial, "status": "complete", "reward": 1.0 if passed else 0.0}
+                    for trial in range(attempts)
+                ]
+            }
+            for task_id, passed in task_results.items()
+        },
+    }
+    passed = sum(task_results.values())
+    score = passed / task_count
+
+    artifacts = run_dir / "artifacts"
+    artifacts.mkdir(exist_ok=True)
+    artifact_trials = []
+    for task_id, passed_task in task_results.items():
+        for trial in range(attempts):
+            trace = artifacts / f"{task_id}-trial-{trial}.trace"
+            trace.write_text(
+                "stub evaluation trace\n"
+                f"task={task_id}\n"
+                f"trial={trial}\n"
+                f"outcome={'pass' if passed_task else 'fail'}\n"
+            )
+            artifact_trials.append(
+                {
+                    "task_name": task_id,
+                    "trial": trial,
+                    "files": [
+                        {
+                            "path": trace.name,
+                            "kind": "agent_trace",
+                            "size": trace.stat().st_size,
+                            "sha256": hashlib.sha256(trace.read_bytes()).hexdigest(),
+                        }
+                    ],
+                }
+            )
 
     (run_dir / "score").write_text(f"{score}\n")
-    (run_dir / "status").write_text(("complete" if passed == K else "partial") + "\n")
+    (run_dir / "status").write_text(("complete" if passed == task_count else "partial") + "\n")
     (run_dir / "task_vector.json").write_text(json.dumps(task_vector) + "\n")
+    (run_dir / "evaluation_artifacts.json").write_text(
+        json.dumps({"jobs_dir": str(artifacts.resolve()), "trials": artifact_trials}, sort_keys=True) + "\n"
+    )
     (run_dir / "metrics.json").write_text(json.dumps({"dimensions": {"pass_rate": score}}) + "\n")
-    return 0 if passed == K else 2
+    return 0 if passed == task_count else 2
 
 
 if __name__ == "__main__":

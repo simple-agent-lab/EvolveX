@@ -142,7 +142,9 @@ This commit is intentionally separate from every method-faithful AHE change.
 - Modify: `src/evolve/config.py`
 - Modify: `src/evolve/workspace.py:70-90`
 - Modify: `tests/test_config_parser.py`
+- Modify: `tests/test_hyperagents_semantics.py` (canonical YAML fixture compatibility)
 - Modify: `tests/test_m0_init.py`
+- Modify: `tests/test_m3_meta_eval.py` (canonical YAML fixture compatibility)
 
 **Interfaces:**
 - Produces: `load_config(config: Resource) -> dict[str, Any]`
@@ -156,7 +158,7 @@ Add these tests without deleting the existing nested meta-agent test:
 ```python
 import pytest
 
-from evolve.config import CONFIG_SECTIONS, operator_blocks, render_yaml
+from evolve.config import CONFIG_SECTIONS, load_config, operator_blocks, render_yaml
 
 
 def test_operator_blocks_preserve_arbitrary_nested_yaml(tmp_path: Path) -> None:
@@ -185,12 +187,13 @@ def test_operator_blocks_preserve_arbitrary_nested_yaml(tmp_path: Path) -> None:
     }
 
 
-def test_render_yaml_round_trips_all_five_sections() -> None:
+def test_render_yaml_round_trips_all_five_sections(tmp_path: Path) -> None:
     config = {section: {} for section in CONFIG_SECTIONS}
     config["operators"] = {"rollout": {"custom": {"list": [1, "two"], "flag": True}}}
     rendered = render_yaml(config)
-    assert "custom:" in rendered
-    assert "- two" in rendered
+    config_path = tmp_path / "evolve.yaml"
+    config_path.write_text(rendered)
+    assert load_config(config_path) == config
 
 
 def test_unknown_top_level_section_is_rejected(tmp_path: Path) -> None:
@@ -279,7 +282,9 @@ Expected: PASS.
 - [ ] **Step 6: Commit only the YAML contract changes**
 
 ```bash
-git add pyproject.toml uv.lock src/evolve/config.py src/evolve/workspace.py tests/test_config_parser.py tests/test_m0_init.py
+git add pyproject.toml uv.lock src/evolve/config.py src/evolve/workspace.py \
+  tests/test_config_parser.py tests/test_hyperagents_semantics.py \
+  tests/test_m0_init.py tests/test_m3_meta_eval.py
 git commit -m "Add extensible five-section YAML config"
 ```
 
@@ -409,7 +414,9 @@ git commit -m "Vendor operator and recipe assets"
 - Modify: `templates/evaluator/stub_eval.py`
 - Modify: `src/evolve/driver.py:265-268,327-339`
 - Modify: `library/record/jsonl.py`
+- Modify: `ARCHITECTURE.md` (register the new mechanism module and update driver responsibility)
 - Create: `tests/test_task_vectors.py`
+- Modify: `tests/test_coherence.py` (register the new mechanism module)
 - Modify: `tests/test_m5_driver_operators.py`
 
 **Interfaces:**
@@ -592,7 +599,7 @@ Include `verified_fixes` in record fields only when the helper returns a list. T
 - [ ] **Step 6: Run task-vector and driver tests**
 
 ```bash
-uv run pytest tests/test_task_vectors.py tests/test_m5_driver_operators.py tests/test_m7_verify.py -v
+uv run pytest tests/test_task_vectors.py tests/test_m5_driver_operators.py tests/test_m7_verify.py tests/test_coherence.py -v
 ```
 
 Expected: PASS.
@@ -600,7 +607,9 @@ Expected: PASS.
 - [ ] **Step 7: Commit the task-vector contract**
 
 ```bash
-git add src/evolve/task_vectors.py src/evolve/driver.py library/record/jsonl.py templates/evaluator/stub_eval.py tests/test_task_vectors.py tests/test_m5_driver_operators.py
+git add ARCHITECTURE.md src/evolve/task_vectors.py src/evolve/driver.py \
+  library/record/jsonl.py templates/evaluator/stub_eval.py \
+  tests/test_coherence.py tests/test_task_vectors.py tests/test_m5_driver_operators.py
 git commit -m "Add versioned task vector contract"
 ```
 

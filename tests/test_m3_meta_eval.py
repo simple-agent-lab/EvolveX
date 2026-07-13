@@ -59,8 +59,8 @@ def _setup_self_mod_workspace(tmp_path: Path) -> tuple[Path, Path]:
         (workspace / "evolve.yaml")
         .read_text()
         .replace(
-            "    - target/**\n  exclude: []",
-            "    - target/**\n    - operators/**\n  exclude: []",
+            "- target/**\n  exclude: []",
+            "- target/**\n  - operators/**\n  exclude: []",
         )
     )
     assert "operators/**" in yaml, "surface include patch did not apply"

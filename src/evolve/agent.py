@@ -7,7 +7,7 @@ import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, SupportsFloat, SupportsIndex, cast
 
 
 @dataclass(frozen=True)
@@ -35,7 +35,13 @@ class AgentCommandError(RuntimeError):
         self.returncode = returncode if isinstance(returncode, int) and returncode else 1
 
 
-def run_meta_agent(workspace: Path | str, prompt: str, config: dict[str, Any] | None = None) -> AgentRunResult:
+def run_meta_agent(
+    workspace: Path | str,
+    prompt: str,
+    config: dict[str, Any] | None = None,
+    *,
+    env_overrides: dict[str, str | None] | None = None,
+) -> AgentRunResult:
     root = Path(workspace).resolve()
     config = config or {}
     command = _resolve_command(config)
@@ -48,15 +54,20 @@ def run_meta_agent(workspace: Path | str, prompt: str, config: dict[str, Any] | 
         os.fsync(handle.fileno())
         prompt_file = handle.name
 
-    env = {**os.environ, "EVOLVE_PROMPT_FILE": prompt_file}
-    proc: subprocess.Popen[str] | None = None
+    env: dict[str, str] = dict(os.environ)
+    env["EVOLVE_PROMPT_FILE"] = prompt_file
+    for key, value in (env_overrides or {}).items():
+        if value is None:
+            env.pop(key, None)
+        else:
+            env[key] = value
     stdout = ""
     stderr = ""
     try:
         if timeout is not None and timeout <= 0.01:
             raise AgentCommandError(f"meta-agent timeout after {timeout}s", usage=_usage(start))
 
-        proc = subprocess.Popen(
+        proc: subprocess.Popen[str] = subprocess.Popen(
             ["sh", "-c", command],
             cwd=root,
             env=env,
@@ -87,8 +98,6 @@ def run_meta_agent(workspace: Path | str, prompt: str, config: dict[str, Any] | 
     stderr = stderr or ""
     output = _combined_output(stdout, stderr)
     usage = _usage(start)
-    if proc is None:
-        raise AgentCommandError("meta-agent command failed", usage=usage)
     if proc.returncode != 0:
         raise AgentCommandError(
             stderr.strip() or stdout.strip() or "meta-agent command failed",
@@ -126,16 +135,16 @@ def _configured_timeout(config: dict[str, Any]) -> float | None:
     if inherited is None:
         return timeout
     cap = _timeout_headroom(inherited)
+    if cap is None:
+        return timeout
     return cap if timeout is None else min(timeout, cap)
 
 
 def _timeout_float(value: object) -> float | None:
     if isinstance(value, bool) or value in (None, ""):
         return None
-    if not isinstance(value, (int, float, str)):
-        return None
     try:
-        return float(value)
+        return float(cast(str | SupportsFloat | SupportsIndex, value))
     except (TypeError, ValueError):
         return None
 

@@ -75,6 +75,20 @@ artifact paths or labels.
 The rollout summary is passed directly to the meta-agent as its observation.
 The mechanism does not synthesize a separate feedback bundle.
 
+### Evaluator Evidence
+
+An evaluator that emits per-task evidence writes two generic files under the
+evaluation run directory. `task_vector.json` is a schema-versioned object with
+a `tasks` map; each task contains ordered trial records with `trial`, `status`,
+and `reward` fields. `evaluation_artifacts.json` is an index of the evaluator's
+available trial artifacts, including each relative path, byte count, and
+SHA-256. The mechanism validates the task vector and records only a
+workspace-relative, hashed reference to the artifact index in the archive.
+
+Operators may consume these files only through the archived reference and must
+verify the recorded digest before using an artifact. They are evaluator
+contracts, not operator-owned score inputs.
+
 ### Meta-Agent
 
 ABC signature:
@@ -188,15 +202,25 @@ appending the remaining object to the archive.
 
 ## Shipped Variants
 
-The shipped library uses canonical algorithm names only. Recipe research names
-may appear in recipe prose, but `variant:` values point to these files:
+Library variants may use explicit research-method names when the name denotes
+real behavior, inputs, and output artifacts rather than a label-only preset.
+Recipe prose must not present a generic variant as though it implements a
+method-specific procedure. The shipped variants are:
 
-- select: `greedy`, `random`, `score_weighted`, `newest`, `score_child_prop`
-- rollout: `failure_focused`, `noop`
-- meta_agent: `agent_command`, `hyperagents`
+- select: `greedy`, `random`, `score_weighted`, `newest`, `score_child_prop`, `ahe_latest`
+- rollout: `failure_focused`, `noop`, `ahe_trace_analysis`
+- meta_agent: `agent_command`, `hyperagents`, `ahe_evidence_editor`
 - validate: `hyperagents`
-- gate: `hillclimb`, `parent_eligible`
-- record: `jsonl`, `hyperagents`
+- gate: `hillclimb`, `parent_eligible`, `ahe_artifact_valid`
+- record: `jsonl`, `hyperagents`, `ahe_manifest`
+
+The AHE variants use the prompt assets
+`library/rollout/prompts/ahe_debugger.md`,
+`library/rollout/prompts/ahe_debugger_overview.md`, and
+`library/meta_agent/prompts/ahe_evolve.md`. Their method artifacts are
+`rollout/analysis/selection.json`, `rollout/analysis/failures.json`,
+`rollout/analysis/overview.md`, `meta_agent/change_manifest.json`, and
+`record/ahe_manifest.json`.
 
 ## Stability Tiers
 

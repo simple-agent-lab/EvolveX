@@ -14,13 +14,14 @@ from evolve.frozen import interfaces
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src" / "evolve"
-TOTAL_BUDGET = 4461  # current mechanism map; Task 7 changes no method-specific driver policy
+TOTAL_BUDGET = 4566  # union of HyperAgents lifecycle and generic AHE artifact boundaries
 ROW = re.compile(r"^\| `([^`]+\.py)` \| (\d+) \|")
 APPROVED_MODULES = {
     "__init__.py",
     "__main__.py",
     "agent.py",
     "archive.py",
+    "asset_discovery.py",
     "cli.py",
     "config.py",
     "driver.py",
@@ -31,6 +32,8 @@ APPROVED_MODULES = {
     "population.py",
     "report.py",
     "surface.py",
+    "task_sets.py",
+    "task_vectors.py",
     "workspace.py",
     # the frozen ring — the invariant-enforcers, grouped under frozen/
     "frozen/__init__.py",

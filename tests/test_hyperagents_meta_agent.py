@@ -35,12 +35,11 @@ def _checkout(tmp_path: Path) -> tuple[Path, Path]:
     (workspace / "archive.jsonl").write_text(json.dumps({"genid": "0", "score": 0.1}) + "\n")
     (workspace / "runs" / "gen-0" / "eval" / "summary.json").write_text('{"score": 0.1}\n')
     (workspace / "evolve.yaml").write_text(
-        "experiment:\n  id: test\n"
+        "experiment:\n  id: test\n  max_generations: 4\n"
         "target:\n  seed: builtin-dummy\n"
         "surface:\n  include:\n    - target/**\n    - operators/**\n  exclude: []\n"
         "operators:\n  meta_agent: {timeout_s: 30}\n"
         "evaluator:\n  engine: harbor\n  dataset: pass@k\n  agent: target.harbor_agent:MiniSweSourceAgent\n"
-        "max_generations: 4\n"
     )
     (checkout / "target").mkdir(parents=True)
     (checkout / "operators").mkdir()

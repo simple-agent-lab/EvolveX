@@ -336,12 +336,9 @@ def _run_child(
 
     eval_child(workspace, genid, round_number=round_number)
     _run_gate_and_record(workspace, exp_id, genid, parent, operators_config, round_number=round_number)
-    verified = _verified_fixes(workspace, genid, parent)
-    if verified is not None:
-        record_fields(workspace, genid, {"verified_fixes": verified})
 
     # Reflect (mechanism 2, DESIGN §7) — optional, off unless the recipe configures
-    # `operators.reflect`. Reads the ledger (incl. the just-recorded verified_fixes)
+    # `operators.reflect`. Reads the ledger after the record operator annotates it
     # and appends playbook insights. Best-effort: a reflect failure never unwinds
     # the recorded generation. Runs against the workspace (it needs the ledger,
     # not the candidate worktree).
@@ -396,21 +393,6 @@ def _maybe_quarantine(workspace: Path, genid: str) -> None:
     ]
     if isinstance(score, (int, float)) and prior and float(score) - max(prior) > float(margin):
         record_fields(workspace, genid, {"audit": "pending"})
-
-
-def _verified_fixes(workspace: Path, genid: str, parent: str) -> list[str] | None:
-    """Falsification (mechanism 2, DESIGN §2/§7): of the tasks this generation
-    predicted it would fix, which ones did its eval actually flip from fail (in
-    the parent) to pass? A frozen rule over the two task vectors — not something
-    an operator reports. Returns None when it cannot be computed (no task
-    vectors / no predictions)."""
-    rows = rows_by_genid(workspace)
-    child, parent_row = rows.get(genid, {}), rows.get(parent, {})
-    child_tv, parent_tv = child.get("task_vector"), parent_row.get("task_vector")
-    predicted = child.get("predicted_fixes") or []
-    if not isinstance(child_tv, dict) or not isinstance(parent_tv, dict) or not predicted:
-        return None
-    return [t for t in predicted if child_tv.get(t) is True and parent_tv.get(t) is False]
 
 
 def _resume_tagged_child(
@@ -653,7 +635,6 @@ def commit_child(workspace: Path, child_worktree: Path, parent: str, genid: str)
         },
     )
 
-
 def record_fields(workspace: Path, genid: str, fields: dict[str, object]) -> None:
     workspace = workspace.resolve()
     genid = _validate_genid(genid)
@@ -666,8 +647,7 @@ def record_fields(workspace: Path, genid: str, fields: dict[str, object]) -> Non
         raise RuntimeError(f"unknown generation: {genid}")
     append_event(workspace, exp_id, {"genid": genid, **fields})
 
-
-def eval_child(workspace: Path, genid: str, *, round_number: int | None = None, kind: str = "eval") -> None:
+def eval_child(workspace: Path, genid: str, *, round_number: int | None = None, kind: str = "eval", force: bool = False) -> None:
     workspace = workspace.resolve()
     genid = _validate_genid(genid)
     exp_id = experiment_id(workspace)
@@ -676,10 +656,12 @@ def eval_child(workspace: Path, genid: str, *, round_number: int | None = None, 
         raise RuntimeError("eval --round requires evaluator.sampling: per_round")
     rows = rows_by_genid(workspace)
     row = rows.get(genid, {})
-    if round_number is None and row.get("status") in {"complete", "partial"} and row.get("score") is not None:
+    if not force and round_number is None and row.get("status") in {"complete", "partial"} and row.get("score") is not None:
         return
-    if round_number is not None and _row_has_round_evaluation(row, round_number):
+    if not force and round_number is not None and _row_has_round_evaluation(row, round_number):
         return
+    if force:
+        kind = "forced_eval"
     if row.get("status") in UNRETRYABLE_STATUSES:
         return
     parent = str(row.get("parent") or _fallback_parent_for_eval(workspace, rows))
@@ -699,7 +681,6 @@ def eval_child(workspace: Path, genid: str, *, round_number: int | None = None, 
         )
         return
     _finalize_child(workspace, exp_id, genid, parent, tag, round_number=round_number, kind=kind)
-
 
 def _finalize_child(
     workspace: Path,
@@ -738,8 +719,16 @@ def _finalize_child(
             },
         )
         return
-    _stamp_evaluation(workspace, exp_id, genid, parent, tag, mutated, round_number=round_number, kind=kind)
-
+    _stamp_evaluation(
+        workspace,
+        exp_id,
+        genid,
+        parent,
+        tag,
+        mutated,
+        round_number=round_number,
+        kind=kind,
+    )
 
 def _stamp_evaluation(
     workspace: Path,
@@ -761,7 +750,9 @@ def _stamp_evaluation(
         "score": result.score,
         "status": result.status,
         "task_set_hash": result.task_set_hash,
+        "task_set_members": list(result.task_set_members),
         "task_vector": result.task_vector,
+        "evaluation_artifacts": result.evaluation_artifacts,
         "evaluator_tree": result.evaluator_tree,
         "valid_parent": valid_parent,
         "verdict": "keep" if valid_parent else "discard",
@@ -778,9 +769,9 @@ def _stamp_evaluation(
     if round_number is not None:
         event["kind"] = kind
         event["round"] = round_number
+    if round_number is not None or kind == "forced_eval":
         event[MECHANISM_EVAL_FIELD] = True
     append_event(workspace, exp_id, event)
-
 
 def _evaluate_candidate(
     workspace: Path,
@@ -928,7 +919,6 @@ def _ensure_selected_parent_round_evaluations(
         _ensure_parent_round_evaluation(workspace, exp_id, parent, generation)
     return usable
 
-
 def _ensure_parent_round_evaluation(workspace: Path, exp_id: str, parent: str, generation: int) -> None:
     row = rows_by_genid(workspace).get(parent, {})
     if _row_has_round_evaluation(row, generation):
@@ -951,6 +941,8 @@ def _ensure_parent_round_evaluation(workspace: Path, exp_id: str, parent: str, g
             "score": result.score,
             "status": result.status,
             "task_set_hash": result.task_set_hash,
+            "task_set_members": list(result.task_set_members),
+            "evaluation_artifacts": result.evaluation_artifacts,
             "evaluator_tree": result.evaluator_tree,
             "valid_parent": valid_parent,
             "verdict": "keep" if valid_parent else "discard",
@@ -968,7 +960,6 @@ def _ensure_parent_round_evaluation(workspace: Path, exp_id: str, parent: str, g
     if not valid_parent:
         raise RuntimeError(f"parent baseline for gen/{parent} round {generation} produced {result.status}")
 
-
 def _row_has_round_evaluation(row: dict[str, Any], round_number: int) -> bool:
     if row.get("round") == round_number and _is_scored_evaluation(row):
         return True
@@ -977,14 +968,12 @@ def _row_has_round_evaluation(row: dict[str, Any], round_number: int) -> bool:
         for entry in row.get("evals", [])
     )
 
-
 def _is_scored_evaluation(event: dict[str, Any]) -> bool:
     return (
         event.get("status") in {"complete", "partial"}
         and event.get("score") is not None
         and event.get("task_set_hash") is not None
     )
-
 
 def _select_generation_parents(
     workspace: Path,

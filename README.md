@@ -152,7 +152,7 @@ shape, and evaluator template.
 | --- | ---: | --- | --- | --- |
 | `hill_climb` | 1 | driver | Harbor MiniSWE source agent (`target.harbor_agent:MiniSweSourceAgent`) | target |
 | `dgm` | 4 | driver | Harbor MiniSWE source agent (`target.harbor_agent:MiniSweSourceAgent`) | target |
-| `ahe` | 1 | driver | Harbor MiniSWE source agent (`target.harbor_agent:MiniSweSourceAgent`) | target |
+| `ahe` | 1 | driver | Harbor MiniSWE source agent, SWE-bench Pro registry (30 train tasks, `k: 2`) | target except adapter |
 | `hyperagents` | 1 | driver | Harbor MiniSWE source agent (`target.harbor_agent:MiniSweSourceAgent`) | target + meta-agent workflow |
 | `autoresearch` | 1 | agent | Harbor MiniSWE source agent (`target.harbor_agent:MiniSweSourceAgent`) | target |
 | `metaagent` | 1 | driver | Harbor MiniSWE source agent (`target.harbor_agent:MiniSweSourceAgent`) | target + operator prompts |
@@ -163,12 +163,24 @@ For MiniSWE source evolution, `target/` is the MiniSWE source checkout plus
 task container, installs that source, and then reuses Harbor's MiniSWE run
 behavior.
 
-Most real recipes use `meta_agent: {variant: agent_command, ...}`. The
+Most non-AHE real recipes use `meta_agent: {variant: agent_command, ...}`. The
 `hyperagents` recipe uses its method-specific `hyperagents` meta-agent plus a
 fixed selector/validator/gate/record and the atomic surface `target/**`,
 `operators/meta_agent.py`, `operators/meta_agent.md`. For any recipe that calls
 an external meta-agent command, provide `EVOLVE_AGENT_COMMAND` in the
 environment or `operators.meta_agent.command` in config.
+
+AHE
+uses method-faithful `ahe_trace_analysis` and `ahe_evidence_editor` variants,
+which consume evaluator task vectors and artifact references before proposing a
+source-only edit. Before running a real recipe, provide its source-agent command
+with `EVOLVE_AGENT_COMMAND` or the corresponding operator `command`; the
+recipes do not ship a default command.
+
+The live AHE recipe pins a 30-task SWE-bench Pro training list at
+`recipes/ahe/evaluator/tasks/train-30.txt`, uses `k: 2` and five Harbor workers,
+and protects `target/harbor_agent.py`. `ahe-smoke` exercises the same five AHE
+variants with the builtin dummy target and `pass@k`, with no real task list.
 
 Example:
 
