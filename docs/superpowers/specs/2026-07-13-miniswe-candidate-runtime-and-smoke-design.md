@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-13
 
-**Status:** Draft for written-spec review
+**Status:** Approved for implementation planning
 
 **Scope:** Complete the candidate-dependency portion of
 `codex/framework-hardening` and add a protected, optional diagnostic command
