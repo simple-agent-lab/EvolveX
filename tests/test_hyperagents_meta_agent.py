@@ -85,9 +85,11 @@ def test_hyperagents_prompt_points_to_evolvable_codebase_and_prior_artifacts(tmp
     assert "Modify any part of the allowed codebase" in prompt
     assert "You are editing the MiniSWE source checkout under target/." not in prompt
     assert "./evolve candidate-smoke --full" in prompt
-    assert "Environment feedback is optional" in prompt
-    assert "do not edit" in prompt.lower()
-    assert "makes no model request" in prompt
+    assert "Read its stdout/stderr artifacts" in prompt
+    assert "repair the candidate environment with the candidate's own tools" in prompt
+    assert "rerun smoke" in prompt
+    assert "Do not edit evaluator-owned files" in prompt
+    assert "do not install packages manually" not in prompt
 
 
 def test_hyperagents_prompt_does_not_duplicate_workspace_smoke_guidance(tmp_path: Path) -> None:

@@ -7,7 +7,6 @@ mutable surface.
 Strategy for this verb lives in `operators/meta_agent.md`. Before finishing, run
 `evolve surface-check` and repair any violations.
 
-Environment feedback is optional. For dependency or runtime uncertainty, use
-the protected `./evolve candidate-smoke --full` command and its sanitized result.
-Do not edit evaluator-owned runtime files or install packages manually. Full
-smoke initializes the configured model path but makes no model request.
+When runtime uncertainty is relevant, run `./evolve candidate-smoke --full`.
+Read its stdout/stderr artifacts, repair the candidate environment with the
+candidate's own tools, and rerun smoke. Do not edit evaluator-owned files.

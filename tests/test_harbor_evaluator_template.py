@@ -210,7 +210,7 @@ def test_nonzero_harbor_exit_overrides_reward_and_preserves_cost(tmp_path: Path)
     assert (tmp_path / "run" / "cost.json").read_text() == '{"usd": 0.4}\n'
 
 
-def test_harbor_smoke_is_install_only_and_uses_shared_cache(tmp_path: Path) -> None:
+def test_harbor_smoke_is_install_only_and_exposes_raw_diagnostics(tmp_path: Path) -> None:
     evaluator = tmp_path / "evaluator"
     evaluator.mkdir()
     _write_executable(evaluator / "eval.sh", _eval_sh("harbor", "fixture"))
@@ -225,10 +225,6 @@ def test_harbor_smoke_is_install_only_and_uses_shared_cache(tmp_path: Path) -> N
             agent="target.harbor_agent:MiniSweSourceAgent",
         )
     )
-    (evaluator / "harbor_artifacts.py").write_text(
-        (resource_root("templates") / "evaluator/harbor_artifacts.py").read_text()
-    )
-    (evaluator / "parse_smoke.py").write_text((resource_root("templates") / "evaluator/parse_smoke.py").read_text())
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     _write_executable(
@@ -240,9 +236,8 @@ def test_harbor_smoke_is_install_only_and_uses_shared_cache(tmp_path: Path) -> N
         '  if [ "$1" = "--jobs-dir" ]; then shift; jobs_dir=$1; fi\n'
         "  shift || true\n"
         "done\n"
-        'mkdir -p "$jobs_dir/trial/artifacts/logs/artifacts/agent"\n'
-        'printf \'%s\\n\' \'{"task_name":"case-a","trial_name":"trial"}\' > "$jobs_dir/trial/result.json"\n'
-        'printf \'%s\\n\' \'{"schema_version":1,"mode":"full","frozen_sync":true,"miniswe_import":true,"model_path_init":true}\' > "$jobs_dir/trial/artifacts/logs/artifacts/agent/evolve-runtime.json"\n',
+        'printf \'%s\\n\' "ModuleNotFoundError: No module named \'fastapi\'" >&2\n'
+        "exit 7\n",
     )
     run_dir = tmp_path / "run"
     jobs_dir = run_dir / "jobs"
@@ -256,13 +251,13 @@ def test_harbor_smoke_is_install_only_and_uses_shared_cache(tmp_path: Path) -> N
         "EVOLVE_RUN_DIR": str(run_dir),
         "EVOLVE_CANDIDATE_SMOKE_MODE": "full",
         "EVOLVE_CANDIDATE_SMOKE_JOBS_DIR": str(jobs_dir),
-        "EVOLVE_TASK_LIMIT": "1",
         "EVOLVE_UV_CACHE_DIR": str(cache),
     }
 
     result = subprocess.run([str(evaluator / "eval.sh")], cwd=tmp_path, env=env, text=True, capture_output=True)
 
-    assert result.returncode == 0, result.stderr
+    assert result.returncode == 7
+    assert "ModuleNotFoundError: No module named 'fastapi'" in result.stderr
     args = args_capture.read_text().splitlines()
     assert "--install-only" in args
     assert args[args.index("--ae") + 1] == "EVOLVE_CANDIDATE_SMOKE_MODE=full"
@@ -271,5 +266,5 @@ def test_harbor_smoke_is_install_only_and_uses_shared_cache(tmp_path: Path) -> N
     assert args[args.index("-n") + 1] == "1"
     mounts = json.loads(args[args.index("--mounts") + 1])
     assert mounts[0]["source"] == str(cache)
-    assert json.loads((run_dir / "harbor-result.json").read_text())["status"] == "passed"
+    assert not (run_dir / "harbor-result.json").exists()
     assert not (run_dir / "score").exists()

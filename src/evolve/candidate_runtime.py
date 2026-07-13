@@ -2,63 +2,65 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, cast
+from typing import Literal
 
-from .candidate_snapshot import build_candidate_snapshot
+from .candidate_snapshot import build_candidate_snapshot, materialize_snapshot
 from .surface import surface_patterns
 
-SmokeMode = Literal["quick", "container", "full"]
+SmokeStatus = Literal["passed", "failed", "unsupported"]
+_SECRET_NAME = re.compile(r"KEY|TOKEN|SECRET|PASSWORD|PROXY", re.IGNORECASE)
+_URL_USERINFO = re.compile(r"(?i)(https?://)[^/@\s]+@")
+_COMMON_SECRET_VALUES = (
+    re.compile(r"\bsk-[A-Za-z0-9_-]{8,}\b"),
+    re.compile(r"\b(?:gh[opusr]|github_pat)_[A-Za-z0-9_]{16,}\b"),
+)
+_COMMON_SECRET_ASSIGNMENT = re.compile(
+    r"(?i)(\b(?:api[_-]?key|token|password|secret)\s*[:=]\s*)[^\s,;]+"
+)
 
 
 @dataclass(frozen=True)
-class CandidateSmokeResult:
-    status: str
-    mode: SmokeMode
+class SmokeResult:
+    status: SmokeStatus
     attempt_dir: Path
-    dependency_digest: str
+    snapshot_tree: str
+    returncode: int | None
+    stdout_path: Path
+    stderr_path: Path
 
 
-def select_smoke_mode(*, quick: bool, container: bool, full: bool) -> SmokeMode:
-    selected = [name for name, enabled in (("quick", quick), ("container", container), ("full", full)) if enabled]
-    if len(selected) > 1:
-        raise ValueError("choose only one smoke mode")
-    return cast("SmokeMode", selected[0] if selected else "full")
-
-
-def run_candidate_smoke(
-    checkout: Path,
-    *,
-    workspace: Path,
-    run_dir: Path,
-    mode: SmokeMode = "full",
-) -> CandidateSmokeResult:
-    if mode not in {"quick", "container", "full"}:
-        raise ValueError(f"unknown smoke mode: {mode}")
-    attempt = _next_attempt(run_dir / "meta_agent" / "smoke")
-    started = time.monotonic()
+def run_candidate_smoke(checkout: Path, *, workspace: Path) -> SmokeResult:
     include, exclude = surface_patterns(workspace)
-    digest = build_candidate_snapshot(checkout, "HEAD", include=include, exclude=exclude).tree
-    if mode == "quick":
-        harbor = {"status": "passed", "owner": "none", "category": "none"}
-    else:
-        harbor = _run_harbor_smoke(checkout, workspace, attempt, mode)
-    payload = {
-        "schema_version": 1,
-        "mode": mode,
-        "status": str(harbor.get("status", "infrastructure_failed")),
-        "owner": str(harbor.get("owner", "infrastructure")),
-        "category": str(harbor.get("category", "setup_failed")),
-        "duration_s": round(time.monotonic() - started, 6),
-        "dependency_digest": digest,
-    }
-    _write_json(attempt / "result.json", payload)
-    if mode != "quick" and payload["status"] == "passed":
-        _record_materialization(workspace, attempt, payload)
-    return CandidateSmokeResult(str(payload["status"]), mode, attempt, digest)
+    snapshot = build_candidate_snapshot(checkout, "HEAD", include=include, exclude=exclude)
+    attempt = _next_attempt(workspace / "runs" / "smoke")
+    started = time.monotonic()
+    with materialize_snapshot(checkout, snapshot) as materialized:
+        script = materialized / "evaluator" / "smoke.sh"
+        if not script.is_file():
+            return _write_result(attempt, "unsupported", snapshot.tree, None, "", "", time.monotonic() - started)
+        completed = subprocess.run(
+            [str(script)],
+            cwd=materialized,
+            env={**os.environ, "EVOLVE_RUN_DIR": str(attempt), "EVOLVE_ATTEMPT_ID": attempt.name},
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    return _write_result(
+        attempt,
+        "passed" if completed.returncode == 0 else "failed",
+        snapshot.tree,
+        completed.returncode,
+        _redact(completed.stdout, os.environ),
+        _redact(completed.stderr, os.environ),
+        time.monotonic() - started,
+    )
 
 
 def _next_attempt(root: Path) -> Path:
@@ -74,55 +76,42 @@ def _next_attempt(root: Path) -> Path:
         return attempt
 
 
-def _run_harbor_smoke(checkout: Path, workspace: Path, attempt: Path, mode: SmokeMode) -> dict[str, object]:
-    cache = workspace / "runs" / "runtime" / "uv-cache"
-    jobs = attempt / "jobs"
-    cache.mkdir(parents=True, exist_ok=True)
-    env = os.environ.copy()
-    env.update(
-        {
-            "EVOLVE_RUN_DIR": str(attempt),
-            "EVOLVE_CANDIDATE_SMOKE_MODE": mode,
-            "EVOLVE_CANDIDATE_SMOKE_JOBS_DIR": str(jobs),
-            "EVOLVE_TASK_LIMIT": "1",
-            "EVOLVE_HARBOR_N": "1",
-            "EVOLVE_HARBOR_ATTEMPTS": "1",
-            "EVOLVE_HARBOR_N_CONCURRENT": "1",
-            "EVOLVE_UV_CACHE_DIR": str(cache),
-        }
-    )
-    env.setdefault("EVOLVE_HARBOR_AGENT_SETUP_TIMEOUT_MULTIPLIER", "6")
-    completed = subprocess.run(
-        [str(checkout / "evaluator" / "eval.sh")],
-        cwd=checkout,
-        env=env,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    result_path = attempt / "harbor-result.json"
-    if result_path.is_file():
-        try:
-            result = json.loads(result_path.read_text())
-        except json.JSONDecodeError:
-            result = None
-        if isinstance(result, dict):
-            return result
-    return {
-        "status": "infrastructure_failed",
-        "owner": "infrastructure",
-        "category": "setup_failed" if completed.returncode else "missing_result",
+def _redact(text: str, environment: Mapping[str, str]) -> str:
+    redacted = _URL_USERINFO.sub(r"\1[REDACTED]@", text)
+    values = {
+        value
+        for name, value in environment.items()
+        if len(value) >= 4 and _SECRET_NAME.search(name)
     }
+    for value in sorted(values, key=len, reverse=True):
+        redacted = redacted.replace(value, "[REDACTED]")
+    for pattern in _COMMON_SECRET_VALUES:
+        redacted = pattern.sub("[REDACTED]", redacted)
+    redacted = _COMMON_SECRET_ASSIGNMENT.sub(r"\1[REDACTED]", redacted)
+    return redacted
 
 
-def _record_materialization(workspace: Path, attempt: Path, payload: dict[str, object]) -> None:
-    digest = str(payload["dependency_digest"])
-    record_dir = workspace / "runs" / "runtime" / "candidates" / digest / "attempts"
-    _write_json(record_dir / f"{attempt.name}-{time.time_ns()}.json", payload)
-
-
-def _write_json(path: Path, payload: dict[str, object]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
-    temporary.replace(path)
+def _write_result(
+    attempt: Path,
+    status: SmokeStatus,
+    snapshot_tree: str,
+    returncode: int | None,
+    stdout: str,
+    stderr: str,
+    duration_s: float,
+) -> SmokeResult:
+    stdout_path = attempt / "stdout.log"
+    stderr_path = attempt / "stderr.log"
+    stdout_path.write_text(stdout)
+    stderr_path.write_text(stderr)
+    payload = {
+        "schema_version": 1,
+        "status": status,
+        "snapshot_tree": snapshot_tree,
+        "returncode": returncode,
+        "duration_s": round(duration_s, 6),
+        "stdout_path": str(stdout_path.resolve()),
+        "stderr_path": str(stderr_path.resolve()),
+    }
+    (attempt / "result.json").write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    return SmokeResult(status, attempt, snapshot_tree, returncode, stdout_path, stderr_path)

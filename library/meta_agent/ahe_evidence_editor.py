@@ -74,6 +74,11 @@ _TOKEN_PATTERNS = (
 )
 _CREDENTIAL_URL = re.compile(r"\b([A-Za-z][A-Za-z0-9+.-]*://)[^\s/@:]+:[^\s/@]+@([^\s]+)")
 _SAFE_TASK_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,199}")
+_RUNTIME_GUIDANCE = (
+    "When runtime uncertainty is relevant, run `./evolve candidate-smoke --full`. Read its stdout/stderr artifacts, "
+    "repair the candidate environment with the candidate's own tools, and rerun smoke. Do not edit evaluator-owned "
+    "files."
+)
 
 
 def _write_json(path: Path, payload: object) -> None:
@@ -83,6 +88,15 @@ def _write_json(path: Path, payload: object) -> None:
 
 def _read_prompt(name: str) -> str:
     return (_PROMPTS / name).read_text()
+
+
+def _editor_prompt() -> str:
+    method_prompt = "\n".join(
+        line
+        for line in _read_prompt("ahe_evolve.md").splitlines()
+        if not line.startswith("Environment feedback is optional.")
+    )
+    return f"{method_prompt.rstrip()}\n\n{_RUNTIME_GUIDANCE}\n"
 
 
 def _safe_usage(usage: object) -> dict[str, Any]:
@@ -222,7 +236,7 @@ def build_ahe_prompt(checkout: Path, ctx: OperatorContext, parent_ref: str | Non
     parent_ref = parent_ref or patch_parent_ref(checkout, ctx)
     parent = str(ctx.parent)
     prompt_chunks = [
-        _read_prompt("ahe_evolve.md").rstrip(),
+        _editor_prompt().rstrip(),
         (
             "# Immutable Manifest Identity\n\n"
             "- Generation ID: `%s`\n"

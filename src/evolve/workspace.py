@@ -67,6 +67,7 @@ def init_workspace(options: InitOptions) -> None:
         workspace / "evaluator" / "eval.sh",
         workspace / "evaluator" / "engines" / "local.sh",
         workspace / "evolve",
+        *([workspace / "evaluator" / "smoke.sh"] if (workspace / "evaluator" / "smoke.sh").is_file() else []),
     )
     _init_git(workspace)
     _write_gen0_archive(workspace)
@@ -150,12 +151,13 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
         "evaluator/splits.json": json.dumps({"train": 0.5, "gate": 0.4, "sealed": 0.1, "seed": 0}, indent=2) + "\n",
         "evaluator/dataset.pin": f"dataset={evaluator_dataset}\nchecksum=sha256:stub\n",
         "evaluator/harbor_artifacts.py": _template("evaluator/harbor_artifacts.py"),
-        "evaluator/parse_smoke.py": _template("evaluator/parse_smoke.py"),
         "evaluator/parse_score.py": _template("evaluator/parse_score.py"),
         "evaluator/stub_eval.py": _template("evaluator/stub_eval.py"),
         "evaluator/engines/local.sh": _shell_script("canonical local engine"),
         "archive.jsonl": "",
     }
+    if evaluator_engine == "harbor":
+        files["evaluator/smoke.sh"] = _template("evaluator/smoke.sh")
     bindings = _operator_bindings(config, recipe=recipe, init_cwd=init_cwd)
     for binding in bindings:
         files[f"operators/{binding.kind}.py"] = _with_provenance(binding.kind, binding.source, binding.text)

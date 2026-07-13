@@ -21,6 +21,7 @@ if [ -n "${EVOLVE_CANDIDATE_SMOKE_MODE:-}" ]; then
   EVOLVE_HARBOR_N=1
   EVOLVE_HARBOR_ATTEMPTS=1
   EVOLVE_HARBOR_N_CONCURRENT=1
+  EVOLVE_TASK_LIMIT=1
 fi
 rm -rf "$jobs_dir" && mkdir -p "$jobs_dir"
 harbor_rc=0
@@ -67,11 +68,11 @@ if [ -n "${EVOLVE_HARBOR_AGENT_SETUP_TIMEOUT_MULTIPLIER:-}" ]; then
   set -- "$@" --agent-setup-timeout-multiplier "$EVOLVE_HARBOR_AGENT_SETUP_TIMEOUT_MULTIPLIER"
 fi
 set -- "$@" --jobs-dir "$jobs_dir" --n-attempts "${EVOLVE_HARBOR_ATTEMPTS:-1}" -n "${EVOLVE_HARBOR_N_CONCURRENT:-$EVOLVE_HARBOR_N}" -y -q
-harbor "$@" > "$EVOLVE_RUN_DIR/harbor.log" 2>&1 || harbor_rc=$?
 if [ -n "${EVOLVE_CANDIDATE_SMOKE_MODE:-}" ]; then
-  python3 evaluator/parse_smoke.py "$jobs_dir" "$EVOLVE_RUN_DIR/harbor-result.json" "$harbor_rc"
+  harbor "$@"
   exit $?
 fi
+harbor "$@" > "$EVOLVE_RUN_DIR/harbor.log" 2>&1 || harbor_rc=$?
 python3 evaluator/parse_score.py "$jobs_dir" "$EVOLVE_RUN_DIR" "$harbor_rc"
 parser_rc=$?
 [ "$harbor_rc" -eq 0 ] || exit 3

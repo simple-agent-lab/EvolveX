@@ -109,9 +109,11 @@ def test_build_meta_agent_prompt_includes_config_and_ahe_contract(tmp_path: Path
     assert "predicted_fixes" in prompt
     assert "risk_tasks" in prompt
     assert "./evolve candidate-smoke --full" in prompt
-    assert "Environment feedback is optional" in prompt
-    assert "do not edit" in prompt.lower()
-    assert "makes no model request" in prompt
+    assert "Read its stdout/stderr artifacts" in prompt
+    assert "repair the candidate environment with the candidate's own tools" in prompt
+    assert "rerun smoke" in prompt
+    assert "Do not edit evaluator-owned files" in prompt
+    assert "do not install packages manually" not in prompt
 
 
 def test_build_meta_agent_prompt_does_not_duplicate_workspace_smoke_guidance(tmp_path: Path) -> None:

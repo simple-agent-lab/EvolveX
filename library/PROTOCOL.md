@@ -224,12 +224,12 @@ The AHE variants use the prompt assets
 
 ## Candidate Runtime Smoke
 
-Meta-agents may optionally run the protected `./evolve candidate-smoke` command
-when dependency or runtime feedback is useful. `--quick` checks the project and
-lock, `--container` checks materialization and MiniSWE import, and `--full` also
-initializes the configured model path without making a model request. Results
-are sanitized and append-only. Exit code 2 means the candidate is invalid;
-exit code 3 means the smoke infrastructure failed. Neither result authorizes
+When runtime feedback is useful, meta-agents may run exactly the protected
+`./evolve candidate-smoke --full` command. Each append-only attempt reports
+redacted stdout and stderr artifact paths; inspect those artifacts, repair the
+candidate environment with candidate-owned tools, and rerun smoke as needed.
+Exit code 0 means passed, 2 means failed, and 3 means unsupported.
+Smoke diagnostics are not selection classifications and never authorize
 changes to evaluator-owned runtime machinery.
 
 ## Stability Tiers

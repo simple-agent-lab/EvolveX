@@ -1,12 +1,13 @@
 import json
-import os
+import shlex
 import stat
-import subprocess
 from pathlib import Path
 
-from conftest import git, run_evolve, write_locked_miniswe_seed
+from conftest import git, run_evolve
 
-from evolve.candidate_runtime import run_candidate_smoke, select_smoke_mode
+from evolve.candidate_runtime import run_candidate_smoke
+from evolve.config import default_config
+from evolve.workspace import InitOptions, init_workspace
 
 
 def _write_executable(path: Path, text: str) -> None:
@@ -15,20 +16,28 @@ def _write_executable(path: Path, text: str) -> None:
     path.chmod(path.stat().st_mode | stat.S_IXUSR)
 
 
-def _smoke_checkout(tmp_path: Path) -> Path:
+def smoke_checkout(
+    tmp_path: Path,
+    *,
+    stdout: str = "",
+    stderr: str = "",
+    rc: int = 0,
+    create_script: bool = True,
+) -> Path:
     checkout = tmp_path / "checkout"
-    write_locked_miniswe_seed(checkout / "target")
-    (checkout / ".gitignore").write_text("runs/\ntarget/ignored.cache\n")
-    _write_executable(
-        checkout / "evaluator" / "eval.sh",
-        "#!/bin/sh\n"
-        "set -eu\n"
-        'mkdir -p "$EVOLVE_RUN_DIR" "$EVOLVE_CANDIDATE_SMOKE_JOBS_DIR"\n'
-        'printf "%s\\n" "$EVOLVE_CANDIDATE_SMOKE_MODE" > "$EVOLVE_RUN_DIR/mode"\n'
-        'printf "%s\\n" "$EVOLVE_UV_CACHE_DIR" > "$EVOLVE_RUN_DIR/cache"\n'
-        'printf "%s\\n" "$EVOLVE_HARBOR_AGENT_SETUP_TIMEOUT_MULTIPLIER" > "$EVOLVE_RUN_DIR/setup-timeout"\n'
-        'printf \'{"schema_version":1,"status":"passed","owner":"none","category":"none","harbor_returncode":0,"trial_results_seen":1}\\n\' > "$EVOLVE_RUN_DIR/harbor-result.json"\n',
-    )
+    (checkout / "target").mkdir(parents=True)
+    (checkout / "target" / "candidate.txt").write_text("candidate\n")
+    (checkout / ".gitignore").write_text("runs/\n")
+    (checkout / "evolve.yaml").write_text("surface:\n  include: [target/**]\n  exclude: []\n")
+    if create_script:
+        _write_executable(
+            checkout / "evaluator" / "smoke.sh",
+            "#!/bin/sh\n"
+            "set -eu\n"
+            f"printf '%s' {shlex.quote(stdout)}\n"
+            f"printf '%s' {shlex.quote(stderr)} >&2\n"
+            f"exit {rc}\n",
+        )
     git(checkout, "init", "-q")
     git(checkout, "config", "user.name", "test")
     git(checkout, "config", "user.email", "test@example.invalid")
@@ -37,222 +46,186 @@ def _smoke_checkout(tmp_path: Path) -> Path:
     return checkout
 
 
-def _run_parser(
-    tmp_path: Path,
-    result: dict[str, object] | None,
-    harbor_rc: int = 0,
-    evidence: dict[str, object] | None = None,
-) -> subprocess.CompletedProcess[str]:
-    jobs = tmp_path / "jobs"
-    if result is not None:
-        trial = jobs / "trial"
-        trial.mkdir(parents=True)
-        (trial / "result.json").write_text(json.dumps(result))
-        if evidence is not None:
-            artifact = trial / "artifacts" / "logs" / "artifacts" / "agent" / "evolve-runtime.json"
-            artifact.parent.mkdir(parents=True)
-            artifact.write_text(json.dumps(evidence))
-    output = tmp_path / "smoke.json"
-    return subprocess.run(
-        [
-            os.environ.get("PYTHON", "python3"),
-            "templates/evaluator/parse_smoke.py",
-            str(jobs),
-            str(output),
-            str(harbor_rc),
-        ],
-        text=True,
-        capture_output=True,
-        check=False,
+def test_smoke_exposes_missing_module_from_snapshot(tmp_path: Path) -> None:
+    checkout = smoke_checkout(tmp_path, stderr="ModuleNotFoundError: No module named 'fastapi'\n", rc=2)
+
+    result = run_candidate_smoke(checkout, workspace=checkout)
+
+    assert result.status == "failed"
+    assert "No module named 'fastapi'" in result.stderr_path.read_text()
+
+
+def test_smoke_redacts_proxy_credential_only(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("HTTPS_PROXY", "http://user:secret@example.invalid:8080")
+    checkout = smoke_checkout(tmp_path, stderr="http://user:secret@example.invalid:8080 fastapi\n", rc=2)
+
+    text = run_candidate_smoke(checkout, workspace=checkout).stderr_path.read_text()
+
+    assert "secret" not in text
+    assert "fastapi" in text
+
+
+def test_smoke_without_evaluator_script_is_unsupported(tmp_path: Path) -> None:
+    checkout = smoke_checkout(tmp_path, create_script=False)
+
+    assert run_candidate_smoke(checkout, workspace=checkout).status == "unsupported"
+
+
+def test_smoke_executes_uncommitted_snapshot_in_detached_checkout(tmp_path: Path) -> None:
+    checkout = smoke_checkout(tmp_path)
+    _write_executable(
+        checkout / "evaluator" / "smoke.sh",
+        "#!/bin/sh\nset -eu\nprintf '%s\\n' \"$PWD\"\ncat target/candidate.txt\n",
     )
+    git(checkout, "add", "evaluator/smoke.sh")
+    git(checkout, "commit", "--amend", "--no-edit", "-q")
+    (checkout / "target" / "candidate.txt").write_text("uncommitted candidate\n")
+
+    result = run_candidate_smoke(checkout, workspace=checkout)
+
+    lines = result.stdout_path.read_text().splitlines()
+    assert result.status == "passed"
+    assert lines[0] != str(checkout)
+    assert lines[1] == "uncommitted candidate"
+    assert result.snapshot_tree == git(checkout, "rev-parse", f"{result.snapshot_tree}^{{tree}}")
 
 
-def test_smoke_parser_classifies_explicit_candidate_failure(tmp_path: Path) -> None:
-    result = {
-        "exception_info": {
-            "exception_type": "NonZeroAgentExitCodeError",
-            "exception_message": "EVOLVE_CANDIDATE_INVALID: frozen_sync_failed",
-        }
-    }
+def test_smoke_attempts_are_append_only_generic_records(tmp_path: Path) -> None:
+    checkout = smoke_checkout(tmp_path, stdout="ordinary output\n")
 
-    completed = _run_parser(tmp_path, result, harbor_rc=1)
+    first = run_candidate_smoke(checkout, workspace=checkout)
+    second = run_candidate_smoke(checkout, workspace=checkout)
 
-    assert completed.returncode == 2
-    payload = json.loads((tmp_path / "smoke.json").read_text())
-    assert payload["status"] == "candidate_invalid"
-    assert payload["category"] == "frozen_sync_failed"
-    assert "exception_message" not in payload
-
-
-def test_smoke_parser_does_not_guess_from_fastapi_traceback(tmp_path: Path) -> None:
-    result = {
-        "exception_info": {
-            "exception_type": "NonZeroAgentExitCodeError",
-            "exception_message": "ModuleNotFoundError: No module named 'fastapi'",
-        }
-    }
-
-    completed = _run_parser(tmp_path, result, harbor_rc=1)
-
-    assert completed.returncode == 3
-    payload = json.loads((tmp_path / "smoke.json").read_text())
-    assert payload == {
-        "category": "setup_failed",
-        "harbor_returncode": 1,
-        "owner": "infrastructure",
-        "schema_version": 1,
-        "status": "infrastructure_failed",
-        "trial_results_seen": 1,
-    }
-
-
-def test_smoke_parser_requires_completed_preflight_evidence(tmp_path: Path) -> None:
-    completed = _run_parser(tmp_path, result={})
-
-    assert completed.returncode == 3
-    payload = json.loads((tmp_path / "smoke.json").read_text())
-    assert payload["status"] == "infrastructure_failed"
-    assert payload["category"] == "preflight_evidence_missing"
-
-
-def test_smoke_parser_accepts_complete_full_preflight_evidence(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("EVOLVE_CANDIDATE_SMOKE_MODE", "full")
-
-    completed = _run_parser(
-        tmp_path,
-        result={},
-        evidence={
-            "schema_version": 1,
-            "mode": "full",
-            "frozen_sync": True,
-            "miniswe_import": True,
-            "model_path_init": True,
-        },
-    )
-
-    assert completed.returncode == 0
-    payload = json.loads((tmp_path / "smoke.json").read_text())
-    assert payload["status"] == "passed"
-
-
-def test_quick_smoke_is_append_only_and_does_not_invoke_evaluator(tmp_path: Path) -> None:
-    checkout = _smoke_checkout(tmp_path)
-    run_dir = tmp_path / "run"
-
-    first = run_candidate_smoke(checkout, workspace=checkout, run_dir=run_dir, mode="quick")
-    second = run_candidate_smoke(checkout, workspace=checkout, run_dir=run_dir, mode="quick")
-
-    assert first.status == second.status == "passed"
     assert first.attempt_dir.name == "attempt-1"
     assert second.attempt_dir.name == "attempt-2"
-    assert (first.attempt_dir / "result.json").is_file()
-    assert not (first.attempt_dir / "mode").exists()
-    assert not (second.attempt_dir / "mode").exists()
-
-
-def test_quick_smoke_does_not_enforce_package_manager_files(tmp_path: Path) -> None:
-    checkout = _smoke_checkout(tmp_path)
-    (checkout / "target" / "uv.lock").unlink()
-
-    result = run_candidate_smoke(checkout, workspace=checkout, run_dir=tmp_path / "run", mode="quick")
-
-    assert result.status == "passed"
-    payload = json.loads((result.attempt_dir / "result.json").read_text())
+    payload = json.loads((first.attempt_dir / "result.json").read_text())
     assert payload["status"] == "passed"
+    assert payload["snapshot_tree"] == first.snapshot_tree
+    assert payload["returncode"] == 0
+    assert payload["stdout_path"] == str(first.stdout_path.resolve())
+    assert payload["stderr_path"] == str(first.stderr_path.resolve())
+    assert "owner" not in payload
+    assert "category" not in payload
+    assert "dependency_digest" not in payload
 
 
-def test_ignored_file_does_not_change_smoke_materialization_digest(tmp_path: Path) -> None:
-    checkout = _smoke_checkout(tmp_path)
-    run_dir = tmp_path / "run"
+def test_smoke_redacts_secret_environment_values_but_preserves_traceback(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-sensitive-value")
+    checkout = smoke_checkout(
+        tmp_path,
+        stderr="token setup failed for sk-sensitive-value\nTraceback: useful frame 17\n",
+        rc=1,
+    )
 
-    first = run_candidate_smoke(checkout, workspace=checkout, run_dir=run_dir, mode="full")
-    (checkout / "target" / "ignored.cache").write_text("ignored\n")
-    second = run_candidate_smoke(checkout, workspace=checkout, run_dir=run_dir, mode="full")
+    text = run_candidate_smoke(checkout, workspace=checkout).stderr_path.read_text()
 
-    assert first.dependency_digest == second.dependency_digest
-    materializations = list((checkout / "runs" / "runtime" / "candidates").glob("*/attempts/*.json"))
-    assert len(materializations) == 2
-    assert len({path.parents[1] for path in materializations}) == 1
-
-
-def test_smoke_digest_uses_git_symlink_blob_without_reading_target(tmp_path: Path) -> None:
-    checkout = _smoke_checkout(tmp_path)
-    link = checkout / "target" / "candidate-link"
-    link.symlink_to("missing-one")
-    first = run_candidate_smoke(checkout, workspace=checkout, run_dir=tmp_path / "run", mode="quick")
-
-    link.unlink()
-    link.symlink_to("missing-two")
-    second = run_candidate_smoke(checkout, workspace=checkout, run_dir=tmp_path / "run", mode="quick")
-
-    assert first.dependency_digest != second.dependency_digest
+    assert "sk-sensitive-value" not in text
+    assert "token setup failed for [REDACTED]" in text
+    assert "Traceback: useful frame 17" in text
 
 
-def test_container_and_full_smoke_reuse_cache_and_write_sanitized_records(tmp_path: Path, monkeypatch) -> None:
-    checkout = _smoke_checkout(tmp_path)
-    run_dir = tmp_path / "run"
-    sentinel = "must-not-appear-in-artifacts"
-    monkeypatch.setenv("OPENAI_API_KEY", sentinel)
-    monkeypatch.setenv("HTTPS_PROXY", sentinel)
+def test_smoke_redacts_common_secret_forms_without_rewriting_diagnostics(tmp_path: Path) -> None:
+    checkout = smoke_checkout(
+        tmp_path,
+        stderr="request failed for sk-standalone-secret token=standalone-token-value\nImportError: useful module\n",
+        rc=1,
+    )
 
-    container = run_candidate_smoke(checkout, workspace=checkout, run_dir=run_dir, mode="container")
-    full = run_candidate_smoke(checkout, workspace=checkout, run_dir=run_dir, mode="full")
+    text = run_candidate_smoke(checkout, workspace=checkout).stderr_path.read_text()
 
-    expected_cache = checkout / "runs" / "runtime" / "uv-cache"
-    assert (container.attempt_dir / "mode").read_text() == "container\n"
-    assert (full.attempt_dir / "mode").read_text() == "full\n"
-    assert (container.attempt_dir / "cache").read_text() == f"{expected_cache}\n"
-    assert (full.attempt_dir / "cache").read_text() == f"{expected_cache}\n"
-    assert (container.attempt_dir / "setup-timeout").read_text() == "6\n"
-    assert (full.attempt_dir / "setup-timeout").read_text() == "6\n"
-    assert sentinel not in "".join(path.read_text() for path in run_dir.rglob("*") if path.is_file())
-    materializations = list((checkout / "runs" / "runtime" / "candidates").glob("*/attempts/*.json"))
-    assert len(materializations) == 2
-    assert len({path.parents[1] for path in materializations}) == 1
+    assert "sk-standalone-secret" not in text
+    assert "standalone-token-value" not in text
+    assert "request failed for [REDACTED] token=[REDACTED]" in text
+    assert "ImportError: useful module" in text
 
 
-def test_select_smoke_mode_defaults_to_full_and_rejects_combinations() -> None:
-    assert select_smoke_mode(quick=False, container=False, full=False) == "full"
-    assert select_smoke_mode(quick=True, container=False, full=False) == "quick"
-
-    try:
-        select_smoke_mode(quick=True, container=False, full=True)
-    except ValueError as exc:
-        assert str(exc) == "choose only one smoke mode"
-    else:
-        raise AssertionError("combined smoke modes were accepted")
-
-
-def test_candidate_smoke_cli_prints_only_safe_summary(tmp_path: Path, monkeypatch) -> None:
-    checkout = _smoke_checkout(tmp_path)
-    sentinel = "secret-value-must-not-print"
-    monkeypatch.setenv("OPENAI_API_KEY", sentinel)
-    run_dir = tmp_path / "run"
+def test_candidate_smoke_cli_requires_full_and_prints_bounded_stderr_tail(tmp_path: Path) -> None:
+    stderr = "".join(f"diagnostic-{number}\n" for number in range(205))
+    checkout = smoke_checkout(tmp_path, stderr=stderr, rc=7)
 
     result = run_evolve(
         "candidate-smoke",
-        "--quick",
+        "--full",
         "--checkout",
         str(checkout),
-        env={"EVOLVE_WORKSPACE": str(checkout), "EVOLVE_RUN_DIR": str(run_dir)},
+        env={"EVOLVE_WORKSPACE": str(checkout)},
     )
 
-    assert result.returncode == 0, result.stderr
-    assert result.stdout.startswith("candidate-smoke: passed mode=quick result=")
-    assert sentinel not in result.stdout + result.stderr
+    attempt = checkout / "runs" / "smoke" / "attempt-1"
+    assert result.returncode == 2
+    tail = result.stderr.splitlines()
+    assert len(tail) == 200
+    assert tail[0] == "diagnostic-5"
+    assert tail[-1] == "diagnostic-204"
+    assert str((attempt / "stdout.log").resolve()) in result.stdout
+    assert str((attempt / "stderr.log").resolve()) in result.stdout
+    assert str((attempt / "result.json").resolve()) in result.stdout
+
+    unsupported_mode = run_evolve("candidate-smoke", "--quick", "--checkout", str(checkout))
+    assert unsupported_mode.returncode != 0
+    assert "No such option: --quick" in unsupported_mode.stderr
+
+    missing_full = run_evolve("candidate-smoke", "--checkout", str(checkout))
+    assert missing_full.returncode != 0
 
 
-def test_candidate_smoke_cli_does_not_enforce_package_manager_files(tmp_path: Path) -> None:
-    checkout = _smoke_checkout(tmp_path)
-    (checkout / "target" / "uv.lock").unlink()
+def test_candidate_smoke_cli_returns_three_when_unsupported(tmp_path: Path) -> None:
+    checkout = smoke_checkout(tmp_path, create_script=False)
 
     result = run_evolve(
         "candidate-smoke",
-        "--quick",
+        "--full",
         "--checkout",
         str(checkout),
-        env={"EVOLVE_WORKSPACE": str(checkout), "EVOLVE_RUN_DIR": str(tmp_path / "run")},
+        env={"EVOLVE_WORKSPACE": str(checkout)},
     )
 
-    assert result.returncode == 0, result.stderr
-    assert "candidate-smoke: passed mode=quick" in result.stdout
+    assert result.returncode == 3
+    assert "candidate-smoke: unsupported" in result.stdout
+
+
+def test_init_generates_executable_smoke_only_for_harbor(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("EVOLVE_HOME", str(tmp_path / "evolve-home"))
+    harbor = tmp_path / "harbor"
+    init_workspace(InitOptions(workspace=harbor, recipe="hill_climb-smoke"))
+
+    smoke = harbor / "evaluator" / "smoke.sh"
+    assert smoke.read_text() == (
+        "#!/bin/sh\n"
+        "set -eu\n"
+        ': "${EVOLVE_RUN_DIR:?EVOLVE_RUN_DIR is required}"\n'
+        "export EVOLVE_CANDIDATE_SMOKE_MODE=full\n"
+        'export EVOLVE_CANDIDATE_SMOKE_JOBS_DIR="$EVOLVE_RUN_DIR/jobs"\n'
+        "exec ./evaluator/eval.sh\n"
+    )
+    assert smoke.stat().st_mode & stat.S_IXUSR
+
+    from evolve import workspace as workspace_module
+
+    local_config = default_config("hill_climb-smoke", "local")
+    assert isinstance(local_config["evaluator"], dict)
+    local_config["evaluator"]["engine"] = "local"
+    local_config["evaluator"].pop("agent", None)
+    monkeypatch.setattr(workspace_module, "default_config", lambda recipe, experiment_id: local_config)
+    local = tmp_path / "local"
+    init_workspace(InitOptions(workspace=local, recipe="hill_climb-smoke"))
+
+    assert not (local / "evaluator" / "smoke.sh").exists()
+
+
+def test_init_protocol_documents_single_diagnostic_smoke_contract(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("EVOLVE_HOME", str(tmp_path / "evolve-home"))
+    workspace = tmp_path / "workspace"
+
+    init_workspace(InitOptions(workspace=workspace, recipe="hill_climb-smoke"))
+
+    protocol = (workspace / "PROTOCOL.md").read_text()
+    assert protocol.count("./evolve candidate-smoke") == 1
+    assert "`./evolve candidate-smoke --full`" in protocol
+    assert "--quick" not in protocol
+    assert "--container" not in protocol
+    assert "Exit code 0 means passed, 2 means failed, and 3 means unsupported." in protocol
+    assert "redacted stdout and stderr artifact paths" in protocol
+    assert "Smoke diagnostics are not selection classifications" in protocol

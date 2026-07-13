@@ -217,9 +217,11 @@ def test_build_ahe_prompt_reads_only_explicit_ahe_artifacts(tmp_path: Path) -> N
     assert "Partial rollback is allowed" in prompt
     assert "A distinct pivot after every revert is required" in prompt
     assert "./evolve candidate-smoke --full" in prompt
-    assert "Environment feedback is optional" in prompt
-    assert "do not edit" in prompt.lower()
-    assert "makes no model request" in prompt
+    assert "Read its stdout/stderr artifacts" in prompt
+    assert "repair the candidate environment with the candidate's own tools" in prompt
+    assert "rerun smoke" in prompt
+    assert "Do not edit evaluator-owned files" in prompt
+    assert "do not install packages manually" not in prompt
 
 
 def test_build_ahe_prompt_sanitizes_and_bounds_selected_detail_reports(tmp_path: Path, monkeypatch) -> None:

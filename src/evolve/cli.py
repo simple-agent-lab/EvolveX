@@ -9,7 +9,7 @@ from pathlib import Path
 import typer
 
 from .archive import archive_path, merged_rows, verify_integrity
-from .candidate_runtime import run_candidate_smoke, select_smoke_mode
+from .candidate_runtime import run_candidate_smoke
 from .config import RECIPE_NAMES, experiment_int
 from .driver import RunOptions, commit_child, eval_child, fork_child, record_fields
 from .driver import doctor as doctor_workspace
@@ -137,25 +137,26 @@ def surface_check(
 @app.command("candidate-smoke")
 @_guard
 def candidate_smoke(
-    quick: bool = typer.Option(False, "--quick"),
-    container: bool = typer.Option(False, "--container"),
     full: bool = typer.Option(False, "--full"),
     checkout: Path = typer.Option(Path("."), "--checkout"),
 ) -> None:
-    """Optionally preflight a MiniSWE candidate without a model request."""
+    """Run the evaluator-provided full smoke against an exact candidate snapshot."""
+    if not full:
+        raise typer.BadParameter("--full is required", param_hint="--full")
     checkout = checkout.resolve()
     workspace = Path(os.environ.get("EVOLVE_WORKSPACE", checkout)).resolve()
-    run_dir = Path(os.environ.get("EVOLVE_RUN_DIR", workspace / "runs" / "runtime")).resolve()
-    result = run_candidate_smoke(
-        checkout,
-        workspace=workspace,
-        run_dir=run_dir,
-        mode=select_smoke_mode(quick=quick, container=container, full=full),
+    result = run_candidate_smoke(checkout, workspace=workspace)
+    tail = result.stderr_path.read_text().splitlines()[-200:]
+    if tail:
+        print("\n".join(tail), file=sys.stderr)
+    print(
+        f"candidate-smoke: {result.status} tree={result.snapshot_tree} "
+        f"result={(result.attempt_dir / 'result.json').resolve()} "
+        f"stdout={result.stdout_path.resolve()} stderr={result.stderr_path.resolve()}"
     )
-    print(f"candidate-smoke: {result.status} mode={result.mode} result={result.attempt_dir / 'result.json'}")
-    if result.status == "candidate_invalid":
+    if result.status == "failed":
         raise typer.Exit(2)
-    if result.status == "infrastructure_failed":
+    if result.status == "unsupported":
         raise typer.Exit(3)
 
 
