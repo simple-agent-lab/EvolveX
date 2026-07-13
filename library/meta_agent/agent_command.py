@@ -18,6 +18,15 @@ from evolve.frozen import sdk
 from evolve.frozen.interfaces import MetaAgentOperator, MetaAgentResult, OperatorContext
 from evolve.patching import CandidatePatch, create_candidate_patch, load_surface_policy, patch_parent_ref
 
+_RUNTIME_GUIDANCE = (
+    "# Optional Runtime Feedback\n\n"
+    "Environment feedback is optional. When dependency or runtime uncertainty is relevant, you may run the "
+    "protected command `./evolve candidate-smoke --full` and read its sanitized result artifact. Do not edit the "
+    "command, evaluator, Harbor wrapper, lock, or environment machinery, and do not install packages manually. "
+    "Full smoke initializes the configured model path but makes no model request. A smoke failure is evidence to "
+    "diagnose, not permission to modify evaluator-owned files."
+)
+
 
 def _write_json(path: Path, payload: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -90,14 +99,17 @@ def _evidence_contract() -> str:
 
 def build_meta_agent_prompt(checkout: Path, observation: str, ctx: OperatorContext) -> str:
     feedback = _feedback_text(ctx.run_dir) or observation.strip()
+    strategy = (checkout / "operators" / "meta_agent.md").read_text().rstrip()
+    runtime_guidance = "" if "candidate-smoke" in strategy else _RUNTIME_GUIDANCE
     return (
         "\n\n".join(
             chunk
             for chunk in [
-                (checkout / "operators" / "meta_agent.md").read_text().rstrip(),
+                strategy,
                 _experiment_config(checkout),
                 feedback,
                 _evidence_contract(),
+                runtime_guidance,
                 "# Surface Rules\n\n%s" % _surface_rules(checkout),
                 '# Output Contract\n\nEdit the checkout directly. Do not output patches, diffs, or fenced file blocks. Optional final line: predicted_fixes: ["task-id"].',
             ]

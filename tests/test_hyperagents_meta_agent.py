@@ -84,6 +84,21 @@ def test_hyperagents_prompt_points_to_evolvable_codebase_and_prior_artifacts(tmp
     assert "Iterations remaining after this proposal: 3" in prompt
     assert "Modify any part of the allowed codebase" in prompt
     assert "You are editing the MiniSWE source checkout under target/." not in prompt
+    assert "./evolve candidate-smoke --full" in prompt
+    assert "Environment feedback is optional" in prompt
+    assert "do not edit" in prompt.lower()
+    assert "makes no model request" in prompt
+
+
+def test_hyperagents_prompt_does_not_duplicate_workspace_smoke_guidance(tmp_path: Path) -> None:
+    module = _load_hyperagents_meta_agent()
+    checkout, run_dir = _checkout(tmp_path)
+    strategy = checkout / "operators" / "meta_agent.md"
+    strategy.write_text(strategy.read_text() + "\nRun `./evolve candidate-smoke --full` when useful.\n")
+
+    prompt = module.build_prompt(checkout, _ctx(run_dir.parents[1], checkout, run_dir))
+
+    assert prompt.count("./evolve candidate-smoke --full") == 1
 
 
 def test_hyperagents_meta_agent_records_complete_patch_for_target_and_workflow_edits(

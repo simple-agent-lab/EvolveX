@@ -108,6 +108,20 @@ def test_build_meta_agent_prompt_includes_config_and_ahe_contract(tmp_path: Path
     assert "Root cause" in prompt
     assert "predicted_fixes" in prompt
     assert "risk_tasks" in prompt
+    assert "./evolve candidate-smoke --full" in prompt
+    assert "Environment feedback is optional" in prompt
+    assert "do not edit" in prompt.lower()
+    assert "makes no model request" in prompt
+
+
+def test_build_meta_agent_prompt_does_not_duplicate_workspace_smoke_guidance(tmp_path: Path) -> None:
+    checkout, run_dir = _checkout(tmp_path)
+    strategy = checkout / "operators" / "meta_agent.md"
+    strategy.write_text(strategy.read_text() + "\nRun `./evolve candidate-smoke --full` when useful.\n")
+
+    prompt = _agent_command_module().build_meta_agent_prompt(checkout, "", _ctx(checkout, run_dir, "true"))
+
+    assert prompt.count("./evolve candidate-smoke --full") == 1
 
 
 def test_agent_command_meta_agent_exits_nonzero_after_writing_failure_artifacts(tmp_path: Path) -> None:

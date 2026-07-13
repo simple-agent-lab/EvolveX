@@ -12,6 +12,8 @@ Edit only the mutable MiniSWE source under `target/`. Do not wrap or invoke the 
 
 Use the smallest general harness change supported by the evidence. Keep one logical source change per commit-sized unit. Before finishing, run relevant validation commands and repair all surface violations.
 
+Environment feedback is optional. When dependency or runtime uncertainty is relevant, you may run the protected command `./evolve candidate-smoke --full` and read its sanitized result artifact. Do not edit the command, evaluator, Harbor wrapper, lock, or environment machinery, and do not install packages manually. Full smoke initializes the configured model path but makes no model request. A smoke failure is evidence to diagnose, not permission to modify evaluator-owned files.
+
 Write a JSON manifest to the required manifest path. It is mandatory for any source proposal and must use this schema:
 
 ```json

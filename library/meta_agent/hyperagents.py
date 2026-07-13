@@ -17,6 +17,14 @@ from evolve.frozen import sdk
 from evolve.frozen.interfaces import MetaAgentOperator, MetaAgentResult
 from evolve.patching import create_candidate_patch, load_surface_policy, patch_parent_ref
 
+_RUNTIME_GUIDANCE = (
+    "Environment feedback is optional. When dependency or runtime uncertainty is relevant, you may run the "
+    "protected command `./evolve candidate-smoke --full` and read its sanitized result artifact. Do not edit the "
+    "command, evaluator, Harbor wrapper, lock, or environment machinery, and do not install packages manually. "
+    "Full smoke initializes the configured model path but makes no model request. A smoke failure is evidence to "
+    "diagnose, not permission to modify evaluator-owned files."
+)
+
 
 def _write_json(path: Path, payload: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -44,6 +52,7 @@ def _remaining_iterations(ctx) -> str:
 
 def build_prompt(checkout: Path, ctx) -> str:
     strategy = (checkout / "operators" / "meta_agent.md").read_text().rstrip()
+    runtime_guidance = "" if "candidate-smoke" in strategy else f"{_RUNTIME_GUIDANCE}\n\n"
     return (
         f"{strategy}\n\n"
         f"Repository: {checkout}\n"
@@ -51,6 +60,7 @@ def build_prompt(checkout: Path, ctx) -> str:
         f"Prior generation artifacts: {ctx.workspace / 'runs'}\n"
         f"Current generation artifacts: {ctx.run_dir}\n"
         f"Iterations remaining after this proposal: {_remaining_iterations(ctx)}\n\n"
+        f"{runtime_guidance}"
         "Edit the checkout directly. Do not print a patch instead of editing files.\n"
     )
 

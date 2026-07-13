@@ -222,6 +222,16 @@ The AHE variants use the prompt assets
 `rollout/analysis/overview.md`, `meta_agent/change_manifest.json`, and
 `record/ahe_manifest.json`.
 
+## Candidate Runtime Smoke
+
+Meta-agents may optionally run the protected `./evolve candidate-smoke` command
+when dependency or runtime feedback is useful. `--quick` checks the project and
+lock, `--container` checks materialization and MiniSWE import, and `--full` also
+initializes the configured model path without making a model request. Results
+are sanitized and append-only. Exit code 2 means the candidate is invalid;
+exit code 3 means the smoke infrastructure failed. Neither result authorizes
+changes to evaluator-owned runtime machinery.
+
 ## Stability Tiers
 
 | Tier | Stability | What to depend on |
