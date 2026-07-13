@@ -36,6 +36,7 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `patching.py` | 120 | candidate patch assembly: changed paths, diffs, surface-violation repair |
 | `surface.py` | 150 | mutable-surface pattern matching and violation checks |
 | `report.py` | 182 | status/report rendering, best-ever recomputation, claim checklist |
+| `runtime.py` | 80 | evaluator runtime fingerprints, epoch preflight marker, and append-only attempt identity |
 | `workspace.py` | 520 | `evolve init` scaffolding: file copies, operator binding (required + optional), the generated `operators/README.md` index + `library/` variant palette, protocol stamping, seed + mechanism vendoring, inner-skill copy |
 
 ### The frozen ring (`src/evolve/frozen/`)
@@ -52,7 +53,7 @@ each workspace, immutable there because it sits outside the mutable surface
 | `frozen/sdk.py` | 420 | Python operator entrypoint and file-contract IO; no library algorithm policy |
 | `frozen/meta_eval.py` | 130 | self-modification admission gate: confound-free replay of old vs new operator surface (mechanism 1) |
 
-Total `src/evolve/` budget: **4681 lines**. If the mechanism wants to
+Total `src/evolve/` budget: **4760 lines**. If the mechanism wants to
 grow past that, something belongs in a workspace operator instead —
 that is the spec's rule, not a style preference.
 

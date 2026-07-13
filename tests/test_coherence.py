@@ -14,7 +14,7 @@ from evolve.frozen import interfaces
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src" / "evolve"
-TOTAL_BUDGET = 4681  # integrated recipes plus the canonical evaluation certificate
+TOTAL_BUDGET = 4760  # integrated recipes plus evaluation certificate and filesystem runtime identity
 ROW = re.compile(r"^\| `([^`]+\.py)` \| (\d+) \|")
 APPROVED_MODULES = {
     "__init__.py",
@@ -32,6 +32,7 @@ APPROVED_MODULES = {
     "patching.py",
     "population.py",
     "report.py",
+    "runtime.py",
     "surface.py",
     "task_sets.py",
     "task_vectors.py",
