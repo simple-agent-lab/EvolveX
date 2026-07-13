@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from conftest import init_workspace, rows_by_genid, run_evolve, smoke_agent_command
 
-from evolve.archive import MECHANISM_EVAL_FIELD, append_event
+from evolve.archive import MECHANISM_EVAL_FIELD, append_event, verify_integrity
 from evolve.evaluator import (
     _effective_task_set_identity,
     _evaluation_artifact_reference,
@@ -188,6 +188,28 @@ def test_eval_force_re_evaluates_completed_generation_zero(tmp_path: Path) -> No
     last_event = json.loads((workspace / "archive.jsonl").read_text().splitlines()[-1])
     assert last_event["genid"] == "0"
     assert last_event[MECHANISM_EVAL_FIELD] is True
+
+
+def test_ordinary_evaluation_is_marked_and_receipted(tmp_path: Path) -> None:
+    workspace, evolve_home = init_workspace(tmp_path)
+
+    result = run_evolve(
+        "run",
+        str(workspace),
+        "--max-generations",
+        "1",
+        env={"EVAL_STUB": "1", "EVOLVE_HOME": str(evolve_home)},
+    )
+
+    assert result.returncode == 0, result.stderr
+    events = [json.loads(line) for line in (workspace / "archive.jsonl").read_text().splitlines()]
+    evaluation = next(
+        event
+        for event in events
+        if event.get("genid") == "1" and event.get("pending_gate_record") is True
+    )
+    assert evaluation[MECHANISM_EVAL_FIELD] is True
+    assert verify_integrity(workspace) == []
 
 
 def test_evaluator_validates_task_vectors_and_compacts_artifact_references(tmp_path: Path) -> None:

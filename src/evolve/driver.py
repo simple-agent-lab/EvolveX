@@ -761,8 +761,7 @@ def _stamp_evaluation(
     if round_number is not None:
         event["kind"] = kind
         event["round"] = round_number
-    if round_number is not None or kind == "forced_eval":
-        event[MECHANISM_EVAL_FIELD] = True
+    event[MECHANISM_EVAL_FIELD] = True
     append_event(workspace, exp_id, event)
 
 def _ensure_genesis_evaluated(workspace: Path, exp_id: str) -> None:
