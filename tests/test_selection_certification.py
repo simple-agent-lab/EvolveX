@@ -1,55 +1,76 @@
-from evolve.archive import append_certificate, rows_by_genid
-from evolve.evaluation import Outcome, TrialResult, certify_evaluation
-from evolve.population import certified_parent_rows
+from evolve.archive import append_evaluation_record, append_event, rows_by_genid
+from evolve.evaluation import Outcome, TrialResult, classify_evaluation
 
 
-def _certificate(outcome: Outcome, *, epoch: int = 0):
+def _record(outcome: Outcome):
     reward = 1.0 if outcome is Outcome.BENCHMARK_COMPLETE else None
     owner = "benchmark" if reward is not None else "evaluator"
-    trial = TrialResult("task-a", 0, outcome, reward, owner)
-    return certify_evaluation(
+    return classify_evaluation(
         experiment_id="exp",
-        epoch=epoch,
         generation="1",
-        candidate_id="abc",
+        candidate_commit="abc",
         purpose="candidate",
         attempt=1,
-        evaluator_fingerprint="runtime",
-        candidate_fingerprint="candidate",
+        evaluator_fingerprint="evaluator",
         task_set_hash="tasks",
+        runtime_fingerprint="runtime",
         expected_trials=1,
-        trials=(trial,),
-        cost_usd=0.0,
+        trials=(TrialResult("task-a", 0, outcome, reward, owner),),
+        cost_usd=2.5,
         wall_s=1.0,
+        retry_of=1,
+        artifacts={"path": "runs/evaluations/candidate/index.json", "sha256": "a" * 64},
     )
 
 
-def test_failed_and_cancelled_certificates_cannot_become_parents(tmp_path, monkeypatch) -> None:
+def test_failed_and_cancelled_records_cannot_become_parents(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("EVOLVE_HOME", str(tmp_path / "home"))
     for outcome in (Outcome.INFRASTRUCTURE_FAILED, Outcome.CANCELLED):
-        workspace = tmp_path / outcome.value
-        event = append_certificate(workspace, _certificate(outcome), current_epoch=0)
+        event = append_evaluation_record(tmp_path / outcome.value, _record(outcome))
         assert event["valid_parent"] is False
         assert event["score"] is None
 
 
-def test_old_epoch_certificate_is_not_a_current_parent(tmp_path, monkeypatch) -> None:
+def test_complete_candidate_record_is_a_parent(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("EVOLVE_HOME", str(tmp_path / "home"))
+
+    event = append_evaluation_record(tmp_path / "workspace", _record(Outcome.BENCHMARK_COMPLETE))
+
+    assert event["valid_parent"] is True
+    assert event["score"] == 1.0
+    assert "epoch" not in event
+    assert "candidate_fingerprint" not in event
+    assert "evaluation_artifacts" not in event
+    assert event["cost"] == {"usd": 2.5, "wall_s": 1.0}
+    assert event["artifacts"]["sha256"] == "a" * 64
+
+
+def test_later_archive_event_cannot_promote_failed_record(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("EVOLVE_HOME", str(tmp_path / "home"))
     workspace = tmp_path / "workspace"
-    append_certificate(workspace, _certificate(Outcome.BENCHMARK_COMPLETE, epoch=0), current_epoch=0)
-
-    assert certified_parent_rows(workspace, epoch=0)[0]["genid"] == "1"
-    assert certified_parent_rows(workspace, epoch=1) == []
-
-
-def test_later_archive_event_cannot_promote_failed_certificate(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("EVOLVE_HOME", str(tmp_path / "home"))
-    workspace = tmp_path / "workspace"
-    append_certificate(workspace, _certificate(Outcome.INFRASTRUCTURE_FAILED), current_epoch=0)
-    archive = workspace / "archive.jsonl"
-    with archive.open("a") as stream:
+    append_evaluation_record(workspace, _record(Outcome.INFRASTRUCTURE_FAILED))
+    with (workspace / "archive.jsonl").open("a") as stream:
         stream.write('{"genid":"1","valid_parent":true,"verdict":"keep"}\n')
 
     row = rows_by_genid(workspace)["1"]
-    assert row["valid_parent"] is False
     assert row["selection_eligible"] is False
+    assert not (row["selection_eligible"] and row["valid_parent"])
+
+
+def test_later_metadata_cannot_overwrite_canonical_record_fields(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("EVOLVE_HOME", str(tmp_path / "home"))
+    workspace = tmp_path / "workspace"
+    record = _record(Outcome.BENCHMARK_COMPLETE)
+    append_evaluation_record(workspace, record)
+    forged = {
+        "candidate_commit": "forged", "runtime_fingerprint": "forged",
+        "expected_trials": 99, "trials": [], "artifacts": {"path": "forged"},
+        "retry_of": 99, "attempt": 99, "purpose": "canary", "outcome": "cancelled",
+        "selection_eligible": False,
+    }
+    append_event(workspace, record.experiment_id, {"genid": record.generation, **forged})
+
+    row = rows_by_genid(workspace)[record.generation]
+    payload = record.to_dict()
+    for field in forged:
+        assert row[field] == payload.get(field, record.selection_eligible)

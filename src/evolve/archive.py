@@ -4,14 +4,17 @@ import hashlib
 import json
 import os
 import re
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from .evaluation import EvaluationCertificate
+from .evaluation import EvaluationRecord, evaluation_status
 
 STAMPED_FIELDS = {
-    "score", "status", "task_set_hash", "task_set_members", "task_vector", "evaluation_artifacts", "evaluator_tree", "cost",
-    "epoch", "attempt", "purpose", "evaluator_fingerprint", "candidate_fingerprint", "outcome", "selection_eligible",
+    "experiment_id", "generation", "candidate_commit", "purpose", "attempt", "retry_of",
+    "evaluator_fingerprint", "task_set_hash", "runtime_fingerprint", "expected_trials",
+    "outcome", "trials", "score", "cost_usd", "wall_s", "artifacts",
+    "status", "selection_eligible", "task_set_members", "task_vector", "cost",
 }
 MECHANISM_EVAL_FIELD = "_evolve_mechanism_eval"
 RECORD_ATTEMPT_FIELD = "_evolve_record_attempted"
@@ -78,25 +81,32 @@ def append_event(workspace: Path, experiment_id: str, event: dict[str, Any]) -> 
             _append_eval_receipt(target, event)
 
 
-def append_certificate(
-    workspace: Path,
-    certificate: EvaluationCertificate,
-    *,
-    current_epoch: int,
+def append_evaluation_record(
+    workspace: Path, record: EvaluationRecord, *, metadata: dict[str, Any] | None = None
 ) -> dict[str, Any]:
-    valid_parent = certificate.selection_eligible and certificate.epoch == current_epoch
+    valid_parent = record.selection_eligible
+    tasks: dict[str, dict[str, list[dict[str, object]]]] = {}
+    for trial in record.trials:
+        raw = asdict(trial)
+        task_id = str(raw.pop("task_id"))
+        raw["status"] = raw.pop("outcome").value
+        tasks.setdefault(task_id, {"trials": []})["trials"].append(raw)
     event = {
-        **certificate.to_dict(),
-        "genid": certificate.generation,
-        "tag": f"gen/{certificate.generation}",
-        "status": "complete" if valid_parent else certificate.outcome.value,
+        **(metadata or {}),
+        **record.to_dict(),
+        "event_type": "evaluation",
+        "genid": record.generation,
+        "tag": f"gen/{record.generation}",
+        "status": record.status,
+        "selection_eligible": record.selection_eligible,
+        "task_set_members": sorted(tasks),
+        "task_vector": {"schema_version": 1, "tasks": tasks},
         "valid_parent": valid_parent,
         "verdict": "keep" if valid_parent else "discard",
-        "cost": {"usd": certificate.cost_usd, "wall_s": certificate.wall_s},
+        "cost": {"usd": record.cost_usd, "wall_s": record.wall_s},
         MECHANISM_EVAL_FIELD: True,
     }
-    event.pop("generation", None)
-    append_event(workspace, certificate.experiment_id, event)
+    append_event(workspace, record.experiment_id, event)
     return event
 
 
@@ -145,7 +155,7 @@ def highest_complete_generation(workspace: Path) -> int:
     highest = -1
     for row in merged_rows(archive_path(workspace)):
         genid = str(row.get("genid", ""))
-        if genid.isdigit() and row.get("status") == "complete":
+        if genid.isdigit() and evaluation_status(row) == "complete":
             highest = max(highest, int(genid))
     return highest
 
@@ -183,10 +193,7 @@ def _eval_receipts(archive: Path) -> set[str]:
 
 
 def verify_integrity(workspace: Path) -> list[str]:
-    """Integrity fsck: every frozen mechanism-eval event must have a matching
-    tamper-evident receipt. A hand-edited score/status/task_vector changes the
-    event's hash, so it no longer matches — surfacing the edit (DESIGN
-    observability). Returns human-readable findings; empty means clean."""
+    """Report frozen mechanism-eval events without matching receipts."""
     path = archive_path(workspace)
     receipts = _eval_receipts(path)
     findings: list[str] = []
@@ -271,7 +278,7 @@ def _is_genesis_replacement(row: dict[str, Any], genid: str, event: dict[str, An
         genid == "0"
         and row.get("note") == "initial scaffold"
         and event.get("kind") == "genesis_eval"
-        and event.get("status") in {"complete", "partial"}
+        and evaluation_status(event) in {"complete", "partial"}
         and event.get("score") is not None
     )
 
@@ -284,10 +291,14 @@ def _replace_top_evaluation(row: dict[str, Any], event: dict[str, Any]) -> None:
 
 def _merge_event_fields(row: dict[str, Any], current: dict[str, Any], event: dict[str, Any]) -> None:
     replace_stamped = _can_replace_stamped(current, event)
+    terminal_override = current.get("pending_gate_record") is True and event.get("status") == "operator_failed"
     for key, value in event.items():
         if key == "valid_parent" and value is True and row.get("selection_eligible") is False:
             continue
-        if key not in RESERVED_AUXILIARY_FIELDS and not (key in STAMPED_FIELDS and key in row and not replace_stamped):
+        protected = key in STAMPED_FIELDS and key in row and not replace_stamped
+        if terminal_override and key in {"status", "score", "cost"}:
+            protected = False
+        if key not in RESERVED_AUXILIARY_FIELDS and not protected:
             row[key] = value
 
 
@@ -310,23 +321,14 @@ def _can_replace_stamped(current: dict[str, Any], event: dict[str, Any]) -> bool
         and event.get(MECHANISM_EVAL_FIELD) is True
         and event.get("genid") == current.get("genid")
         and event.get("tag") == current.get("tag")
-        and event.get("status") in {"complete", "partial"}
+        and evaluation_status(event) in {"complete", "partial"}
         and event.get("score") is not None
         and event.get("valid_parent") is True
     ):
         return True
-    if (
-        current.get("pending_gate_record") is True
-        and event.get("status") == "operator_failed"
-        and event.get("valid_parent") is False
-        and event.get("verdict") == "discard"
-        and isinstance(event.get("reason"), str)
-        and str(event.get("reason")).startswith("operator ")
-    ):
-        return True
     return (
-        current.get("status") == "infra_failed"
+        evaluation_status(current) in {"infra_failed", "infrastructure_failed"}
         and current.get("score") is None
-        and event.get("status") in {"complete", "partial"}
+        and evaluation_status(event) in {"complete", "partial"}
         and event.get("score") is not None
     )

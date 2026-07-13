@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import os
 import shlex
 import shutil
 import stat
@@ -115,6 +116,9 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
     evaluator_agent = str(evaluator.get("agent") or "")
     if evaluator_engine == "harbor" and not evaluator_agent:
         raise ValueError("evaluator.agent is required for harbor recipes")
+    runtime_digest = os.environ.get("EVOLVE_RUNTIME_DIGEST", "").strip()
+    if evaluator_engine == "harbor" and not runtime_digest:
+        raise ValueError("EVOLVE_RUNTIME_DIGEST must identify the evaluator capsule (normally an immutable image digest)")
     evaluator_trials = int(evaluator.get("k", 1))
     tasks_per_round = int(evaluator.get("tasks_per_round", evaluator_trials))
     evaluator_n = int(evaluator.get("n_concurrent", evaluator_trials))
@@ -138,9 +142,7 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
         "PROTOCOL.md": (library_root() / "PROTOCOL.md").read_text(),
         "evaluator/eval.sh": _eval_sh(evaluator_engine, evaluator_dataset),
         "evaluator/eval.env": _eval_env(
-            workspace.name,
-            evaluator_dataset,
-            evaluator_n,
+            workspace.name, evaluator_dataset, evaluator_n,
             tasks_per_round,
             evaluator_trials,
             partial_floor,
@@ -150,6 +152,7 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
         ),
         "evaluator/splits.json": json.dumps({"train": 0.5, "gate": 0.4, "sealed": 0.1, "seed": 0}, indent=2) + "\n",
         "evaluator/dataset.pin": f"dataset={evaluator_dataset}\nchecksum=sha256:stub\n",
+        "evaluator/runtime.pin": f"{runtime_digest}\n",
         "evaluator/harbor_artifacts.py": _template("evaluator/harbor_artifacts.py"),
         "evaluator/parse_score.py": _template("evaluator/parse_score.py"),
         "evaluator/stub_eval.py": _template("evaluator/stub_eval.py"),
@@ -473,8 +476,7 @@ def _make_executable(*paths: Path) -> None:
 
 
 def _eval_env(
-    workspace_name: str, dataset: str,
-    n_concurrent: int,
+    workspace_name: str, dataset: str, n_concurrent: int,
     tasks_per_round: int,
     trials: int,
     partial_floor: float,

@@ -32,6 +32,7 @@ def _per_round_eval_script() -> str:
         'mkdir -p "$EVOLVE_RUN_DIR"\n'
         "printf '1.0\\n' > \"$EVOLVE_RUN_DIR/score\"\n"
         "printf 'complete\\n' > \"$EVOLVE_RUN_DIR/status\"\n"
+        "printf '{\"schema_version\":1,\"tasks\":{\"round-task\":{\"trials\":[{\"trial\":0,\"status\":\"benchmark_complete\",\"reward\":1.0}]}}}\\n' > \"$EVOLVE_RUN_DIR/task_vector.json\"\n"
         'printf \'round-%s\\n\' "${EVOLVE_ROUND:-missing}" > "$EVOLVE_RUN_DIR/task_set_hash"\n'
         "exit 0\n"
     )
@@ -44,6 +45,7 @@ def _enable_per_round_stub(workspace: Path) -> None:
 def _enable_per_round_script(workspace: Path, script: str) -> None:
     evaluator_tail = "  partial_floor: 0.8\n"
     _replace(workspace, "evolve.yaml", evaluator_tail, evaluator_tail + "  sampling: per_round\n")
+    _replace(workspace, "evolve.yaml", "  tasks_per_round: 16\n", "  tasks_per_round: 1\n")
     _rewrite(workspace, "evaluator/eval.sh", script)
     _commit_and_retag_gen0(workspace, "evolve.yaml", "evaluator/eval.sh")
 
@@ -76,6 +78,9 @@ def test_per_round_sampling_re_evaluates_parent_before_same_hash_gate(tmp_path: 
         and event.get("task_set_hash") == "round-2"
     ]
     assert len(round2_parent_reevals) == 1
+    assert round2_parent_reevals[0][1]["purpose"] == "round-2"
+    assert round2_parent_reevals[0][1]["selection_eligible"] is False
+    assert round2_parent_reevals[0][1]["valid_parent"] is False
     child2_eval_index = next(
         index
         for index, event in enumerate(events)
@@ -85,3 +90,5 @@ def test_per_round_sampling_re_evaluates_parent_before_same_hash_gate(tmp_path: 
     assert rows["2"]["task_set_hash"] == "round-2"
     assert "same task hash round-2" in json.loads((workspace / "runs" / "gen-2" / "gate.json").read_text())["reason"]
     assert any(event.get("kind") == "reeval" for event in rows["0"]["evals"])
+    assert list((workspace / "runs/evaluations/round-1").glob("gen-*/candidate-*/attempt-1"))
+    assert list((workspace / "runs/evaluations/round-2").glob("gen-*/candidate-*/attempt-1"))

@@ -10,10 +10,10 @@ from typing import Any
 
 from .archive import (
     EVALUATION_FIELDS,
-    MECHANISM_EVAL_FIELD,
     RECORD_ATTEMPT_FIELD,
     RESERVED_AUXILIARY_FIELDS,
     STAMPED_FIELDS,
+    append_evaluation_record,
     append_event,
     archive_path,
     ensure_local_archive,
@@ -24,6 +24,7 @@ from .archive import (
 )
 from .candidate_snapshot import build_candidate_snapshot, commit_candidate_snapshot
 from .config import evaluator_sampling, experiment_id, operator_blocks
+from .evaluation import CANONICAL_OUTCOMES, Outcome, evaluation_status
 from .evaluator import evaluate
 from .frozen.interfaces import (
     PayloadValidationError,
@@ -52,7 +53,6 @@ from .operators import OperatorResult, operator_timeout, run_operator
 from .population import best_row, format_genid, generation_number, valid_genid, valid_parent_rows
 from .surface import check_paths, surface_patterns
 
-DEFAULT_EVAL_REASON = "mechanism evaluation stamp"
 PENDING_GATE_RECORD_NOTE = "mechanism evaluation recorded before gate/record"
 TERMINAL_STATUSES = {
     "complete",
@@ -63,6 +63,9 @@ TERMINAL_STATUSES = {
     "rejected_admission",
     "rejected_duplicate",
     "rejected_validation",
+    Outcome.CANDIDATE_INVALID.value,
+    Outcome.TIMEOUT.value,
+    Outcome.CANCELLED.value,
 }
 UNRETRYABLE_STATUSES = TERMINAL_STATUSES - {"complete", "partial"}
 RECORD_FORBIDDEN_FIELDS = EVALUATION_FIELDS | RESERVED_AUXILIARY_FIELDS
@@ -381,12 +384,14 @@ def _resume_tagged_child(
     operators_config: dict[str, Any],
 ) -> None:
     row = rows_by_genid(workspace).get(genid, {})
-    status = row.get("status")
+    status = evaluation_status(row)
     needs_gate_record = genid in _evaluation_pending_gate_record_genids(workspace)
-    if status not in {"complete", "partial"} or row.get("score") is None:
+    canonical = row.get("outcome") in CANONICAL_OUTCOMES
+    if status == Outcome.INFRASTRUCTURE_FAILED or (
+        not canonical and (status not in {"complete", "partial"} or row.get("score") is None)
+    ):
         eval_child(workspace, genid, round_number=round_number)
         row = rows_by_genid(workspace).get(genid, {})
-        status = row.get("status")
         needs_gate_record = genid in _evaluation_pending_gate_record_genids(workspace)
     if needs_gate_record:
         _run_gate_and_record(workspace, exp_id, genid, parent, operators_config, round_number=round_number)
@@ -639,13 +644,14 @@ def eval_child(workspace: Path, genid: str, *, round_number: int | None = None, 
         raise RuntimeError("eval --round requires evaluator.sampling: per_round")
     rows = rows_by_genid(workspace)
     row = rows.get(genid, {})
-    if not force and round_number is None and row.get("status") in {"complete", "partial"} and row.get("score") is not None:
+    status = evaluation_status(row)
+    if not force and round_number is None and status in {"complete", "partial"} and row.get("score") is not None:
         return
     if not force and round_number is not None and _row_has_round_evaluation(row, round_number):
         return
     if force:
         kind = "forced_eval"
-    if row.get("status") in UNRETRYABLE_STATUSES:
+    if status in UNRETRYABLE_STATUSES:
         return
     parent = str(row.get("parent") or _fallback_parent_for_eval(workspace, rows))
     tag = f"gen/{genid}"
@@ -725,63 +731,34 @@ def _stamp_evaluation(
     kind: str = "eval",
 ) -> None:
     result = evaluate(workspace, tag, genid, round_number=round_number)
-    valid_parent = result.status in {"complete", "partial"}
-    event: dict[str, Any] = {
-        "genid": genid,
+    metadata: dict[str, Any] = {
         "parent": parent,
-        "tag": tag,
-        "score": result.score,
-        "status": result.status,
-        "task_set_hash": result.task_set_hash,
-        "task_set_members": list(result.task_set_members),
-        "task_vector": result.task_vector,
-        "evaluation_artifacts": result.evaluation_artifacts,
-        "evaluator_tree": result.evaluator_tree,
-        "valid_parent": valid_parent,
-        "verdict": "keep" if valid_parent else "discard",
-        "reason": DEFAULT_EVAL_REASON,
         "mutated": mutated,
         "surface_violations": [],
         "pending_gate_record": True,
         "predicted_fixes": [],
         "note": PENDING_GATE_RECORD_NOTE,
-        "cost": {"usd": 0, "wall_s": result.wall_s},
     }
     if round_number is not None:
-        event["kind"] = kind
-        event["round"] = round_number
-    event[MECHANISM_EVAL_FIELD] = True
-    append_event(workspace, exp_id, event)
+        metadata.update(kind=kind, round=round_number)
+    append_evaluation_record(workspace, result, metadata=metadata)
 
 def _ensure_genesis_evaluated(workspace: Path, exp_id: str) -> None:
     row = rows_by_genid(workspace).get("0", {})
     if row.get("note") != "initial scaffold":
         return
-    result = evaluate(workspace, "gen/0", "0", run_name="eval-genesis", eval_kind="genesis")
-    valid_parent = result.status in {"complete", "partial"}
-    append_event(
+    result = evaluate(workspace, "gen/0", "0", purpose="genesis")
+    append_evaluation_record(
         workspace,
-        exp_id,
-        {
-            "genid": "0",
+        result,
+        metadata={
             "parent": row.get("parent"),
-            "tag": "gen/0",
-            "score": result.score,
-            "status": result.status,
-            "task_set_hash": result.task_set_hash,
-            "task_vector": result.task_vector,
-            "evaluator_tree": result.evaluator_tree,
-            "valid_parent": valid_parent,
-            "verdict": "keep" if valid_parent else "discard",
-            "reason": "mechanism genesis evaluation stamp",
             "mutated": row.get("mutated", []),
             "surface_violations": row.get("surface_violations", []),
             "predicted_fixes": row.get("predicted_fixes", []),
             "note": "genesis evaluated",
             "pending_gate_record": False,
             "kind": "genesis_eval",
-            "cost": {"usd": 0, "wall_s": result.wall_s},
-            MECHANISM_EVAL_FIELD: True,
         },
     )
 
@@ -821,26 +798,14 @@ def _ensure_parent_round_evaluation(workspace: Path, exp_id: str, parent: str, g
         workspace,
         f"gen/{parent}",
         parent,
+        purpose=f"round-{generation}",
         round_number=generation,
-        run_name=f"eval-round-{generation}",
     )
-    valid_parent = result.status in {"complete", "partial"}
-    append_event(
+    append_evaluation_record(
         workspace,
-        exp_id,
-        {
-            "genid": parent,
+        result,
+        metadata={
             "parent": row.get("parent"),
-            "tag": f"gen/{parent}",
-            "score": result.score,
-            "status": result.status,
-            "task_set_hash": result.task_set_hash,
-            "task_set_members": list(result.task_set_members),
-            "evaluation_artifacts": result.evaluation_artifacts,
-            "evaluator_tree": result.evaluator_tree,
-            "valid_parent": valid_parent,
-            "verdict": "keep" if valid_parent else "discard",
-            "reason": "mechanism re-evaluation stamp",
             "mutated": row.get("mutated", []),
             "surface_violations": row.get("surface_violations", []),
             "predicted_fixes": row.get("predicted_fixes", []),
@@ -848,10 +813,9 @@ def _ensure_parent_round_evaluation(workspace: Path, exp_id: str, parent: str, g
             "cost": {"usd": 0, "wall_s": result.wall_s},
             "kind": "reeval",
             "round": generation,
-            MECHANISM_EVAL_FIELD: True,
         },
     )
-    if not valid_parent:
+    if result.outcome is not Outcome.BENCHMARK_COMPLETE:
         raise RuntimeError(f"parent baseline for gen/{parent} round {generation} produced {result.status}")
 
 def _row_has_round_evaluation(row: dict[str, Any], round_number: int) -> bool:
@@ -864,10 +828,11 @@ def _row_has_round_evaluation(row: dict[str, Any], round_number: int) -> bool:
 
 def _is_scored_evaluation(event: dict[str, Any]) -> bool:
     return (
-        event.get("status") in {"complete", "partial"}
+        evaluation_status(event) in {"complete", "partial"}
         and event.get("score") is not None
         and event.get("task_set_hash") is not None
     )
+
 
 def _select_generation_parents(
     workspace: Path,
@@ -1006,7 +971,9 @@ def _evaluation_pending_gate_record_genids(workspace: Path) -> set[str]:
 
 
 def _event_is_evaluation_stamp(event: dict[str, Any]) -> bool:
-    status = event.get("status")
+    if event.get("outcome") in CANONICAL_OUTCOMES:
+        return _event_marks_pending_gate_record(event)
+    status = evaluation_status(event)
     return (
         status == "infra_failed" or (status in {"complete", "partial"} and event.get("score") is not None)
     ) and _event_marks_pending_gate_record(event)
@@ -1023,7 +990,7 @@ def _event_is_gate_record_event(event: dict[str, Any]) -> bool:
 
 
 def _generation_is_pending(row: dict[str, Any], needs_gate_record: bool) -> bool:
-    status = row.get("status")
+    status = evaluation_status(row)
     return status not in TERMINAL_STATUSES or needs_gate_record
 
 
@@ -1410,7 +1377,7 @@ def _assert_valid_parent(workspace: Path, parent: str) -> None:
     row = rows.get(parent)
     if row is None:
         raise RuntimeError(f"unknown parent: {parent}")
-    if row.get("valid_parent") is not True or row.get("status") not in {"complete", "partial"}:
+    if row.get("valid_parent") is not True or evaluation_status(row) not in {"complete", "partial"}:
         raise RuntimeError(f"parent gen/{parent} is not a valid parent")
     if not tag_exists(workspace, f"gen/{parent}"):
         raise RuntimeError(f"missing tag for parent gen/{parent}")

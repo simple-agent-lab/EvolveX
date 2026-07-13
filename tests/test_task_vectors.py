@@ -5,7 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from evolve.task_vectors import TaskVectorError, normalize_task_vector, task_passed
+from evolve.evaluation import Outcome
+from evolve.task_vectors import TaskVectorError, normalize_task_vector, task_passed, trial_results
 
 
 def test_normalize_legacy_boolean_vector() -> None:
@@ -38,6 +39,30 @@ def test_versioned_vector_preserves_partial_and_infra_trials() -> None:
     }
     assert normalize_task_vector(vector) == vector
     assert task_passed(vector, "task-a") is None
+
+
+def test_trial_results_converts_normalized_vector_to_canonical_evidence() -> None:
+    vector = {
+        "schema_version": 1,
+        "tasks": {
+            "task-a": {
+                "trials": [
+                    {
+                        "trial": 0,
+                        "status": "candidate_invalid",
+                        "reward": None,
+                        "owner": "candidate",
+                        "exception_type": "RuntimeError",
+                        "exception_message": "declared dependency missing",
+                    }
+                ]
+            }
+        },
+    }
+
+    assert trial_results(vector)[0].outcome is Outcome.CANDIDATE_INVALID
+    assert trial_results(vector)[0].owner == "candidate"
+    assert trial_results(vector)[0].exception_type == "RuntimeError"
 
 
 def test_benchmark_agent_timeout_may_preserve_zero_reward() -> None:
@@ -122,8 +147,6 @@ def test_invalid_task_vector_rejects_boolean_trial_ids() -> None:
     ("status", "reward", "message"),
     [
         ("benchmark_complete", None, "benchmark_complete trial.*numeric reward"),
-        ("candidate_invalid", 0.0, "non-score-eligible trial.*null reward"),
-        ("infrastructure_failed", 1.0, "non-score-eligible trial.*null reward"),
         ("cancelled", 0.0, "non-score-eligible trial.*null reward"),
     ],
 )
@@ -141,6 +164,20 @@ def test_invalid_task_vector_rejects_inconsistent_status_reward(status: str, rew
                 },
             }
         )
+
+
+@pytest.mark.parametrize("status", ["candidate_invalid", "infrastructure_failed"])
+def test_structured_failure_may_retain_diagnostic_reward(status: str) -> None:
+    vector = {
+        "schema_version": 1,
+        "tasks": {"task-a": {"trials": [{
+            "trial": 0, "status": status, "reward": 0.0,
+            "owner": "candidate" if status == "candidate_invalid" else "infrastructure",
+            "exception_type": "RuntimeError",
+        }]}},
+    }
+
+    assert trial_results(vector)[0].reward == 0.0
 
 
 def test_stub_eval_emits_configured_completed_trials_without_changing_score(tmp_path: Path) -> None:

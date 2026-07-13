@@ -185,7 +185,7 @@ def _resolved_reference_path(root: Path, reference: object) -> Path:
 
 
 def _artifact_index(row: dict[str, Any], workspace: Path) -> dict[str, Any]:
-    _verified, payload = _verified_bytes(workspace, row.get("evaluation_artifacts"))
+    _verified, payload = _verified_bytes(workspace, row.get("artifacts"))
     loaded = json.loads(payload.decode())
     if not isinstance(loaded, dict):
         raise ValueError("evaluation artifact index must be an object")
@@ -237,7 +237,7 @@ def _matching_training_evaluation(
             continue
         if not isinstance(candidate.get("task_vector"), dict):
             continue
-        if not isinstance(candidate.get("evaluation_artifacts"), dict):
+        if not isinstance(candidate.get("artifacts"), dict):
             continue
         return candidate
     return None
@@ -255,7 +255,7 @@ def _training_evaluation(row: dict[str, Any], config: dict[str, Any], workspace:
             and all(isinstance(task_id, str) for task_id in candidate["task_set_members"])
             and set(candidate["task_set_members"]) != allowed
             and isinstance(candidate.get("task_vector"), dict)
-            and isinstance(candidate.get("evaluation_artifacts"), dict)
+            and isinstance(candidate.get("artifacts"), dict)
             for candidate in candidates
         ):
             raise ValueError("selected evaluation task-set membership differs from AHE training allowlist")

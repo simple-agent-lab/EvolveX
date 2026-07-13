@@ -101,6 +101,13 @@ def evaluator_sampling(workspace: Path) -> str:
     return str(value or "static")
 
 
+def evaluator_boolean(values: dict[str, Any], key: str, default: bool = False) -> bool:
+    value = values.get(key, default)
+    if not isinstance(value, bool):
+        raise ValueError(f"evaluator.{key} must be a boolean")
+    return value
+
+
 def _read_section(workspace: Path, name: str) -> dict[str, Any]:
     return _read_section_file(workspace / "evolve.yaml", name)
 

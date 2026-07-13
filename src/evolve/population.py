@@ -5,6 +5,7 @@ from typing import Any
 
 from .archive import archive_path, ensure_local_archive, merged_rows
 from .config import evaluator_sampling, experiment_id
+from .evaluation import Outcome, evaluation_status
 from .git import tag_exists
 
 SCORED_STATUSES = {"complete", "partial"}
@@ -15,6 +16,10 @@ KNOWN_TERMINAL_STATUSES = {
     "invalid_proposal",
     "no_proposal",
     "operator_failed",
+    Outcome.CANDIDATE_INVALID.value,
+    Outcome.INFRASTRUCTURE_FAILED.value,
+    Outcome.TIMEOUT.value,
+    Outcome.CANCELLED.value,
 }
 
 
@@ -49,7 +54,7 @@ def baseline_task_set_hash(workspace: Path, rows_: list[dict[str, Any]] | None =
             value = row.get("task_set_hash")
             return str(value) if value is not None else None
     for row in candidates:
-        if looks_mechanism_written(workspace, row) and row.get("status") in SCORED_STATUSES:
+        if looks_mechanism_written(workspace, row) and evaluation_status(row) in SCORED_STATUSES:
             value = row.get("task_set_hash")
             return str(value) if value is not None else None
     return None
@@ -62,7 +67,7 @@ def looks_mechanism_written(workspace: Path, row: dict[str, Any]) -> bool:
     tag = str(row["tag"])
     if tag != f"gen/{genid}" or not tag_exists(workspace, tag):
         return False
-    status = row.get("status")
+    status = evaluation_status(row)
     if status is None:
         return isinstance(row.get("mutated"), list) and isinstance(row.get("surface_violations"), list)
     if status not in KNOWN_TERMINAL_STATUSES:
@@ -70,7 +75,9 @@ def looks_mechanism_written(workspace: Path, row: dict[str, Any]) -> bool:
     if "cost" not in row or "valid_parent" not in row:
         return False
     if status in SCORED_STATUSES:
-        return row.get("task_set_hash") is not None and row.get("evaluator_tree") is not None
+        return row.get("task_set_hash") is not None and (
+            row.get("evaluator_fingerprint") is not None or row.get("evaluator_tree") is not None
+        )
     return True
 
 
@@ -85,7 +92,7 @@ def valid_parent_rows(workspace: Path, rows_: list[dict[str, Any]] | None = None
             continue
         if not looks_mechanism_written(workspace, row):
             continue
-        if row.get("valid_parent") is not True or row.get("status") not in SCORED_STATUSES:
+        if row.get("valid_parent") is not True or evaluation_status(row) not in SCORED_STATUSES:
             continue
         if comparison_hash is not None and row.get("task_set_hash") != comparison_hash:
             continue
@@ -94,18 +101,6 @@ def valid_parent_rows(workspace: Path, rows_: list[dict[str, Any]] | None = None
             continue
         valid.append(row)
     return valid
-
-
-def certified_parent_rows(workspace: Path, *, epoch: int) -> list[dict[str, Any]]:
-    return [
-        row
-        for row in rows(workspace)
-        if row.get("selection_eligible") is True
-        and row.get("valid_parent") is True
-        and row.get("epoch") == epoch
-        and isinstance(row.get("score"), (int, float))
-        and not isinstance(row.get("score"), bool)
-    ]
 
 
 def best_row(workspace: Path, rows_: list[dict[str, Any]] | None = None) -> dict[str, Any] | None:

@@ -81,7 +81,7 @@ def _prepared_run(tmp_path: Path) -> tuple[Path, Path, dict[str, object]]:
         "score": 0.1,
         "task_vector": _vector(),
         "mutated": ["target/agent.py"],
-        "evaluation_artifacts": {
+        "artifacts": {
             "path": artifact.relative_to(workspace).as_posix(),
             "sha256": hashlib.sha256(artifact.read_bytes()).hexdigest(),
         },
@@ -101,12 +101,12 @@ def test_gate_accepts_structurally_valid_child_without_parent_score_comparison(t
 def test_gate_rejects_corrupt_evaluation_artifact_hash_before_manifest(tmp_path: Path) -> None:
     workspace, run_dir, child = _prepared_run(tmp_path)
     gate = _module(ROOT / "library" / "gate" / "ahe_artifact_valid.py", "ahe_artifact_valid_corrupt")
-    child["evaluation_artifacts"] = {"path": "runs/gen-1/eval/evaluation_artifacts.json", "sha256": "0" * 64}
+    child["artifacts"] = {"path": "runs/gen-1/eval/evaluation_artifacts.json", "sha256": "0" * 64}
 
     result = gate.AheArtifactValidGate().decide(child, {"score": 0.9}, _ctx(workspace, run_dir))
 
     assert result.decision == "reject"
-    assert "evaluation_artifacts" in result.reason
+    assert "artifacts" in result.reason
 
 
 def test_gate_rejects_missing_change_manifest(tmp_path: Path) -> None:

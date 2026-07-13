@@ -100,14 +100,14 @@ def test_ahe_rollout_parallel_trace_analysis_is_hashed_and_isolated(tmp_path: Pa
             "genid": "0",
             **_scope(task_ids),
             "task_vector": _vector({"failed-task": [0, 0], "regressed-task": [1, 1], "risk-task": [1, 1], "stable-pass": [1, 1]}),
-            "evaluation_artifacts": grandparent_artifacts,
+            "artifacts": grandparent_artifacts,
         },
         {
             "genid": "1",
             "parent": "0",
             **_scope(task_ids),
             "task_vector": _vector({"failed-task": [0, 0], "regressed-task": [1, 0], "risk-task": [1, 1], "stable-pass": [1, 1]}),
-            "evaluation_artifacts": parent_artifacts,
+            "artifacts": parent_artifacts,
             "ahe_manifest_path": str(manifest.relative_to(workspace)),
             "ahe_manifest_sha256": _sha256(manifest),
         },
@@ -242,7 +242,7 @@ def test_ahe_rollout_caps_parallel_debuggers_at_five(tmp_path: Path, monkeypatch
     task_ids = [f"failed-{index}" for index in range(6)]
     artifacts = _write_artifacts(workspace, "1", task_ids)
     (workspace / "archive.jsonl").write_text(
-        json.dumps({"genid": "1", **_scope(task_ids), "task_vector": _vector({task_id: [0, 0] for task_id in task_ids}), "evaluation_artifacts": artifacts})
+        json.dumps({"genid": "1", **_scope(task_ids), "task_vector": _vector({task_id: [0, 0] for task_id in task_ids}), "artifacts": artifacts})
         + "\n"
     )
 
@@ -312,7 +312,7 @@ def test_artifact_index_rejects_forged_hash(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="sha256"):
         AHE_ROLLOUT._artifact_index(
-            {"evaluation_artifacts": {"path": "index.json", "sha256": "0" * 64}},
+            {"artifacts": {"path": "index.json", "sha256": "0" * 64}},
             tmp_path,
         )
 
@@ -325,7 +325,7 @@ def test_training_evaluation_uses_matching_auxiliary_task_set(tmp_path: Path) ->
         "status": "complete",
         "score": 0.5,
         "task_vector": _vector({task_id: [1, 0] for task_id in task_ids}),
-        "evaluation_artifacts": artifacts,
+        "artifacts": artifacts,
     }
     parent = {
         "genid": "0",
@@ -334,7 +334,7 @@ def test_training_evaluation_uses_matching_auxiliary_task_set(tmp_path: Path) ->
         "status": "complete",
         "score": 1.0,
         "task_vector": {"task-0": True},
-        "evaluation_artifacts": None,
+        "artifacts": None,
         "evals": [auxiliary],
     }
 
@@ -446,7 +446,7 @@ def test_rollout_rejects_innocuous_heldout_task_before_prompt_construction(tmp_p
                 "genid": "1",
                 **_scope(task_ids),
                 "task_vector": _vector({task_id: [0, 0] for task_id in task_ids}),
-                "evaluation_artifacts": artifacts,
+                "artifacts": artifacts,
             }
         )
         + "\n"
@@ -480,7 +480,7 @@ def test_unsafe_task_id_uses_hashed_report_path(tmp_path: Path, monkeypatch) -> 
     task_id = "../escape"
     artifacts = _write_artifacts(workspace, "1", [task_id])
     (workspace / "archive.jsonl").write_text(
-        json.dumps({"genid": "1", **_scope([task_id]), "task_vector": _vector({task_id: [0, 0]}), "evaluation_artifacts": artifacts}) + "\n"
+        json.dumps({"genid": "1", **_scope([task_id]), "task_vector": _vector({task_id: [0, 0]}), "artifacts": artifacts}) + "\n"
     )
 
     monkeypatch.setattr(
@@ -526,7 +526,7 @@ def test_unsafe_and_safe_hash_like_task_ids_use_distinct_reports(tmp_path: Path,
                 "genid": "1",
                 **_scope([unsafe_id, safe_id]),
                 "task_vector": _vector({unsafe_id: [0, 0], safe_id: [0, 0]}),
-                "evaluation_artifacts": artifacts,
+                "artifacts": artifacts,
             }
         )
         + "\n"
@@ -573,7 +573,7 @@ def test_terminal_debugger_failure_records_attempts(tmp_path: Path, monkeypatch)
     checkout.mkdir(parents=True)
     artifacts = _write_artifacts(workspace, "1", ["failed-task"])
     (workspace / "archive.jsonl").write_text(
-        json.dumps({"genid": "1", **_scope(["failed-task"]), "task_vector": _vector({"failed-task": [0, 0]}), "evaluation_artifacts": artifacts}) + "\n"
+        json.dumps({"genid": "1", **_scope(["failed-task"]), "task_vector": _vector({"failed-task": [0, 0]}), "artifacts": artifacts}) + "\n"
     )
     attempts = 0
 
@@ -617,7 +617,7 @@ def test_protocol_only_detail_is_persisted_as_failure_and_rejected(tmp_path: Pat
                 "genid": "1",
                 **_scope(["failed-task"]),
                 "task_vector": _vector({"failed-task": [0, 0]}),
-                "evaluation_artifacts": artifacts,
+                "artifacts": artifacts,
             }
         )
         + "\n"
@@ -662,7 +662,7 @@ def test_protocol_only_overview_is_persisted_as_failure_and_rejected(tmp_path: P
                 "genid": "1",
                 **_scope(["failed-task"]),
                 "task_vector": _vector({"failed-task": [0, 0]}),
-                "evaluation_artifacts": artifacts,
+                "artifacts": artifacts,
             }
         )
         + "\n"

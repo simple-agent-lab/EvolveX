@@ -46,9 +46,9 @@ class AheArtifactValidGate(GateOperator):
         except Exception as error:
             return _reject("task_vector", error)
         try:
-            verify_relative_hash(ctx.workspace, child.get("evaluation_artifacts"))
+            verify_relative_hash(ctx.workspace, child.get("artifacts"))
         except Exception as error:
-            return _reject("evaluation_artifacts", error)
+            return _reject("artifacts", error)
         try:
             manifest = json.loads((ctx.run_dir / "meta_agent" / "change_manifest.json").read_text())
             validate_change_manifest(

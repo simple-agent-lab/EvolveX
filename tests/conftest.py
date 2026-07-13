@@ -5,7 +5,16 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from evolve.archive import merged_rows as mechanism_merged_rows
+
+
+@pytest.fixture(autouse=True)
+def evaluator_runtime_digest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("EVOLVE_RUNTIME_DIGEST", "sha256:test-runtime")
+    monkeypatch.setenv("EVOLVE_HOME", str(tmp_path / "evolve-home"))
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
 
 
 def run_evolve(

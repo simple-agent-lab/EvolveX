@@ -109,7 +109,7 @@ def _entry_looks_mechanism_written(row: dict[str, Any], entry: dict[str, Any]) -
         return False
     if entry.get("status") not in SCORED_STATUSES:
         return False
-    if entry.get("task_set_hash") is None or entry.get("evaluator_tree") is None:
+    if entry.get("task_set_hash") is None or not (entry.get("evaluator_fingerprint") or entry.get("evaluator_tree")):
         return False
     cost = entry.get("cost")
     if not isinstance(cost, dict):

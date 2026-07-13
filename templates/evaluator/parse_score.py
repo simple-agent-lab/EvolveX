@@ -23,6 +23,7 @@ def _load_eval_env(path: Path) -> dict[str, str]:
 
 
 def _write_outputs(run_dir: Path, *, status: str, metrics: dict[str, object], score: float | None = None) -> None:
+    # Compatibility outputs only: the host derives its EvaluationRecord from task_vector.json.
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "status").write_text(f"{status}\n")
     if score is not None:
