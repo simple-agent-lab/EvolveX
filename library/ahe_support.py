@@ -16,7 +16,7 @@ _COMPONENT_LEVELS = {"prompt", "tool", "model_adapter", "environment", "control_
 
 
 def _state(trials: list[dict[str, Any]], required_trials: int) -> str:
-    if len(trials) != required_trials or any(item["status"] != "complete" for item in trials):
+    if len(trials) != required_trials or any(item["status"] != "benchmark_complete" for item in trials):
         return "unknown"
     passed = sum(float(item["reward"]) > 0 for item in trials)
     return "pass" if passed == required_trials else "fail" if passed == 0 else "partial"

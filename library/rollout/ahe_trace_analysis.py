@@ -334,7 +334,7 @@ def _agent_timeouts(vector: object) -> list[str]:
         for task_id, task in vector["tasks"].items()
         if isinstance(task, dict)
         and isinstance(task.get("trials"), list)
-        and any(isinstance(trial, dict) and trial.get("status") == "agent_timeout" for trial in task["trials"])
+        and any(isinstance(trial, dict) and trial.get("status") == "timeout" for trial in task["trials"])
     )
 
 

@@ -26,8 +26,9 @@ def make_vector(outcomes: dict[str, list[int | None]]) -> dict[str, object]:
                 "trials": [
                     {
                         "trial": index,
-                        "status": "complete" if reward is not None else "infra_failed",
+                        "status": "benchmark_complete" if reward is not None else "infrastructure_failed",
                         "reward": float(reward) if reward is not None else None,
+                        **({"owner": "evaluator"} if reward is None else {}),
                     }
                     for index, reward in enumerate(rewards)
                 ]

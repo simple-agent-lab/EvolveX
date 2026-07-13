@@ -150,3 +150,50 @@ def test_harbor_stage_limit_and_anchor_task_file_override(tmp_path: Path) -> Non
     assert "train-task" not in args
     assert args[args.index("--n-tasks") + 1] == "2"
     assert (tmp_path / "run" / "metrics.json").read_text().count('"expected_trials": 2') == 1
+
+
+def test_nonzero_harbor_exit_overrides_reward_and_preserves_cost(tmp_path: Path) -> None:
+    evaluator = tmp_path / "evaluator"
+    evaluator.mkdir()
+    _write_executable(evaluator / "eval.sh", _eval_sh("harbor", "fixture"))
+    (evaluator / "eval.env").write_text(
+        _eval_env(
+            "experiment",
+            "fixture",
+            n_concurrent=1,
+            tasks_per_round=1,
+            trials=1,
+            partial_floor=0.8,
+            agent="mini-swe-agent",
+        )
+    )
+    (evaluator / "harbor_artifacts.py").write_text(
+        (resource_root("templates") / "evaluator/harbor_artifacts.py").read_text()
+    )
+    (evaluator / "parse_score.py").write_text((resource_root("templates") / "evaluator/parse_score.py").read_text())
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    _write_executable(
+        fake_bin / "harbor",
+        "#!/bin/sh\n"
+        "jobs_dir=\n"
+        "while [ \"$#\" -gt 0 ]; do\n"
+        "  if [ \"$1\" = \"--jobs-dir\" ]; then shift; jobs_dir=$1; fi\n"
+        "  shift || true\n"
+        "done\n"
+        "mkdir -p \"$jobs_dir/case-a__one\"\n"
+        "printf '%s\\n' '{\"task_name\":\"case-a\",\"trial_name\":\"one\",\"verifier_result\":{\"rewards\":{\"reward\":0}},\"agent_result\":{\"cost_usd\":0.4}}' > \"$jobs_dir/case-a__one/result.json\"\n"
+        "exit 9\n",
+    )
+    env = {
+        **os.environ,
+        "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
+        "EVOLVE_RUN_DIR": str(tmp_path / "run"),
+    }
+
+    result = subprocess.run([str(evaluator / "eval.sh")], cwd=tmp_path, env=env, text=True, capture_output=True)
+
+    assert result.returncode == 3
+    assert (tmp_path / "run" / "status").read_text() == "infra_failed\n"
+    assert not (tmp_path / "run" / "score").exists()
+    assert (tmp_path / "run" / "cost.json").read_text() == '{"usd": 0.4}\n'

@@ -31,7 +31,7 @@ def _vector(outcomes: dict[str, list[int]]) -> dict[str, object]:
         "tasks": {
             task_id: {
                 "trials": [
-                    {"trial": index, "status": "complete", "reward": float(reward)}
+                    {"trial": index, "status": "benchmark_complete", "reward": float(reward)}
                     for index, reward in enumerate(rewards)
                 ]
             }
@@ -213,7 +213,9 @@ def test_ahe_rollout_selection_respects_analyze_flags_with_true_defaults() -> No
     states = {"failed": "fail", "partial": "partial", "regressed": "fail", "risk": "pass", "timeout": "unknown"}
     comparison = {"improved": [], "regressed": ["regressed"], "unchanged": [], "unknown": []}
     vector = _vector({"failed": [0, 0], "partial": [1, 0], "regressed": [0, 0], "risk": [1, 1]})
-    vector["tasks"]["timeout"] = {"trials": [{"trial": 0, "status": "agent_timeout", "reward": None}]}
+    vector["tasks"]["timeout"] = {
+        "trials": [{"trial": 0, "status": "timeout", "reward": 0.0, "owner": "benchmark_agent"}]
+    }
 
     defaults = AHE_ROLLOUT._selection(states, comparison, ["risk"], vector, {}, {}, 2)
     disabled = AHE_ROLLOUT._selection(

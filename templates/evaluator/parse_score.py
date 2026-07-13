@@ -31,10 +31,11 @@ def _write_outputs(run_dir: Path, *, status: str, metrics: dict[str, object], sc
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) != 3:
-        raise SystemExit("usage: parse_score.py <jobs_dir> <run_dir>")
+    if len(argv) != 4:
+        raise SystemExit("usage: parse_score.py <jobs_dir> <run_dir> <harbor_rc>")
     jobs_dir = Path(argv[1])
     run_dir = Path(argv[2])
+    harbor_rc = int(argv[3])
     env_values = _load_eval_env(Path("evaluator") / "eval.env")
     expected_trials = max(
         1,
@@ -49,6 +50,19 @@ def main(argv: list[str]) -> int:
     rewards = write_harbor_artifacts(jobs_dir, run_dir)
     completed_trials = len(rewards)
     missing_trials = max(expected_trials - completed_trials, 0)
+    if harbor_rc != 0:
+        _write_outputs(
+            run_dir,
+            status="infra_failed",
+            metrics={
+                "completed_trials": completed_trials,
+                "expected_trials": expected_trials,
+                "missing_trials": missing_trials,
+                "pass_rate": 0.0,
+                "harbor_rc": harbor_rc,
+            },
+        )
+        return 3
     if completed_trials == 0:
         _write_outputs(
             run_dir,

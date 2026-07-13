@@ -171,7 +171,7 @@ def test_evaluator_validates_task_vectors_and_compacts_artifact_references(tmp_p
         json.dumps(
             {
                 "schema_version": 1,
-                "tasks": {"case-a": {"trials": [{"trial": 0, "status": "complete", "reward": 1.0}]}},
+                "tasks": {"case-a": {"trials": [{"trial": 0, "status": "benchmark_complete", "reward": 1.0}]}},
             }
         )
     )

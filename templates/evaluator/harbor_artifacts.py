@@ -27,6 +27,10 @@ def write_harbor_artifacts(jobs_dir: Path, run_dir: Path) -> list[float]:
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "task_vector.json").write_text(json.dumps(task_vector, indent=2, sort_keys=True) + "\n")
     (run_dir / "evaluation_artifacts.json").write_text(json.dumps(artifact_index, indent=2, sort_keys=True) + "\n")
+    (run_dir / "cost.json").write_text(
+        json.dumps({"usd": sum(float(trial["cost_usd"]) for trial in artifact_index["trials"])}, sort_keys=True)
+        + "\n"
+    )
     return rewards
 
 
@@ -45,8 +49,7 @@ def _load_task_trials(jobs_dir: Path) -> list[dict[str, Any]]:
         trial_name = result.get("trial_name")
         if not isinstance(task_name, str) or not isinstance(trial_name, str):
             continue
-        reward = _reward(result)
-        status, reward = _trial_status(result, reward)
+        status, reward, owner = _trial_result(result)
         exception_info = result.get("exception_info")
         exception_type = None
         exception_message = None
@@ -62,8 +65,10 @@ def _load_task_trials(jobs_dir: Path) -> list[dict[str, Any]]:
                 "trial_name": trial_name,
                 "status": status,
                 "reward": reward,
+                "owner": owner,
                 "exception_type": exception_type,
                 "exception_message": exception_message,
+                "cost_usd": _cost_usd(result),
                 "trial_dir": trial_dir,
                 "artifacts": _safe_artifacts(jobs_dir, trial_dir),
             }
@@ -79,7 +84,12 @@ def _build_task_vector(trials: list[dict[str, Any]]) -> dict[str, Any]:
     for task_name, task_trials in sorted(tasks.items()):
         serialized_trials: list[dict[str, Any]] = []
         for index, entry in enumerate(sorted(task_trials, key=lambda trial: str(trial["trial_name"]))):
-            serialized = {"trial": index, "status": entry["status"], "reward": entry["reward"]}
+            serialized = {
+                "trial": index,
+                "status": entry["status"],
+                "reward": entry["reward"],
+                "owner": entry["owner"],
+            }
             if entry["exception_type"] is not None:
                 serialized["exception_type"] = entry["exception_type"]
             if entry["exception_message"] is not None:
@@ -96,6 +106,7 @@ def _build_artifact_index(jobs_dir: Path, trials: list[dict[str, Any]]) -> dict[
             {
                 "task_name": entry["task_name"],
                 "trial_name": entry["trial_name"],
+                "cost_usd": entry["cost_usd"],
                 "files": entry["artifacts"],
             }
             for entry in trials
@@ -112,13 +123,25 @@ def _reward(result: dict[str, Any]) -> float | None:
     return float(reward) if isinstance(reward, (int, float)) and not isinstance(reward, bool) else None
 
 
-def _trial_status(result: dict[str, Any], reward: float | None) -> tuple[str, float | None]:
-    if reward is not None:
-        return "complete", reward
-    exception_type = str((result.get("exception_info") or {}).get("exception_type") or "")
+def _trial_result(result: dict[str, Any]) -> tuple[str, float | None, str]:
+    exception = result.get("exception_info") or {}
+    exception_type = str(exception.get("exception_type") or "")
+    message = str(exception.get("exception_message") or "")
     if exception_type in {"AgentTimeoutError", "AgentExecutionTimeoutError"}:
-        return "agent_timeout", 0.0
-    return "infra_failed", None
+        return "timeout", 0.0, "benchmark_agent"
+    if exception_type:
+        if "EVOLVE_CANDIDATE_INVALID:" in message:
+            return "candidate_invalid", None, "candidate"
+        return "infrastructure_failed", None, "ambiguous"
+    reward = _reward(result)
+    if reward is not None:
+        return "benchmark_complete", reward, "benchmark"
+    return "infrastructure_failed", None, "evaluator"
+
+
+def _cost_usd(result: dict[str, Any]) -> float:
+    value = (result.get("agent_result") or {}).get("cost_usd")
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else 0.0
 
 
 def _exception_message(value: object) -> str | None:

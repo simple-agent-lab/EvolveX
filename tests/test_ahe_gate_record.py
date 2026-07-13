@@ -36,7 +36,7 @@ def _ctx(workspace: Path, run_dir: Path) -> OperatorContext:
 def _vector() -> dict[str, object]:
     return {
         "schema_version": 1,
-        "tasks": {"task-1": {"trials": [{"trial": 0, "status": "complete", "reward": 1.0}]}},
+        "tasks": {"task-1": {"trials": [{"trial": 0, "status": "benchmark_complete", "reward": 1.0}]}},
     }
 
 

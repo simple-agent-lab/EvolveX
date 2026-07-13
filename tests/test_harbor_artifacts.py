@@ -16,6 +16,8 @@ def write_trial(
     trial: str,
     reward: float | None,
     exception_type: str | None = None,
+    exception_message: str = "fixture failure",
+    cost_usd: float = 0.0,
 ) -> None:
     path.mkdir(parents=True)
     payload = {
@@ -23,8 +25,9 @@ def write_trial(
         "trial_name": trial,
         "verifier_result": {"rewards": {"reward": reward}} if reward is not None else None,
         "exception_info": (
-            {"exception_type": exception_type, "exception_message": "fixture failure"} if exception_type else None
+            {"exception_type": exception_type, "exception_message": exception_message} if exception_type else None
         ),
+        "agent_result": {"cost_usd": cost_usd},
     }
     (path / "result.json").write_text(json.dumps(payload))
 
@@ -44,7 +47,7 @@ def test_collect_harbor_artifacts_groups_trials_and_classifies_infra(tmp_path: P
     vector, artifacts, scoring_rewards = collect_harbor_artifacts(jobs)
 
     assert [trial["reward"] for trial in vector["tasks"]["case-a"]["trials"]] == [1.0, 0.0]
-    assert vector["tasks"]["case-b"]["trials"][0]["status"] == "infra_failed"
+    assert vector["tasks"]["case-b"]["trials"][0]["status"] == "infrastructure_failed"
     assert scoring_rewards == [1.0, 0.0]
     assert artifacts["jobs_dir"] == str(jobs.resolve())
     assert "config" not in json.dumps(artifacts).lower()
@@ -63,9 +66,53 @@ def test_collect_harbor_artifacts_scores_agent_timeouts_as_zero(tmp_path: Path) 
     vector, _artifacts, scoring_rewards = collect_harbor_artifacts(jobs)
 
     trial = vector["tasks"]["case-a"]["trials"][0]
-    assert trial["status"] == "agent_timeout"
+    assert trial["status"] == "timeout"
     assert trial["reward"] == 0.0
+    assert trial["owner"] == "benchmark_agent"
     assert scoring_rewards == [0.0]
+
+
+def test_exception_precedes_reward_and_failed_cost_is_preserved(tmp_path: Path) -> None:
+    jobs = tmp_path / "jobs"
+    write_trial(
+        jobs / "case-a__one",
+        task="case-a",
+        trial="one",
+        reward=0.0,
+        exception_type="NonZeroAgentExitCodeError",
+        exception_message="ModuleNotFoundError: No module named 'fastapi'",
+        cost_usd=0.25,
+    )
+    run_dir = tmp_path / "run"
+
+    rewards = write_harbor_artifacts(jobs, run_dir)
+
+    trial = json.loads((run_dir / "task_vector.json").read_text())["tasks"]["case-a"]["trials"][0]
+    assert trial["status"] == "infrastructure_failed"
+    assert trial["reward"] is None
+    assert trial["owner"] == "ambiguous"
+    assert rewards == []
+    assert json.loads((run_dir / "cost.json").read_text()) == {"usd": 0.25}
+
+
+def test_explicit_candidate_marker_classifies_candidate_invalid(tmp_path: Path) -> None:
+    jobs = tmp_path / "jobs"
+    write_trial(
+        jobs / "case-a__one",
+        task="case-a",
+        trial="one",
+        reward=0.0,
+        exception_type="NonZeroAgentExitCodeError",
+        exception_message="EVOLVE_CANDIDATE_INVALID: missing declared dependency",
+    )
+
+    vector, _artifacts, rewards = collect_harbor_artifacts(jobs)
+
+    trial = vector["tasks"]["case-a"]["trials"][0]
+    assert trial["status"] == "candidate_invalid"
+    assert trial["reward"] is None
+    assert trial["owner"] == "candidate"
+    assert rewards == []
 
 
 def test_collect_harbor_artifacts_omits_traceback_text_from_exception_messages(tmp_path: Path) -> None:

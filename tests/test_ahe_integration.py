@@ -28,7 +28,7 @@ outcomes = {"task-0": 0.0, "task-1": 0.0 if regressed else 1.0}
 tasks = {
     task_id: {
         "trials": [
-            {"trial": trial, "status": "complete", "reward": reward}
+            {"trial": trial, "status": "benchmark_complete", "reward": reward}
             for trial in range(2)
         ]
     }

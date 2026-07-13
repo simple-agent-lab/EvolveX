@@ -54,5 +54,7 @@ if [ -n "${EVOLVE_HARBOR_AGENT_SETUP_TIMEOUT_MULTIPLIER:-}" ]; then
 fi
 set -- "$@" --jobs-dir "$jobs_dir" --n-attempts "${EVOLVE_HARBOR_ATTEMPTS:-1}" -n "${EVOLVE_HARBOR_N_CONCURRENT:-$EVOLVE_HARBOR_N}" -y -q
 harbor "$@" > "$EVOLVE_RUN_DIR/harbor.log" 2>&1 || harbor_rc=$?
-python3 evaluator/parse_score.py "$jobs_dir" "$EVOLVE_RUN_DIR"
-exit $?
+python3 evaluator/parse_score.py "$jobs_dir" "$EVOLVE_RUN_DIR" "$harbor_rc"
+parser_rc=$?
+[ "$harbor_rc" -eq 0 ] || exit 3
+exit "$parser_rc"
