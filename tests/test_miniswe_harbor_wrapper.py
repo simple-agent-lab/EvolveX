@@ -90,7 +90,8 @@ def test_miniswe_wrapper_subclasses_harbor_miniswe_and_installs_candidate_source
     assert issubclass(module.MiniSweSourceAgent, base)
     assert environment.uploads == [(target.resolve(), "/installed-agent/miniswe-source"), (host_uv, "/tmp/evolve-uv")]
     joined = "\n".join(environment.commands)
-    assert "apt-get install -y curl build-essential git python3" in joined
+    assert "apt-get" not in joined
+    assert "apk add" not in joined
     assert 'cp /tmp/evolve-uv "$HOME/.local/bin/uv"' in joined
     assert '"$HOME/.local/bin/uv" --version' in joined
     assert "rm -f \"$HOME/.local/bin/uv\"" in joined

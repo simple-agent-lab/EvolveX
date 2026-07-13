@@ -91,22 +91,6 @@ class MiniSweSourceAgent(MiniSweAgent):
         if host_uv is not None:
             await environment.upload_file(host_uv, HOST_UV_PATH)
         install_env = self._install_env()
-        if hasattr(self, "exec_as_root"):
-            await self.exec_as_root(
-                environment,
-                command=(
-                    "if command -v apt-get &>/dev/null; then "
-                    "apt-get update && apt-get install -y curl build-essential git python3; "
-                    "elif command -v apk &>/dev/null; then "
-                    "apk add --no-cache curl bash build-base git python3 py3-pip; "
-                    "elif command -v yum &>/dev/null; then "
-                    "yum install -y curl git gcc make python3; "
-                    "elif command -v dnf &>/dev/null; then "
-                    "dnf install -y curl git gcc make python3; "
-                    "fi"
-                ),
-                env={**install_env, "DEBIAN_FRONTEND": "noninteractive"},
-            )
         await self.exec_as_agent(
             environment,
             command=(
