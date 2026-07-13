@@ -106,7 +106,7 @@ def test_harbor_stage_limit_and_anchor_task_file_override(tmp_path: Path) -> Non
         _eval_env(
             "experiment",
             "swebenchpro@1.0",
-            n_concurrent=1,
+            n_concurrent=16,
             tasks_per_round=4,
             trials=1,
             partial_floor=0.8,

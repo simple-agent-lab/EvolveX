@@ -51,7 +51,7 @@ if [ -n "${EVOLVE_HARBOR_TASK_FILE:-}" ]; then
 fi
 if [ -n "${EVOLVE_TASK_LIMIT:-}" ]; then
   set -- "$@" --n-tasks "$EVOLVE_TASK_LIMIT"
-  export EVOLVE_HARBOR_EXPECTED_TRIALS=$((EVOLVE_TASK_LIMIT * EVOLVE_HARBOR_N))
+  export EVOLVE_HARBOR_EXPECTED_TRIALS=$((EVOLVE_TASK_LIMIT * EVOLVE_HARBOR_ATTEMPTS))
 fi
 set -- "$@" --agent "$EVOLVE_HARBOR_AGENT"
 set -- "$@" --mounts "$uv_mount"
