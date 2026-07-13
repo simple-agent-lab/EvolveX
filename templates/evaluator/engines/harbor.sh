@@ -11,7 +11,17 @@ if [ -z "${EVOLVE_GENID:-}" ]; then
 fi
 export EVOLVE_GENID
 export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
+: "${EVOLVE_UV_CACHE_DIR:=$HOME/.evolve/uv-cache}"
+mkdir -p "$EVOLVE_UV_CACHE_DIR"
+uv_mount=$(python3 -c 'import json,sys; print(json.dumps([{"type":"bind","source":sys.argv[1],"target":"/installed-agent/uv-cache"}]))' "$EVOLVE_UV_CACHE_DIR")
 jobs_dir="$EVOLVE_JOBS_DIR/gen-$EVOLVE_GENID"
+if [ -n "${EVOLVE_CANDIDATE_SMOKE_MODE:-}" ]; then
+  [ -n "${EVOLVE_CANDIDATE_SMOKE_JOBS_DIR:-}" ] || exit 3
+  jobs_dir=$EVOLVE_CANDIDATE_SMOKE_JOBS_DIR
+  EVOLVE_HARBOR_N=1
+  EVOLVE_HARBOR_ATTEMPTS=1
+  EVOLVE_HARBOR_N_CONCURRENT=1
+fi
 rm -rf "$jobs_dir" && mkdir -p "$jobs_dir"
 harbor_rc=0
 set -- run
@@ -44,6 +54,10 @@ if [ -n "${EVOLVE_TASK_LIMIT:-}" ]; then
   export EVOLVE_HARBOR_EXPECTED_TRIALS=$((EVOLVE_TASK_LIMIT * EVOLVE_HARBOR_N))
 fi
 set -- "$@" --agent "$EVOLVE_HARBOR_AGENT"
+set -- "$@" --mounts "$uv_mount"
+if [ -n "${EVOLVE_CANDIDATE_SMOKE_MODE:-}" ]; then
+  set -- "$@" --install-only --ae "EVOLVE_CANDIDATE_SMOKE_MODE=$EVOLVE_CANDIDATE_SMOKE_MODE"
+fi
 if [ -n "${EVOLVE_HARBOR_MODEL:-}" ]; then
   set -- "$@" --model "$EVOLVE_HARBOR_MODEL"
 elif [ -n "${OPENAI_MODEL:-}" ]; then
@@ -54,6 +68,10 @@ if [ -n "${EVOLVE_HARBOR_AGENT_SETUP_TIMEOUT_MULTIPLIER:-}" ]; then
 fi
 set -- "$@" --jobs-dir "$jobs_dir" --n-attempts "${EVOLVE_HARBOR_ATTEMPTS:-1}" -n "${EVOLVE_HARBOR_N_CONCURRENT:-$EVOLVE_HARBOR_N}" -y -q
 harbor "$@" > "$EVOLVE_RUN_DIR/harbor.log" 2>&1 || harbor_rc=$?
+if [ -n "${EVOLVE_CANDIDATE_SMOKE_MODE:-}" ]; then
+  python3 evaluator/parse_smoke.py "$jobs_dir" "$EVOLVE_RUN_DIR/harbor-result.json" "$harbor_rc"
+  exit $?
+fi
 python3 evaluator/parse_score.py "$jobs_dir" "$EVOLVE_RUN_DIR" "$harbor_rc"
 parser_rc=$?
 [ "$harbor_rc" -eq 0 ] || exit 3

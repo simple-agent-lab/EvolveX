@@ -113,6 +113,9 @@ def _run_eval_script(
 ) -> tuple[str, float | None]:
     env: dict[str, str] = {**os.environ.copy(), "EVOLVE_RUN_DIR": str(run_dir), "EVOLVE_GENID": genid}
     env["EVOLVE_EVAL_KIND"] = eval_kind
+    uv_cache = run_dir.parents[1] / "runtime" / "uv-cache"
+    uv_cache.mkdir(parents=True, exist_ok=True)
+    env["EVOLVE_UV_CACHE_DIR"] = str(uv_cache)
     if task_limit is not None:
         env["EVOLVE_TASK_LIMIT"] = str(task_limit)
     env.pop("EVOLVE_ROUND", None)

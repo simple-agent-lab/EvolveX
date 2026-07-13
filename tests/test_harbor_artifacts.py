@@ -1,4 +1,5 @@
 import hashlib
+import importlib
 import json
 import sys
 from pathlib import Path
@@ -7,6 +8,8 @@ TEMPLATE_EVALUATOR = Path(__file__).resolve().parents[1] / "templates" / "evalua
 sys.path.insert(0, str(TEMPLATE_EVALUATOR))
 
 from harbor_artifacts import collect_harbor_artifacts, write_harbor_artifacts
+
+harbor_artifacts = importlib.import_module("harbor_artifacts")
 
 
 def write_trial(
@@ -113,6 +116,27 @@ def test_explicit_candidate_marker_classifies_candidate_invalid(tmp_path: Path) 
     assert trial["reward"] is None
     assert trial["owner"] == "candidate"
     assert rewards == []
+
+
+def test_candidate_error_code_uses_only_explicit_marker() -> None:
+    assert (
+        harbor_artifacts.candidate_error_code(
+            {
+                "exception_type": "NonZeroAgentExitCodeError",
+                "exception_message": "EVOLVE_CANDIDATE_INVALID: model_path_import_failed",
+            }
+        )
+        == "model_path_import_failed"
+    )
+    assert (
+        harbor_artifacts.candidate_error_code(
+            {
+                "exception_type": "NonZeroAgentExitCodeError",
+                "exception_message": "ModuleNotFoundError: No module named 'fastapi'",
+            }
+        )
+        is None
+    )
 
 
 def test_collect_harbor_artifacts_omits_traceback_text_from_exception_messages(tmp_path: Path) -> None:

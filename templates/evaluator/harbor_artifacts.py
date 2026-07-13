@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,18 @@ SAFE_ARTIFACTS = (
     "result.json",
     "exception.txt",
 )
+_CANDIDATE_MARKER = "EVOLVE_CANDIDATE_INVALID:"
+_SAFE_ERROR_CODE = re.compile(r"[a-z0-9_]+")
+
+
+def candidate_error_code(exception_info: object) -> str | None:
+    if not isinstance(exception_info, dict):
+        return None
+    message = str(exception_info.get("exception_message") or "")
+    if _CANDIDATE_MARKER not in message:
+        return None
+    code = message.partition(_CANDIDATE_MARKER)[2].strip().splitlines()[0].strip()
+    return code if _SAFE_ERROR_CODE.fullmatch(code) else "candidate_invalid"
 
 
 def collect_harbor_artifacts(jobs_dir: Path) -> tuple[dict[str, Any], dict[str, Any], list[float]]:
@@ -126,11 +139,10 @@ def _reward(result: dict[str, Any]) -> float | None:
 def _trial_result(result: dict[str, Any]) -> tuple[str, float | None, str]:
     exception = result.get("exception_info") or {}
     exception_type = str(exception.get("exception_type") or "")
-    message = str(exception.get("exception_message") or "")
     if exception_type in {"AgentTimeoutError", "AgentExecutionTimeoutError"}:
         return "timeout", 0.0, "benchmark_agent"
     if exception_type:
-        if "EVOLVE_CANDIDATE_INVALID:" in message:
+        if candidate_error_code(exception):
             return "candidate_invalid", None, "candidate"
         return "infrastructure_failed", None, "ambiguous"
     reward = _reward(result)

@@ -7,13 +7,41 @@ import pytest
 from conftest import init_workspace, rows_by_genid, run_evolve, smoke_agent_command
 
 from evolve.archive import MECHANISM_EVAL_FIELD, append_event
-from evolve.evaluator import _effective_task_set_identity, _evaluation_artifact_reference, _read_task_vector
+from evolve.evaluator import (
+    _effective_task_set_identity,
+    _evaluation_artifact_reference,
+    _read_task_vector,
+    _run_eval_script,
+)
 from evolve.task_vectors import TaskVectorError
 
 
 def make_eval_script(path: Path, body: str) -> None:
     path.write_text(body)
     path.chmod(path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+
+def test_eval_script_receives_persistent_workspace_uv_cache(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    checkout = tmp_path / "checkout"
+    (checkout / "evaluator").mkdir(parents=True)
+    make_eval_script(
+        checkout / "evaluator" / "eval.sh",
+        "#!/bin/sh\n"
+        "set -eu\n"
+        'mkdir -p "$EVOLVE_RUN_DIR"\n'
+        'printf "%s\\n" "$EVOLVE_UV_CACHE_DIR" > cache-path\n'
+        'printf "complete\\n" > "$EVOLVE_RUN_DIR/status"\n'
+        'printf "1.0\\n" > "$EVOLVE_RUN_DIR/score"\n',
+    )
+    run_dir = workspace / "runs" / "gen-1" / "eval"
+    run_dir.mkdir(parents=True)
+
+    assert _run_eval_script(checkout, run_dir, "1", None, None, "research") == ("complete", 1.0)
+
+    expected = workspace / "runs" / "runtime" / "uv-cache"
+    assert (checkout / "cache-path").read_text() == f"{expected}\n"
+    assert expected.is_dir()
 
 
 def test_evaluator_path_commit_is_invalid_and_eval_does_not_stamp_score(tmp_path: Path) -> None:

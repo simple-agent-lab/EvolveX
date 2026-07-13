@@ -1,3 +1,4 @@
+import json
 import os
 import stat
 import subprocess
@@ -69,6 +70,7 @@ def test_harbor_registry_dataset_uses_dataset_flag_and_task_file(tmp_path: Path)
         "EVOLVE_RUN_DIR": str(tmp_path / "run"),
         "OPENAI_MODEL": "smoke-model",
         "EVOLVE_HARBOR_AGENT_SETUP_TIMEOUT_MULTIPLIER": "3",
+        "EVOLVE_UV_CACHE_DIR": str(tmp_path / "shared-uv-cache"),
     }
     result = subprocess.run([str(evaluator / "eval.sh")], cwd=tmp_path, env=env, text=True, capture_output=True)
 
@@ -83,6 +85,15 @@ def test_harbor_registry_dataset_uses_dataset_flag_and_task_file(tmp_path: Path)
     assert args[args.index("--model") + 1] == "openai/smoke-model"
     assert args[args.index("--agent-setup-timeout-multiplier") + 1] == "3"
     assert args[args.index("--n-attempts") + 1] == "2"
+    mounts = json.loads(args[args.index("--mounts") + 1])
+    assert mounts == [
+        {
+            "source": str(tmp_path / "shared-uv-cache"),
+            "target": "/installed-agent/uv-cache",
+            "type": "bind",
+        }
+    ]
+    assert (tmp_path / "shared-uv-cache").is_dir()
     assert docker_host_capture.read_text() == "unset\n"
     assert (tmp_path / "run" / "status").read_text() == "complete\n"
 
@@ -197,3 +208,67 @@ def test_nonzero_harbor_exit_overrides_reward_and_preserves_cost(tmp_path: Path)
     assert (tmp_path / "run" / "status").read_text() == "infra_failed\n"
     assert not (tmp_path / "run" / "score").exists()
     assert (tmp_path / "run" / "cost.json").read_text() == '{"usd": 0.4}\n'
+
+
+def test_harbor_smoke_is_install_only_and_uses_shared_cache(tmp_path: Path) -> None:
+    evaluator = tmp_path / "evaluator"
+    evaluator.mkdir()
+    _write_executable(evaluator / "eval.sh", _eval_sh("harbor", "fixture"))
+    (evaluator / "eval.env").write_text(
+        _eval_env(
+            "experiment",
+            "fixture",
+            n_concurrent=8,
+            tasks_per_round=8,
+            trials=2,
+            partial_floor=0.8,
+            agent="target.harbor_agent:MiniSweSourceAgent",
+        )
+    )
+    (evaluator / "harbor_artifacts.py").write_text(
+        (resource_root("templates") / "evaluator/harbor_artifacts.py").read_text()
+    )
+    (evaluator / "parse_smoke.py").write_text((resource_root("templates") / "evaluator/parse_smoke.py").read_text())
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    _write_executable(
+        fake_bin / "harbor",
+        "#!/bin/sh\n"
+        'printf \'%s\\n\' "$@" > "$HARBOR_ARGS_CAPTURE"\n'
+        "jobs_dir=\n"
+        'while [ "$#" -gt 0 ]; do\n'
+        '  if [ "$1" = "--jobs-dir" ]; then shift; jobs_dir=$1; fi\n'
+        "  shift || true\n"
+        "done\n"
+        'mkdir -p "$jobs_dir/trial"\n'
+        'printf \'%s\\n\' \'{"task_name":"case-a","trial_name":"trial"}\' > "$jobs_dir/trial/result.json"\n',
+    )
+    run_dir = tmp_path / "run"
+    jobs_dir = run_dir / "jobs"
+    cache = tmp_path / "shared-cache"
+    args_capture = tmp_path / "args"
+    env = {
+        **os.environ,
+        "HOME": str(tmp_path / "home"),
+        "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
+        "HARBOR_ARGS_CAPTURE": str(args_capture),
+        "EVOLVE_RUN_DIR": str(run_dir),
+        "EVOLVE_CANDIDATE_SMOKE_MODE": "full",
+        "EVOLVE_CANDIDATE_SMOKE_JOBS_DIR": str(jobs_dir),
+        "EVOLVE_TASK_LIMIT": "1",
+        "EVOLVE_UV_CACHE_DIR": str(cache),
+    }
+
+    result = subprocess.run([str(evaluator / "eval.sh")], cwd=tmp_path, env=env, text=True, capture_output=True)
+
+    assert result.returncode == 0, result.stderr
+    args = args_capture.read_text().splitlines()
+    assert "--install-only" in args
+    assert args[args.index("--ae") + 1] == "EVOLVE_CANDIDATE_SMOKE_MODE=full"
+    assert args[args.index("--n-tasks") + 1] == "1"
+    assert args[args.index("--n-attempts") + 1] == "1"
+    assert args[args.index("-n") + 1] == "1"
+    mounts = json.loads(args[args.index("--mounts") + 1])
+    assert mounts[0]["source"] == str(cache)
+    assert json.loads((run_dir / "harbor-result.json").read_text())["status"] == "passed"
+    assert not (run_dir / "score").exists()
