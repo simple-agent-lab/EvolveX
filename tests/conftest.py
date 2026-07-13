@@ -128,6 +128,29 @@ def smoke_env(evolve_home: Path) -> dict[str, str]:
     }
 
 
+def write_locked_miniswe_seed(path: Path) -> Path:
+    path.mkdir(parents=True, exist_ok=True)
+    (path / "pyproject.toml").write_text(
+        "[project]\n"
+        "name = 'mini-swe-agent'\n"
+        "version = '0.0.0'\n"
+        "requires-python = '>=3.11'\n"
+        "dependencies = []\n"
+    )
+    package = path / "src" / "minisweagent"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("__version__ = '0.0.0'\n")
+    result = subprocess.run(
+        ["uv", "lock", "--offline", "--python", sys.executable, "--project", str(path)],
+        text=True,
+        capture_output=True,
+        check=False,
+        env={**os.environ, "UV_CACHE_DIR": os.environ.get("UV_CACHE_DIR", "/tmp/simple-evolve-agent-test-uv")},
+    )
+    assert result.returncode == 0, result.stderr
+    return path
+
+
 def git(workspace: Path, *args: str) -> str:
     result = subprocess.run(
         ["git", "-C", str(workspace), *args],
@@ -147,6 +170,23 @@ def init_workspace(tmp_path: Path, experiment: str = "experiment") -> tuple[Path
         str(workspace),
         "--recipe",
         "hill_climb-smoke",
+        env={"EVAL_STUB": "1", "EVOLVE_HOME": str(evolve_home)},
+    )
+    assert result.returncode == 0, result.stderr
+    return workspace, evolve_home
+
+
+def init_miniswe_workspace(tmp_path: Path, experiment: str = "miniswe-experiment") -> tuple[Path, Path]:
+    workspace = tmp_path / experiment
+    evolve_home = tmp_path / "evolve-home"
+    seed = write_locked_miniswe_seed(tmp_path / "miniswe-seed")
+    result = run_evolve(
+        "init",
+        str(workspace),
+        "--recipe",
+        "hill_climb",
+        "--seed",
+        str(seed),
         env={"EVAL_STUB": "1", "EVOLVE_HOME": str(evolve_home)},
     )
     assert result.returncode == 0, result.stderr

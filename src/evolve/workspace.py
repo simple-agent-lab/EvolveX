@@ -16,6 +16,7 @@ from typing import Any, cast
 from . import __version__ as _EVOLVE_VERSION
 from .archive import append_event
 from .asset_discovery import root_python_helpers
+from .candidate_runtime import validate_miniswe_candidate
 from .config import (
     OPERATOR_KINDS,
     OPTIONAL_OPERATOR_KINDS,
@@ -370,6 +371,7 @@ def _write_target_harbor_agent(workspace: Path, target_config: dict[str, Any]) -
         return
     if kind != "miniswe-source":
         raise ValueError(f"unsupported target.harbor_agent: {kind}")
+    validate_miniswe_candidate(workspace)
     (workspace / "target" / "harbor_agent.py").write_text(_template("target/harbor/miniswe_source_agent.py"))
 
 

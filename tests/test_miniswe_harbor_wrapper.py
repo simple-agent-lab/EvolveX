@@ -5,6 +5,9 @@ import sys
 import types
 from pathlib import Path
 
+import pytest
+from conftest import write_locked_miniswe_seed
+
 
 def _install_fake_harbor(monkeypatch):
     root = types.ModuleType("harbor")
@@ -165,10 +168,8 @@ def test_init_with_local_miniswe_seed_writes_target_harbor_wrapper(tmp_path: Pat
     from evolve import workspace as workspace_module
     from evolve.workspace import InitOptions, init_workspace
 
-    seed = tmp_path / "miniswe"
-    (seed / "src" / "minisweagent").mkdir(parents=True)
-    (seed / "src" / "minisweagent" / "__init__.py").write_text("__version__ = '0.test'\n")
-    (seed / "pyproject.toml").write_text("[project]\nname = 'mini-swe-agent'\nversion = '0.test'\n")
+    seed = write_locked_miniswe_seed(tmp_path / "miniswe")
+    expected_lock = (seed / "uv.lock").read_bytes()
     workspace = tmp_path / "workspace"
     config = workspace_module.default_config("hill_climb", workspace.name)
     config["target"]["harbor_agent"] = "miniswe-source"
@@ -180,22 +181,36 @@ def test_init_with_local_miniswe_seed_writes_target_harbor_wrapper(tmp_path: Pat
     wrapper = workspace / "target" / "harbor_agent.py"
     assert wrapper.exists()
     assert "class MiniSweSourceAgent(MiniSweAgent):" in wrapper.read_text()
+    assert (workspace / "target" / "uv.lock").read_bytes() == expected_lock
+
+
+def test_init_rejects_miniswe_seed_without_lock(tmp_path: Path, monkeypatch) -> None:
+    from evolve import workspace as workspace_module
+    from evolve.candidate_runtime import CandidateDependencyError
+    from evolve.workspace import InitOptions, init_workspace
+
+    seed = write_locked_miniswe_seed(tmp_path / "miniswe")
+    (seed / "uv.lock").unlink()
+    workspace = tmp_path / "workspace"
+    config = workspace_module.default_config("hill_climb", workspace.name)
+    config["target"]["harbor_agent"] = "miniswe-source"
+    monkeypatch.setattr(workspace_module, "default_config", lambda recipe, experiment_id: config)
+
+    with pytest.raises(CandidateDependencyError, match="uv.lock is required"):
+        init_workspace(InitOptions(workspace=workspace, recipe="hill_climb", seed=str(seed)))
 
 
 def test_init_with_local_miniswe_seed_excludes_virtualenv_cache(tmp_path: Path, monkeypatch) -> None:
     from evolve import workspace as workspace_module
     from evolve.workspace import InitOptions, init_workspace
 
-    seed = tmp_path / "miniswe"
-    (seed / "src" / "minisweagent").mkdir(parents=True)
-    (seed / "src" / "minisweagent" / "__init__.py").write_text("__version__ = '0.test'\n")
+    seed = write_locked_miniswe_seed(tmp_path / "miniswe")
     (seed / ".venv" / "bin").mkdir(parents=True)
     (seed / ".venv" / "bin" / "python").write_text("not source\n")
     (seed / ".pytest_cache").mkdir()
     (seed / ".env").write_text("OPENAI_API_KEY=must-not-copy\n")
     (seed / ".env.local").write_text("HTTPS_PROXY=http://user:pass@proxy.example\n")
     (seed / "src" / "minisweagent" / ".env.test").write_text("TOKEN=must-not-copy\n")
-    (seed / "pyproject.toml").write_text("[project]\nname = 'mini-swe-agent'\nversion = '0.test'\n")
     workspace = tmp_path / "workspace"
     config = workspace_module.default_config("hill_climb", workspace.name)
     config["target"]["harbor_agent"] = "miniswe-source"

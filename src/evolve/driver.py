@@ -22,7 +22,8 @@ from .archive import (
     read_events,
     rows_by_genid,
 )
-from .config import evaluator_sampling, experiment_id, operator_blocks
+from .candidate_runtime import CandidateDependencyError, validate_miniswe_candidate
+from .config import evaluator_sampling, experiment_id, load_config, operator_blocks
 from .evaluator import evaluate
 from .frozen.interfaces import (
     PayloadValidationError,
@@ -597,6 +598,22 @@ def commit_child(workspace: Path, child_worktree: Path, parent: str, genid: str)
             violations=violations,
         )
         return
+
+    target = load_config(child_worktree / "evolve.yaml")["target"]
+    if target.get("harbor_agent") == "miniswe-source":
+        try:
+            validate_miniswe_candidate(child_worktree, changed_paths=mutated)
+        except CandidateDependencyError as exc:
+            _append_candidate_rejected(
+                workspace,
+                exp_id,
+                genid,
+                parent,
+                status="invalid_proposal",
+                reason=f"candidate dependency invalid: {exc.code}",
+                mutated=mutated,
+            )
+            return
 
     commit_paths(child_worktree, mutated, f"evolve gen {genid}")
     create_tag(child_worktree, tag)

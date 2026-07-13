@@ -1,9 +1,11 @@
 import json
 import random
 import runpy
+import shlex
+import sys
 from pathlib import Path
 
-from conftest import git, init_workspace, rows_by_genid, run_evolve, smoke_env
+from conftest import git, init_miniswe_workspace, init_workspace, rows_by_genid, run_evolve, smoke_env
 
 from evolve.driver import RunOptions
 from evolve.driver import run as driver_run
@@ -97,6 +99,35 @@ def test_validate_rejection_happens_before_candidate_commit(tmp_path: Path, monk
     assert row["reason"] == "candidate validation rejected: broken imports"
     assert not git(workspace, "tag", "--list", "gen/1")
     assert json.loads((workspace / "runs/gen-1/validate/result.json").read_text())["accept"] is False
+
+
+def test_driver_rejects_dependency_pair_before_candidate_commit(tmp_path: Path) -> None:
+    workspace, evolve_home = init_miniswe_workspace(tmp_path)
+    code = (
+        "from pathlib import Path\n"
+        "path = Path('target/pyproject.toml')\n"
+        "path.write_text(path.read_text() + '\\n# dependency metadata changed\\n')\n"
+        "print('predicted_fixes: []')\n"
+    )
+    command = f"{shlex.quote(sys.executable)} -c {shlex.quote(code)}"
+
+    result = run_evolve(
+        "run",
+        str(workspace),
+        "--max-generations",
+        "1",
+        env={
+            "EVAL_STUB": "1",
+            "EVOLVE_HOME": str(evolve_home),
+            "EVOLVE_AGENT_COMMAND": command,
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    row = rows_by_genid(workspace)["1"]
+    assert row["status"] == "invalid_proposal"
+    assert row["reason"] == "candidate dependency invalid: project_changed_without_lock"
+    assert git(workspace, "tag", "--list", "gen/1") == ""
 
 
 def test_jsonl_record_computes_verified_fixes_from_task_vectors(tmp_path: Path) -> None:

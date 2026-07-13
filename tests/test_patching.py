@@ -3,6 +3,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from evolve.patching import SurfacePolicy, create_candidate_patch, load_surface_policy, patch_parent_ref
+from evolve.surface import check_paths
 
 
 def _git(root: Path, *args: str) -> str:
@@ -106,6 +107,10 @@ def test_load_surface_policy_reads_workspace_surface_lists(tmp_path: Path) -> No
     policy = load_surface_policy(root)
 
     assert policy == SurfacePolicy(include=["target/**"], exclude=["target/tmp/**"])
+
+
+def test_harbor_wrapper_is_implicitly_protected() -> None:
+    assert check_paths(["target/harbor_agent.py"], ["target/**"], []) == ["target/harbor_agent.py"]
 
 
 def test_patch_parent_ref_prefers_context_parent(tmp_path: Path) -> None:
