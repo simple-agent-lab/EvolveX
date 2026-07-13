@@ -55,7 +55,7 @@ def main() -> int:
         "tasks": {
             task_id: {
                 "trials": [
-                    {"trial": trial, "status": "complete", "reward": 1.0 if passed else 0.0}
+                    {"trial": trial, "status": "benchmark_complete", "reward": 1.0 if passed else 0.0}
                     for trial in range(attempts)
                 ]
             }

@@ -14,7 +14,7 @@ from evolve.frozen import interfaces
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src" / "evolve"
-TOTAL_BUDGET = 4566  # union of HyperAgents lifecycle and generic AHE artifact boundaries
+TOTAL_BUDGET = 4681  # integrated recipes plus the canonical evaluation certificate
 ROW = re.compile(r"^\| `([^`]+\.py)` \| (\d+) \|")
 APPROVED_MODULES = {
     "__init__.py",
@@ -25,6 +25,7 @@ APPROVED_MODULES = {
     "cli.py",
     "config.py",
     "driver.py",
+    "evaluation.py",
     "evaluator.py",
     "git.py",
     "operators.py",

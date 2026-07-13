@@ -12,8 +12,8 @@ def test_normalize_legacy_boolean_vector() -> None:
     assert normalize_task_vector({"task-a": True, "task-b": False}) == {
         "schema_version": 1,
         "tasks": {
-            "task-a": {"trials": [{"trial": 0, "status": "complete", "reward": 1.0}]},
-            "task-b": {"trials": [{"trial": 0, "status": "complete", "reward": 0.0}]},
+            "task-a": {"trials": [{"trial": 0, "status": "benchmark_complete", "reward": 1.0}]},
+            "task-b": {"trials": [{"trial": 0, "status": "benchmark_complete", "reward": 0.0}]},
         },
     }
 
@@ -24,11 +24,12 @@ def test_versioned_vector_preserves_partial_and_infra_trials() -> None:
         "tasks": {
             "task-a": {
                 "trials": [
-                    {"trial": 0, "status": "complete", "reward": 1.0},
+                    {"trial": 0, "status": "benchmark_complete", "reward": 1.0},
                     {
                         "trial": 1,
-                        "status": "infra_failed",
+                        "status": "infrastructure_failed",
                         "reward": None,
+                        "owner": "evaluator",
                         "exception_type": "VerifierTimeoutError",
                     },
                 ]
@@ -39,6 +40,38 @@ def test_versioned_vector_preserves_partial_and_infra_trials() -> None:
     assert task_passed(vector, "task-a") is None
 
 
+def test_benchmark_agent_timeout_may_preserve_zero_reward() -> None:
+    vector = {
+        "schema_version": 1,
+        "tasks": {
+            "task-a": {
+                "trials": [
+                    {"trial": 0, "status": "timeout", "reward": 0.0, "owner": "benchmark_agent"},
+                ]
+            }
+        },
+    }
+
+    assert normalize_task_vector(vector) == vector
+    assert task_passed(vector, "task-a") is None
+
+
+def test_non_benchmark_timeout_cannot_carry_reward() -> None:
+    with pytest.raises(TaskVectorError, match="non-score-eligible trial.*null reward"):
+        normalize_task_vector(
+            {
+                "schema_version": 1,
+                "tasks": {
+                    "task-a": {
+                        "trials": [
+                            {"trial": 0, "status": "timeout", "reward": 0.0, "owner": "evaluator"},
+                        ]
+                    }
+                },
+            }
+        )
+
+
 def test_invalid_task_vector_rejects_duplicate_trial_numbers() -> None:
     with pytest.raises(TaskVectorError, match="duplicate trial 0"):
         normalize_task_vector(
@@ -47,8 +80,8 @@ def test_invalid_task_vector_rejects_duplicate_trial_numbers() -> None:
                 "tasks": {
                     "task-a": {
                         "trials": [
-                            {"trial": 0, "status": "complete", "reward": 1.0},
-                            {"trial": 0, "status": "complete", "reward": 0.0},
+                            {"trial": 0, "status": "benchmark_complete", "reward": 1.0},
+                            {"trial": 0, "status": "benchmark_complete", "reward": 0.0},
                         ]
                     }
                 },
@@ -77,7 +110,7 @@ def test_invalid_task_vector_rejects_boolean_trial_ids() -> None:
                 "tasks": {
                     "task-a": {
                         "trials": [
-                            {"trial": True, "status": "complete", "reward": 1.0},
+                            {"trial": True, "status": "benchmark_complete", "reward": 1.0},
                         ]
                     }
                 },
@@ -88,10 +121,10 @@ def test_invalid_task_vector_rejects_boolean_trial_ids() -> None:
 @pytest.mark.parametrize(
     ("status", "reward", "message"),
     [
-        ("complete", None, "complete trial.*numeric reward"),
-        ("agent_timeout", 0.0, "non-complete trial.*null reward"),
-        ("infra_failed", 1.0, "non-complete trial.*null reward"),
-        ("cancelled", 0.0, "non-complete trial.*null reward"),
+        ("benchmark_complete", None, "benchmark_complete trial.*numeric reward"),
+        ("candidate_invalid", 0.0, "non-score-eligible trial.*null reward"),
+        ("infrastructure_failed", 1.0, "non-score-eligible trial.*null reward"),
+        ("cancelled", 0.0, "non-score-eligible trial.*null reward"),
     ],
 )
 def test_invalid_task_vector_rejects_inconsistent_status_reward(status: str, reward: float | None, message: str) -> None:
@@ -133,7 +166,7 @@ def test_stub_eval_emits_configured_completed_trials_without_changing_score(tmp_
     vector = json.loads((run_dir / "task_vector.json").read_text())
     for task in vector["tasks"].values():
         assert [trial["trial"] for trial in task["trials"]] == [0, 1, 2]
-        assert all(trial["status"] == "complete" for trial in task["trials"])
+        assert all(trial["status"] == "benchmark_complete" for trial in task["trials"])
     artifacts = json.loads((run_dir / "evaluation_artifacts.json").read_text())
     assert len(artifacts["trials"]) == 8 * 3
     assert all((run_dir / "artifacts" / trial["files"][0]["path"]).is_file() for trial in artifacts["trials"])

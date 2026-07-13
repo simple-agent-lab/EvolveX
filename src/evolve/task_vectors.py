@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-TRIAL_STATUSES = {"complete", "agent_timeout", "infra_failed", "cancelled"}
+from .evaluation import Outcome
+
+TRIAL_STATUSES = {outcome.value for outcome in Outcome}
 
 
 class TaskVectorError(ValueError):
@@ -19,7 +21,11 @@ def normalize_task_vector(payload: object) -> dict[str, Any]:
         return {
             "schema_version": 1,
             "tasks": {
-                key: {"trials": [{"trial": 0, "status": "complete", "reward": 1.0 if value else 0.0}]}
+                key: {
+                    "trials": [
+                        {"trial": 0, "status": Outcome.BENCHMARK_COMPLETE.value, "reward": 1.0 if value else 0.0}
+                    ]
+                }
                 for key, value in sorted(data.items())
             },
         }
@@ -51,10 +57,13 @@ def normalize_task_vector(payload: object) -> dict[str, Any]:
                 raise TaskVectorError(f"invalid status {status!r} for {task_id}")
             if reward is not None and (isinstance(reward, bool) or not isinstance(reward, (int, float))):
                 raise TaskVectorError(f"invalid reward for {task_id} trial {trial}")
-            if status == "complete" and reward is None:
-                raise TaskVectorError(f"complete trial for {task_id} must have a numeric reward")
-            if status != "complete" and reward is not None:
-                raise TaskVectorError(f"non-complete trial for {task_id} must have a null reward")
+            score_eligible = status == Outcome.BENCHMARK_COMPLETE or (
+                status == Outcome.TIMEOUT and raw.get("owner") == "benchmark_agent"
+            )
+            if score_eligible and reward is None:
+                raise TaskVectorError(f"{status} trial for {task_id} must have a numeric reward")
+            if not score_eligible and reward is not None:
+                raise TaskVectorError(f"non-score-eligible trial for {task_id} must have a null reward")
             trials.append(dict(raw))
         tasks[task_id] = {**task, "trials": sorted(trials, key=lambda item: item["trial"])}
     return {"schema_version": 1, "tasks": tasks}
@@ -69,6 +78,8 @@ def task_passed(payload: object, task_id: str) -> bool | None:
     if not task:
         return None
     trials = task["trials"]
-    if not trials or any(item["status"] != "complete" or item.get("reward") is None for item in trials):
+    if not trials or any(
+        item["status"] != Outcome.BENCHMARK_COMPLETE or item.get("reward") is None for item in trials
+    ):
         return None
     return all(float(item["reward"]) > 0 for item in trials)

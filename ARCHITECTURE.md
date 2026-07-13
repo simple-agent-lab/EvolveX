@@ -29,8 +29,9 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `asset_discovery.py` | 30 | bounded direct-root Python helper discovery without recursive pre-reading |
 | `agent.py` | 180 | meta-agent command runner: prompt-file setup, timeout/process-group handling, output + usage capture |
 | `evaluator.py` | 151 | clean-checkout canonical evaluation: tree assertion, exit-code contract, score parsing |
+| `evaluation.py` | 110 | immutable canonical trial outcomes and framework-derived evaluation certificates |
 | `task_sets.py` | 60 | canonical evaluator task-set membership and dataset/attempt identity stamps |
-| `task_vectors.py` | 80 | generic task-vector schema normalization, validation, and tri-state per-task pass lookup |
+| `task_vectors.py` | 90 | generic task-vector schema normalization, validation, and tri-state per-task pass lookup |
 | `git.py` | 150 | thin git subprocess helpers — nothing evolve-specific |
 | `patching.py` | 120 | candidate patch assembly: changed paths, diffs, surface-violation repair |
 | `surface.py` | 150 | mutable-surface pattern matching and violation checks |
@@ -51,7 +52,7 @@ each workspace, immutable there because it sits outside the mutable surface
 | `frozen/sdk.py` | 420 | Python operator entrypoint and file-contract IO; no library algorithm policy |
 | `frozen/meta_eval.py` | 130 | self-modification admission gate: confound-free replay of old vs new operator surface (mechanism 1) |
 
-Total `src/evolve/` budget: **4566 lines**. If the mechanism wants to
+Total `src/evolve/` budget: **4681 lines**. If the mechanism wants to
 grow past that, something belongs in a workspace operator instead —
 that is the spec's rule, not a style preference.
 
