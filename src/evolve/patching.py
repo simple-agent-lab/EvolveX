@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .candidate_snapshot import build_candidate_snapshot
 from .git import git, head_tag, working_tree_changed_paths
 from .surface import check_paths, surface_patterns
 
@@ -54,7 +55,12 @@ def create_candidate_patch(
         changed = working_tree_changed_paths(root, parent_ref)
         violations = check_paths(changed, surface.include, surface.exclude)
 
-    diff = _candidate_diff(root, parent_ref, changed)
+    if violations:
+        diff = _candidate_diff(root, parent_ref, changed)
+    else:
+        snapshot = build_candidate_snapshot(root, parent_ref, include=surface.include, exclude=surface.exclude)
+        changed = list(snapshot.changed_paths)
+        diff = git(root, "diff", "--binary", parent_ref, snapshot.commit, "--").stdout
     surface_report = {"ok": not violations, "mutated": changed, "violations": violations}
     return CandidatePatch(changed_paths=changed, diff=diff, surface_report=surface_report, notes=notes)
 
@@ -62,7 +68,11 @@ def create_candidate_patch(
 def _candidate_diff(root: Path, parent_ref: str, changed: list[str]) -> str:
     if not changed:
         return ""
-    untracked = set(_untracked_paths(root, changed))
+    untracked = {
+        path
+        for path in changed
+        if git(root, "status", "--porcelain", "--", path, check=False).stdout.startswith("??")
+    }
     tracked = [path for path in changed if path not in untracked]
     parts: list[str] = []
     if tracked:
@@ -71,15 +81,6 @@ def _candidate_diff(root: Path, parent_ref: str, changed: list[str]) -> str:
         if path in untracked:
             parts.append(git(root, "diff", "--binary", "--no-index", "--", "/dev/null", path, check=False).stdout)
     return "".join(parts)
-
-
-def _untracked_paths(root: Path, changed: list[str]) -> list[str]:
-    untracked: list[str] = []
-    for path in changed:
-        status = git(root, "status", "--porcelain", "--", path, check=False).stdout
-        if status.startswith("??"):
-            untracked.append(path)
-    return untracked
 
 
 def _repair_surface_violations(root: Path, parent_ref: str, violations: list[str]) -> list[str]:

@@ -101,7 +101,7 @@ def test_validate_rejection_happens_before_candidate_commit(tmp_path: Path, monk
     assert json.loads((workspace / "runs/gen-1/validate/result.json").read_text())["accept"] is False
 
 
-def test_driver_rejects_dependency_pair_before_candidate_commit(tmp_path: Path) -> None:
+def test_driver_has_no_package_manager_specific_admission(tmp_path: Path) -> None:
     workspace, evolve_home = init_miniswe_workspace(tmp_path)
     code = (
         "from pathlib import Path\n"
@@ -125,9 +125,8 @@ def test_driver_rejects_dependency_pair_before_candidate_commit(tmp_path: Path) 
 
     assert result.returncode == 0, result.stderr
     row = rows_by_genid(workspace)["1"]
-    assert row["status"] == "invalid_proposal"
-    assert row["reason"] == "candidate dependency invalid: project_changed_without_lock"
-    assert git(workspace, "tag", "--list", "gen/1") == ""
+    assert row["mutated"] == ["target/pyproject.toml"]
+    assert git(workspace, "tag", "--list", "gen/1") == "gen/1"
 
 
 def test_jsonl_record_computes_verified_fixes_from_task_vectors(tmp_path: Path) -> None:

@@ -4,7 +4,7 @@ import stat
 import subprocess
 from pathlib import Path
 
-from conftest import run_evolve, write_locked_miniswe_seed
+from conftest import git, run_evolve, write_locked_miniswe_seed
 
 from evolve.candidate_runtime import run_candidate_smoke, select_smoke_mode
 
@@ -18,6 +18,7 @@ def _write_executable(path: Path, text: str) -> None:
 def _smoke_checkout(tmp_path: Path) -> Path:
     checkout = tmp_path / "checkout"
     write_locked_miniswe_seed(checkout / "target")
+    (checkout / ".gitignore").write_text("runs/\ntarget/ignored.cache\n")
     _write_executable(
         checkout / "evaluator" / "eval.sh",
         "#!/bin/sh\n"
@@ -28,6 +29,11 @@ def _smoke_checkout(tmp_path: Path) -> Path:
         'printf "%s\\n" "$EVOLVE_HARBOR_AGENT_SETUP_TIMEOUT_MULTIPLIER" > "$EVOLVE_RUN_DIR/setup-timeout"\n'
         'printf \'{"schema_version":1,"status":"passed","owner":"none","category":"none","harbor_returncode":0,"trial_results_seen":1}\\n\' > "$EVOLVE_RUN_DIR/harbor-result.json"\n',
     )
+    git(checkout, "init", "-q")
+    git(checkout, "config", "user.name", "test")
+    git(checkout, "config", "user.email", "test@example.invalid")
+    git(checkout, "add", ".")
+    git(checkout, "commit", "-qm", "parent")
     return checkout
 
 
@@ -131,7 +137,6 @@ def test_smoke_parser_accepts_complete_full_preflight_evidence(tmp_path: Path, m
 
 def test_quick_smoke_is_append_only_and_does_not_invoke_evaluator(tmp_path: Path) -> None:
     checkout = _smoke_checkout(tmp_path)
-    (checkout / "evaluator" / "eval.sh").unlink()
     run_dir = tmp_path / "run"
 
     first = run_candidate_smoke(checkout, workspace=checkout, run_dir=run_dir, mode="quick")
@@ -141,18 +146,46 @@ def test_quick_smoke_is_append_only_and_does_not_invoke_evaluator(tmp_path: Path
     assert first.attempt_dir.name == "attempt-1"
     assert second.attempt_dir.name == "attempt-2"
     assert (first.attempt_dir / "result.json").is_file()
+    assert not (first.attempt_dir / "mode").exists()
+    assert not (second.attempt_dir / "mode").exists()
 
 
-def test_quick_smoke_records_missing_lock_as_candidate_invalid(tmp_path: Path) -> None:
+def test_quick_smoke_does_not_enforce_package_manager_files(tmp_path: Path) -> None:
     checkout = _smoke_checkout(tmp_path)
     (checkout / "target" / "uv.lock").unlink()
 
     result = run_candidate_smoke(checkout, workspace=checkout, run_dir=tmp_path / "run", mode="quick")
 
-    assert result.status == "candidate_invalid"
+    assert result.status == "passed"
     payload = json.loads((result.attempt_dir / "result.json").read_text())
-    assert payload["category"] == "lock_missing"
-    assert payload["owner"] == "candidate"
+    assert payload["status"] == "passed"
+
+
+def test_ignored_file_does_not_change_smoke_materialization_digest(tmp_path: Path) -> None:
+    checkout = _smoke_checkout(tmp_path)
+    run_dir = tmp_path / "run"
+
+    first = run_candidate_smoke(checkout, workspace=checkout, run_dir=run_dir, mode="full")
+    (checkout / "target" / "ignored.cache").write_text("ignored\n")
+    second = run_candidate_smoke(checkout, workspace=checkout, run_dir=run_dir, mode="full")
+
+    assert first.dependency_digest == second.dependency_digest
+    materializations = list((checkout / "runs" / "runtime" / "candidates").glob("*/attempts/*.json"))
+    assert len(materializations) == 2
+    assert len({path.parents[1] for path in materializations}) == 1
+
+
+def test_smoke_digest_uses_git_symlink_blob_without_reading_target(tmp_path: Path) -> None:
+    checkout = _smoke_checkout(tmp_path)
+    link = checkout / "target" / "candidate-link"
+    link.symlink_to("missing-one")
+    first = run_candidate_smoke(checkout, workspace=checkout, run_dir=tmp_path / "run", mode="quick")
+
+    link.unlink()
+    link.symlink_to("missing-two")
+    second = run_candidate_smoke(checkout, workspace=checkout, run_dir=tmp_path / "run", mode="quick")
+
+    assert first.dependency_digest != second.dependency_digest
 
 
 def test_container_and_full_smoke_reuse_cache_and_write_sanitized_records(tmp_path: Path, monkeypatch) -> None:
@@ -209,7 +242,7 @@ def test_candidate_smoke_cli_prints_only_safe_summary(tmp_path: Path, monkeypatc
     assert sentinel not in result.stdout + result.stderr
 
 
-def test_candidate_smoke_cli_returns_two_for_candidate_dependency_failure(tmp_path: Path) -> None:
+def test_candidate_smoke_cli_does_not_enforce_package_manager_files(tmp_path: Path) -> None:
     checkout = _smoke_checkout(tmp_path)
     (checkout / "target" / "uv.lock").unlink()
 
@@ -221,5 +254,5 @@ def test_candidate_smoke_cli_returns_two_for_candidate_dependency_failure(tmp_pa
         env={"EVOLVE_WORKSPACE": str(checkout), "EVOLVE_RUN_DIR": str(tmp_path / "run")},
     )
 
-    assert result.returncode == 2
-    assert "candidate-smoke: candidate_invalid mode=quick" in result.stdout
+    assert result.returncode == 0, result.stderr
+    assert "candidate-smoke: passed mode=quick" in result.stdout

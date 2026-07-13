@@ -21,7 +21,8 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `__init__.py` | 10 | package marker, version |
 | `__main__.py` | 10 | `python -m evolve` entry |
 | `cli.py` | 215 | argument parsing and verb dispatch only — no logic |
-| `candidate_runtime.py` | 200 | MiniSWE dependency-pair validation and protected candidate smoke orchestration |
+| `candidate_runtime.py` | 200 | candidate smoke orchestration and append-only materialization records |
+| `candidate_snapshot.py` | 80 | exact candidate tree construction, materialization, and verified commit |
 | `config.py` | 300 | read/render `evolve.yaml`: recipes, experiment values, surface lists, operator blocks |
 | `driver.py` | 1541 | the generation sequencer: orchestrates verbs + operators, validates operator file outputs at the seam, and owns audit quarantine/doctor repair |
 | `operators.py` | 150 | subprocess runner for workspace operator scripts (contract: env vars, --config, timeout) |

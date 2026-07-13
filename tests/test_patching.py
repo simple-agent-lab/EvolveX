@@ -2,6 +2,9 @@ import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
+from evolve.candidate_snapshot import CandidateSnapshotError
 from evolve.patching import SurfacePolicy, create_candidate_patch, load_surface_policy, patch_parent_ref
 from evolve.surface import check_paths
 
@@ -99,6 +102,19 @@ def test_create_candidate_patch_reports_remaining_violation_when_repair_disabled
     assert patch.changed_paths == ["README.md"]
     assert patch.surface_report == {"ok": False, "mutated": ["README.md"], "violations": ["README.md"]}
     assert patch.notes == []
+
+
+def test_create_candidate_patch_rejects_already_staged_path(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    (root / "target" / "agent.py").write_text("print('child')\n")
+    _git(root, "add", "target/agent.py")
+
+    with pytest.raises(CandidateSnapshotError, match="^candidate index is not clean$"):
+        create_candidate_patch(
+            checkout=root,
+            parent_ref="gen/0",
+            surface=SurfacePolicy(include=["target/**"], exclude=[]),
+        )
 
 
 def test_load_surface_policy_reads_workspace_surface_lists(tmp_path: Path) -> None:

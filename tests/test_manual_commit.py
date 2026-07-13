@@ -34,7 +34,7 @@ def test_manual_commit_rejects_surface_violation_without_child_commit_or_tag(tmp
     assert git(child, "rev-parse", "HEAD") == parent_commit
 
 
-def test_manual_commit_rejects_project_change_without_lock_update(tmp_path: Path) -> None:
+def test_manual_commit_has_no_package_manager_specific_admission(tmp_path: Path) -> None:
     workspace, evolve_home = init_miniswe_workspace(tmp_path)
     child = tmp_path / "child"
     fork = run_evolve("fork", str(workspace), "0", str(child), env={"EVOLVE_HOME": str(evolve_home)})
@@ -55,6 +55,5 @@ def test_manual_commit_rejects_project_change_without_lock_update(tmp_path: Path
 
     assert result.returncode == 0, result.stderr
     row = rows_by_genid(workspace)["1"]
-    assert row["status"] == "invalid_proposal"
-    assert row["reason"] == "candidate dependency invalid: project_changed_without_lock"
-    assert git(workspace, "tag", "--list", "gen/1") == ""
+    assert row["mutated"] == ["target/pyproject.toml"]
+    assert git(workspace, "tag", "--list", "gen/1") == "gen/1"

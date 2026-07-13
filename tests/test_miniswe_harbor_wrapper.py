@@ -267,9 +267,8 @@ def test_init_with_local_miniswe_seed_writes_target_harbor_wrapper(tmp_path: Pat
     assert (workspace / "target" / "uv.lock").read_bytes() == expected_lock
 
 
-def test_init_rejects_miniswe_seed_without_lock(tmp_path: Path, monkeypatch) -> None:
+def test_init_does_not_enforce_package_manager_files(tmp_path: Path, monkeypatch) -> None:
     from evolve import workspace as workspace_module
-    from evolve.candidate_runtime import CandidateDependencyError
     from evolve.workspace import InitOptions, init_workspace
 
     seed = write_locked_miniswe_seed(tmp_path / "miniswe")
@@ -279,8 +278,9 @@ def test_init_rejects_miniswe_seed_without_lock(tmp_path: Path, monkeypatch) -> 
     config["target"]["harbor_agent"] = "miniswe-source"
     monkeypatch.setattr(workspace_module, "default_config", lambda recipe, experiment_id: config)
 
-    with pytest.raises(CandidateDependencyError, match="uv.lock is required"):
-        init_workspace(InitOptions(workspace=workspace, recipe="hill_climb", seed=str(seed)))
+    init_workspace(InitOptions(workspace=workspace, recipe="hill_climb", seed=str(seed)))
+
+    assert (workspace / "target" / "harbor_agent.py").is_file()
 
 
 def test_init_with_local_miniswe_seed_excludes_virtualenv_cache(tmp_path: Path, monkeypatch) -> None:

@@ -23,6 +23,7 @@ APPROVED_MODULES = {
     "archive.py",
     "asset_discovery.py",
     "candidate_runtime.py",
+    "candidate_snapshot.py",
     "cli.py",
     "config.py",
     "driver.py",

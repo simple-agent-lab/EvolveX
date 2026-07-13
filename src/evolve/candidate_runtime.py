@@ -1,34 +1,17 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import subprocess
-import sys
 import time
-from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, cast
 
+from .candidate_snapshot import build_candidate_snapshot
+from .surface import surface_patterns
+
 SmokeMode = Literal["quick", "container", "full"]
-
-
-class CandidateDependencyError(RuntimeError):
-    def __init__(self, code: str, message: str) -> None:
-        super().__init__(message)
-        self.code = code
-
-
-@dataclass(frozen=True)
-class CandidateDependencyIdentity:
-    project_sha256: str
-    lock_sha256: str
-
-    @property
-    def digest(self) -> str:
-        payload = f"{self.project_sha256}\n{self.lock_sha256}\n".encode()
-        return hashlib.sha256(payload).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -37,45 +20,6 @@ class CandidateSmokeResult:
     mode: SmokeMode
     attempt_dir: Path
     dependency_digest: str
-
-
-def validate_miniswe_candidate(
-    checkout: Path,
-    *,
-    changed_paths: Iterable[str] = (),
-) -> CandidateDependencyIdentity:
-    target = checkout / "target"
-    project = target / "pyproject.toml"
-    lock = target / "uv.lock"
-    changed = set(changed_paths)
-    if not project.is_file():
-        raise CandidateDependencyError("project_missing", "target/pyproject.toml is required")
-    if not lock.is_file():
-        raise CandidateDependencyError("lock_missing", "target/uv.lock is required")
-    if "target/pyproject.toml" in changed and "target/uv.lock" not in changed:
-        raise CandidateDependencyError(
-            "project_changed_without_lock",
-            "target/pyproject.toml changed without target/uv.lock",
-        )
-    env = os.environ.copy()
-    env.setdefault("UV_CACHE_DIR", "/tmp/evolve-candidate-runtime-uv")
-    result = subprocess.run(
-        ["uv", "lock", "--check", "--offline", "--python", sys.executable, "--project", str(target)],
-        text=True,
-        capture_output=True,
-        check=False,
-        env=env,
-    )
-    if result.returncode:
-        raise CandidateDependencyError(
-            "lock_incompatible",
-            "target/uv.lock does not match target/pyproject.toml",
-        )
-    return CandidateDependencyIdentity(_sha256(project), _sha256(lock))
-
-
-def _sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def select_smoke_mode(*, quick: bool, container: bool, full: bool) -> SmokeMode:
@@ -96,19 +40,8 @@ def run_candidate_smoke(
         raise ValueError(f"unknown smoke mode: {mode}")
     attempt = _next_attempt(run_dir / "meta_agent" / "smoke")
     started = time.monotonic()
-    try:
-        identity = validate_miniswe_candidate(checkout)
-    except CandidateDependencyError as exc:
-        payload: dict[str, object] = {
-            "schema_version": 1,
-            "mode": mode,
-            "status": "candidate_invalid",
-            "owner": "candidate",
-            "category": exc.code,
-            "duration_s": round(time.monotonic() - started, 6),
-        }
-        _write_json(attempt / "result.json", payload)
-        return CandidateSmokeResult("candidate_invalid", mode, attempt, "")
+    include, exclude = surface_patterns(workspace)
+    digest = build_candidate_snapshot(checkout, "HEAD", include=include, exclude=exclude).tree
     if mode == "quick":
         harbor = {"status": "passed", "owner": "none", "category": "none"}
     else:
@@ -120,14 +53,12 @@ def run_candidate_smoke(
         "owner": str(harbor.get("owner", "infrastructure")),
         "category": str(harbor.get("category", "setup_failed")),
         "duration_s": round(time.monotonic() - started, 6),
-        "project_sha256": identity.project_sha256,
-        "lock_sha256": identity.lock_sha256,
-        "dependency_digest": identity.digest,
+        "dependency_digest": digest,
     }
     _write_json(attempt / "result.json", payload)
     if mode != "quick" and payload["status"] == "passed":
         _record_materialization(workspace, attempt, payload)
-    return CandidateSmokeResult(str(payload["status"]), mode, attempt, identity.digest)
+    return CandidateSmokeResult(str(payload["status"]), mode, attempt, digest)
 
 
 def _next_attempt(root: Path) -> Path:
