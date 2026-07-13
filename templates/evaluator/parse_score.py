@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -54,7 +55,13 @@ def main(argv: list[str]) -> int:
     run_dir = Path(argv[2])
     env_values = _load_eval_env(Path("evaluator") / "eval.env")
     expected_trials = max(
-        1, int(env_values.get("EVOLVE_HARBOR_EXPECTED_TRIALS", env_values.get("EVOLVE_HARBOR_N", "1")))
+        1,
+        int(
+            os.environ.get(
+                "EVOLVE_HARBOR_EXPECTED_TRIALS",
+                env_values.get("EVOLVE_HARBOR_EXPECTED_TRIALS", env_values.get("EVOLVE_HARBOR_N", "1")),
+            )
+        ),
     )
     partial_floor = float(env_values.get("EVOLVE_PARTIAL_FLOOR", "0.8"))
     rewards = []

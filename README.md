@@ -34,7 +34,7 @@ Inside that generated workspace, the six core concepts are:
 | --- | --- |
 | workspace | The generated experiment repository. |
 | target | The code or agent being improved. |
-| operator | Evolvable scripts for select, rollout, meta_agent, gate, and record. |
+| operator | Evolvable scripts for select, rollout, meta_agent, optional validation, gate, and record. |
 | evaluator | A pinned black-box evaluator contract. |
 | archive | `archive.jsonl` plus `gen/<id>` git tags. |
 | mutable surface | The paths proposals are allowed to change. |
@@ -63,7 +63,7 @@ complete, honest evolution loop.
 | 0 · run the loop | generations, lineage, champion tracking | `evolve init` → `evolve run . --max-generations N` |
 | 1 · be the meta-agent | your agent makes the edits; the mechanism keeps the books | `mode: agent` recipe + `program.md`; drive the verbs by hand |
 | 2 · shape the search | select/gate variants; six published systems as recipes | `--recipe <name>`, or edit `evolve.yaml` |
-| 3 · let it self-modify | widen the surface so the agent evolves its own operators (scripts + strategy prose) | `surface.include` adds `operators/**` (e.g. the `hyperagents` recipe) |
+| 3 · let it self-modify | expose a bounded part of the agent workflow as the candidate genome | `surface.include` can add specific operator files such as `operators/meta_agent.py` and `operators/meta_agent.md` |
 
 Evolving weights is not a separate level: a checkpoint is just a candidate —
 a candidate edit that produces new weights re-enters at level 1/2 like any
@@ -77,7 +77,7 @@ Milestones M0-M6 are implemented and tested in the mechanism suite:
 | --- | --- |
 | M0 | Stub loop, generation snapshots, resume, and archive mirroring. |
 | M1 | Evaluator invariants, clean-checkout eval, surface enforcement, infra failure status. |
-| M2 | Feedback bundle shape and early deterministic candidate-edit mechanics; real operator-authored edits landed later in M5. |
+| M2 | Rollout observation and early deterministic candidate-edit mechanics; real operator-authored edits landed later in M5. |
 | M3 | Population fan-out and early widened-surface self-reference tests; real child-gate self-reference landed later in M5. |
 | M4 | Six recipes, agent bootstrapping instructions, `status`, and `report`. |
 | M5 | Real subprocess operator runtime, `evolve record`, `evolve.sdk`, operator config variants, and child-owned gate/record self-reference. |
@@ -153,7 +153,7 @@ shape, and evaluator template.
 | `hill_climb` | 1 | driver | Harbor MiniSWE source agent (`target.harbor_agent:MiniSweSourceAgent`) | target |
 | `dgm` | 4 | driver | Harbor MiniSWE source agent (`target.harbor_agent:MiniSweSourceAgent`) | target |
 | `ahe` | 1 | driver | Harbor MiniSWE source agent (`target.harbor_agent:MiniSweSourceAgent`) | target |
-| `hyperagents` | 2 | driver | Harbor MiniSWE source agent (`target.harbor_agent:MiniSweSourceAgent`) | target + operators |
+| `hyperagents` | 1 | driver | Harbor MiniSWE source agent (`target.harbor_agent:MiniSweSourceAgent`) | target + meta-agent workflow |
 | `autoresearch` | 1 | agent | Harbor MiniSWE source agent (`target.harbor_agent:MiniSweSourceAgent`) | target |
 | `metaagent` | 1 | driver | Harbor MiniSWE source agent (`target.harbor_agent:MiniSweSourceAgent`) | target + operator prompts |
 
@@ -163,10 +163,12 @@ For MiniSWE source evolution, `target/` is the MiniSWE source checkout plus
 task container, installs that source, and then reuses Harbor's MiniSWE run
 behavior.
 
-All real recipes use `meta_agent: {variant: agent_command, ...}`. Before running
-them, provide a meta-agent command with either `EVOLVE_AGENT_COMMAND` in the
-environment or `operators.meta_agent.command` in config. The recipes do not
-ship a default command.
+Most real recipes use `meta_agent: {variant: agent_command, ...}`. The
+`hyperagents` recipe uses its method-specific `hyperagents` meta-agent plus a
+fixed selector/validator/gate/record and the atomic surface `target/**`,
+`operators/meta_agent.py`, `operators/meta_agent.md`. For any recipe that calls
+an external meta-agent command, provide `EVOLVE_AGENT_COMMAND` in the
+environment or `operators.meta_agent.command` in config.
 
 Example:
 
@@ -222,7 +224,7 @@ mechanism-written receipt sidecar before they are trusted.
 | `src/evolve/cli.py` | CLI argument parsing and verb dispatch. |
 | `src/evolve/workspace.py` | Workspace scaffolding and generation-zero archive event. |
 | `src/evolve/config.py` | Recipe config rendering and lightweight config readers. |
-| `src/evolve/driver.py` | Built-in loop, fork/commit/eval orchestration, feedback bundles. |
+| `src/evolve/driver.py` | Built-in loop, proposal surface/validation/admission gates, and commit/eval orchestration. |
 | `src/evolve/evaluator.py` | Clean-checkout evaluator execution and exit-code contract. |
 | `src/evolve/archive.py` | Append-only archive, mirror reconciliation, stamped-field merge rules. |
 | `src/evolve/surface.py` | Mutable-surface include/exclude checking. |
@@ -299,9 +301,11 @@ thermal pressure, and get more predictable long-running Docker behavior.
 ## Current Limitations
 
 - The quickstart local smoke path uses `EVAL_STUB=1` for deterministic
-  framework feedback.
-- `agent_command` is the only shipped meta-agent adapter. Repeatable milestone
-  tests provide a tiny `EVOLVE_AGENT_COMMAND` under explicit smoke recipes.
+  mechanism evaluation.
+- `agent_command` is the generic shipped meta-agent adapter; HyperAgents also
+  ships a method-specific adapter, validator, and record operator. Repeatable
+  milestone tests provide a tiny `EVOLVE_AGENT_COMMAND` under explicit smoke
+  recipes such as `hyperagents-smoke`.
 - Archive provenance is protected by mechanism stamps and receipt
   sidecars for auxiliary evals, not by cryptographic signatures.
 - Harbor is verified for Mac development smoke tests, but production

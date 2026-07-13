@@ -4,6 +4,10 @@ from pathlib import Path
 
 import pytest
 
+from evolve.frozen import sdk
+from evolve.frozen.interfaces import ValidateOperator, ValidateResult
+from evolve.operators import run_operator
+
 
 def test_operator_abcs_have_one_kind_specific_abstract_method():
     from evolve.frozen import interfaces
@@ -12,6 +16,7 @@ def test_operator_abcs_have_one_kind_specific_abstract_method():
         interfaces.SelectOperator: {"pick"},
         interfaces.RolloutOperator: {"rollout"},
         interfaces.MetaAgentOperator: {"run"},
+        interfaces.ValidateOperator: {"validate"},
         interfaces.GateOperator: {"decide"},
         interfaces.RecordOperator: {"annotate"},
     }
@@ -70,9 +75,9 @@ def test_sdk_main_runs_meta_agent_operator_and_writes_meta_agent_artifacts(
             )
 
     _set_sdk_env(monkeypatch, tmp_path, parent="0")
-    feedback_dir = tmp_path / "run" / "feedback"
-    feedback_dir.mkdir(parents=True)
-    (feedback_dir / "summary.json").write_text('{"failed": ["task-1"]}\n')
+    rollout_dir = tmp_path / "run" / "rollout"
+    rollout_dir.mkdir(parents=True)
+    (rollout_dir / "summary.json").write_text('{"failed": ["task-1"]}\n')
 
     sdk.main(TinyMetaAgent)
 
@@ -81,6 +86,65 @@ def test_sdk_main_runs_meta_agent_operator_and_writes_meta_agent_artifacts(
     assert json.loads((meta_agent_dir / "predicted_fixes.json").read_text()) == ["target/agent.py"]
     assert json.loads((meta_agent_dir / "usage.json").read_text()) == {"usd": 1.25}
     assert (meta_agent_dir / "rationale.md").read_text() == "edited target\n"
+
+
+def test_sdk_main_runs_validate_operator_and_writes_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run_dir = tmp_path / "run"
+    _set_sdk_env(monkeypatch, tmp_path)
+
+    class TinyValidate(ValidateOperator):
+        def validate(self, checkout: Path, ctx) -> ValidateResult:
+            return ValidateResult(accept=True, reason="imports pass", artifacts=["validate/imports.log"])
+
+    sdk.main(TinyValidate)
+
+    assert json.loads((run_dir / "validate" / "result.json").read_text()) == {
+        "accept": True,
+        "artifacts": ["validate/imports.log"],
+        "reason": "imports pass",
+    }
+
+
+def test_run_operator_can_use_trusted_operator_source_with_candidate_context(tmp_path: Path) -> None:
+    candidate_checkout = tmp_path / "candidate"
+    operator_checkout = tmp_path / "trusted"
+    workspace = tmp_path / "ws"
+    run_dir = tmp_path / "run"
+    (candidate_checkout / "target").mkdir(parents=True)
+    (operator_checkout / "operators").mkdir(parents=True)
+    workspace.mkdir()
+    (operator_checkout / "operators" / "record.py").write_text(
+        "import json, os\n"
+        "from pathlib import Path\n"
+        "Path(os.environ['EVOLVE_RUN_DIR']).mkdir(parents=True, exist_ok=True)\n"
+        "Path(os.environ['EVOLVE_RUN_DIR'], 'probe.json').write_text(json.dumps({\n"
+        "    'checkout': os.environ['EVOLVE_CHECKOUT'],\n"
+        "    'cwd': os.getcwd(),\n"
+        "    'script': __file__,\n"
+        "}))\n"
+    )
+
+    result = run_operator(
+        name="record",
+        checkout=candidate_checkout,
+        operator_checkout=operator_checkout,
+        workspace=workspace,
+        genid="1",
+        parent="0",
+        run_dir=run_dir,
+        config_block={},
+        timeout_s=30,
+    )
+
+    assert result.returncode == 0, result.stderr
+    probe = json.loads((run_dir / "probe.json").read_text())
+    assert probe == {
+        "checkout": str(candidate_checkout.resolve()),
+        "cwd": str(candidate_checkout.resolve()),
+        "script": str((operator_checkout / "operators" / "record.py").resolve()),
+    }
 
 
 def _set_sdk_env(

@@ -99,6 +99,24 @@ def evaluator_sampling(workspace: Path) -> str:
     return str(value or "static")
 
 
+def evaluator_stage(workspace: Path) -> dict[str, Any] | None:
+    value = evaluator_values(workspace).get("stage")
+    if not isinstance(value, dict):
+        return None
+    tasks = value.get("tasks")
+    if not isinstance(tasks, int) or isinstance(tasks, bool) or tasks < 1:
+        raise ValueError("evaluator.stage.tasks must be a positive integer")
+    proceed_if = str(value.get("proceed_if", "positive"))
+    if proceed_if != "positive":
+        raise ValueError("evaluator.stage.proceed_if must be positive")
+    return {"tasks": tasks, "proceed_if": proceed_if}
+
+
+def evaluator_anchor(workspace: Path) -> dict[str, Any]:
+    value = evaluator_values(workspace).get("anchor")
+    return dict(value) if isinstance(value, dict) else {}
+
+
 def _read_section(workspace: Path, name: str) -> dict[str, Any]:
     return _read_section_file(workspace / "evolve.yaml", name)
 

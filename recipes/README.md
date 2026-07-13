@@ -79,3 +79,10 @@ Track two statuses independently:
 
 Each implemented method may have an explicit `<name>-smoke` scaffold for cheap
 mechanism tests. Smoke success never upgrades method fidelity.
+
+`hyperagents-smoke` is the deterministic scaffold for the HyperAgents method:
+it keeps the same `score_child_prop` selector, `hyperagents` meta-agent,
+`hyperagents` validator/record, `parent_eligible` gate, staged evaluation shape,
+and atomic genome (`target/**`, `operators/meta_agent.py`,
+`operators/meta_agent.md`) while replacing the real MiniSWE benchmark target
+with stub-friendly counts.

@@ -11,10 +11,11 @@ exits 0 (complete) when every task passes, else 2 (partial).
 """
 
 import json
+import os
 import sys
 from pathlib import Path
 
-K = 8
+K = int(os.environ.get("EVOLVE_TASK_LIMIT", "8"))
 
 
 def main() -> int:
@@ -29,7 +30,8 @@ def main() -> int:
         if stripped.startswith("# FAIL "):
             failed.update(stripped[len("# FAIL ") :].split())
 
-    task_vector = {f"task-{i}": (f"task-{i}" not in failed) for i in range(K)}
+    prefix = "sealed-task" if os.environ.get("EVOLVE_EVAL_KIND") == "anchor" else "task"
+    task_vector = {f"{prefix}-{i}": (f"{prefix}-{i}" not in failed) for i in range(K)}
     passed = sum(1 for ok in task_vector.values() if ok)
     score = passed / K
 

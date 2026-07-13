@@ -14,7 +14,7 @@ from evolve.frozen import interfaces
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src" / "evolve"
-TOTAL_BUDGET = 4180  # includes agent/patching modules and current init scaffolding growth
+TOTAL_BUDGET = 4461  # current mechanism map; Task 7 changes no method-specific driver policy
 ROW = re.compile(r"^\| `([^`]+\.py)` \| (\d+) \|")
 APPROVED_MODULES = {
     "__init__.py",
@@ -25,7 +25,6 @@ APPROVED_MODULES = {
     "config.py",
     "driver.py",
     "evaluator.py",
-    "feedback.py",
     "git.py",
     "operators.py",
     "patching.py",

@@ -82,6 +82,11 @@ class MetaAgentOperator(ABC):
     def run(self, checkout: Path, observation: str, ctx) -> MetaAgentResult: ...
 
 
+class ValidateOperator(ABC):
+    @abstractmethod
+    def validate(self, checkout: Path, ctx) -> ValidateResult: ...
+
+
 class NoveltyOperator(ABC):
     @abstractmethod
     def assess(self, checkout: Path, ctx) -> NoveltyResult: ...
@@ -121,6 +126,13 @@ class MetaAgentResult:
 
 
 @dataclass(frozen=True)
+class ValidateResult:
+    accept: bool
+    reason: str
+    artifacts: list[str]
+
+
+@dataclass(frozen=True)
 class NoveltyResult:
     novelty: float  # 1.0 = wholly novel, 0.0 = an exact duplicate of a prior diff
     accept: bool  # reject near-duplicate candidate edits before they are evaluated
@@ -152,21 +164,16 @@ def validate_select_payload(payload: SelectResult | dict[str, Any]) -> dict[str,
 
 def validate_rollout_payload(payload: RolloutResult | dict[str, Any]) -> dict[str, Any]:
     data = _payload_dict(payload)
-    if not isinstance(data.get("summary"), dict):
-        raise PayloadValidationError("summary", "summary must be a dict")
-    if not isinstance(data.get("artifacts"), list):
-        raise PayloadValidationError("artifacts", "artifacts must be a list")
+    _require_type(data, "summary", dict, "summary must be a dict")
+    _require_type(data, "artifacts", list, "artifacts must be a list")
     return {"summary": data["summary"], "artifacts": [str(artifact) for artifact in data["artifacts"]]}
 
 
 def validate_meta_agent_payload(payload: MetaAgentResult | dict[str, Any]) -> dict[str, Any]:
     data = _payload_dict(payload)
-    if not isinstance(data.get("changed"), list):
-        raise PayloadValidationError("changed", "changed must be a list")
-    if not isinstance(data.get("notes"), list):
-        raise PayloadValidationError("notes", "notes must be a list")
-    if not isinstance(data.get("usage"), dict):
-        raise PayloadValidationError("usage", "usage must be a dict")
+    _require_type(data, "changed", list, "changed must be a list")
+    _require_type(data, "notes", list, "notes must be a list")
+    _require_type(data, "usage", dict, "usage must be a dict")
     usage = validate_meta_agent_usage_payload(data["usage"])
     return {
         "changed": [str(path) for path in data["changed"]],
@@ -175,12 +182,19 @@ def validate_meta_agent_payload(payload: MetaAgentResult | dict[str, Any]) -> di
     }
 
 
+def validate_validate_payload(payload: ValidateResult | dict[str, Any]) -> dict[str, Any]:
+    data = _payload_dict(payload)
+    _require_type(data, "accept", bool, "accept must be a boolean")
+    _require_type(data, "reason", str, "reason must be a string")
+    _require_type(data, "artifacts", list, "artifacts must be a list")
+    return {"accept": data["accept"], "reason": data["reason"], "artifacts": [str(p) for p in data["artifacts"]]}
+
+
 def validate_gate_payload(payload: GateResult | dict[str, Any]) -> dict[str, Any]:
     data = _payload_dict(payload)
     if data.get("decision") not in {"accept", "reject"}:
         raise PayloadValidationError("decision", "decision must be accept or reject")
-    if not isinstance(data.get("reason"), str):
-        raise PayloadValidationError("reason", "reason must be a string")
+    _require_type(data, "reason", str, "reason must be a string")
     return {"decision": data["decision"], "reason": data["reason"]}
 
 
@@ -189,15 +203,13 @@ def validate_novelty_payload(payload: NoveltyResult | dict[str, Any]) -> dict[st
     novelty = data.get("novelty")
     if not isinstance(novelty, (int, float)) or isinstance(novelty, bool):
         raise PayloadValidationError("novelty", "novelty must be a number")
-    if not isinstance(data.get("accept"), bool):
-        raise PayloadValidationError("accept", "accept must be a boolean")
+    _require_type(data, "accept", bool, "accept must be a boolean")
     return {"novelty": float(novelty), "accept": data["accept"]}
 
 
 def validate_record_payload(payload: RecordResult | dict[str, Any]) -> dict[str, Any]:
     data = _payload_dict(payload)
-    if not isinstance(data.get("fields"), dict):
-        raise PayloadValidationError("fields", "fields must be a dict")
+    _require_type(data, "fields", dict, "fields must be a dict")
     return {"fields": data["fields"]}
 
 
@@ -210,9 +222,7 @@ def validate_reflect_payload(payload: ReflectResult | dict[str, Any]) -> dict[st
 
 
 def validate_rollout_summary_payload(payload: object) -> dict[str, Any]:
-    if not isinstance(payload, dict):
-        raise PayloadValidationError("summary", "summary must be a JSON object")
-    return dict(cast("dict[str, Any]", payload))
+    return dict(_json_object(payload, "summary", "summary must be a JSON object"))
 
 
 def validate_rollout_artifacts_payload(payload: object) -> list[str]:
@@ -228,9 +238,7 @@ def validate_meta_agent_predicted_fixes_payload(payload: object) -> list[str]:
 
 
 def validate_meta_agent_usage_payload(payload: object) -> dict[str, Any]:
-    if not isinstance(payload, dict):
-        raise PayloadValidationError("usage", "usage must be a JSON object")
-    data = cast("dict[str, Any]", payload)
+    data = _json_object(payload, "usage", "usage must be a JSON object")
     usd = data.get("usd")
     if usd is not None and (not isinstance(usd, (int, float)) or isinstance(usd, bool)):
         raise PayloadValidationError("usd", "usd must be a number")
@@ -238,15 +246,11 @@ def validate_meta_agent_usage_payload(payload: object) -> dict[str, Any]:
 
 
 def validate_gate_file_payload(payload: object) -> dict[str, Any]:
-    if not isinstance(payload, dict):
-        raise PayloadValidationError("valid_parent", "gate payload must be a JSON object")
-    data = cast("dict[str, Any]", payload)
-    if not isinstance(data.get("valid_parent"), bool):
-        raise PayloadValidationError("valid_parent", "valid_parent must be a boolean")
+    data = _json_object(payload, "valid_parent", "gate payload must be a JSON object")
+    _require_type(data, "valid_parent", bool, "valid_parent must be a boolean")
     if data.get("verdict") not in {"keep", "discard"}:
         raise PayloadValidationError("verdict", "verdict must be keep or discard")
-    if not isinstance(data.get("reason"), str):
-        raise PayloadValidationError("reason", "reason must be a string")
+    _require_type(data, "reason", str, "reason must be a string")
     return {
         "valid_parent": data["valid_parent"],
         "verdict": data["verdict"],
@@ -255,15 +259,15 @@ def validate_gate_file_payload(payload: object) -> dict[str, Any]:
 
 
 def validate_novelty_file_payload(payload: object) -> dict[str, Any]:
-    if not isinstance(payload, dict):
-        raise PayloadValidationError("novelty", "novelty payload must be a JSON object")
-    return validate_novelty_payload(cast("dict[str, Any]", payload))
+    return validate_novelty_payload(_json_object(payload, "novelty", "novelty payload must be a JSON object"))
+
+
+def validate_validate_file_payload(payload: object) -> dict[str, Any]:
+    return validate_validate_payload(_json_object(payload, "accept", "validate payload must be a JSON object"))
 
 
 def validate_record_fields_payload(payload: object) -> dict[str, Any]:
-    if not isinstance(payload, dict):
-        raise PayloadValidationError("fields", "fields must be a JSON object")
-    return dict(cast("dict[str, Any]", payload))
+    return dict(_json_object(payload, "fields", "fields must be a JSON object"))
 
 
 def _payload_dict(payload: object) -> dict[str, Any]:
@@ -272,6 +276,17 @@ def _payload_dict(payload: object) -> dict[str, Any]:
     if isinstance(payload, dict):
         return dict(cast("dict[str, Any]", payload))
     raise PayloadValidationError("payload", "payload must be a dataclass result or dict")
+
+
+def _require_type(data: dict[str, Any], field: str, expected: type, message: str) -> None:
+    if not isinstance(data.get(field), expected):
+        raise PayloadValidationError(field, message)
+
+
+def _json_object(payload: object, field: str, message: str) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise PayloadValidationError(field, message)
+    return cast("dict[str, Any]", payload)
 
 
 # ---------------------------------------------------------------------------
@@ -294,6 +309,7 @@ OPERATORS: tuple[OperatorSpec, ...] = (
     OperatorSpec("select", SelectOperator, SelectResult, "pick", True),
     OperatorSpec("rollout", RolloutOperator, RolloutResult, "rollout", True),
     OperatorSpec("meta_agent", MetaAgentOperator, MetaAgentResult, "run", True),
+    OperatorSpec("validate", ValidateOperator, ValidateResult, "validate", False),
     OperatorSpec("novelty", NoveltyOperator, NoveltyResult, "assess", False),
     OperatorSpec("gate", GateOperator, GateResult, "decide", True),
     OperatorSpec("record", RecordOperator, RecordResult, "annotate", True),

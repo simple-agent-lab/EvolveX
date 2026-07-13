@@ -9,7 +9,8 @@ from typing import Any
 
 STAMPED_FIELDS = {"score", "status", "task_set_hash", "task_vector", "evaluator_tree", "cost"}
 MECHANISM_EVAL_FIELD = "_evolve_mechanism_eval"
-RESERVED_AUXILIARY_FIELDS = {"evals", "kind", "round", MECHANISM_EVAL_FIELD}
+RECORD_ATTEMPT_FIELD = "_evolve_record_attempted"
+RESERVED_AUXILIARY_FIELDS = {"evals", "kind", "round", MECHANISM_EVAL_FIELD, RECORD_ATTEMPT_FIELD}
 EVALUATION_FIELDS = STAMPED_FIELDS | {
     "genid",
     "parent",
@@ -20,6 +21,8 @@ EVALUATION_FIELDS = STAMPED_FIELDS | {
     "mutated",
     "surface_violations",
     "predicted_fixes",
+    "stage_score",
+    "run_full_eval",
     "note",
     "kind",
     "round",
@@ -93,6 +96,12 @@ def merged_rows(path: Path) -> list[dict[str, Any]]:
             evals_by_genid[genid] = {}
             order.append(genid)
         if _is_keyed_evaluation(event):
+            if event.get("kind") == "anchor":
+                _merge_auxiliary_evaluation(rows[genid], evals_by_genid[genid], event, prefix="anchor")
+                continue
+            if event.get("kind") == "genesis_eval" and not _is_genesis_replacement(rows[genid], genid, event):
+                _merge_auxiliary_evaluation(rows[genid], evals_by_genid[genid], event, prefix="genesis")
+                continue
             auxiliary_hash = genid in top_eval_hash and str(event["task_set_hash"]) != top_eval_hash[genid]
             if auxiliary_hash and not _has_evaluation_provenance(event, genid, receipts):
                 _merge_auxiliary_non_stamped_fields(rows[genid], event)
@@ -189,6 +198,10 @@ def _merge_keyed_evaluation(
     event: dict[str, Any],
 ) -> None:
     task_hash = str(event["task_set_hash"])
+    if _is_genesis_replacement(row, genid, event):
+        top_eval_hash[genid] = task_hash
+        _replace_top_evaluation(row, event)
+        return
     if genid not in top_eval_hash:
         top_eval_hash[genid] = task_hash
         _merge_event_fields(row, row, event)
@@ -214,8 +227,34 @@ def _merge_keyed_evaluation(
     row["evals"] = list(evals.values())
 
 
+def _merge_auxiliary_evaluation(
+    row: dict[str, Any], evals: dict[str, dict[str, Any]], event: dict[str, Any], *, prefix: str
+) -> None:
+    if "genid" not in row:
+        row["genid"] = event["genid"]
+    key = f"{prefix}:{event['task_set_hash']}"
+    evals[key] = _evaluation_entry(event)
+    row["evals"] = list(evals.values())
+
+
 def _evaluation_entry(event: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in event.items() if key in EVALUATION_FIELDS}
+
+
+def _is_genesis_replacement(row: dict[str, Any], genid: str, event: dict[str, Any]) -> bool:
+    return (
+        genid == "0"
+        and row.get("note") == "initial scaffold"
+        and event.get("kind") == "genesis_eval"
+        and event.get("status") in {"complete", "partial"}
+        and event.get("score") is not None
+    )
+
+
+def _replace_top_evaluation(row: dict[str, Any], event: dict[str, Any]) -> None:
+    for key, value in event.items():
+        if key not in RESERVED_AUXILIARY_FIELDS:
+            row[key] = value
 
 
 def _merge_event_fields(row: dict[str, Any], current: dict[str, Any], event: dict[str, Any]) -> None:

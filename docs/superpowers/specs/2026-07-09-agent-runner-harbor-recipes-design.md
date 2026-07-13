@@ -8,11 +8,12 @@ The current framework mixes three concepts that should be separate:
 - The meta-agent, which edits a local git checkout.
 - Smoke scaffolding, which exists to make CI and local mechanism tests cheap.
 
-This causes confusing behavior. `CheckoutTargetAgent` can fall back to arbitrary
-scripts such as `solve.sh` or `run.sh`; production recipe names still use
-deterministic meta-agent edits; HyperAgents exposes `operators/**` but the
-default meta-agent does not actually evolve those operators; and `meta_eval`
-currently forces `EVAL_STUB=1` during operator-surface admission replay.
+Before the method-faithful HyperAgents replacement, this caused confusing
+behavior. `CheckoutTargetAgent` could fall back to arbitrary scripts such as
+`solve.sh` or `run.sh`; production recipe names still used deterministic
+meta-agent edits; the HyperAgents scaffold exposed `operators/**` without a
+method-faithful meta-agent; and `meta_eval` forced `EVAL_STUB=1` during
+operator-surface admission replay.
 
 ## Goals
 
@@ -24,9 +25,9 @@ currently forces `EVAL_STUB=1` during operator-surface admission replay.
    diff logic.
 4. Split real recipes from smoke recipes. Real recipes should be structurally
    real and fail fast if required live agent or Harbor configuration is missing.
-5. Make HyperAgents truthful: changed meta-agent workflow is used in later
-   generations, and changed gate or record workflow may affect the same
-   generation. The docs must say this plainly.
+5. Make HyperAgents truthful: the V1 bounded meta-agent workflow is inherited
+   by later generations, while gate and record remain fixed outside the
+   mutable surface. The docs must say this plainly.
 6. Stop real self-modification admission from using the stub evaluator unless a
    smoke or test run explicitly opts into `EVAL_STUB=1`.
 
@@ -327,26 +328,27 @@ mechanics should use smoke recipes.
 
 ## HyperAgents Semantics
 
-HyperAgents is real only when the meta-agent can edit `operators/**` and those edits
-can affect subsequent execution.
+This section is superseded for the implemented V1 HyperAgents recipe by
+`2026-07-10-method-faithful-hyperagents-recipe-design.md`. The old scaffold
+used broad `operators/**` exposure; the implemented recipe uses the bounded
+atomic genome `target/**`, `operators/meta_agent.py`, and
+`operators/meta_agent.md`, with fixed selection, validation, gate, record,
+evaluator, archive, and configuration.
 
-The driver semantics are:
+The implemented driver semantics are:
 
 - A changed `operators/meta_agent.py` cannot affect the same candidate edit that created
   it. It can affect future children forked from the accepted generation.
-- A changed `operators/gate.py` or `operators/record.py` can affect the same
-  generation because gate and record run after the candidate edit from the tagged child
-  checkout.
-- A changed `operators/select.py` or `operators/rollout.py` can affect future
-  generations when that generation becomes the selected checkout for those
-  operators.
+- `operators/gate.py`, `operators/record.py`, `operators/select.py`,
+  `operators/rollout.py`, and validation remain fixed outside the V1 mutable
+  surface.
 - `program.md` is not executable under `./evolve run`. It should not be
   presented as an evolved workflow unless a later change adds an explicit
   agent-mode orchestrator that reads and follows it.
 
-Real HyperAgents should use `agent_command` as its meta-agent and include
-`operators/**` in the mutable surface. The old deterministic version should be
-renamed `hyperagents-smoke`.
+Real HyperAgents uses the `hyperagents` meta-agent, `score_child_prop`
+selection, `hyperagents` validation/record variants, and the exact bounded
+surface above. The deterministic mechanism test recipe is `hyperagents-smoke`.
 
 ## Self-Modification Admission
 

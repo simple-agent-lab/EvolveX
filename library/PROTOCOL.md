@@ -7,8 +7,8 @@ path, but the file contract is the protocol.
 
 ## Subprocess Contract
 
-The mechanism invokes one file per operator kind under `operators/`: select,
-rollout, meta_agent, gate, and record. The copied file may be a library
+The mechanism invokes one file per configured operator kind under `operators/`:
+select, rollout, meta_agent, optional validate/novelty/reflect, gate, and record. The copied file may be a library
 variant, a recipe-local operator, or a user-provided `script:`. Python variants
 normally end with `sdk.main(VariantClass)`, but any executable file that honors
 the same files is valid.
@@ -72,9 +72,8 @@ Implement `rollout`. Return `RolloutResult` with fields `summary` and
 `rollout/artifacts.json`. `summary` is a JSON object; `artifacts` is a list of
 artifact paths or labels.
 
-The mechanism (not an operator) writes the feedback bundle under
-`runs/gen-<id>/feedback/` after rollout, from the ledger, for the meta-agent to
-read (the retired `observe` operator's job).
+The rollout summary is passed directly to the meta-agent as its observation.
+The mechanism does not synthesize a separate feedback bundle.
 
 ### Meta-Agent
 
@@ -89,6 +88,23 @@ Implement `run`. Return `MetaAgentResult` with fields `changed`, `notes`, and
 `meta_agent/predicted_fixes.json`, may write `meta_agent/rationale.md`, and
 writes `meta_agent/usage.json`. `usage` is a JSON object, commonly including
 `usd`.
+
+After the meta-agent exits, the driver checks the complete working-tree diff
+against the mutable surface before any post-proposal operator runs.
+
+### Validate (optional)
+
+ABC signature:
+
+```python
+def validate(self, checkout: Path, ctx) -> ValidateResult:
+```
+
+Implement `validate`. Return `ValidateResult` with fields `accept`, `reason`,
+and `artifacts`. The subprocess writes `validate/result.json`. It runs on the
+uncommitted, surface-compliant candidate when a recipe configures
+`operators.validate`; `accept: false` records `rejected_validation` and discards
+the complete candidate without creating a generation tag.
 
 ### Novelty (optional)
 
@@ -175,11 +191,12 @@ appending the remaining object to the archive.
 The shipped library uses canonical algorithm names only. Recipe research names
 may appear in recipe prose, but `variant:` values point to these files:
 
-- select: `greedy`, `random`, `score_weighted`, `newest`
+- select: `greedy`, `random`, `score_weighted`, `newest`, `score_child_prop`
 - rollout: `failure_focused`, `noop`
-- meta_agent: `agent_command`
+- meta_agent: `agent_command`, `hyperagents`
+- validate: `hyperagents`
 - gate: `hillclimb`, `parent_eligible`
-- record: `jsonl`
+- record: `jsonl`, `hyperagents`
 
 ## Stability Tiers
 
@@ -203,7 +220,7 @@ may appear in recipe prose, but `variant:` values point to these files:
 
 Files, not classes, are normative. The mechanism runs subprocess files and
 consumes `parents.json`, `rollout/summary.json`, `rollout/artifacts.json`,
-`meta_agent/usage.json`, `gate.json`,
+`meta_agent/usage.json`, `validate/result.json`, `gate.json`,
 `record/fields.json`, and the other artifacts listed above. Non-Python
 operators are valid when they honor those files, environment variables, exit
 behavior, and protocol version expectations.

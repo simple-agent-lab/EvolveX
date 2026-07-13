@@ -16,14 +16,16 @@ Precise meanings for the domain terms this project uses.
 - **Mutable surface** — the `surface` include/exclude globs that say which
   files a candidate edit may touch. The single knob that separates evolving an open
   agent (surface includes its code) from a closed agent (surface includes only
-  the context layer), and a normal run from self-modification (surface adds
-  `operators/**`). The evaluator, archive, and vendored mechanism are always
-  excluded.
+  the context layer), and a normal run from self-modification (surface may add
+  specific workflow files such as `operators/meta_agent.py` and
+  `operators/meta_agent.md`). The evaluator, archive, and vendored mechanism
+  are always excluded.
 
 - **Operator** — a swappable step in the loop: select, rollout, meta_agent, gate,
   record. Framework machinery configured per experiment, run as a subprocess;
-  not part of the agent being evolved. (`observe` is retired — the mechanism
-  writes the feedback bundle itself; see `src/evolve/feedback.py`.)
+  not part of the agent being evolved. (`observe` is retired; operators read
+  in-loop artifacts directly through `ctx` paths such as `runs/`, rollout
+  summaries, and archive rows.)
 
 - **Operator context (`ctx`)** — The per-operator invocation context. In code,
   `ctx` is an `OperatorContext`: workspace root, checkout, run directory,
@@ -31,9 +33,10 @@ Precise meanings for the domain terms this project uses.
   seeded RNG. It tells an operator where it is and which generation it is
   handling.
 
-- **Meta-agent operator** — the loop step that changes the candidate. It is a
-  protocol adapter around the `agent_command` variant, which delegates to
-  `run_meta_agent`, then the mechanism applies surface enforcement before it
+- **Meta-agent operator** — the loop step that changes the candidate. The
+  default `agent_command` variant delegates to `run_meta_agent`; method recipes
+  may provide dedicated variants such as `hyperagents`. After the operator
+  edits the checkout, the mechanism applies surface enforcement before it
   inspects the result.
 
 - **Evaluator / ruler** — the frozen scorer, wired to **Harbor**. Runs a
@@ -49,8 +52,9 @@ Precise meanings for the domain terms this project uses.
   partitioning; today the shape is honored by convention.)
 
 - **Rollout** — runs the candidate on the train split to produce trajectories.
-  The mechanism (`feedback.py`) then writes the ledger-derived feedback bundle
-  the meta-agent reads (the retired `observe` operator's former job).
+  The meta-agent can inspect rollout summaries, artifacts, archive rows, and
+  run directories directly through `ctx`; the mechanism no longer writes a
+  framework-authored feedback bundle.
 
 - **Trace / trajectory** — the step record of a rollout. Harbor writes traces
   under `runs/gen-N/eval/` and `~/.evolve/harbor-jobs`. Subtask-level
