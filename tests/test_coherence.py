@@ -14,7 +14,7 @@ from evolve.frozen import interfaces
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src" / "evolve"
-TOTAL_BUDGET = 4760  # integrated recipes plus evaluation certificate and filesystem runtime identity
+TOTAL_BUDGET = 4500  # simplified integrated framework with certificates and runtime identity
 ROW = re.compile(r"^\| `([^`]+\.py)` \| (\d+) \|")
 APPROVED_MODULES = {
     "__init__.py",
@@ -41,7 +41,6 @@ APPROVED_MODULES = {
     "frozen/__init__.py",
     "frozen/interfaces.py",
     "frozen/sdk.py",
-    "frozen/meta_eval.py",
 }
 
 

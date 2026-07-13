@@ -89,6 +89,9 @@ def test_hyperagents_meta_agent_change_affects_later_generation_not_current_one(
     assert "# later-child" in git(workspace, "show", "gen/2:target/agent.py")
     assert rows["2"]["parent"] == "1"
     assert {str(row["genid"]) for row in valid_parent_rows(workspace)} >= {"0", "1", "2"}
+    assert (workspace / "runs" / "gen-1" / "eval").is_dir()
+    assert not (workspace / "runs" / "gen-1" / "eval-stage").exists()
+    assert not (workspace / "runs" / "gen-1" / "meta_eval.json").exists()
 
     for operator in ("validate", "record"):
         assert git_show(workspace, f"gen/0:operators/{operator}.py") == git_show(

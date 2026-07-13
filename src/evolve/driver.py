@@ -22,9 +22,8 @@ from .archive import (
     read_events,
     rows_by_genid,
 )
-from .config import evaluator_anchor, evaluator_sampling, evaluator_stage, experiment_id, operator_blocks
+from .config import evaluator_sampling, experiment_id, operator_blocks
 from .evaluator import evaluate
-from .frozen import meta_eval
 from .frozen.interfaces import (
     PayloadValidationError,
     validate_gate_file_payload,
@@ -132,7 +131,6 @@ def run(options: RunOptions) -> None:
                 _resume_tagged_child(workspace, exp_id, genid, parent, round_number, operators_config)
                 continue
             _run_child(workspace, exp_id, genid, parent, round_number, operators_config)
-    _maybe_run_final_anchor(workspace, exp_id)
 
 
 def _run_operator_or_fail(
@@ -275,27 +273,6 @@ def _run_child(
                     parent,
                     status="rejected_validation",
                     reason=f"candidate validation rejected: {validation['reason']}",
-                    mutated=mutated_paths,
-                )
-                record_terminal_attempt()
-                return
-
-        # Self-modification admission gate (mechanism 1, DESIGN §2/§7). When a
-        # candidate edit touches the operator surface, a confound-free replay
-        # decides whether the complete child is non-inferior; rejection discards
-        # the target and operator changes together.
-        # Skipped inside a replay (recursion guard) and cheap when unchanged.
-        if not os.environ.get("EVOLVE_IN_META_EVAL") and meta_eval.operator_surface_changed(mutated_paths):
-            verdict = meta_eval.admit(workspace, f"gen/{parent}", child, timeout_s=operator_timeout(operators_config, "meta_agent"))
-            if not verdict.get("admitted"):
-                _write_json(_run_dir(workspace, genid) / "meta_eval.json", verdict)
-                _append_candidate_rejected(
-                    workspace,
-                    exp_id,
-                    genid,
-                    parent,
-                    status="rejected_admission",
-                    reason="self-modification admission rejected complete child",
                     mutated=mutated_paths,
                 )
                 record_terminal_attempt()
@@ -741,7 +718,7 @@ def _stamp_evaluation(
     round_number: int | None = None,
     kind: str = "eval",
 ) -> None:
-    result, stage_score, run_full_eval = _evaluate_candidate(workspace, tag, genid, round_number)
+    result = evaluate(workspace, tag, genid, round_number=round_number)
     valid_parent = result.status in {"complete", "partial"}
     event: dict[str, Any] = {
         "genid": genid,
@@ -759,8 +736,6 @@ def _stamp_evaluation(
         "reason": DEFAULT_EVAL_REASON,
         "mutated": mutated,
         "surface_violations": [],
-        "stage_score": stage_score,
-        "run_full_eval": run_full_eval,
         "pending_gate_record": True,
         "predicted_fixes": [],
         "note": PENDING_GATE_RECORD_NOTE,
@@ -772,30 +747,6 @@ def _stamp_evaluation(
     if round_number is not None or kind == "forced_eval":
         event[MECHANISM_EVAL_FIELD] = True
     append_event(workspace, exp_id, event)
-
-def _evaluate_candidate(
-    workspace: Path,
-    tag: str,
-    genid: str,
-    round_number: int | None,
-):
-    stage = evaluator_stage(workspace)
-    if stage is None:
-        return evaluate(workspace, tag, genid, round_number=round_number), None, True
-    staged = evaluate(
-        workspace,
-        tag,
-        genid,
-        round_number=round_number,
-        run_name="eval-stage",
-        task_limit=stage["tasks"],
-        eval_kind="stage",
-    )
-    if staged.status not in {"complete", "partial"} or staged.score is None or staged.score <= 0:
-        return staged, staged.score, False
-    full = evaluate(workspace, tag, genid, round_number=round_number, eval_kind="research")
-    return full, staged.score, True
-
 
 def _ensure_genesis_evaluated(workspace: Path, exp_id: str) -> None:
     row = rows_by_genid(workspace).get("0", {})
@@ -827,68 +778,6 @@ def _ensure_genesis_evaluated(workspace: Path, exp_id: str) -> None:
             "cost": {"usd": 0, "wall_s": result.wall_s},
             MECHANISM_EVAL_FIELD: True,
         },
-    )
-
-
-def _maybe_run_final_anchor(workspace: Path, exp_id: str) -> None:
-    anchor = evaluator_anchor(workspace)
-    if anchor.get("final") is not True:
-        return
-    row = _final_anchor_row(workspace)
-    if row is None:
-        return
-    genid = str(row["genid"])
-    if _generation_has_anchor_event(workspace, genid):
-        return
-    result = evaluate(workspace, f"gen/{genid}", genid, run_name="eval-anchor", eval_kind="anchor")
-    valid_parent = result.status in {"complete", "partial"}
-    append_event(
-        workspace,
-        exp_id,
-        {
-            "genid": genid,
-            "parent": row.get("parent"),
-            "tag": f"gen/{genid}",
-            "score": result.score,
-            "status": result.status,
-            "task_set_hash": result.task_set_hash,
-            "task_vector": result.task_vector,
-            "evaluator_tree": result.evaluator_tree,
-            "valid_parent": valid_parent,
-            "verdict": "keep" if valid_parent else "discard",
-            "reason": "mechanism final anchor evaluation stamp",
-            "mutated": row.get("mutated", []),
-            "surface_violations": row.get("surface_violations", []),
-            "predicted_fixes": row.get("predicted_fixes", []),
-            "note": "final anchor evaluation",
-            "kind": "anchor",
-            "cost": {"usd": 0, "wall_s": result.wall_s},
-            MECHANISM_EVAL_FIELD: True,
-        },
-    )
-
-
-def _final_anchor_row(workspace: Path) -> dict[str, Any] | None:
-    best = best_row(workspace)
-    if best is None:
-        return None
-    best_score = best.get("score")
-    if not isinstance(best_score, (int, float)) or isinstance(best_score, bool):
-        return best
-    tied_rows = [
-        row
-        for row in valid_parent_rows(workspace)
-        if isinstance(row.get("score"), (int, float))
-        and not isinstance(row.get("score"), bool)
-        and float(row["score"]) == float(best_score)
-    ]
-    return max(tied_rows, key=lambda row: (generation_number(str(row.get("genid"))) or -1, str(row.get("genid"))))
-
-
-def _generation_has_anchor_event(workspace: Path, genid: str) -> bool:
-    return any(
-        str(event.get("genid")) == genid and event.get("kind") == "anchor"
-        for event in read_events(archive_path(workspace))
     )
 
 

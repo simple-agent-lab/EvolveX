@@ -29,8 +29,6 @@ evaluator:
   split: {train: 0.5, gate: 0.4, sealed: 0.1, seed: 0}
   sampling: static
   tasks_per_round: 8
-  stage: {tasks: 2, proceed_if: positive}
-  anchor: {final: true, every_rounds: 0}
   k: 1
   n_concurrent: 1
   partial_floor: 0.8

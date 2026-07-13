@@ -21,8 +21,6 @@ EVALUATION_FIELDS = STAMPED_FIELDS | {
     "mutated",
     "surface_violations",
     "predicted_fixes",
-    "stage_score",
-    "run_full_eval",
     "note",
     "kind",
     "round",

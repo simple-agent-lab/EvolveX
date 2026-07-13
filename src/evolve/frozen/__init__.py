@@ -10,8 +10,6 @@ Frozen lives in TWO physical homes, because the ruler is per-experiment:
      each workspace, immutable because it sits outside the mutable surface:
        - interfaces.py : the operator contract (types + OPERATORS registry + validation)
        - sdk.py        : the operator contract's runtime (context IO, output validation)
-       - meta_eval.py  : the self-modification admission gate (the evaluated must
-                         not own its evaluator)
 
   2. Experiment-side (workspace `evaluator/`, from templates/evaluator/) — the
      ruler: eval + splits + score stamping. Frozen because it is excluded from
@@ -21,5 +19,5 @@ Frozen lives in TWO physical homes, because the ruler is per-experiment:
 
 What is NOT frozen: the seed operators/algorithms (library/ + a workspace's
 operators/). Those are the *evolvable genome* — the whole point is that the
-evolution logic can itself be evolved (self-reference), gated by meta_eval.
+evolution logic can itself be evolved while evaluation certification remains frozen.
 """

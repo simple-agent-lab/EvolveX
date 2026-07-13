@@ -16,10 +16,7 @@ from evolve.frozen.interfaces import RecordOperator, RecordResult
 
 class HyperAgentsRecord(RecordOperator):
     def annotate(self, child, ctx) -> RecordResult:
-        experience = {
-            key: child.get(key)
-            for key in ("genid", "parent", "status", "score", "stage_score", "run_full_eval")
-        }
+        experience = {key: child.get(key) for key in ("genid", "parent", "status", "score")}
         path = ctx.run_dir / "record" / "experience.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(experience, indent=2, sort_keys=True) + "\n")

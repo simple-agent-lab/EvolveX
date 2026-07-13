@@ -84,8 +84,6 @@ def test_hyperagents_record_writes_compact_experience_and_archive_pointer(tmp_pa
         "genid": "1",
         "parent": "0",
         "score": 0.5,
-        "stage_score": 0.25,
-        "run_full_eval": True,
         "status": "complete",
         "reason": "not part of compact experience",
     }
@@ -96,8 +94,6 @@ def test_hyperagents_record_writes_compact_experience_and_archive_pointer(tmp_pa
         "genid": "1",
         "parent": "0",
         "score": 0.5,
-        "stage_score": 0.25,
-        "run_full_eval": True,
         "status": "complete",
     }
     assert result.fields == {"experience_record": "runs/gen-1/record/experience.json"}
