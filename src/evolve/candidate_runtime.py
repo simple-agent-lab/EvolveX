@@ -160,6 +160,7 @@ def _run_harbor_smoke(checkout: Path, workspace: Path, attempt: Path, mode: Smok
             "EVOLVE_UV_CACHE_DIR": str(cache),
         }
     )
+    env.setdefault("EVOLVE_HARBOR_AGENT_SETUP_TIMEOUT_MULTIPLIER", "6")
     completed = subprocess.run(
         [str(checkout / "evaluator" / "eval.sh")],
         cwd=checkout,

@@ -25,6 +25,7 @@ def _smoke_checkout(tmp_path: Path) -> Path:
         'mkdir -p "$EVOLVE_RUN_DIR" "$EVOLVE_CANDIDATE_SMOKE_JOBS_DIR"\n'
         'printf "%s\\n" "$EVOLVE_CANDIDATE_SMOKE_MODE" > "$EVOLVE_RUN_DIR/mode"\n'
         'printf "%s\\n" "$EVOLVE_UV_CACHE_DIR" > "$EVOLVE_RUN_DIR/cache"\n'
+        'printf "%s\\n" "$EVOLVE_HARBOR_AGENT_SETUP_TIMEOUT_MULTIPLIER" > "$EVOLVE_RUN_DIR/setup-timeout"\n'
         'printf \'{"schema_version":1,"status":"passed","owner":"none","category":"none","harbor_returncode":0,"trial_results_seen":1}\\n\' > "$EVOLVE_RUN_DIR/harbor-result.json"\n',
     )
     return checkout
@@ -131,6 +132,8 @@ def test_container_and_full_smoke_reuse_cache_and_write_sanitized_records(tmp_pa
     assert (full.attempt_dir / "mode").read_text() == "full\n"
     assert (container.attempt_dir / "cache").read_text() == f"{expected_cache}\n"
     assert (full.attempt_dir / "cache").read_text() == f"{expected_cache}\n"
+    assert (container.attempt_dir / "setup-timeout").read_text() == "6\n"
+    assert (full.attempt_dir / "setup-timeout").read_text() == "6\n"
     assert sentinel not in "".join(path.read_text() for path in run_dir.rglob("*") if path.is_file())
     materializations = list((checkout / "runs" / "runtime" / "candidates").glob("*/attempts/*.json"))
     assert len(materializations) == 2
