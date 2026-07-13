@@ -236,6 +236,8 @@ def _top_eval(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def _can_replace_stamped(current: dict[str, Any], event: dict[str, Any]) -> bool:
+    if event.get("kind") == "baseline" and event.get(MECHANISM_EVAL_FIELD) is True:
+        return True
     if (
         current.get("pending_gate_record") is True
         and event.get("status") == "operator_failed"

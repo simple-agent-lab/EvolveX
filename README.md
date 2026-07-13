@@ -87,6 +87,11 @@ and generated evaluator templates use the checkout's own `target/` via a
 custom Harbor agent path. A full mini-swe target live smoke is still
 pending; real long-running experiments should run on a Linux machine.
 
+Harbor rollout retention is configurable independently of execution through
+research-inspired `evidence_profile` values. See
+[`ROLLOUT_EVIDENCE.md`](ROLLOUT_EVIDENCE.md) for the Self-Harness, DGM,
+Hyperagents, Meta-Harness, SIA, ACE/MCE, ADAS/AFlow, GEPA, and STOP mappings.
+
 ## Install For Development
 
 Requirements:
@@ -131,6 +136,41 @@ Run a deterministic smoke loop with the stub evaluator:
 EVAL_STUB=1 evolve run . --max-generations 5
 ```
 
+Runs print stage-level progress by default. Add `--verbose` to stream Harbor
+and operator output while retaining the per-run `harbor.log` files:
+
+```bash
+evolve run . --max-generations 1 --verbose
+```
+
+For a quiet machine-readable run, set `EVOLVE_PROGRESS=0`. To observe an
+already-running non-verbose evaluation, follow its log directly, for example
+`tail -F runs/gen-0/baseline/harbor.log`.
+
+Harbor agent and verifier phases receive the host `http_proxy`, `https_proxy`,
+and `no_proxy` values in both lower- and uppercase forms. Override only the
+values sent to task containers with `EVOLVE_HARBOR_HTTP_PROXY`,
+`EVOLVE_HARBOR_HTTPS_PROXY`, and `EVOLVE_HARBOR_NO_PROXY`.
+
+To scaffold an evolvable Harbor wrapper around Codex instead of the dummy
+target:
+
+```bash
+evolve init /tmp/evolve-codex --recipe hill_climb --seed builtin-codex \
+  --dataset /absolute/path/to/harbor/tasks
+```
+
+The generated `target/` owns its prompt, skills, Codex version/model settings,
+and opt-in compaction overrides. Harbor still installs and executes the Codex
+CLI inside each task container. Runtime authentication stays outside the
+workspace: export `OPENAI_API_KEY`, or use host `codex login` with
+`CODEX_FORCE_AUTH_JSON=1`.
+
+For a local Harbor dataset, init deterministically freezes disjoint
+`train`/`gate`/`sealed` task-name lists in `evaluator/splits.json`. Harbor
+rollout consumes only `train`, canonical evaluation consumes only `gate`, and
+sealed anchor results are auxiliary records that never enter mutation feedback.
+
 Inspect the population and the claim checklist:
 
 ```bash
@@ -168,7 +208,7 @@ evolve status /tmp/evolve-dgm
 ## CLI Verbs
 
 ```text
-evolve init <workspace> [--recipe ...]
+evolve init <workspace> [--recipe ...] [--seed builtin-dummy|builtin-codex|PATH|GIT_URL] [--dataset LOCAL_TASK_DIR]
 evolve run <workspace> [--max-generations N] [--children-per-gen N] [--resume]
 evolve fork <workspace> <parent> <child-worktree>
 evolve commit <workspace> <child-worktree> --parent <id> --genid <id>
@@ -295,6 +335,8 @@ thermal pressure, and get more predictable long-running Docker behavior.
 - `llm` and `agent_command` mutator adapters exist, but repeatable
   milestone tests still use the deterministic checkout-local `fixed`
   mutate operator by default.
+- Deterministic split discovery currently requires a local Harbor task
+  directory; remote registry datasets must first be materialized locally.
 - Archive provenance is protected by mechanism stamps and receipt
   sidecars for auxiliary evals, not by cryptographic signatures.
 - Harbor is verified for Mac development smoke tests, but production

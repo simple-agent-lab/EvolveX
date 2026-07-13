@@ -14,8 +14,7 @@ from evolve.frozen import interfaces
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src" / "evolve"
-TOTAL_BUDGET = 3900  # raised for the DESIGN mechanisms + observability (novelty,
-# meta_eval, falsification/verified_fixes, the frozen ring, verify/audit/doctor)
+TOTAL_BUDGET = 4800  # includes deterministic splits, canonical evaluation, sealed anchors, rollout evidence
 ROW = re.compile(r"^\| `([^`]+\.py)` \| (\d+) \|")
 APPROVED_MODULES = {
     "__init__.py",
@@ -30,6 +29,8 @@ APPROVED_MODULES = {
     "operators.py",
     "population.py",
     "report.py",
+    "rollout_evidence.py",
+    "splits.py",
     "surface.py",
     "workspace.py",
     # the frozen ring — the invariant-enforcers, grouped under frozen/

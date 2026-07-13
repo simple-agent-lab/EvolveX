@@ -11,6 +11,7 @@ variant. This is the one home for the logic — `library/observe/*` is deleted.
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -68,6 +69,63 @@ def _copy_rollout_feedback(run_dir: Path, failures: Path) -> str | None:
     return "feedback/failures/rollout.md"
 
 
+def _copy_rollout_evidence(run_dir: Path, destination: Path) -> list[str]:
+    source = run_dir / "rollout" / "evidence"
+    if not source.is_dir():
+        return []
+    destination.mkdir(parents=True, exist_ok=True)
+    copied: list[str] = []
+    for name in (
+        "manifest.json",
+        "selected.md",
+        "metrics.json",
+        "failure_patterns.json",
+        "passing_behaviors.json",
+    ):
+        path = source / name
+        if not path.is_file():
+            continue
+        target = destination / name
+        shutil.copyfile(path, target)
+        copied.append(f"feedback/evidence/{name}")
+    return copied
+
+
+def _rollout_history(workspace: Path, rows: list[Row], history_k: int) -> list[Row]:
+    history: list[Row] = []
+    for row in rows[-int(history_k) :]:
+        genid = str(row.get("genid") or "")
+        evidence_root = workspace / "runs" / f"gen-{genid}" / "rollout" / "evidence"
+        manifest: dict[str, Any] = {}
+        metrics: dict[str, Any] = {}
+        for path, target in ((evidence_root / "manifest.json", manifest), (evidence_root / "metrics.json", metrics)):
+            try:
+                payload = json.loads(path.read_text())
+            except (OSError, json.JSONDecodeError):
+                payload = {}
+            if isinstance(payload, dict):
+                target.update(payload)
+        history.append(
+            {
+                "genid": row.get("genid"),
+                "parent": row.get("parent"),
+                "score": row.get("score"),
+                "status": row.get("status"),
+                "valid_parent": row.get("valid_parent"),
+                "verdict": row.get("verdict"),
+                "reason": row.get("reason"),
+                "mutated": row.get("mutated"),
+                "predicted_fixes": row.get("predicted_fixes"),
+                "verified_fixes": row.get("verified_fixes"),
+                "evidence_profile": manifest.get("selected_profile"),
+                "rollout_metrics": metrics,
+                "raw_evidence_dir": str(evidence_root) if evidence_root.is_dir() else None,
+                "source_tag": row.get("tag"),
+            }
+        )
+    return history
+
+
 def write_feedback_bundle(*, workspace: Path, run_dir: Path, history_k: int = 8) -> list[str]:
     """Write the feedback bundle under run_dir/feedback/ and return its manifest.
 
@@ -92,6 +150,9 @@ def write_feedback_bundle(*, workspace: Path, run_dir: Path, history_k: int = 8)
     failures.mkdir(exist_ok=True)
     (failures / "README.md").write_text("The feedback bundle writes a minimal failure summary.\n")
     rollout_feedback = _copy_rollout_feedback(run_dir, failures)
+    evidence_files = _copy_rollout_evidence(run_dir, feedback / "evidence")
+    _write_json(feedback / "evidence" / "history.json", _rollout_history(workspace, rows, history_k))
+    evidence_files.append("feedback/evidence/history.json")
     (feedback / "last_accepted.diff").write_text(_latest_accepted_diff(workspace, rows))
 
     prior = [row for row in rows if row.get("predicted_fixes")]
@@ -110,13 +171,18 @@ def write_feedback_bundle(*, workspace: Path, run_dir: Path, history_k: int = 8)
         "# Rules\n\n- Surface include: %s\n- Surface exclude: %s\n- Self-check: `evolve surface-check`\n"
         % (include, exclude)
     )
-    rollout_link = "- [current rollout](failures/rollout.md)\n" if rollout_feedback else ""
+    has_selected_evidence = "feedback/evidence/selected.md" in evidence_files
+    rollout_link = "- [current rollout](failures/rollout.md)\n" if rollout_feedback and not has_selected_evidence else ""
+    evidence_link = "- [selected rollout evidence](evidence/selected.md)\n" if has_selected_evidence else ""
+    history_link = "- [rollout and edit history](evidence/history.json)\n"
     (feedback / "index.md").write_text(
         "# Feedback Bundle\n\n"
         "- [lineage](lineage.json)\n"
         "- [attempts](attempts.md)\n"
         "- [failures](failures/)\n"
         f"{rollout_link}"
+        f"{evidence_link}"
+        f"{history_link}"
         "- [last accepted diff](last_accepted.diff)\n"
         "- [falsification](falsification.md)\n"
         "- [rules](rules.md)\n"
@@ -132,5 +198,6 @@ def write_feedback_bundle(*, workspace: Path, run_dir: Path, history_k: int = 8)
     ]
     if rollout_feedback:
         manifest.append(rollout_feedback)
+    manifest.extend(evidence_files)
     _write_json(run_dir / "feedback" / "manifest.json", manifest)
     return manifest

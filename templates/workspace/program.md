@@ -10,8 +10,7 @@ surface-check` before proposing a child so out-of-surface edits are caught early
 
 Three partitions: `train` feeds rollout feedback, `gate` scores the
 canonical eval that drives selection, and `sealed` is never selected on and
-only ever evaluated on human request — it guards against probing the test
-set. Rollout must only use `train`; the gate score must only come from
-`gate`. (Task-level enforcement of these partitions lands with the Harbor
-task-partitioning wiring; today the split shape is reserved and honored by
-convention.)
+is evaluated only by configured periodic/final anchors — it guards against
+probing the test set. The frozen manifest records exact task names. Harbor
+rollout filters to `train`, canonical evaluation filters to `gate`, and sealed
+anchor entries are excluded from the feedback bundle.

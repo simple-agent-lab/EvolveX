@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import shutil
@@ -11,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .git import evaluator_tree, git
+from .splits import configured_task_set_hash
 
 
 @dataclass(frozen=True)
@@ -23,14 +23,26 @@ class EvaluationResult:
     task_vector: dict | None = None  # per-task pass/fail, when the evaluator emits it
 
 
+def _progress(message: str) -> None:
+    if os.environ.get("EVOLVE_PROGRESS", "1") != "0":
+        print(f"[evolve] {message}", flush=True)
+
+
 def evaluate(
-    workspace: Path, tag: str, genid: str, *, round_number: int | None = None, run_name: str = "eval"
+    workspace: Path,
+    tag: str,
+    genid: str,
+    *,
+    round_number: int | None = None,
+    run_name: str = "eval",
+    split_name: str = "gate",
 ) -> EvaluationResult:
     start = time.monotonic()
     run_dir = workspace / "runs" / f"gen-{genid}" / run_name
     if run_dir.exists():
         shutil.rmtree(run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
+    _progress(f"gen/{genid} {run_name}: evaluating {split_name} split; log: {run_dir / 'harbor.log'}")
     tag_evaluator_tree = evaluator_tree(workspace, tag)
     baseline_tree = evaluator_tree(workspace, "gen/0")
     if tag_evaluator_tree != baseline_tree:
@@ -40,19 +52,17 @@ def evaluate(
         checkout = Path(tempdir) / "checkout"
         git(workspace, "worktree", "add", "--detach", str(checkout), tag)
         try:
-            status, score = _run_eval_script(checkout, run_dir, genid, round_number)
+            status, score = _run_eval_script(checkout, run_dir, genid, round_number, split_name)
             task_hash_path = run_dir / "task_set_hash"
-            if round_number is None:
-                task_set_hash = _sha256_file(checkout / "evaluator" / "splits.json")
-            elif task_hash_path.exists():
+            if task_hash_path.exists():
                 task_set_hash = task_hash_path.read_text().strip()
             else:
-                raise RuntimeError("per-round evaluator did not write task_set_hash")
+                task_set_hash = configured_task_set_hash(checkout, split_name, round_number=round_number)
             task_vector = _read_task_vector(run_dir)
         finally:
             git(workspace, "worktree", "remove", "--force", str(checkout), check=False)
 
-    return EvaluationResult(
+    result = EvaluationResult(
         score=score,
         status=status,
         task_set_hash=task_set_hash,
@@ -60,6 +70,8 @@ def evaluate(
         wall_s=time.monotonic() - start,
         task_vector=task_vector,
     )
+    _progress(f"gen/{genid} {run_name}: {result.status}, score={result.score}, elapsed={result.wall_s:.1f}s")
+    return result
 
 
 def _read_task_vector(run_dir: Path) -> dict | None:
@@ -70,22 +82,32 @@ def _read_task_vector(run_dir: Path) -> dict | None:
     return data if isinstance(data, dict) else None
 
 
-def _run_eval_script(checkout: Path, run_dir: Path, genid: str, round_number: int | None) -> tuple[str, float | None]:
-    env: dict[str, str] = {**os.environ.copy(), "EVOLVE_RUN_DIR": str(run_dir), "EVOLVE_GENID": genid}
+def _run_eval_script(
+    checkout: Path, run_dir: Path, genid: str, round_number: int | None, split_name: str
+) -> tuple[str, float | None]:
+    env: dict[str, str] = {
+        **os.environ.copy(),
+        "EVOLVE_RUN_DIR": str(run_dir),
+        "EVOLVE_GENID": genid,
+        "EVOLVE_EVAL_SPLIT": split_name,
+    }
     env.pop("EVOLVE_ROUND", None)
     if round_number is not None:
         env["EVOLVE_ROUND"] = str(round_number)
+    live_output = os.environ.get("EVOLVE_LIVE_OUTPUT") == "1"
     result = subprocess.run(
         [str(checkout / "evaluator" / "eval.sh")],
         cwd=checkout,
         env=env,
         text=True,
-        capture_output=True,
+        capture_output=not live_output,
         check=False,
     )
     status_by_code = {0: "complete", 2: "partial", 3: "infra_failed"}
     if result.returncode not in status_by_code:
-        message = result.stderr.strip() or result.stdout.strip() or "evaluator failed"
+        stderr = result.stderr or ""
+        stdout = result.stdout or ""
+        message = stderr.strip() or stdout.strip() or f"evaluator failed; see {run_dir / 'harbor.log'}"
         raise RuntimeError(message)
 
     status = status_by_code[result.returncode]
@@ -102,7 +124,3 @@ def _run_eval_script(checkout: Path, run_dir: Path, genid: str, round_number: in
     if not score_path.exists():
         raise RuntimeError(f"evaluator did not write score for {status} result")
     return status, float(score_path.read_text().strip())
-
-
-def _sha256_file(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()

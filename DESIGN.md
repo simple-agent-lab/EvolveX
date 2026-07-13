@@ -84,9 +84,10 @@ Enforced, not documented-and-hoped. Everything else is open to evolution.
 3. **`best-ever` is recomputed by a frozen rule**, and a champion change
    requires a replication re-eval. However loose a gate is, it cannot touch
    this.
-4. **Training data never contains gate/sealed tasks** and never comes from
-   audit-flagged generations. (To be enforced by a frozen decontam guard when
-   auto-train is enabled — **planned, not yet built**; dormant until weights land.)
+4. **Training data never contains gate/sealed tasks.** Harbor task membership
+   is frozen at init and rollout receives exact train task-name filters. The
+   additional decontam guard for learned weights and audit-flagged generations
+   remains planned until auto-train is enabled.
 5. **Checkpoints enter the lineage only through canonical eval.** A checkpoint
    is a candidate; training is a variation operator; the same ruler scores it.
 

@@ -1,6 +1,6 @@
 # Notes
 
-The current scaffold maps the AHE rollback idea onto the canonical
-`parent_eligible` gate. That preserves the recipe shape without adding recipe
-specific mechanism code; richer falsification evidence can live in a workspace
-gate operator later.
+The executable baseline uses Harbor train failures as adversarial evidence and
+the canonical non-regression gate as rollback. More sophisticated adversary
+generation can replace `operators/rollout.py` without changing the frozen
+train/gate/sealed contract.

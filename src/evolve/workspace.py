@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import copy
-import hashlib
 import json
 import shlex
 import shutil
@@ -24,6 +23,7 @@ from .config import (
     render_yaml,
     resource_root,
 )
+from .splits import build_manifest, configured_task_set_hash
 
 
 @dataclass(frozen=True)
@@ -31,6 +31,7 @@ class InitOptions:
     workspace: Path
     recipe: str
     seed: str | None = None
+    dataset: str | None = None
 
 
 @dataclass(frozen=True)
@@ -51,9 +52,17 @@ def init_workspace(options: InitOptions) -> None:
         target = config["target"]
         assert isinstance(target, dict)
         target["seed"] = options.seed
+    if options.dataset:
+        evaluator = config["evaluator"]
+        assert isinstance(evaluator, dict)
+        evaluator["dataset"] = options.dataset
+
+    target = config["target"]
+    assert isinstance(target, dict)
+    target_seed = str(target.get("seed") or "builtin-dummy")
 
     _write_files(workspace, config, recipe=options.recipe, init_cwd=Path.cwd())
-    _write_target(workspace, options.seed)
+    _write_target(workspace, target_seed)
     _vendor_mechanism(workspace)
     _make_executable(
         workspace / "operators" / "engines" / "local.sh",
@@ -112,6 +121,19 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
     tasks_per_round = int(evaluator.get("tasks_per_round", evaluator_trials))
     evaluator_n = int(evaluator.get("n_concurrent", evaluator_trials))
     partial_floor = float(evaluator.get("partial_floor", 0.8))
+    setup_timeout_multiplier = float(evaluator.get("agent_setup_timeout_multiplier", 1))
+    max_retries = int(evaluator.get("max_retries", 0))
+    split_config = evaluator.get("split")
+    if not isinstance(split_config, dict):
+        raise ValueError("evaluator.split must be a mapping")
+    split_manifest = build_manifest(
+        evaluator_dataset,
+        split_config,
+        base_dir=init_cwd,
+        sampling=str(evaluator.get("sampling", "static")),
+        gate_limit=tasks_per_round,
+    )
+    evaluator_dataset = str(split_manifest["dataset"])
     files = {
         "evolve.yaml": render_yaml(_runtime_config(config)),
         # Static skeleton — the browsable shape of a workspace lives as real files
@@ -139,9 +161,16 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
         "PROTOCOL.md": (library_root() / "PROTOCOL.md").read_text(),
         "evaluator/eval.sh": _eval_sh(evaluator_engine, evaluator_dataset),
         "evaluator/eval.env": _eval_env(
-            workspace.name, evaluator_dataset, evaluator_n, tasks_per_round, evaluator_trials, partial_floor
+            workspace.name,
+            evaluator_dataset,
+            evaluator_n,
+            tasks_per_round,
+            evaluator_trials,
+            partial_floor,
+            setup_timeout_multiplier,
+            max_retries,
         ),
-        "evaluator/splits.json": json.dumps({"train": 0.5, "gate": 0.4, "sealed": 0.1, "seed": 0}, indent=2) + "\n",
+        "evaluator/splits.json": json.dumps(split_manifest, indent=2, sort_keys=True) + "\n",
         "evaluator/dataset.pin": f"dataset={evaluator_dataset}\nchecksum=sha256:stub\n",
         "evaluator/parse_score.py": _template("evaluator/parse_score.py"),
         "evaluator/stub_eval.py": _template("evaluator/stub_eval.py"),
@@ -300,6 +329,12 @@ def _write_target(workspace: Path, seed: str | None) -> None:
             json.dumps({"kind": "builtin", "seed": "builtin-dummy"}, sort_keys=True) + "\n"
         )
         return
+    if seed == "builtin-codex":
+        _copy_resource_tree(resource_root("templates") / "target" / "codex", workspace / "target")
+        (workspace / "target" / "UPSTREAM.json").write_text(
+            json.dumps({"kind": "builtin", "seed": "builtin-codex"}, sort_keys=True) + "\n"
+        )
+        return
     if _looks_like_git_url(seed):
         with tempfile.TemporaryDirectory(prefix="evolve-seed-") as tmp:
             checkout = Path(tmp) / "seed"
@@ -310,6 +345,16 @@ def _write_target(workspace: Path, seed: str | None) -> None:
     if not source.is_dir():
         raise ValueError(f"seed is not a local directory or git URL: {seed}")
     _vendor_seed(workspace, source.resolve(), str(source.resolve()))
+
+
+def _copy_resource_tree(source: Any, destination: Path) -> None:
+    destination.mkdir(parents=True, exist_ok=True)
+    for entry in source.iterdir():
+        target = destination / entry.name
+        if entry.is_dir():
+            _copy_resource_tree(entry, target)
+        else:
+            target.write_bytes(entry.read_bytes())
 
 
 def _vendor_seed(workspace: Path, source: Path, fallback_remote: str) -> None:
@@ -364,7 +409,7 @@ def _write_gen0_archive(workspace: Path) -> None:
             "tag": "gen/0",
             "score": 1.0,
             "status": "complete",
-            "task_set_hash": _sha256_file(workspace / "evaluator" / "splits.json"),
+            "task_set_hash": configured_task_set_hash(workspace),
             "task_vector": {f"task-{i}": True for i in range(8)},
             "evaluator_tree": _git(workspace, "rev-parse", "HEAD:evaluator").strip(),
             "valid_parent": True,
@@ -396,23 +441,29 @@ def _git_optional(workspace: Path, *args: str) -> str | None:
     return result.stdout.strip() or None if result.returncode == 0 else None
 
 
-def _sha256_file(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
 def _make_executable(*paths: Path) -> None:
     for path in paths:
         path.chmod(path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
 
 def _eval_env(
-    workspace_name: str, dataset: str, n_concurrent: int, tasks_per_round: int, trials: int, partial_floor: float
+    workspace_name: str,
+    dataset: str,
+    n_concurrent: int,
+    tasks_per_round: int,
+    trials: int,
+    partial_floor: float,
+    setup_timeout_multiplier: float,
+    max_retries: int,
 ) -> str:
     expected_trials = tasks_per_round * max(trials, 1)
     return (
         f"EVOLVE_EVALUATOR_DATASET={dataset}\n"
         f"EVOLVE_HARBOR_TASKS={shlex.quote(dataset)}\n"
         f"EVOLVE_HARBOR_N_CONCURRENT={n_concurrent}\nEVOLVE_HARBOR_EXPECTED_TRIALS={expected_trials}\nEVOLVE_HARBOR_N={n_concurrent}\n"
+        f"EVOLVE_HARBOR_TASKS_PER_ROUND={tasks_per_round}\nEVOLVE_HARBOR_K={max(trials, 1)}\n"
+        f"EVOLVE_HARBOR_AGENT_SETUP_TIMEOUT_MULTIPLIER={max(setup_timeout_multiplier, 1)}\n"
+        f"EVOLVE_HARBOR_MAX_RETRIES={max(max_retries, 0)}\n"
         f'EVOLVE_JOBS_DIR="$HOME/.evolve/harbor-jobs/{workspace_name}"\n'
         "EVOLVE_HARBOR_AGENT=evaluator.checkout_agent:CheckoutTargetAgent\n"
         f"EVOLVE_PARTIAL_FLOOR={partial_floor}\n"

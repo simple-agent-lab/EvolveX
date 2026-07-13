@@ -1,4 +1,5 @@
 import json
+import tomllib
 from pathlib import Path
 
 from conftest import git, run_evolve
@@ -69,7 +70,10 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
     assert "archive.jsonl" in gitignore
 
     splits = json.loads((workspace / "evaluator" / "splits.json").read_text())
-    assert set(splits) == {"train", "gate", "sealed", "seed"}
+    assert splits["ratios"] == {"train": 0.5, "gate": 0.4, "sealed": 0.1}
+    assert splits["seed"] == 0
+    assert splits["tasks"] == {"train": [], "gate": [], "sealed": []}
+    assert splits["resolved"] is False
 
 
 def test_init_creates_generation_zero_git_snapshot_and_archive_event(tmp_path: Path) -> None:
@@ -105,3 +109,43 @@ def test_init_creates_generation_zero_git_snapshot_and_archive_event(tmp_path: P
     assert row["task_set_hash"]
     assert row["evaluator_tree"]
     assert row["cost"]["usd"] == 0
+
+
+def test_init_scaffolds_builtin_codex_target(tmp_path: Path) -> None:
+    workspace = tmp_path / "codex-experiment"
+
+    result = run_evolve(
+        "init",
+        str(workspace),
+        "--recipe",
+        "hill_climb",
+        "--seed",
+        "builtin-codex",
+        env={"EVOLVE_HOME": str(tmp_path / "evolve-home")},
+    )
+
+    assert result.returncode == 0, result.stderr
+    expected = {
+        "target/agent.py",
+        "target/codex.toml",
+        "target/prompt.md",
+        "target/README.md",
+        "target/UPSTREAM.json",
+        "target/skills/task-execution/SKILL.md",
+    }
+    assert all((workspace / path).is_file() for path in expected)
+    compile((workspace / "target" / "agent.py").read_text(), "target/agent.py", "exec")
+
+    settings = tomllib.loads((workspace / "target" / "codex.toml").read_text())
+    assert settings["codex"]["model"] == "gpt-5.4"
+    assert settings["skills"]["enabled"] is True
+    assert settings["compaction"]["override_defaults"] is False
+    assert settings["compaction"]["auto_compact_token_limit_scope"] == "total"
+    assert "{{ instruction }}" in (workspace / "target" / "prompt.md").read_text()
+    assert "name: task-execution" in (workspace / "target" / "skills" / "task-execution" / "SKILL.md").read_text()
+    assert json.loads((workspace / "target" / "UPSTREAM.json").read_text()) == {
+        "kind": "builtin",
+        "seed": "builtin-codex",
+    }
+    assert "seed: builtin-codex" in (workspace / "evolve.yaml").read_text()
+    assert git(workspace, "status", "--short") == ""

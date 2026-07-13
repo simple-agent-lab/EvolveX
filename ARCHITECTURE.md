@@ -22,8 +22,8 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `__main__.py` | 10 | `python -m evolve` entry |
 | `cli.py` | 200 | argument parsing and verb dispatch only — no logic |
 | `config.py` | 300 | read/render `evolve.yaml`: recipes, experiment values, surface lists, operator blocks |
-| `driver.py` | 1220 | the generation sequencer: orchestrates verbs + operators (incl. novelty + self-modification admission gates); validates operator file outputs at the seam; computes verified_fixes; audit quarantine; doctor repair |
-| `feedback.py` | 150 | the ledger-derived feedback bundle the mutator reads (retired `observe`); written by the driver after rollout |
+| `driver.py` | 1360 | the generation sequencer: orchestrates baseline eval, verbs + operators (incl. novelty, self-modification admission gates, sealed anchors); validates operator outputs; computes verified_fixes; audit quarantine; doctor repair |
+| `feedback.py` | 220 | assemble current and historical rollout evidence plus ledger-derived feedback for the mutator |
 | `operators.py` | 150 | subprocess runner for workspace operator scripts (contract: env vars, --config, timeout) |
 | `population.py` | 150 | genid/lineage bookkeeping for fan-out generations |
 | `archive.py` | 270 | append-only event store: merge semantics, stamped-field protection, mirroring, integrity fsck |
@@ -31,7 +31,9 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `git.py` | 150 | thin git subprocess helpers — nothing evolve-specific |
 | `surface.py` | 150 | mutable-surface pattern matching and violation checks |
 | `report.py` | 182 | status/report rendering, best-ever recomputation, claim checklist |
-| `workspace.py` | 460 | `evolve init` scaffolding: file copies, operator binding (required + optional), the generated `operators/README.md` index + `library/` variant palette, protocol stamping, seed + mechanism vendoring, inner-skill copy |
+| `rollout_evidence.py` | 410 | normalize Harbor traces into research-inspired failure, reflection, raw-history, workflow, and utility views |
+| `splits.py` | 210 | freeze deterministic train/gate/sealed Harbor task membership and materialize exact runtime selections |
+| `workspace.py` | 510 | `evolve init` scaffolding: file copies, operator binding, deterministic dataset and Harbor runtime config, generated operator palette, protocol stamping, seed + mechanism vendoring, inner-skill copy |
 
 ### The frozen ring (`src/evolve/frozen/`)
 
@@ -47,7 +49,8 @@ each workspace, immutable there because it sits outside the mutable surface
 | `frozen/sdk.py` | 420 | Python operator entrypoint and file-contract IO; no library algorithm policy |
 | `frozen/meta_eval.py` | 130 | self-modification admission gate: confound-free replay of old vs new operator surface (mechanism 1) |
 
-Total `src/evolve/` budget: **3900 lines**. If the mechanism wants to
+Total `src/evolve/` budget: **4800 lines**. The increase admits the explicit,
+redacted rollout-evidence boundary shared by Harbor and feedback assembly; if the mechanism wants to
 grow past that, something belongs in a workspace operator instead —
 that is the spec's rule, not a style preference.
 

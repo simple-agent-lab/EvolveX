@@ -19,7 +19,7 @@ from .archive import (
     read_events,
     rows_by_genid,
 )
-from .config import evaluator_sampling, experiment_id, operator_blocks
+from .config import evaluator_anchor, evaluator_sampling, evaluator_values, experiment_id, operator_blocks
 from .evaluator import evaluate
 from .feedback import write_feedback_bundle
 from .frozen import meta_eval
@@ -87,6 +87,7 @@ def run(options: RunOptions) -> None:
         raise RuntimeError("children_per_gen must be at least 1")
     exp_id = experiment_id(workspace)
     ensure_local_archive(workspace, exp_id)
+    _ensure_canonical_baseline(workspace, exp_id)
     operators_config = operator_blocks(workspace)
 
     for gen in range(1, options.max_generations + 1):
@@ -99,6 +100,7 @@ def run(options: RunOptions) -> None:
             genid for genid in genids if _generation_is_pending(rows.get(genid, {}), genid in pending_eval_gate_record)
         ]
         if not pending:
+            _maybe_periodic_anchor(workspace, exp_id, gen)
             continue
 
         round_number = gen if evaluator_sampling(workspace) == "per_round" else None
@@ -129,6 +131,123 @@ def run(options: RunOptions) -> None:
                 _resume_tagged_child(workspace, exp_id, genid, parent, round_number, operators_config)
                 continue
             _run_child(workspace, exp_id, genid, parent, round_number, operators_config)
+        _maybe_periodic_anchor(workspace, exp_id, gen)
+    _maybe_final_anchor(workspace, exp_id, options.max_generations)
+
+
+def _ensure_canonical_baseline(workspace: Path, exp_id: str) -> None:
+    if evaluator_values(workspace).get("engine") != "harbor":
+        return
+    try:
+        manifest = json.loads((workspace / "evaluator" / "splits.json").read_text())
+    except (OSError, json.JSONDecodeError):
+        return
+    if not isinstance(manifest, dict) or manifest.get("resolved") is not True:
+        return
+    if any(
+        event.get("genid") == "0"
+        and event.get("kind") == "baseline"
+        and event.get(MECHANISM_EVAL_FIELD) is True
+        and event.get("status") in {"complete", "partial"}
+        for event in read_events(archive_path(workspace))
+    ):
+        return
+
+    result = evaluate(workspace, "gen/0", "0", run_name="baseline", split_name="gate")
+    valid = result.status in {"complete", "partial"}
+    append_event(
+        workspace,
+        exp_id,
+        {
+            "genid": "0",
+            "parent": None,
+            "tag": "gen/0",
+            "score": result.score,
+            "status": result.status,
+            "task_set_hash": result.task_set_hash,
+            "task_vector": result.task_vector,
+            "evaluator_tree": result.evaluator_tree,
+            "valid_parent": valid,
+            "verdict": "keep" if valid else "discard",
+            "reason": "canonical gate baseline evaluation",
+            "mutated": [],
+            "surface_violations": [],
+            "predicted_fixes": [],
+            "note": "replaced built-in initialization score",
+            "cost": {"usd": 0, "wall_s": result.wall_s},
+            "kind": "baseline",
+            "round": 0,
+            MECHANISM_EVAL_FIELD: True,
+        },
+    )
+    if not valid:
+        raise RuntimeError(f"generation 0 gate baseline produced {result.status}")
+
+
+def _maybe_periodic_anchor(workspace: Path, exp_id: str, generation: int) -> None:
+    if evaluator_values(workspace).get("engine") != "harbor":
+        return
+    config = evaluator_anchor(workspace)
+    try:
+        every = int(config.get("every_rounds", 0) or 0)
+    except (TypeError, ValueError):
+        every = 0
+    if every > 0 and generation % every == 0:
+        _run_anchor(workspace, exp_id, generation, f"anchor-round-{generation}")
+
+
+def _maybe_final_anchor(workspace: Path, exp_id: str, generation: int) -> None:
+    if evaluator_values(workspace).get("engine") == "harbor" and evaluator_anchor(workspace).get("final") is True:
+        _run_anchor(workspace, exp_id, generation, "anchor-final")
+
+
+def _run_anchor(workspace: Path, exp_id: str, generation: int, run_name: str) -> None:
+    candidates = valid_parent_rows(workspace)
+    candidate = best_row(workspace) or max(
+        candidates,
+        key=lambda row: (generation_number(str(row.get("genid"))) or -1, str(row.get("genid"))),
+        default=None,
+    )
+    if candidate is None or _has_anchor_evaluation(candidate):
+        return
+    genid = str(candidate["genid"])
+    result = evaluate(
+        workspace,
+        str(candidate["tag"]),
+        genid,
+        run_name=run_name,
+        split_name="sealed",
+    )
+    valid = result.status in {"complete", "partial"}
+    append_event(
+        workspace,
+        exp_id,
+        {
+            "genid": genid,
+            "parent": candidate.get("parent"),
+            "tag": candidate["tag"],
+            "score": result.score,
+            "status": result.status,
+            "task_set_hash": result.task_set_hash,
+            "task_vector": result.task_vector,
+            "evaluator_tree": result.evaluator_tree,
+            "valid_parent": valid,
+            "verdict": "keep" if valid else "discard",
+            "reason": "sealed anchor evaluation",
+            "mutated": candidate.get("mutated", []),
+            "surface_violations": candidate.get("surface_violations", []),
+            "predicted_fixes": candidate.get("predicted_fixes", []),
+            "note": "sealed results are excluded from mutation feedback",
+            "cost": {"usd": 0, "wall_s": result.wall_s},
+            "kind": "anchor",
+            "round": generation,
+            MECHANISM_EVAL_FIELD: True,
+        },
+    )
+
+
+def _has_anchor_evaluation(row: dict[str, Any]) -> bool:
+    return any(isinstance(entry, dict) and entry.get("kind") == "anchor" for entry in row.get("evals", []))
 
 
 def _run_operator_or_fail(

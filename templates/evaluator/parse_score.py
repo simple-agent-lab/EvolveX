@@ -47,15 +47,23 @@ def _write_outputs(run_dir: Path, *, status: str, metrics: dict[str, object], sc
     (run_dir / "metrics.json").write_text(json.dumps({"dimensions": metrics}, indent=2, sort_keys=True) + "\n")
 
 
+def _expected_trials(run_dir: Path, env_values: dict[str, str]) -> int:
+    selection = run_dir / "task-split.json"
+    if selection.exists():
+        payload = json.loads(selection.read_text())
+        tasks = payload.get("tasks") if isinstance(payload, dict) else None
+        if isinstance(tasks, list):
+            return max(1, len(tasks) * int(env_values.get("EVOLVE_HARBOR_K", "1")))
+    return max(1, int(env_values.get("EVOLVE_HARBOR_EXPECTED_TRIALS", env_values.get("EVOLVE_HARBOR_N", "1"))))
+
+
 def main(argv: list[str]) -> int:
     if len(argv) != 3:
         raise SystemExit("usage: parse_score.py <jobs_dir> <run_dir>")
     jobs_dir = Path(argv[1])
     run_dir = Path(argv[2])
     env_values = _load_eval_env(Path("evaluator") / "eval.env")
-    expected_trials = max(
-        1, int(env_values.get("EVOLVE_HARBOR_EXPECTED_TRIALS", env_values.get("EVOLVE_HARBOR_N", "1")))
-    )
+    expected_trials = _expected_trials(run_dir, env_values)
     partial_floor = float(env_values.get("EVOLVE_PARTIAL_FLOOR", "0.8"))
     rewards = []
     pending = list(sorted(jobs_dir.iterdir())) if jobs_dir.exists() else []

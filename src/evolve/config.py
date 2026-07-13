@@ -99,6 +99,11 @@ def evaluator_sampling(workspace: Path) -> str:
     return str(value or "static")
 
 
+def evaluator_anchor(workspace: Path) -> dict[str, Any]:
+    value = evaluator_values(workspace).get("anchor")
+    return value if isinstance(value, dict) else {}
+
+
 def _read_section(workspace: Path, name: str) -> dict[str, Any]:
     return _read_section_file(workspace / "evolve.yaml", name)
 

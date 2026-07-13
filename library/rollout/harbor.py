@@ -12,6 +12,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
@@ -21,6 +22,8 @@ sys.path = [p for p in sys.path if os.path.abspath(p or os.getcwd()) != os.path.
 
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import OperatorContext, RolloutOperator, RolloutResult
+from evolve.rollout_evidence import normalize_profile, write_evidence_bundle
+from evolve.splits import harbor_task_pattern, load_manifest, select_dataset_tasks
 
 _INFRA_EXCEPTION_MARKERS = (
     "verifier",
@@ -36,6 +39,11 @@ _SECRET_ASSIGNMENT = re.compile(
     r"([\"']?)(\s*[:=]\s*)([^\s,;}]+)"
 )
 _BEARER = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+")
+_PROXY_ENV = (
+    ("EVOLVE_HARBOR_HTTP_PROXY", "http_proxy", "HTTP_PROXY"),
+    ("EVOLVE_HARBOR_HTTPS_PROXY", "https_proxy", "HTTPS_PROXY"),
+    ("EVOLVE_HARBOR_NO_PROXY", "no_proxy", "NO_PROXY"),
+)
 
 
 def _write_json(path: Path, payload: object) -> None:
@@ -133,6 +141,102 @@ def _duration_seconds(value: object) -> float | None:
     return round((finish - start).total_seconds(), 3)
 
 
+def _codex_session_details(trial_dir: Path, field_limit: int) -> dict[str, Any]:
+    """Extract an ordered trace from Harbor's Codex session JSONL fallback."""
+    instructions: list[str] = []
+    messages: list[str] = []
+    tool_calls: list[dict[str, str]] = []
+    observations: list[str] = []
+    events: list[dict[str, Any]] = []
+    sessions = trial_dir / "agent" / "sessions"
+    paths = sorted(sessions.rglob("*.jsonl")) if sessions.exists() else []
+    for path in paths:
+        try:
+            lines = path.read_text(errors="replace").splitlines()
+        except OSError:
+            continue
+        for line_index, line in enumerate(lines):
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(row, dict):
+                continue
+            payload = row.get("payload")
+            if not isinstance(payload, dict):
+                continue
+            outer_type = str(row.get("type") or "")
+            event_type = str(payload.get("type") or "")
+            timestamp = str(row.get("timestamp") or "")
+            if outer_type == "event_msg" and event_type == "user_message":
+                message = payload.get("message")
+                wrapper = isinstance(message, str) and any(marker in message for marker in _WRAPPER_MARKERS)
+                if isinstance(message, str) and message.strip() and not wrapper:
+                    clipped = _clip(message, field_limit)
+                    instructions.append(clipped)
+                    events.append(
+                        {
+                            "index": line_index,
+                            "timestamp": timestamp,
+                            "type": "message",
+                            "source": "user",
+                            "message": clipped,
+                        }
+                    )
+            elif outer_type == "event_msg" and event_type == "agent_message":
+                message = payload.get("message")
+                if isinstance(message, str) and message.strip():
+                    clipped = _clip(message, field_limit)
+                    messages.append(clipped)
+                    events.append(
+                        {
+                            "index": line_index,
+                            "timestamp": timestamp,
+                            "type": "message",
+                            "source": "agent",
+                            "message": clipped,
+                        }
+                    )
+            elif outer_type == "response_item" and event_type in {"function_call", "custom_tool_call"}:
+                call = {
+                    "name": str(payload.get("name") or "unknown"),
+                    "arguments": _clip(payload.get("arguments") or payload.get("input") or {}, field_limit),
+                }
+                tool_calls.append(call)
+                events.append(
+                    {
+                        "index": line_index,
+                        "timestamp": timestamp,
+                        "type": "tool_call",
+                        "call_id": str(payload.get("call_id") or ""),
+                        **call,
+                    }
+                )
+            elif outer_type == "response_item" and event_type in {
+                "function_call_output",
+                "custom_tool_call_output",
+            }:
+                output = _clip(payload.get("output") or "", field_limit, tail=True)
+                observations.append(output)
+                events.append(
+                    {
+                        "index": line_index,
+                        "timestamp": timestamp,
+                        "type": "tool_result",
+                        "call_id": str(payload.get("call_id") or ""),
+                        "observation": output,
+                    }
+                )
+    return {
+        "instruction": instructions[-1] if instructions else "",
+        "agent_messages": messages[-4:],
+        "tool_calls": tool_calls[-8:],
+        "observations": observations[-8:],
+        "events": events,
+        "raw_agent_output": "",
+    }
+
+
 def _trajectory_details(trial_dir: Path, field_limit: int) -> dict[str, Any]:
     trajectory = _read_json(trial_dir / "agent" / "trajectory.json")
     steps = trajectory.get("steps")
@@ -143,34 +247,53 @@ def _trajectory_details(trial_dir: Path, field_limit: int) -> dict[str, Any]:
     messages: list[str] = []
     tool_calls: list[dict[str, str]] = []
     observations: list[str] = []
-    for step in steps:
+    events: list[dict[str, Any]] = []
+    for step_index, step in enumerate(steps):
         if not isinstance(step, dict):
             continue
         source = step.get("source")
         message = step.get("message")
-        if source == "user" and isinstance(message, str) and not any(marker in message for marker in _WRAPPER_MARKERS):
+        wrapper_message = isinstance(message, str) and any(marker in message for marker in _WRAPPER_MARKERS)
+        if source == "user" and isinstance(message, str) and not wrapper_message:
             instructions.append(_clip(message, field_limit))
-        if source != "agent":
-            continue
-        if isinstance(message, str) and message.strip():
+        if source == "agent" and isinstance(message, str) and message.strip():
             messages.append(_clip(message, field_limit))
+        step_calls: list[dict[str, str]] = []
         calls = step.get("tool_calls")
         if isinstance(calls, list):
             for call in calls:
                 if not isinstance(call, dict):
                     continue
-                tool_calls.append(
-                    {
-                        "name": str(call.get("function_name") or call.get("name") or "unknown"),
-                        "arguments": _clip(call.get("arguments") or {}, field_limit),
-                    }
-                )
+                normalized_call = {
+                    "name": str(call.get("function_name") or call.get("name") or "unknown"),
+                    "arguments": _clip(call.get("arguments") or {}, field_limit),
+                }
+                tool_calls.append(normalized_call)
+                step_calls.append(normalized_call)
+        step_observations: list[str] = []
         observation = step.get("observation")
         results = observation.get("results") if isinstance(observation, dict) else None
         if isinstance(results, list):
             for result in results:
                 if isinstance(result, dict) and result.get("content"):
-                    observations.append(_clip(result["content"], field_limit, tail=True))
+                    content = _clip(result["content"], field_limit, tail=True)
+                    observations.append(content)
+                    step_observations.append(content)
+        if not wrapper_message and (message or step_calls or step_observations):
+            events.append(
+                {
+                    "step": step_index,
+                    "source": str(source or "unknown"),
+                    "message": _clip(message or "", field_limit),
+                    "tool_calls": step_calls,
+                    "observations": step_observations,
+                }
+            )
+
+    if not steps:
+        codex_details = _codex_session_details(trial_dir, field_limit)
+        if codex_details["events"]:
+            return codex_details
 
     raw_agent_output = ""
     if not messages and not tool_calls:
@@ -181,6 +304,7 @@ def _trajectory_details(trial_dir: Path, field_limit: int) -> dict[str, Any]:
         "agent_messages": messages[-4:],
         "tool_calls": tool_calls[-8:],
         "observations": observations[-8:],
+        "events": events,
         "raw_agent_output": raw_agent_output,
     }
 
@@ -199,6 +323,18 @@ def _verifier_output(trial_dir: Path, field_limit: int) -> str:
     return _clip("\n\n".join(parts), field_limit * 2, tail=True)
 
 
+def _artifact_inventory(trial_dir: Path) -> dict[str, list[str]]:
+    inventory: dict[str, list[str]] = {}
+    for name in ("agent", "verifier"):
+        root = trial_dir / name
+        inventory[name] = [
+            path.relative_to(root).as_posix()
+            for path in sorted(root.rglob("*"))
+            if path.is_file()
+        ] if root.exists() else []
+    return inventory
+
+
 def _collect_cases(jobs_dir: Path, field_limit: int = 2000, pass_threshold: float = 1.0) -> list[dict[str, Any]]:
     cases: list[dict[str, Any]] = []
     if not jobs_dir.exists():
@@ -214,6 +350,10 @@ def _collect_cases(jobs_dir: Path, field_limit: int = 2000, pass_threshold: floa
         reward = _reward(payload, trial_dir)
         agent_result = payload.get("agent_result")
         agent_result = agent_result if isinstance(agent_result, dict) else {}
+        verifier_result = payload.get("verifier_result")
+        verifier_result = verifier_result if isinstance(verifier_result, dict) else {}
+        verifier_rewards = verifier_result.get("rewards")
+        verifier_rewards = verifier_rewards if isinstance(verifier_rewards, dict) else {}
         details = _trajectory_details(trial_dir, field_limit)
         cases.append(
             {
@@ -225,8 +365,14 @@ def _collect_cases(jobs_dir: Path, field_limit: int = 2000, pass_threshold: floa
                 "agent_messages": details["agent_messages"],
                 "tool_calls": details["tool_calls"],
                 "observations": details["observations"],
+                "events": details["events"],
                 "raw_agent_output": details["raw_agent_output"],
                 "verifier_output": _verifier_output(trial_dir, field_limit),
+                "verifier_rewards": {
+                    str(key): (_clip(value, field_limit) if isinstance(value, str) else value)
+                    for key, value in verifier_rewards.items()
+                    if isinstance(value, (str, int, float, bool)) or value is None
+                },
                 "exception": {
                     "type": exception_type,
                     "message": _clip(exception.get("exception_message") or "", field_limit),
@@ -241,6 +387,7 @@ def _collect_cases(jobs_dir: Path, field_limit: int = 2000, pass_threshold: floa
                     name: _duration_seconds(payload.get(name))
                     for name in ("environment_setup", "agent_setup", "agent_execution", "verifier")
                 },
+                "artifact_inventory": _artifact_inventory(trial_dir),
                 "result_path": str(result_path),
             }
         )
@@ -341,6 +488,14 @@ def _run_timeout() -> float | None:
     return max(0.1, outer - min(5.0, max(0.5, outer * 0.05)))
 
 
+def _append_proxy_env(command: list[str]) -> None:
+    for override, lower, upper in _PROXY_ENV:
+        value = os.environ.get(override) or os.environ.get(lower) or os.environ.get(upper)
+        if value:
+            for key in (lower, upper):
+                command.extend(["--ae", f"{key}={value}", "--ve", f"{key}={value}"])
+
+
 def _run_harbor(command: list[str], checkout: Path, log_path: Path) -> int:
     env = {
         **os.environ,
@@ -355,16 +510,30 @@ def _run_harbor(command: list[str], checkout: Path, log_path: Path) -> int:
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         start_new_session=True,
+        bufsize=1,
     )
+    chunks: list[str] = []
+
+    def consume_output() -> None:
+        assert process.stdout is not None
+        for line in process.stdout:
+            chunks.append(line)
+            if os.environ.get("EVOLVE_LIVE_OUTPUT") == "1":
+                print(_redact(line), end="", flush=True)
+
+    reader = threading.Thread(target=consume_output, daemon=True)
+    reader.start()
     try:
-        output, _ = process.communicate(timeout=_run_timeout())
+        process.wait(timeout=_run_timeout())
     except subprocess.TimeoutExpired:
         try:
             os.killpg(process.pid, signal.SIGKILL)
         except OSError:
             process.kill()
-        output, _ = process.communicate()
-        output = (output or "") + "\nharbor rollout timed out\n"
+        process.wait()
+        chunks.append("\nharbor rollout timed out\n")
+    reader.join()
+    output = "".join(chunks)
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log_path.write_text(_redact(f"wall_s={time.monotonic() - start:.3f}\n{output or ''}"))
     return process.returncode if process.returncode is not None else 1
@@ -376,21 +545,54 @@ class HarborRollout(RolloutOperator):
         if harbor is None:
             raise SystemExit("harbor rollout requires the harbor CLI on PATH")
         eval_env = _load_eval_env(checkout)
-        tasks = str(ctx.config.get("path") or os.environ.get("EVOLVE_HARBOR_ROLLOUT_TASKS") or "")
+        dedicated_tasks = ctx.config.get("path") or os.environ.get("EVOLVE_HARBOR_ROLLOUT_TASKS")
+        manifest_path = checkout / "evaluator" / "splits.json"
+        try:
+            manifest = load_manifest(manifest_path)
+        except RuntimeError:
+            manifest = {}
+        if dedicated_tasks and manifest.get("resolved"):
+            raise SystemExit(
+                "operators.rollout.path bypasses the frozen dataset split; remove it and use evaluator.dataset"
+            )
+        tasks = str(dedicated_tasks or eval_env.get("EVOLVE_HARBOR_TASKS") or "")
         agent = str(ctx.config.get("agent") or eval_env.get("EVOLVE_HARBOR_AGENT") or "")
         if not tasks:
             raise SystemExit(
-                "harbor rollout requires an explicit train task path via operators.rollout.path "
-                "or EVOLVE_HARBOR_ROLLOUT_TASKS; do not use gate or sealed evaluator tasks"
+                "harbor rollout requires evaluator.dataset, operators.rollout.path, or EVOLVE_HARBOR_ROLLOUT_TASKS"
             )
         if not agent:
             raise SystemExit("harbor rollout requires an agent in config or evaluator/eval.env")
 
         budget_tasks = _positive_int(ctx.config.get("budget_tasks"), 8)
+        split_task_names: list[str] = []
+        if not dedicated_tasks:
+            split_name = str(ctx.config.get("split") or "train")
+            if split_name != "train":
+                raise SystemExit("harbor rollout may only consume the train split")
+            try:
+                split_task_names, _ = select_dataset_tasks(
+                    manifest_path,
+                    tasks,
+                    "train",
+                    limit=budget_tasks,
+                )
+            except Exception as exc:
+                raise SystemExit(str(exc)) from exc
+            budget_tasks = min(budget_tasks, len(split_task_names))
         default_concurrent = _positive_int(eval_env.get("EVOLVE_HARBOR_N_CONCURRENT"), budget_tasks)
         n_concurrent = min(budget_tasks, _positive_int(ctx.config.get("n_concurrent"), default_concurrent))
+        setup_timeout_multiplier = _float_value(
+            ctx.config.get("agent_setup_timeout_multiplier"),
+            _float_value(eval_env.get("EVOLVE_HARBOR_AGENT_SETUP_TIMEOUT_MULTIPLIER"), 1),
+        )
+        max_retries = max(
+            0,
+            int(ctx.config.get("max_retries") or eval_env.get("EVOLVE_HARBOR_MAX_RETRIES") or 0),
+        )
         field_limit = _positive_int(ctx.config.get("field_limit"), 2000)
         max_feedback_chars = _positive_int(ctx.config.get("max_feedback_chars"), 30000)
+        evidence_profile = normalize_profile(ctx.config.get("evidence_profile"))
         pass_threshold = _float_value(ctx.config.get("pass_threshold"), 1.0)
         jobs_root = Path(
             str(
@@ -419,21 +621,35 @@ class HarborRollout(RolloutOperator):
             str(n_concurrent),
             "--n-tasks",
             str(budget_tasks),
+            "--agent-setup-timeout-multiplier",
+            str(max(setup_timeout_multiplier, 1)),
+            "--max-retries",
+            str(max_retries),
             "-y",
-            "-q",
         ]
+        if os.environ.get("EVOLVE_LIVE_OUTPUT") != "1":
+            command.append("-q")
+        _append_proxy_env(command)
         model = ctx.config.get("model") or os.environ.get("EVOLVE_HARBOR_MODEL")
         if model:
             command.extend(["--model", str(model)])
         include_task = ctx.config.get("include_task_name")
-        if include_task:
+        if split_task_names:
+            for task_name in split_task_names:
+                command.extend(["--include-task-name", harbor_task_pattern(task_name)])
+        elif include_task:
             command.extend(["--include-task-name", str(include_task)])
 
         rollout_dir = ctx.run_dir / "rollout"
         returncode = _run_harbor(command, checkout, rollout_dir / "harbor.log")
         cases = _collect_cases(jobs_dir, field_limit=field_limit, pass_threshold=pass_threshold)
         _write_json(rollout_dir / "cases.json", cases)
-        feedback = _render_feedback(cases, max_feedback_chars)
+        feedback, evidence_artifacts = write_evidence_bundle(
+            rollout_dir,
+            cases,
+            profile=evidence_profile,
+            max_chars=max_feedback_chars,
+        )
         (rollout_dir / "feedback.md").write_text(feedback)
         if not cases:
             raise SystemExit(
@@ -444,6 +660,8 @@ class HarborRollout(RolloutOperator):
         counts = {name: sum(case["outcome"] == name for case in cases) for name in _OUTCOME_ORDER}
         summary = {
             "variant": "harbor",
+            "evidence_profile": evidence_profile,
+            "split": "dedicated" if dedicated_tasks else "train",
             "harbor_returncode": returncode,
             "tasks_requested": budget_tasks,
             "tasks_observed": len(cases),
@@ -460,6 +678,7 @@ class HarborRollout(RolloutOperator):
                 "rollout/harbor.log",
                 "rollout/cases.json",
                 "rollout/feedback.md",
+                *evidence_artifacts,
                 f"harbor-jobs:{jobs_dir}",
             ],
         )
