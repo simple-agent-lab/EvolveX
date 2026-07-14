@@ -18,9 +18,9 @@ CANONICAL_OUTCOMES = frozenset(outcome.value for outcome in Outcome)
 
 def evaluation_status(values: dict[str, Any]) -> str | None:
     outcome = values.get("outcome")
-    status = values.get("status")
     if outcome == Outcome.BENCHMARK_COMPLETE:
         return "complete"
+    status = values.get("status")
     return str(outcome or status) if outcome in CANONICAL_OUTCOMES or status is not None else None
 
 
@@ -35,11 +35,9 @@ class TrialResult:
     exception_message: str | None = None
 
     def score_eligible(self, *, benchmark_timeout_is_zero: bool) -> bool:
-        if self.reward is None:
-            return False
-        return self.outcome is Outcome.BENCHMARK_COMPLETE or (
+        return self.reward is not None and (self.outcome is Outcome.BENCHMARK_COMPLETE or (
             self.outcome is Outcome.TIMEOUT and self.owner == "benchmark_agent" and benchmark_timeout_is_zero
-        )
+        ))
 
 
 @dataclass(frozen=True)
@@ -71,10 +69,12 @@ class EvaluationRecord:
         return self.outcome is Outcome.BENCHMARK_COMPLETE and self.purpose in {"candidate", "genesis"}
 
     def to_dict(self) -> dict[str, object]:
-        payload = asdict(self)
-        payload["outcome"] = self.outcome.value
-        payload["trials"] = [{**asdict(trial), "outcome": trial.outcome.value} for trial in self.trials]
-        return payload
+        return {**asdict(self), "outcome": self.outcome.value,
+                "trials": [{**asdict(trial), "outcome": trial.outcome.value} for trial in self.trials]}
+
+
+class EvaluationInterrupted(BaseException):
+    """Carries a cancelled attempt to the driver for append-before-reraise."""
 
 
 def _effective_outcome(trial: TrialResult) -> Outcome:
@@ -98,10 +98,10 @@ def classify_evaluation(
     elif Outcome.CANDIDATE_INVALID in outcomes:
         outcome = Outcome.CANDIDATE_INVALID
         reason = setup_reason if setup_outcome is Outcome.CANDIDATE_INVALID and setup_reason else "candidate-owned trial failure"
+    elif Outcome.CANCELLED in outcomes:
+        outcome, reason = Outcome.CANCELLED, setup_reason or "evaluation cancelled"
     elif not trials or len(trials) != expected_trials:
         outcome, reason = Outcome.INFRASTRUCTURE_FAILED, "missing required trial evidence"
-    elif Outcome.CANCELLED in outcomes:
-        outcome, reason = Outcome.CANCELLED, "evaluation cancelled"
     elif all(trial.score_eligible(benchmark_timeout_is_zero=benchmark_timeout_is_zero) for trial in trials):
         outcome, reason = Outcome.BENCHMARK_COMPLETE, "all required trials are scoreable"
     else:

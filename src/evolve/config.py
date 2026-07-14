@@ -98,7 +98,10 @@ def evaluator_values(workspace: Path) -> dict[str, Any]:
 
 def evaluator_sampling(workspace: Path) -> str:
     value = evaluator_values(workspace).get("sampling", "static")
-    return str(value or "static")
+    sampling = str(value or "static")
+    if sampling != "static":
+        raise ValueError("evaluator.sampling must be static")
+    return sampling
 
 
 def evaluator_boolean(values: dict[str, Any], key: str, default: bool = False) -> bool:

@@ -11,7 +11,6 @@ from evolve.driver import RunOptions
 from evolve.driver import run as driver_run
 from evolve.evaluation import Outcome, evaluation_status
 from evolve.evaluator import (
-    _effective_task_set_identity,
     _evaluation_artifact_reference,
     _read_task_vector,
     _run_eval_script,
@@ -19,6 +18,7 @@ from evolve.evaluator import (
 )
 from evolve.frozen.interfaces import ArchiveView
 from evolve.population import looks_mechanism_written, valid_parent_rows
+from evolve.task_sets import effective_task_set_identity
 from evolve.task_vectors import TaskVectorError
 
 
@@ -116,7 +116,7 @@ def test_eval_script_receives_persistent_workspace_uv_cache(tmp_path: Path) -> N
     run_dir = workspace / "runs" / "gen-1" / "eval"
     run_dir.mkdir(parents=True)
 
-    result = _run_eval_script(checkout, run_dir, "1", None, None, "research")
+    result = _run_eval_script(checkout, run_dir, "1", None, "research")
 
     assert result.returncode == 0
     expected = workspace / "runs" / "runtime" / "uv-cache"
@@ -532,20 +532,17 @@ def test_effective_task_set_identity_uses_configured_names_dataset_and_attempts(
     (tasks / "smoke.txt").write_text("task-a\ntask-b\n")
     (tasks / "train.txt").write_text("task-a\ntask-b\ntask-c\n")
 
-    smoke = _effective_task_set_identity(
+    smoke = effective_task_set_identity(
         checkout,
         {"dataset": "suite@1", "k": 2, "task_file": "evaluator/tasks/smoke.txt"},
-        None,
     )
-    train = _effective_task_set_identity(
+    train = effective_task_set_identity(
         checkout,
         {"dataset": "suite@1", "k": 2, "task_file": "evaluator/tasks/train.txt"},
-        None,
     )
-    different_k = _effective_task_set_identity(
+    different_k = effective_task_set_identity(
         checkout,
         {"dataset": "suite@1", "k": 1, "task_file": "evaluator/tasks/smoke.txt"},
-        None,
     )
 
     assert smoke.members == ("task-a", "task-b")
@@ -554,10 +551,9 @@ def test_effective_task_set_identity_uses_configured_names_dataset_and_attempts(
 
 
 def test_effective_task_set_identity_accepts_explicit_configured_task_names(tmp_path: Path) -> None:
-    identity = _effective_task_set_identity(
+    identity = effective_task_set_identity(
         tmp_path,
         {"dataset": "stub", "k": 2, "task_names": ["task-b", "task-a"]},
-        None,
     )
 
     assert identity.members == ("task-a", "task-b")

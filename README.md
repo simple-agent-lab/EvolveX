@@ -122,9 +122,15 @@ evolve --help
 Create a new generated workspace:
 
 ```bash
+export EVOLVE_RUNTIME_DIGEST=sha256:deterministic-stub-test-only
 evolve init /tmp/evolve-demo --recipe hill_climb-smoke
 cd /tmp/evolve-demo
 ```
+
+That digest is only a deterministic label for the local `EVAL_STUB=1` test.
+Real Harbor experiments must set `EVOLVE_RUNTIME_DIGEST` to the digest of an
+immutable evaluator capsule, such as a pinned container image or locked runtime
+manifest.
 
 Run a deterministic smoke loop with the stub evaluator:
 
@@ -186,7 +192,7 @@ variants with the builtin dummy target and `pass@k`, with no real task list.
 Example:
 
 ```bash
-evolve init /tmp/evolve-dgm --recipe dgm-smoke
+EVOLVE_RUNTIME_DIGEST=sha256:deterministic-stub-test-only evolve init /tmp/evolve-dgm --recipe dgm-smoke
 EVAL_STUB=1 evolve run /tmp/evolve-dgm --max-generations 1
 evolve status /tmp/evolve-dgm
 ```
@@ -198,7 +204,7 @@ evolve init <workspace> [--recipe ...]
 evolve run <workspace> [--max-generations N] [--children-per-gen N] [--resume]
 evolve fork <workspace> <parent> <child-worktree>
 evolve commit <workspace> <child-worktree> --parent <id> --genid <id>
-evolve eval <workspace> <genid> [--round N]
+evolve eval <workspace> <genid>
 evolve record <workspace> <genid> --fields <json-object>
 evolve surface-check [workspace] [--parent <tag-or-id>]
 evolve status [workspace]
@@ -208,7 +214,8 @@ evolve report [workspace]
 `run` is the built-in driver. Agent-mode experiments can instead read
 `program.md` in the generated workspace and sequence the same verbs
 manually. The invariants are enforced inside the verbs either way.
-`eval --round` is only valid when `evaluator.sampling: per_round`.
+Evaluation uses one static task-set identity. `evaluator.sampling` must be
+`static`; per-round resampling is intentionally unsupported.
 
 ## Honesty Guarantees
 
@@ -231,8 +238,7 @@ written and refuses cross-task-set comparisons when stamped
 Operators receive both the canonical workspace root (`EVOLVE_WORKSPACE`)
 and their checkout/snapshot root (`EVOLVE_CHECKOUT`). Direct operator
 archive writes are restored after subprocess exit; `record.py` may only
-copy back public non-stamped fields, and auxiliary per-round evals need a
-mechanism-written receipt sidecar before they are trusted.
+copy back public non-stamped fields.
 
 ## Source Map
 

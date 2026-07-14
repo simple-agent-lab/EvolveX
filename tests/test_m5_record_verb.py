@@ -4,12 +4,14 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 from conftest import git, init_workspace, rows_by_genid, smoke_agent_command
 
 from evolve.archive import archive_path, read_events
 from evolve.config import experiment_id, operator_blocks
 from evolve.driver import RunOptions, _run_terminal_record
 from evolve.driver import run as driver_run
+from evolve.frozen.interfaces import ArchiveView
 
 _NO_PATCH_META_AGENT = """
 import os
@@ -64,6 +66,26 @@ run_dir = Path(os.environ["EVOLVE_RUN_DIR"])
 
 _RECORD_FAILS = """
 raise SystemExit("record exploded")
+"""
+
+
+def _gate(decision: str) -> str:
+    return f"""
+import os
+import sys
+sys.path = [p for p in sys.path if os.path.abspath(p or os.getcwd()) != os.path.dirname(os.path.abspath(__file__))]
+
+from evolve.frozen import sdk
+from evolve.frozen.interfaces import GateOperator, GateResult
+
+
+class FixedGate(GateOperator):
+    def decide(self, child, parent, ctx):
+        return GateResult(decision={decision!r}, reason={decision!r} + " by test gate")
+
+
+if __name__ == "__main__":
+    sdk.main(FixedGate)
 """
 
 
@@ -276,6 +298,41 @@ def test_gate_operator_failure_runs_terminal_record_once_and_preserves_failure(
         if event.get("genid") == "1" and event.get("attempt_recorded") is True
     ]
     assert len(record_events) == 1
+
+
+@pytest.mark.parametrize(
+    ("decision", "valid_parent", "verdict"),
+    [("reject", False, "discard"), ("accept", True, "keep")],
+)
+def test_gate_verdict_survives_record_failure(
+    tmp_path: Path,
+    monkeypatch,
+    decision: str,
+    valid_parent: bool,
+    verdict: str,
+) -> None:
+    workspace, evolve_home = init_workspace(tmp_path)
+    _rewrite(workspace, "operators/meta_agent.py", _PATCH_META_AGENT)
+    _rewrite(workspace, "operators/gate.py", _gate(decision))
+    _rewrite(workspace, "operators/record.py", _RECORD_FAILS)
+    _commit_and_retag_gen0(workspace, "operators/meta_agent.py", "operators/gate.py", "operators/record.py")
+    monkeypatch.setenv("EVAL_STUB", "1")
+    monkeypatch.setenv("EVOLVE_HOME", str(evolve_home))
+
+    driver_run(RunOptions(workspace=workspace, max_generations=1))
+
+    row = rows_by_genid(workspace)["1"]
+    assert row["valid_parent"] is valid_parent
+    assert row["verdict"] == verdict
+    assert row["reason"] == f"{decision} by test gate"
+    assert "record_error" in row
+    assert [candidate["genid"] for candidate in ArchiveView(workspace).valid_parents()] == (
+        ["0", "1"] if valid_parent else ["0"]
+    )
+    events = [event for event in read_events(archive_path(workspace)) if event.get("genid") == "1"]
+    gate_index = next(index for index, event in enumerate(events) if event.get("reason") == f"{decision} by test gate")
+    error_index = next(index for index, event in enumerate(events) if "record_error" in event)
+    assert gate_index < error_index
 
 
 def test_select_operator_failure_runs_terminal_record_once_and_preserves_failure(

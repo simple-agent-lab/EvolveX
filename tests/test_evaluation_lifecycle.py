@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 from conftest import git, init_workspace, smoke_agent_command
 
+from evolve import evaluator as evaluator_module
 from evolve.archive import MECHANISM_EVAL_FIELD, read_events, rows_by_genid
 from evolve.driver import EvaluationPaused, RunOptions, run
 from evolve.frozen.interfaces import ArchiveView
@@ -24,12 +25,17 @@ def _lifecycle_workspace(tmp_path: Path, outcomes: dict[str, list[str]]) -> Path
         "attempt = int(run_dir.name.removeprefix('attempt-'))\n"
         "sequence = outcomes.get(purpose, outcomes.get('candidate', ['benchmark_complete']))\n"
         "outcome = sequence[min(attempt - 1, len(sequence) - 1)]\n"
+        "malformed_cost = outcome == 'malformed_cost'\n"
+        "if malformed_cost:\n"
+        "    outcome = 'benchmark_complete'\n"
         "owner = 'candidate' if outcome == 'candidate_invalid' else 'benchmark_agent'\n"
         "reward = 1.0 if outcome == 'benchmark_complete' else (0.0 if outcome == 'timeout' else None)\n"
         "vector = {'schema_version': 1, 'tasks': {'case-a': {'trials': [{\n"
         "    'trial': 0, 'status': outcome, 'reward': reward, 'owner': owner,\n"
         "}]}}}\n"
         "(run_dir / 'task_vector.json').write_text(json.dumps(vector) + '\\n')\n"
+        "if malformed_cost:\n"
+        "    (run_dir / 'cost.json').write_text('{\"usd\": \"bad\"}\\n')\n"
     )
     script.chmod(script.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     config = workspace / "evolve.yaml"
@@ -96,6 +102,45 @@ def test_two_genesis_infrastructure_failures_pause_before_evolution(tmp_path: Pa
     with pytest.raises(EvaluationPaused, match="gen/0 infrastructure failed twice"):
         run(RunOptions(workspace, max_generations=1, children_per_gen=1))
     assert [event["attempt"] for event in _evaluation_events(workspace, "0")] == [1, 2]
+
+
+def test_malformed_second_attempt_is_recorded_and_restart_never_allocates_third(tmp_path: Path) -> None:
+    workspace = _lifecycle_workspace(
+        tmp_path,
+        {"genesis": ["infrastructure_failed", "malformed_cost"]},
+    )
+
+    with pytest.raises(EvaluationPaused, match="gen/0 infrastructure failed twice"):
+        run(RunOptions(workspace, max_generations=0))
+    with pytest.raises(EvaluationPaused, match="gen/0 infrastructure failed twice"):
+        run(RunOptions(workspace, max_generations=0))
+
+    assert [event["attempt"] for event in _evaluation_events(workspace, "0")] == [1, 2]
+    attempts = sorted(
+        int(path.name.removeprefix("attempt-"))
+        for path in (workspace / "runs/evaluations/genesis/gen-0").glob("candidate-*/attempt-*")
+    )
+    assert attempts == [1, 2]
+
+
+def test_cancelled_attempt_is_recorded_and_never_retried(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace = _lifecycle_workspace(tmp_path, {"genesis": ["benchmark_complete"]})
+
+    def cancel(*args, **kwargs):
+        raise KeyboardInterrupt("cancelled by test")
+
+    monkeypatch.setattr(evaluator_module, "run_owned", cancel)
+    with pytest.raises(KeyboardInterrupt, match="cancelled by test"):
+        run(RunOptions(workspace, max_generations=0))
+    with pytest.raises(RuntimeError, match="genesis cancelled"):
+        run(RunOptions(workspace, max_generations=0))
+
+    assert [event["attempt"] for event in _evaluation_events(workspace, "0")] == [1]
+    attempts = list((workspace / "runs/evaluations/genesis/gen-0").glob("candidate-*/attempt-*"))
+    assert [path.name for path in attempts] == ["attempt-1"]
+    assert not git(workspace, "tag", "--list", "gen/1")
 
 
 @pytest.mark.parametrize("outcome", ["candidate_invalid", "timeout", "cancelled"])
