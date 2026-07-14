@@ -25,6 +25,12 @@ PROTOCOL.md      the operator contract in prose (authority: the framework)
 archive.jsonl    append-only event ledger (gitignored; the source of truth)
 ```
 
+## Run visibility
+
+`evolve run` prints stage-level progress. Use `evolve run . --verbose` to
+stream Harbor and operator output while preserving `runs/gen-*/**/harbor.log`.
+Set `EVOLVE_PROGRESS=0` to suppress the stage messages.
+
 ## The one rule
 
 Evolve `target/` and the `operators/`; never the `evaluator/` that judges them —

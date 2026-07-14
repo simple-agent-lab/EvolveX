@@ -7,8 +7,9 @@ path, but the file contract is the protocol.
 
 ## Subprocess Contract
 
-The mechanism invokes one file per operator kind under `operators/`: select,
-rollout, mutate, gate, and record. The copied file may be a library
+The mechanism invokes required operator files for select, rollout, meta_agent,
+gate, and record, plus recipe-selected optional operators such as
+trace_analyzer, validate, novelty, and reflect. A copied file may be a library
 variant, a recipe-local operator, or a user-provided `script:`. Python variants
 normally end with `sdk.main(VariantClass)`, but any executable file that honors
 the same files is valid.
@@ -72,22 +73,38 @@ Implement `rollout`. Return `RolloutResult` with fields `summary` and
 `rollout/artifacts.json`. `summary` is a JSON object; `artifacts` is a list of
 artifact paths or labels.
 
-The mechanism (not an operator) writes the feedback bundle under
-`runs/gen-<id>/feedback/` after rollout, from the ledger, for the mutator to
-read (the retired `observe` operator's job).
-
-### Mutate
+### Trace Analyzer
 
 ABC signature:
 
 ```python
-def mutate(self, checkout: Path, observation: str, ctx) -> MutateResult:
+def analyze(self, checkout: Path, ctx) -> TraceAnalyzerResult:
 ```
 
-Implement `mutate`. Return `MutateResult` with fields `changed`, `notes`, and
-`usage`. The subprocess writes `mutate/changed.json`, ensures
-`mutate/predicted_fixes.json`, may write `mutate/rationale.md`, and writes
-`mutate/usage.json`. `usage` is a JSON object, commonly including `usd`.
+Implement `analyze`. Read method-neutral rollout artifacts such as
+`rollout/cases.json`, then write the selected and raw trace views under
+`trace_analyzer/`. Return `TraceAnalyzerResult` with `summary` and `artifacts`;
+the subprocess writes `trace_analyzer/summary.json` and
+`trace_analyzer/artifacts.json`.
+
+After trace analysis, the mechanism writes the normalized feedback bundle under
+`runs/gen-<id>/feedback/` for the meta-agent to read. If the analyzer writes
+`trace_analyzer/feedback.md` and `trace_analyzer/evidence/selected.md`, the
+mechanism copies the bounded selection into the feedback bundle.
+
+### Meta-Agent
+
+ABC signature:
+
+```python
+def run(self, checkout: Path, observation: str, ctx) -> MetaAgentResult:
+```
+
+Implement `run`. Return `MetaAgentResult` with fields `changed`, `notes`, and
+`usage`. The subprocess writes `meta_agent/changed.json`, ensures
+`meta_agent/predicted_fixes.json`, may write `meta_agent/rationale.md`, and
+writes `meta_agent/usage.json`. `usage` is a JSON object, commonly including
+`usd`.
 
 ### Novelty (optional)
 
@@ -117,7 +134,7 @@ full-state playbook entries, each with an `id`). The subprocess appends the ops
 to `insights/playbook.jsonl` (append-only; folding by id gives current state).
 Runs only when a recipe configures `operators.reflect` (DESIGN §7, off by
 default). This is the credit-backfill memory: it turns `verified_fixes` into
-insights a future mutator can consult.
+insights a future meta-agent can consult.
 
 ### Gate
 
@@ -174,8 +191,10 @@ The shipped library uses canonical algorithm names only. Recipe research names
 may appear in recipe prose, but `variant:` values point to these files:
 
 - select: `greedy`, `random`, `score_weighted`, `newest`
-- rollout: `failure_focused`, `noop`
-- mutate: `fixed`, `noop`, `llm`, `agent_command`
+- rollout: `failure_focused`, `harbor`, `noop`
+- trace_analyzer: `failure_patterns`, `failed_traces`, `trace_browser`, `execution_records`, `utility_metrics`
+- meta_agent: `agent_command`, `hyperagents`
+- validate: `hyperagents`
 - gate: `hillclimb`, `parent_eligible`
 - record: `jsonl`
 
@@ -201,7 +220,8 @@ may appear in recipe prose, but `variant:` values point to these files:
 
 Files, not classes, are normative. The mechanism runs subprocess files and
 consumes `parents.json`, `rollout/summary.json`, `rollout/artifacts.json`,
-`mutate/usage.json`, `gate.json`,
+`trace_analyzer/summary.json`, `trace_analyzer/artifacts.json`,
+`meta_agent/usage.json`, `gate.json`,
 `record/fields.json`, and the other artifacts listed above. Non-Python
 operators are valid when they honor those files, environment variables, exit
 behavior, and protocol version expectations.

@@ -1,7 +1,13 @@
 import json
 from pathlib import Path
 
-from conftest import git, run_evolve
+from conftest import git, run_evolve, write_locked_miniswe_seed
+
+from evolve.config import surface_lists
+
+
+def _miniswe_seed(root: Path) -> Path:
+    return write_locked_miniswe_seed(root / "miniswe")
 
 
 def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
@@ -11,7 +17,7 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
         "init",
         str(workspace),
         "--recipe",
-        "hill_climb",
+        "hill_climb-smoke",
         env={"EVAL_STUB": "1", "EVOLVE_HOME": str(tmp_path / "evolve-home")},
     )
 
@@ -23,17 +29,17 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
         "program.md",
         "operators/select.py",
         "operators/rollout.py",
-        "operators/mutate.py",
+        "operators/meta_agent.py",
         "operators/gate.py",
         "operators/record.py",
         "operators/engines/local.sh",
         "operators/preflight.sh",
         "operators/select.md",
         "operators/rollout.md",
-        "operators/mutate.md",
+        "operators/meta_agent.md",
         "operators/gate.md",
         "operators/record.md",
-        "operators/mutation_brief.md",
+        "operators/meta_agent_brief.md",
         "skills/evolve-workspace/SKILL.md",
         "target/agent.py",
         "target/README.md",
@@ -50,6 +56,10 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
     ]
     for relative_path in expected_paths:
         assert (workspace / relative_path).exists(), relative_path
+    assert not (workspace / "operators" / "mutate.py").exists()
+    assert not (workspace / "operators" / "mutate.md").exists()
+    assert not (workspace / "operators" / "mutation_brief.md").exists()
+    assert not (workspace / "evaluator" / "checkout_agent.py").exists()
 
     config = (workspace / "evolve.yaml").read_text()
     assert "children_per_gen: 1" in config
@@ -57,9 +67,16 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
     assert "seed: builtin-dummy" in config
     assert "variant:" not in config
     assert "script:" not in config
-    assert "mutate: {timeout_s: 3600}" in config
+    assert "meta_agent:\n    timeout_s: 3600" in config
+    assert "mutate:" not in config
     assert "- target/**" in config
     assert (workspace / ".evolve-protocol-version").read_text() == "1\n"
+    meta_agent_prompt = (workspace / "operators" / "meta_agent.md").read_text()
+    assert "MiniSWE source" in meta_agent_prompt
+    assert "Failure evidence" in meta_agent_prompt
+    assert "Root cause" in meta_agent_prompt
+    assert "predicted_fixes" in meta_agent_prompt
+    assert "risk_tasks" in meta_agent_prompt
 
     upstream = json.loads((workspace / "target" / "UPSTREAM.json").read_text())
     assert upstream == {"kind": "builtin", "seed": "builtin-dummy"}
@@ -69,7 +86,10 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
     assert "archive.jsonl" in gitignore
 
     splits = json.loads((workspace / "evaluator" / "splits.json").read_text())
-    assert set(splits) == {"train", "gate", "sealed", "seed"}
+    assert splits["version"] == 1
+    assert splits["resolved"] is False
+    assert splits["ratios"] == {"train": 0.5, "gate": 0.4, "sealed": 0.1}
+    assert splits["tasks"] == {"train": [], "gate": [], "sealed": []}
 
 
 def test_init_creates_generation_zero_git_snapshot_and_archive_event(tmp_path: Path) -> None:
@@ -79,7 +99,7 @@ def test_init_creates_generation_zero_git_snapshot_and_archive_event(tmp_path: P
         "init",
         str(workspace),
         "--recipe",
-        "hill_climb",
+        "hill_climb-smoke",
         env={"EVAL_STUB": "1", "EVOLVE_HOME": str(tmp_path / "evolve-home")},
     )
 
@@ -97,11 +117,40 @@ def test_init_creates_generation_zero_git_snapshot_and_archive_event(tmp_path: P
     assert row["genid"] == "0"
     assert row["parent"] is None
     assert row["tag"] == "gen/0"
-    assert row["status"] == "complete"
-    assert row["score"] == 1.0
-    assert row["valid_parent"] is True
+    assert row["status"] == "pending"
+    assert row["score"] is None
+    assert row["valid_parent"] is False
+    assert row["verdict"] == "pending"
+    assert row["reason"] == "generation zero requires real evaluation"
     assert row["mutated"] == []
     assert row["surface_violations"] == []
-    assert row["task_set_hash"]
-    assert row["evaluator_tree"]
+    assert "task_set_hash" not in row
+    assert "task_vector" not in row
+    assert "evaluator_tree" not in row
     assert row["cost"]["usd"] == 0
+
+
+def test_init_binds_real_hyperagents_method_surface_and_operators(tmp_path: Path) -> None:
+    workspace = tmp_path / "hyperagents"
+    seed = _miniswe_seed(tmp_path)
+
+    result = run_evolve(
+        "init",
+        str(workspace),
+        "--recipe",
+        "hyperagents",
+        "--seed",
+        str(seed),
+        env={"EVAL_STUB": "1", "EVOLVE_HOME": str(tmp_path / "evolve-home")},
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "score_child_prop" in (workspace / "operators/select.py").read_text()
+    assert "variant: hyperagents" in (workspace / "operators/meta_agent.py").read_text()
+    assert "HyperAgents Self-Improvement" in (workspace / "operators/meta_agent.py").read_text()
+    assert "HyperAgentsValidate" in (workspace / "operators/validate.py").read_text()
+    assert "HyperAgentsRecord" in (workspace / "operators/record.py").read_text()
+    assert surface_lists(workspace) == (
+        ["target/**", "operators/meta_agent.py", "operators/meta_agent.md"],
+        [],
+    )

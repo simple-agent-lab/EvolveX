@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
 
 
-def git(workspace: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+def git(
+    workspace: Path,
+    *args: str,
+    check: bool = True,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
     executable = shutil.which("git")
     if executable is None:
         raise RuntimeError("git is required")
@@ -14,6 +20,7 @@ def git(workspace: Path, *args: str, check: bool = True) -> subprocess.Completed
         text=True,
         capture_output=True,
         check=False,
+        env=None if env is None else {**os.environ, **env},
     )
     if check and result.returncode != 0:
         message = result.stderr.strip() or result.stdout.strip() or "git command failed"
@@ -21,8 +28,8 @@ def git(workspace: Path, *args: str, check: bool = True) -> subprocess.Completed
     return result
 
 
-def git_stdout(workspace: Path, *args: str) -> str:
-    return git(workspace, *args).stdout.strip()
+def git_stdout(workspace: Path, *args: str, env: dict[str, str] | None = None) -> str:
+    return git(workspace, *args, env=env).stdout.strip()
 
 
 def git_common_dir(workspace: Path) -> str:

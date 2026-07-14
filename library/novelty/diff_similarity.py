@@ -1,11 +1,11 @@
-"""Novelty by diff similarity: reject a mutation that near-duplicates a recent
-accepted one.
+"""Novelty by diff similarity: reject a candidate edit that near-duplicates a
+recent accepted one.
 
-Compares this generation's mutation diff (the checkout's uncommitted changes
+Compares this generation's candidate diff (the checkout's uncommitted changes
 against its parent) with the diffs of the last `history_k` accepted generations.
-`novelty = 1 - max_similarity`; the mutation is accepted only when the closest
+`novelty = 1 - max_similarity`; the candidate edit is accepted only when the closest
 prior diff is below `threshold` similarity (default `EVOLVE_NOVELTY_THRESHOLD`,
-0.98). An empty diff (no-op mutation) is treated as a duplicate.
+0.98). An empty diff (no-op candidate edit) is treated as a duplicate.
 """
 
 # ruff: noqa: E402

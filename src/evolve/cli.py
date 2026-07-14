@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import functools
 import json
+import os
 import sys
 from pathlib import Path
 
 import typer
 
 from .archive import archive_path, merged_rows, verify_integrity
+from .candidate_runtime import run_candidate_smoke
 from .config import RECIPE_NAMES, experiment_int
 from .driver import RunOptions, commit_child, eval_child, fork_child, record_fields
 from .driver import doctor as doctor_workspace
@@ -19,6 +21,11 @@ from .surface import check_paths, surface_patterns
 from .workspace import InitOptions, init_workspace
 
 app = typer.Typer(add_completion=False, no_args_is_help=True, help="evolve mechanism CLI")
+
+
+def _enable_live_output(enabled: bool) -> None:
+    if enabled:
+        os.environ["EVOLVE_LIVE_OUTPUT"] = "1"
 
 
 def _guard(fn):
@@ -44,14 +51,17 @@ def _guard(fn):
 def init(
     workspace: Path,
     recipe: str = typer.Option("hill_climb", help="paradigm recipe to scaffold"),
-    seed: str | None = typer.Option(None, help="local target dir or git URL to vendor into target/"),
+    seed: str | None = typer.Option(
+        None, help="builtin-dummy, builtin-codex, local target dir, or git URL to vendor into target/"
+    ),
+    dataset: str | None = typer.Option(None, help="local Harbor task directory to split and freeze"),
 ) -> None:
     """Scaffold a new evolve workspace."""
     if recipe not in RECIPE_NAMES:
         raise typer.BadParameter(
             f"invalid choice: {recipe!r} (choose from {', '.join(RECIPE_NAMES)})", param_hint="--recipe"
         )
-    init_workspace(InitOptions(workspace=workspace, recipe=recipe, seed=seed))
+    init_workspace(InitOptions(workspace=workspace, recipe=recipe, seed=seed, dataset=dataset))
     print(f"Initialized evolve workspace at {workspace}")
 
 
@@ -62,10 +72,12 @@ def run(
     max_generations: int | None = typer.Option(None, "--max-generations"),
     children_per_gen: int | None = typer.Option(None, "--children-per-gen"),
     resume: bool = typer.Option(False, "--resume", help="accepted no-op; resume is the default"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="stream evaluator and operator output"),
 ) -> None:
     """Start or resume the built-in evolution loop."""
     gens = max_generations if max_generations is not None else experiment_int(workspace, "max_generations", 40)
     children = children_per_gen if children_per_gen is not None else experiment_int(workspace, "children_per_gen", 1)
+    _enable_live_output(verbose)
     driver_run(RunOptions(workspace=workspace, max_generations=gens, children_per_gen=children))
     print(f"Ran evolve loop through generation {gens}")
 
@@ -96,10 +108,10 @@ def commit(
 def eval_cmd(
     workspace: Path,
     genid: str,
-    round_number: int | None = typer.Option(None, "--round"),
+    force: bool = typer.Option(False, "--force", help="re-run evaluation even when a scored row already exists"),
 ) -> None:
     """Evaluate a tagged child version."""
-    eval_child(workspace, genid, round_number=round_number)
+    eval_child(workspace, genid, force=force)
     print(f"Evaluated gen/{genid}")
 
 
@@ -129,6 +141,32 @@ def surface_check(
     print({"ok": not violations, "mutated": mutated, "violations": violations})
     if violations:
         raise typer.Exit(1)
+
+
+@app.command("candidate-smoke")
+@_guard
+def candidate_smoke(
+    full: bool = typer.Option(False, "--full"),
+    checkout: Path = typer.Option(Path("."), "--checkout"),
+) -> None:
+    """Run the evaluator-provided full smoke against an exact candidate snapshot."""
+    if not full:
+        raise typer.BadParameter("--full is required", param_hint="--full")
+    checkout = checkout.resolve()
+    workspace = Path(os.environ.get("EVOLVE_WORKSPACE", checkout)).resolve()
+    result = run_candidate_smoke(checkout, workspace=workspace)
+    tail = result.stderr_path.read_text().splitlines()[-200:]
+    if tail:
+        print("\n".join(tail), file=sys.stderr)
+    print(
+        f"candidate-smoke: {result.status} tree={result.snapshot_tree} "
+        f"result={(result.attempt_dir / 'result.json').resolve()} "
+        f"stdout={result.stdout_path.resolve()} stderr={result.stderr_path.resolve()}"
+    )
+    if result.status == "failed":
+        raise typer.Exit(2)
+    if result.status == "unsupported":
+        raise typer.Exit(3)
 
 
 @app.command()

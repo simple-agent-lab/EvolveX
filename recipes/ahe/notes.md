@@ -1,6 +1,4 @@
 # Notes
 
-The current scaffold maps the AHE rollback idea onto the canonical
-`parent_eligible` gate. That preserves the recipe shape without adding recipe
-specific mechanism code; richer falsification evidence can live in a workspace
-gate operator later.
+The executable baseline combines Harbor train failures with failure-pattern
+analysis and the hardened meta-agent candidate-edit pipeline from PR #3.

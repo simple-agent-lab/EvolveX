@@ -1,0 +1,16 @@
+[codex]
+model = "gpt-5.4"
+version = "0.143.0"
+reasoning_effort = "high"
+reasoning_summary = "auto"
+web_search = "disabled"
+
+[skills]
+enabled = true
+
+[compaction]
+# Keep Codex model defaults until an experiment deliberately enables overrides.
+override_defaults = false
+auto_compact_token_limit = 100000
+auto_compact_token_limit_scope = "total"
+tool_output_token_limit = 12000

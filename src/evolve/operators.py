@@ -38,6 +38,11 @@ def _text(value: object | None) -> str:
     return str(value)
 
 
+def _progress(message: str) -> None:
+    if os.environ.get("EVOLVE_PROGRESS", "1") != "0":
+        print(f"[evolve] {message}", flush=True)
+
+
 def run_operator(
     *,
     name: str,
@@ -49,9 +54,11 @@ def run_operator(
     config_block: dict[str, Any],
     timeout_s: float,
     round_number: int | None = None,
+    operator_checkout: Path | None = None,
 ) -> OperatorResult:
     start = time.monotonic()
-    script = checkout / "operators" / f"{name}.py"
+    source_checkout = operator_checkout or checkout
+    script = source_checkout / "operators" / f"{name}.py"
     if not script.exists():
         return OperatorResult(
             name=name,
@@ -62,6 +69,7 @@ def run_operator(
         )
 
     run_dir.mkdir(parents=True, exist_ok=True)
+    _progress(f"gen/{genid} {name}: started; artifacts: {run_dir}")
     base_env = (
         {**os.environ, "EVOLVE_HOME": str((run_dir / "operator-home").resolve())}
         if checkout.resolve() != workspace.resolve()
@@ -76,47 +84,47 @@ def run_operator(
         "EVOLVE_WORKSPACE": str(workspace.resolve()),
         "EVOLVE_CHECKOUT": str(checkout.resolve()),
     }
-    if round_number is None:
-        env.pop("EVOLVE_ROUND", None)
-    else:
-        env["EVOLVE_ROUND"] = str(round_number)
-
     try:
+        live_output = os.environ.get("EVOLVE_LIVE_OUTPUT") == "1"
         completed = subprocess.run(
             [
                 sys.executable,
                 "-c",
                 _OPERATOR_WRAPPER,
-                "operators/%s.py" % name,
+                str(script.resolve()),
                 "--config",
                 json.dumps(config_block),
             ],
             cwd=checkout,
             env=env,
             text=True,
-            capture_output=True,
+            capture_output=not live_output,
             timeout=timeout_s,
             check=False,
         )
-        return OperatorResult(
+        result = OperatorResult(
             name=name,
             returncode=completed.returncode,
-            stdout=completed.stdout,
-            stderr=completed.stderr,
+            stdout=completed.stdout or "",
+            stderr=completed.stderr or "",
             wall_s=time.monotonic() - start,
         )
+        _progress(f"gen/{genid} {name}: exit={result.returncode}, elapsed={result.wall_s:.1f}s")
+        return result
     except subprocess.TimeoutExpired as exc:
         stderr = _text(exc.stderr)
         if stderr:
             stderr = f"{stderr.rstrip()}\n"
         stderr += f"timeout after {timeout_s}s"
-        return OperatorResult(
+        result = OperatorResult(
             name=name,
             returncode=-1,
             stdout=_text(exc.stdout),
             stderr=stderr,
             wall_s=time.monotonic() - start,
         )
+        _progress(f"gen/{genid} {name}: timed out after {result.wall_s:.1f}s")
+        return result
 
 
 def operator_timeout(operators_config: dict[str, Any], name: str) -> float:

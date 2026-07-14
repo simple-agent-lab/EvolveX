@@ -1,0 +1,34 @@
+experiment:
+  id: hyperagents-smoke
+  max_generations: 8
+  target_score: null
+  budget_usd: 1
+  children_per_gen: 1
+  mode: driver
+  seed: 0
+target:
+  seed: builtin-dummy
+surface:
+  include:
+    - target/**
+    - operators/meta_agent.py
+    - operators/meta_agent.md
+  exclude: []
+operators:
+  select: {variant: score_child_prop, seed: 0}
+  rollout: {variant: noop}
+  meta_agent: {variant: hyperagents, timeout_s: 3600}
+  validate: {variant: hyperagents, timeout_s: 300}
+  gate: {variant: parent_eligible}
+  record: {variant: hyperagents}
+  timeout_s: 600
+evaluator:
+  engine: harbor
+  dataset: pass@k
+  agent: target.harbor_agent:MiniSweSourceAgent
+  split: {train: 0.5, gate: 0.4, sealed: 0.1, seed: 0}
+  sampling: static
+  tasks_per_round: 8
+  k: 1
+  n_concurrent: 1
+  partial_floor: 0.8

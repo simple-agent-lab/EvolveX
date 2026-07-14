@@ -7,25 +7,29 @@ experiment:
   mode: driver
   seed: 0
 target:
-  seed: builtin-dummy
+  seed: builtin-codex
 surface:
   include:
     - target/**
   exclude: []
 operators:
-  select: {variant: greedy}
-  rollout: {variant: failure_focused, budget_tasks: 32}
-  mutate: {variant: fixed, timeout_s: 3600}
-  gate: {variant: parent_eligible}
-  record: {variant: jsonl}
+  select: {variant: greedy, timeout_s: 600}
+  rollout: {variant: harbor, budget_tasks: 1, n_concurrent: 4, agent_setup_timeout_multiplier: 3, max_retries: 1, timeout_s: 3600}
+  trace_analyzer: {variant: failure_patterns, max_chars: 30000, timeout_s: 600}
+  meta_agent: {variant: agent_command, command: codex exec --full-auto - < "$EVOLVE_PROMPT_FILE", timeout_s: 3600}
+  gate: {variant: hillclimb, timeout_s: 600}
+  record: {variant: jsonl, timeout_s: 600}
   timeout_s: 600
 evaluator:
   engine: harbor
   dataset: pass@k
+  agent: target.agent:HarborAgent
   split: {train: 0.5, gate: 0.4, sealed: 0.1, seed: 0}
   sampling: static
-  tasks_per_round: 16
+  tasks_per_round: 1
   anchor: {final: true, every_rounds: 0}
   k: 1
-  n_concurrent: 16
+  n_concurrent: 4
+  agent_setup_timeout_multiplier: 3
+  max_retries: 1
   partial_floor: 0.8

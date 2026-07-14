@@ -34,7 +34,7 @@ Inside that generated workspace, the six core concepts are:
 | --- | --- |
 | workspace | The generated experiment repository. |
 | target | The code or agent being improved. |
-| operator | Evolvable scripts for select, rollout, mutate, gate, and record. |
+| operator | Evolvable scripts for select, rollout, optional trace analysis, meta-agent editing, validation, gate, and record. |
 | evaluator | A pinned black-box evaluator contract. |
 | archive | `archive.jsonl` plus `gen/<id>` git tags. |
 | mutable surface | The paths proposals are allowed to change. |
@@ -87,6 +87,10 @@ and generated evaluator templates use the checkout's own `target/` via a
 custom Harbor agent path. A full mini-swe target live smoke is still
 pending; real long-running experiments should run on a Linux machine.
 
+Trace retention is a separate operator from rollout. See
+[`TRACE_ANALYZER.md`](TRACE_ANALYZER.md) for the descriptive analyzer variants
+and the migration from the former research-method profile names.
+
 ## Install For Development
 
 Requirements:
@@ -131,6 +135,41 @@ Run a deterministic smoke loop with the stub evaluator:
 EVAL_STUB=1 evolve run . --max-generations 5
 ```
 
+Runs print stage-level progress by default. Add `--verbose` to stream Harbor
+and operator output while retaining the per-run `harbor.log` files:
+
+```bash
+evolve run . --max-generations 1 --verbose
+```
+
+For a quiet machine-readable run, set `EVOLVE_PROGRESS=0`. To observe an
+already-running non-verbose evaluation, follow its log directly, for example
+`tail -F runs/gen-0/baseline/harbor.log`.
+
+Harbor agent and verifier phases receive the host `http_proxy`, `https_proxy`,
+and `no_proxy` values in both lower- and uppercase forms. Override only the
+values sent to task containers with `EVOLVE_HARBOR_HTTP_PROXY`,
+`EVOLVE_HARBOR_HTTPS_PROXY`, and `EVOLVE_HARBOR_NO_PROXY`.
+
+To scaffold an evolvable Harbor wrapper around Codex instead of the dummy
+target:
+
+```bash
+evolve init /tmp/evolve-codex --recipe hill_climb --seed builtin-codex \
+  --dataset /absolute/path/to/harbor/tasks
+```
+
+The generated `target/` owns its prompt, skills, Codex version/model settings,
+and opt-in compaction overrides. Harbor still installs and executes the Codex
+CLI inside each task container. Runtime authentication stays outside the
+workspace: export `OPENAI_API_KEY`, or use host `codex login` with
+`CODEX_FORCE_AUTH_JSON=1`.
+
+For a local Harbor dataset, init deterministically freezes disjoint
+`train`/`gate`/`sealed` task-name lists in `evaluator/splits.json`. Harbor
+rollout consumes only `train`, canonical evaluation consumes only `gate`, and
+sealed anchor results are auxiliary records that never enter meta-agent feedback.
+
 Inspect the population and the claim checklist:
 
 ```bash
@@ -151,28 +190,25 @@ shape, and evaluator template.
 | Recipe | Children | Mode | Evaluator shape | Surface shape |
 | --- | ---: | --- | --- | --- |
 | `hill_climb` | 1 | driver | Harbor pass@k | target |
-| `dgm` | 4 | driver | Harbor pass@k | target |
 | `ahe` | 1 | driver | Harbor pass@k | target |
-| `hyperagents` | 2 | driver | Docker `report.json` | target + operators + meta |
-| `autoresearch` | 1 | agent | `train.py` / negative BPB | single-file target |
-| `metaagent` | 1 | driver | reflection trace | target + meta |
+| `hyperagents` | 1 | driver | Harbor pass@k | target + meta-agent operator/prompt |
 
 Example:
 
 ```bash
-evolve init /tmp/evolve-dgm --recipe dgm
-EVAL_STUB=1 evolve run /tmp/evolve-dgm --max-generations 1
-evolve status /tmp/evolve-dgm
+evolve init /tmp/evolve-ahe --recipe ahe --dataset /absolute/path/to/harbor/tasks
+evolve run /tmp/evolve-ahe --max-generations 1
+evolve status /tmp/evolve-ahe
 ```
 
 ## CLI Verbs
 
 ```text
-evolve init <workspace> [--recipe ...]
+evolve init <workspace> [--recipe ...] [--seed builtin-dummy|builtin-codex|PATH|GIT_URL] [--dataset LOCAL_TASK_DIR]
 evolve run <workspace> [--max-generations N] [--children-per-gen N] [--resume]
 evolve fork <workspace> <parent> <child-worktree>
 evolve commit <workspace> <child-worktree> --parent <id> --genid <id>
-evolve eval <workspace> <genid> [--round N]
+evolve eval <workspace> <genid> [--force]
 evolve record <workspace> <genid> --fields <json-object>
 evolve surface-check [workspace] [--parent <tag-or-id>]
 evolve status [workspace]
@@ -182,7 +218,6 @@ evolve report [workspace]
 `run` is the built-in driver. Agent-mode experiments can instead read
 `program.md` in the generated workspace and sequence the same verbs
 manually. The invariants are enforced inside the verbs either way.
-`eval --round` is only valid when `evaluator.sampling: per_round`.
 
 ## Honesty Guarantees
 
@@ -292,9 +327,10 @@ thermal pressure, and get more predictable long-running Docker behavior.
 - The live Harbor pytest smoke is pending environment/test-path cleanup:
   Harbor runs from `/private/tmp/harbor-evolve-m1`, while the current
   live pytest resolves `examples/tasks/hello-world` from this repo.
-- `llm` and `agent_command` mutator adapters exist, but repeatable
-  milestone tests still use the deterministic checkout-local `fixed`
-  mutate operator by default.
+- `agent_command` is the general meta-agent adapter; HyperAgents uses its
+  dedicated `meta_agent` implementation and validation stage.
+- Deterministic split discovery currently requires a local Harbor task
+  directory; remote registry datasets must first be materialized locally.
 - Archive provenance is protected by mechanism stamps and receipt
   sidecars for auxiliary evals, not by cryptographic signatures.
 - Harbor is verified for Mac development smoke tests, but production
