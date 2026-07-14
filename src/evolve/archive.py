@@ -4,12 +4,22 @@ import hashlib
 import json
 import os
 import re
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-STAMPED_FIELDS = {"score", "status", "task_set_hash", "task_vector", "evaluator_tree", "cost"}
+from .evaluation import CANONICAL_OUTCOMES, EvaluationRecord, evaluation_status
+
+STAMPED_FIELDS = {
+    "experiment_id", "generation", "candidate_commit", "purpose", "attempt", "retry_of",
+    "evaluator_fingerprint", "task_set_hash", "runtime_fingerprint", "expected_trials",
+    "outcome", "trials", "score", "cost_usd", "wall_s", "artifacts",
+    "status", "selection_eligible", "task_set_members", "task_vector", "cost",
+}
 MECHANISM_EVAL_FIELD = "_evolve_mechanism_eval"
-RESERVED_AUXILIARY_FIELDS = {"evals", "kind", "round", MECHANISM_EVAL_FIELD}
+RECEIPT_CERTIFIED_FIELD = "_evolve_receipt_certified"
+RECORD_ATTEMPT_FIELD = "_evolve_record_attempted"
+RESERVED_AUXILIARY_FIELDS = {"evals", "kind", "round", MECHANISM_EVAL_FIELD, RECORD_ATTEMPT_FIELD}
 EVALUATION_FIELDS = STAMPED_FIELDS | {
     "genid",
     "parent",
@@ -22,7 +32,8 @@ EVALUATION_FIELDS = STAMPED_FIELDS | {
     "predicted_fixes",
     "note",
     "kind",
-    "round",
+    "round", "pending_gate_record",
+    RECEIPT_CERTIFIED_FIELD,
 }
 AUXILIARY_BLOCKED_FIELDS = (EVALUATION_FIELDS - {"note"}) | {"evals", MECHANISM_EVAL_FIELD}
 _SAFE_EXPERIMENT_ID = re.compile(r"^[A-Za-z0-9._-]+$")
@@ -71,6 +82,34 @@ def append_event(workspace: Path, experiment_id: str, event: dict[str, Any]) -> 
         for target in targets:
             _append_eval_receipt(target, event)
 
+def append_evaluation_record(workspace: Path, record: EvaluationRecord, *, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+    pending_gate = (metadata or {}).get("pending_gate_record") is True
+    valid_parent = record.selection_eligible and not pending_gate
+    tasks: dict[str, dict[str, list[dict[str, object]]]] = {}
+    for trial in record.trials:
+        raw = asdict(trial)
+        task_id = str(raw.pop("task_id"))
+        raw["status"] = raw.pop("outcome").value
+        tasks.setdefault(task_id, {"trials": []})["trials"].append(raw)
+    event = {
+        **(metadata or {}),
+        **record.to_dict(),
+        "event_type": "evaluation",
+        "genid": record.generation,
+        "tag": f"gen/{record.generation}",
+        "status": record.status,
+        "selection_eligible": record.selection_eligible,
+        "pending_gate_record": pending_gate,
+        "task_set_members": sorted(tasks),
+        "task_vector": {"schema_version": 1, "tasks": tasks},
+        "valid_parent": valid_parent,
+        "verdict": "keep" if valid_parent else "discard",
+        "cost": {"usd": record.cost_usd, "wall_s": record.wall_s},
+        MECHANISM_EVAL_FIELD: True,
+    }
+    append_event(workspace, record.experiment_id, event)
+    return event
+
 
 def read_events(path: Path) -> list[dict[str, Any]]:
     return [json.loads(line) for line in path.read_text().splitlines() if line.strip()] if path.exists() else []
@@ -86,15 +125,24 @@ def merged_rows(path: Path) -> list[dict[str, Any]]:
     top_eval_hash: dict[str, str] = {}
     receipts = _eval_receipts(path)
     order: list[str] = []
-    for event in read_events(path):
+    for raw_event in read_events(path):
+        event = {key: value for key, value in raw_event.items() if key != RECEIPT_CERTIFIED_FIELD}
         genid = str(event["genid"])
         if genid not in rows:
             rows[genid] = {}
             evals_by_genid[genid] = {}
             order.append(genid)
         if _is_keyed_evaluation(event):
-            auxiliary_hash = genid in top_eval_hash and str(event["task_set_hash"]) != top_eval_hash[genid]
-            if auxiliary_hash and not _has_evaluation_provenance(event, genid, receipts):
+            certified = _has_evaluation_provenance(raw_event, genid, receipts)
+            if certified:
+                event[RECEIPT_CERTIFIED_FIELD] = True
+            if event.get("kind") == "anchor":
+                _merge_auxiliary_evaluation(rows[genid], evals_by_genid[genid], event, prefix="anchor")
+                continue
+            if event.get("kind") == "genesis_eval" and genid != "0":
+                _merge_auxiliary_evaluation(rows[genid], evals_by_genid[genid], event, prefix="genesis")
+                continue
+            if genid in top_eval_hash and not certified:
                 _merge_auxiliary_non_stamped_fields(rows[genid], event)
                 continue
             _merge_keyed_evaluation(rows[genid], evals_by_genid[genid], top_eval_hash, genid, event)
@@ -107,20 +155,10 @@ def rows_by_genid(workspace: Path) -> dict[str, dict[str, Any]]:
     return {str(row["genid"]): row for row in merged_rows(archive_path(workspace))}
 
 
-def highest_complete_generation(workspace: Path) -> int:
-    highest = -1
-    for row in merged_rows(archive_path(workspace)):
-        genid = str(row.get("genid", ""))
-        if genid.isdigit() and row.get("status") == "complete":
-            highest = max(highest, int(genid))
-    return highest
-
-
 def _safe_experiment_dir(experiment_id: str) -> str:
     if _SAFE_EXPERIMENT_ID.fullmatch(experiment_id) and experiment_id not in {".", ".."} and ".." not in experiment_id:
         return experiment_id
-    digest = hashlib.sha256(experiment_id.encode("utf-8")).hexdigest()[:16]
-    return f"unsafe-{digest}"
+    return f"unsafe-{hashlib.sha256(experiment_id.encode('utf-8')).hexdigest()[:16]}"
 
 
 def _is_keyed_evaluation(event: dict[str, Any]) -> bool:
@@ -149,10 +187,7 @@ def _eval_receipts(archive: Path) -> set[str]:
 
 
 def verify_integrity(workspace: Path) -> list[str]:
-    """Integrity fsck: every frozen mechanism-eval event must have a matching
-    tamper-evident receipt. A hand-edited score/status/task_vector changes the
-    event's hash, so it no longer matches — surfacing the edit (DESIGN
-    observability). Returns human-readable findings; empty means clean."""
+    """Report frozen mechanism-eval events without matching receipts."""
     path = archive_path(workspace)
     receipts = _eval_receipts(path)
     findings: list[str] = []
@@ -189,13 +224,23 @@ def _merge_keyed_evaluation(
     event: dict[str, Any],
 ) -> None:
     task_hash = str(event["task_set_hash"])
+    if _is_genesis_replacement(row, genid, event):
+        top_eval_hash[genid] = task_hash
+        _replace_top_evaluation(row, event)
+        return
     if genid not in top_eval_hash:
         top_eval_hash[genid] = task_hash
         _merge_event_fields(row, row, event)
         return
 
     if task_hash == top_eval_hash[genid]:
-        _merge_event_fields(row, _top_eval(row), event)
+        if event.get(RECEIPT_CERTIFIED_FIELD) is True and row.get(RECEIPT_CERTIFIED_FIELD) is not True:
+            retained = {key: row[key] for key in ("evals", "note") if key in row and key not in event}
+            row.clear()
+            row.update(retained)
+            _replace_top_evaluation(row, event)
+        else:
+            _merge_event_fields(row, row, event)
         return
 
     current = evals.get(task_hash)
@@ -214,14 +259,47 @@ def _merge_keyed_evaluation(
     row["evals"] = list(evals.values())
 
 
+def _merge_auxiliary_evaluation(
+    row: dict[str, Any], evals: dict[str, dict[str, Any]], event: dict[str, Any], *, prefix: str
+) -> None:
+    if "genid" not in row:
+        row["genid"] = event["genid"]
+    key = f"{prefix}:{event['task_set_hash']}"
+    evals[key] = _evaluation_entry(event)
+    row["evals"] = list(evals.values())
+
+
 def _evaluation_entry(event: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in event.items() if key in EVALUATION_FIELDS}
 
 
+def _is_genesis_replacement(row: dict[str, Any], genid: str, event: dict[str, Any]) -> bool:
+    return (
+        genid == "0"
+        and evaluation_status(row) == "pending"
+        and row.get("score") is None
+        and row.get("valid_parent") is False
+        and event.get("kind") == "genesis_eval"
+        and event.get(MECHANISM_EVAL_FIELD) is True
+    )
+
+
+def _replace_top_evaluation(row: dict[str, Any], event: dict[str, Any]) -> None:
+    for key, value in event.items():
+        if key not in RESERVED_AUXILIARY_FIELDS:
+            row[key] = value
+
+
 def _merge_event_fields(row: dict[str, Any], current: dict[str, Any], event: dict[str, Any]) -> None:
     replace_stamped = _can_replace_stamped(current, event)
+    terminal_override = current.get("pending_gate_record") is True and event.get("status") == "operator_failed"
     for key, value in event.items():
-        if key not in RESERVED_AUXILIARY_FIELDS and not (key in STAMPED_FIELDS and key in row and not replace_stamped):
+        if key == "valid_parent" and value is True and "selection_eligible" in row and row.get("selection_eligible") is not True:
+            continue
+        protected = key in STAMPED_FIELDS and key in row and not replace_stamped
+        if terminal_override and key in {"status", "score", "cost"}:
+            protected = False
+        if key not in RESERVED_AUXILIARY_FIELDS and not protected:
             row[key] = value
 
 
@@ -231,23 +309,27 @@ def _merge_auxiliary_non_stamped_fields(row: dict[str, Any], event: dict[str, An
             row[key] = value
 
 
-def _top_eval(row: dict[str, Any]) -> dict[str, Any]:
-    return {key: row.get(key) for key in STAMPED_FIELDS}
-
-
 def _can_replace_stamped(current: dict[str, Any], event: dict[str, Any]) -> bool:
     if (
-        current.get("pending_gate_record") is True
-        and event.get("status") == "operator_failed"
-        and event.get("valid_parent") is False
-        and event.get("verdict") == "discard"
-        and isinstance(event.get("reason"), str)
-        and str(event.get("reason")).startswith("operator ")
+        (
+            current.get("note") in {"initial scaffold", "mechanism evaluation recorded before gate/record"}
+            or current.get("pending_gate_record") is True
+        )
+        and event.get(MECHANISM_EVAL_FIELD) is True
+        and event.get("genid") == current.get("genid")
+        and event.get("tag") == current.get("tag")
+        and event.get("outcome") == "benchmark_complete"
+        and event.get("selection_eligible") is True
+        and event.get("score") is not None
+        and event.get("valid_parent") is True
     ):
         return True
     return (
-        current.get("status") == "infra_failed"
-        and current.get("score") is None
-        and event.get("status") in {"complete", "partial"}
-        and event.get("score") is not None
+        evaluation_status(current) in {"infra_failed", "infrastructure_failed"}
+        and event.get(MECHANISM_EVAL_FIELD) is True
+        and event.get("outcome") in CANONICAL_OUTCOMES
+        and all(event.get(key) == current.get(key) for key in ("generation", "candidate_commit", "purpose"))
+        and all(isinstance(values.get("attempt"), int) for values in (current, event))
+        and event["attempt"] > current["attempt"]
+        and event.get("retry_of") == current["attempt"]
     )

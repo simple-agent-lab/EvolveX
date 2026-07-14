@@ -6,6 +6,8 @@ from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from .frozen.interfaces import OPTIONAL_OPERATOR_KINDS as _OPTIONAL_OPERATOR_KINDS
 from .frozen.interfaces import REQUIRED_OPERATOR_KINDS
 
@@ -96,7 +98,17 @@ def evaluator_values(workspace: Path) -> dict[str, Any]:
 
 def evaluator_sampling(workspace: Path) -> str:
     value = evaluator_values(workspace).get("sampling", "static")
-    return str(value or "static")
+    sampling = str(value or "static")
+    if sampling != "static":
+        raise ValueError("evaluator.sampling must be static")
+    return sampling
+
+
+def evaluator_boolean(values: dict[str, Any], key: str, default: bool = False) -> bool:
+    value = values.get(key, default)
+    if not isinstance(value, bool):
+        raise ValueError(f"evaluator.{key} must be a boolean")
+    return value
 
 
 def _read_section(workspace: Path, name: str) -> dict[str, Any]:
@@ -104,93 +116,34 @@ def _read_section(workspace: Path, name: str) -> dict[str, Any]:
 
 
 def _read_config_file(config: Resource) -> dict[str, Any]:
-    return {section: _read_section_file(config, section) for section in CONFIG_SECTIONS}
+    return load_config(config)
+
+
+def load_config(config: Resource) -> dict[str, Any]:
+    # is_file() (not exists()) works for both a Path and a packaged Traversable.
+    if not config.is_file():
+        return {section: {} for section in CONFIG_SECTIONS}
+    loaded = yaml.safe_load(config.read_text())
+    if loaded is None:
+        loaded = {}
+    if not isinstance(loaded, dict):
+        raise ValueError("config document must be a mapping")
+    unknown = sorted(str(key) for key in loaded if key not in CONFIG_SECTIONS)
+    if unknown:
+        raise ValueError("unknown top-level config sections: %s" % ", ".join(unknown))
+    result: dict[str, Any] = {}
+    for section in CONFIG_SECTIONS:
+        value = loaded.get(section, {})
+        if value is None:
+            value = {}
+        if not isinstance(value, dict):
+            raise ValueError(f"{section} section must be a mapping")
+        result[section] = value
+    return result
 
 
 def _read_section_file(config: Resource, name: str) -> dict[str, Any]:
-    # is_file() (not exists()) works for both a Path and a packaged Traversable.
-    if not config.is_file():
-        return {}
-    values: dict[str, Any] = {}
-    in_section = False
-    current_list: str | None = None
-    for line in config.read_text().splitlines():
-        stripped = line.strip()
-        if stripped.startswith(f"{name}:"):
-            inline = stripped.split(":", 1)[1].strip()
-            if inline:
-                return {key: _coerce_scalar(value) for key, value in _parse_inline_mapping(inline).items()}
-            in_section = True
-            current_list = None
-            continue
-        if in_section and line and not line.startswith(" "):
-            break
-        if not in_section or not stripped:
-            continue
-        if current_list and stripped.startswith("- "):
-            values[current_list].append(stripped[2:].strip().strip("\"'"))
-            continue
-        if ":" not in stripped:
-            continue
-        key, raw = stripped.split(":", 1)
-        key = key.strip()
-        raw = raw.strip()
-        current_list = None
-        if not raw:
-            values[key] = []
-            current_list = key
-            continue
-        if raw.startswith("{"):
-            values[key] = {
-                item_key: _coerce_scalar(item_value) for item_key, item_value in _parse_inline_mapping(raw).items()
-            }
-            continue
-        if raw.startswith("["):
-            values[key] = _parse_inline_list(raw)
-            continue
-        values[key] = _coerce_scalar(raw)
-    return values
-
-
-def _parse_inline_mapping(value: str) -> dict[str, str]:
-    if not (value.startswith("{") and value.endswith("}")):
-        return {}
-    inner = value[1:-1].strip()
-    if not inner:
-        return {}
-    values: dict[str, str] = {}
-    for item in inner.split(","):
-        if ":" not in item:
-            continue
-        key, raw_value = item.split(":", 1)
-        values[key.strip()] = raw_value.strip()
-    return values
-
-
-def _parse_inline_list(value: str) -> list[str]:
-    if value == "[]":
-        return []
-    if value.startswith("[") and value.endswith("]"):
-        inner = value[1:-1].strip()
-        if not inner:
-            return []
-        return [item.strip().strip("\"'") for item in inner.split(",")]
-    return []
-
-
-def _coerce_scalar(value: str) -> Any:
-    if value == "null":
-        return None
-    if value == "true":
-        return True
-    if value == "false":
-        return False
-    for cast in (int, float):
-        try:
-            return cast(value)
-        except ValueError:
-            continue
-    return value
+    return dict(load_config(config)[name])
 
 
 def _string_list(value: Any) -> list[str]:
@@ -200,45 +153,5 @@ def _string_list(value: Any) -> list[str]:
 
 
 def render_yaml(value: dict[str, Any]) -> str:
-    lines: list[str] = []
-    _render_mapping(lines, value, 0)
-    return "\n".join(lines) + "\n"
-
-
-def _render_mapping(lines: list[str], mapping: dict[str, Any], indent: int) -> None:
-    prefix = " " * indent
-    for key, value in mapping.items():
-        if isinstance(value, dict):
-            if _is_inline_mapping(value):
-                lines.append(f"{prefix}{key}: {_format_inline_mapping(value)}")
-            else:
-                lines.append(f"{prefix}{key}:")
-                _render_mapping(lines, value, indent + 2)
-        elif isinstance(value, list):
-            if value:
-                lines.append(f"{prefix}{key}:")
-                for item in value:
-                    lines.append(f"{prefix}  - {_format_scalar(item)}")
-            else:
-                lines.append(f"{prefix}{key}: []")
-        else:
-            lines.append(f"{prefix}{key}: {_format_scalar(value)}")
-
-
-def _is_inline_mapping(mapping: dict[str, Any]) -> bool:
-    return all(not isinstance(item, (dict, list)) for item in mapping.values())
-
-
-def _format_inline_mapping(mapping: dict[str, Any]) -> str:
-    pairs = ", ".join(f"{key}: {_format_scalar(value)}" for key, value in mapping.items())
-    return "{" + pairs + "}"
-
-
-def _format_scalar(value: Any) -> str:
-    if value is None:
-        return "null"
-    if value is True:
-        return "true"
-    if value is False:
-        return "false"
-    return str(value)
+    validated = {section: value.get(section, {}) for section in CONFIG_SECTIONS}
+    return yaml.safe_dump(validated, sort_keys=False, allow_unicode=False)

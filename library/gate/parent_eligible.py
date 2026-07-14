@@ -1,4 +1,4 @@
-"""Parent-eligible gate accepts children with evaluation status complete or partial."""
+"""Parent-eligible gate may only reject canonical eligible evaluations."""
 
 # ruff: noqa: E402
 
@@ -12,11 +12,11 @@ from evolve.frozen.interfaces import GateOperator, GateResult, OperatorContext, 
 
 
 def _parent_eligible(child: Row) -> tuple[bool, str]:
-    status = child.get("status")
-    keep = status in {"complete", "partial"}
+    outcome = child.get("outcome")
+    keep = outcome == "benchmark_complete" and child.get("selection_eligible") is True
     if keep:
-        return True, "status %s is parent-eligible" % status
-    return False, "status %s is not parent-eligible" % status
+        return True, "canonical evaluation is parent-eligible"
+    return False, "canonical evaluation is not parent-eligible: %s" % outcome
 
 
 class ParentEligibleGate(GateOperator):

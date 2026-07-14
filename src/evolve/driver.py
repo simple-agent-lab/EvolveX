@@ -9,8 +9,11 @@ from pathlib import Path
 from typing import Any
 
 from .archive import (
-    MECHANISM_EVAL_FIELD,
+    EVALUATION_FIELDS,
+    RECORD_ATTEMPT_FIELD,
+    RESERVED_AUXILIARY_FIELDS,
     STAMPED_FIELDS,
+    append_evaluation_record,
     append_event,
     archive_path,
     ensure_local_archive,
@@ -19,24 +22,25 @@ from .archive import (
     read_events,
     rows_by_genid,
 )
+from .candidate_snapshot import build_candidate_snapshot, commit_candidate_snapshot
 from .config import evaluator_sampling, experiment_id, operator_blocks
+from .evaluation import CANONICAL_OUTCOMES, EvaluationInterrupted, EvaluationRecord, Outcome, evaluation_status
 from .evaluator import evaluate
-from .feedback import write_feedback_bundle
-from .frozen import meta_eval
 from .frozen.interfaces import (
+    ArchiveView,
     PayloadValidationError,
     validate_gate_file_payload,
-    validate_mutate_predicted_fixes_payload,
-    validate_mutate_usage_payload,
+    validate_meta_agent_predicted_fixes_payload,
+    validate_meta_agent_usage_payload,
     validate_novelty_file_payload,
     validate_record_fields_payload,
     validate_rollout_artifacts_payload,
     validate_rollout_summary_payload,
     validate_select_payload,
+    validate_validate_file_payload,
 )
 from .git import (
     add_worktree,
-    commit_paths,
     create_tag,
     git,
     git_common_dir,
@@ -47,24 +51,26 @@ from .git import (
     working_tree_changed_paths,
 )
 from .operators import OperatorResult, operator_timeout, run_operator
-from .population import best_row, format_genid, generation_number, valid_genid, valid_parent_rows
+from .population import best_row, format_genid, generation_number, valid_genid
 from .surface import check_paths, surface_patterns
 
-DEFAULT_EVAL_REASON = "mechanism evaluation stamp"
 PENDING_GATE_RECORD_NOTE = "mechanism evaluation recorded before gate/record"
-TERMINAL_STATUSES = {"complete", "partial", "invalid_proposal", "no_proposal", "operator_failed", "rejected_duplicate"}
-UNRETRYABLE_STATUSES = {"invalid_proposal", "no_proposal", "operator_failed", "rejected_duplicate"}
-RECORD_FORBIDDEN_FIELDS = STAMPED_FIELDS | {
-    "genid",
-    "parent",
-    "tag",
-    "mutated",
-    "surface_violations",
-    "evals",
-    "kind",
-    "round",
-    MECHANISM_EVAL_FIELD,
+TERMINAL_STATUSES = {
+    "complete",
+    "partial",
+    "invalid_proposal",
+    "no_proposal",
+    "operator_failed",
+    "rejected_admission",
+    "rejected_duplicate",
+    "rejected_validation",
+    Outcome.CANDIDATE_INVALID.value,
+    Outcome.TIMEOUT.value,
+    Outcome.CANCELLED.value,
 }
+UNRETRYABLE_STATUSES = TERMINAL_STATUSES - {"complete", "partial"}
+RECORD_FORBIDDEN_FIELDS = EVALUATION_FIELDS | RESERVED_AUXILIARY_FIELDS
+RECORD_ANNOTATION_FIELDS = frozenset({"note", "predicted_fixes"})
 
 
 @dataclass(frozen=True)
@@ -73,6 +79,9 @@ class RunOptions:
     max_generations: int
     children_per_gen: int = 1
 
+
+class EvaluationPaused(RuntimeError):
+    """The same committed candidate exhausted its one infrastructure retry."""
 
 @dataclass(frozen=True)
 class OperatorOutputError:
@@ -87,6 +96,8 @@ def run(options: RunOptions) -> None:
         raise RuntimeError("children_per_gen must be at least 1")
     exp_id = experiment_id(workspace)
     ensure_local_archive(workspace, exp_id)
+    evaluator_sampling(workspace)
+    _ensure_genesis_evaluated(workspace)
     operators_config = operator_blocks(workspace)
 
     for gen in range(1, options.max_generations + 1):
@@ -101,7 +112,7 @@ def run(options: RunOptions) -> None:
         if not pending:
             continue
 
-        round_number = gen if evaluator_sampling(workspace) == "per_round" else None
+        round_number = None
         selected = _select_generation_parents(
             workspace,
             exp_id,
@@ -110,9 +121,6 @@ def run(options: RunOptions) -> None:
             options.children_per_gen,
             operators_config,
         )
-        if round_number is not None:
-            selected = _ensure_selected_parent_round_evaluations(workspace, exp_id, selected, gen)
-
         for genid in genids:
             row = rows_by_genid(workspace).get(genid, {})
             pending_eval_gate_record = genid in _evaluation_pending_gate_record_genids(workspace)
@@ -178,9 +186,17 @@ def _run_child(
     operators_config: dict[str, Any],
 ) -> None:
     child = _child_worktree_path(workspace, genid)
+    recorded = False
+
+    def record_terminal_attempt(candidate_checkout: Path | None = child) -> None:
+        nonlocal recorded
+        if recorded:
+            return
+        recorded = True
+        _run_terminal_record(workspace, exp_id, genid, parent, operators_config, candidate_checkout, round_number)
+
     if child.exists():
         remove_worktree(workspace, child)
-    operator_reverted = False
     try:
         try:
             fork_child(workspace, parent, child)
@@ -193,14 +209,10 @@ def _run_child(
                 "select",
                 note=str(exc),
             )
+            record_terminal_attempt(None)
             return
 
-        for name in ("rollout", "mutate"):
-            if name == "mutate":
-                # The feedback bundle (retired `observe`) is ledger-derived
-                # mechanism bookkeeping: written after rollout, before mutate,
-                # so it exists regardless of the rollout variant.
-                write_feedback_bundle(workspace=workspace, run_dir=_run_dir(workspace, genid))
+        for name in ("rollout", "meta_agent"):
             if not _run_operator_or_fail(
                 name=name,
                 checkout=child,
@@ -212,23 +224,68 @@ def _run_child(
                 operators_config=operators_config,
                 round_number=round_number,
             ):
+                record_terminal_attempt()
                 return
 
-        # Self-modification admission gate (mechanism 1, DESIGN §2/§7). When a
-        # mutation edits the operator surface, a confound-free replay decides
-        # whether the new operators are non-inferior; if not, only the operator
-        # part of the diff is reverted (candidate/ changes are kept). Skipped
-        # inside a replay (recursion guard) and cheap when the surface is unchanged.
-        if not os.environ.get("EVOLVE_IN_META_EVAL"):
-            mutated_paths = working_tree_changed_paths(child, f"gen/{parent}")
-            if meta_eval.operator_surface_changed(mutated_paths):
-                if not meta_eval.admit(workspace, f"gen/{parent}", child).get("admitted"):
-                    for rel in meta_eval.OPERATOR_PATHS:
-                        git(child, "checkout", f"gen/{parent}", "--", rel, check=False)
-                    operator_reverted = True
+        mutated_paths = working_tree_changed_paths(child, f"gen/{parent}")
+        if not mutated_paths:
+            _append_candidate_rejected(
+                workspace,
+                exp_id,
+                genid,
+                parent,
+                status="no_proposal",
+                reason="no changes to commit",
+                mutated=[],
+            )
+            record_terminal_attempt()
+            return
+        include, exclude = surface_patterns(workspace)
+        violations = check_paths(mutated_paths, include, exclude)
+        if violations:
+            _append_candidate_rejected(
+                workspace,
+                exp_id,
+                genid,
+                parent,
+                status="invalid_proposal",
+                reason="changed paths outside mutable surface",
+                mutated=mutated_paths,
+                violations=violations,
+            )
+            record_terminal_attempt()
+            return
+
+        if _operator_present(operators_config, "validate"):
+            if not _run_operator_or_fail(
+                name="validate",
+                checkout=child,
+                workspace=workspace,
+                exp_id=exp_id,
+                genid=genid,
+                parent=parent,
+                run_dir=_run_dir(workspace, genid),
+                operators_config=operators_config,
+                round_number=round_number,
+            ):
+                record_terminal_attempt()
+                return
+            validation, _error = _load_validate_payload(_run_dir(workspace, genid))
+            if validation is not None and not validation["accept"]:
+                _append_candidate_rejected(
+                    workspace,
+                    exp_id,
+                    genid,
+                    parent,
+                    status="rejected_validation",
+                    reason=f"candidate validation rejected: {validation['reason']}",
+                    mutated=mutated_paths,
+                )
+                record_terminal_attempt()
+                return
 
         # Novelty gate (mechanism 5, DESIGN §7) — optional, off unless the recipe
-        # configures `operators.novelty`. Runs on the uncommitted mutation diff;
+        # configures `operators.novelty`. Runs on the uncommitted candidate diff;
         # a near-duplicate is discarded before it is ever committed or evaluated.
         if _operator_present(operators_config, "novelty"):
             run_dir = _run_dir(workspace, genid)
@@ -243,10 +300,12 @@ def _run_child(
                 operators_config=operators_config,
                 round_number=round_number,
             ):
+                record_terminal_attempt()
                 return
             nov_payload, _ = _load_novelty_payload(run_dir)
             if nov_payload is not None and not nov_payload["accept"]:
                 _append_novelty_rejected(workspace, exp_id, genid, parent, nov_payload)
+                record_terminal_attempt()
                 return
 
         commit_child(workspace, child, parent, genid)
@@ -258,16 +317,13 @@ def _run_child(
     if row.get("status") in {"no_proposal", "invalid_proposal", "operator_failed"}:
         return
 
-    eval_child(workspace, genid, round_number=round_number)
+    evaluation = eval_child(workspace, genid, round_number=round_number)
+    if evaluation is None or evaluation.outcome is not Outcome.BENCHMARK_COMPLETE:
+        return
     _run_gate_and_record(workspace, exp_id, genid, parent, operators_config, round_number=round_number)
-    if operator_reverted:
-        record_fields(workspace, genid, {"operator_reverted": True})
-    verified = _verified_fixes(workspace, genid, parent)
-    if verified is not None:
-        record_fields(workspace, genid, {"verified_fixes": verified})
 
     # Reflect (mechanism 2, DESIGN §7) — optional, off unless the recipe configures
-    # `operators.reflect`. Reads the ledger (incl. the just-recorded verified_fixes)
+    # `operators.reflect`. Reads the ledger after the record operator annotates it
     # and appends playbook insights. Best-effort: a reflect failure never unwinds
     # the recorded generation. Runs against the workspace (it needs the ledger,
     # not the candidate worktree).
@@ -312,31 +368,16 @@ def _maybe_quarantine(workspace: Path, genid: str) -> None:
     margin = os.environ.get("EVOLVE_AUDIT_JUMP")
     if not margin:
         return
-    rows = rows_by_genid(workspace)
-    child = rows.get(genid, {})
+    view = ArchiveView(workspace)
+    child = view.row(genid) or {}
     score = child.get("score")
     prior = [
         float(r["score"])
-        for gid, r in rows.items()
-        if gid != genid and r.get("valid_parent") is True and isinstance(r.get("score"), (int, float))
+        for r in view.valid_parents()
+        if str(r.get("genid")) != genid
     ]
     if isinstance(score, (int, float)) and prior and float(score) - max(prior) > float(margin):
         record_fields(workspace, genid, {"audit": "pending"})
-
-
-def _verified_fixes(workspace: Path, genid: str, parent: str) -> list[str] | None:
-    """Falsification (mechanism 2, DESIGN §2/§7): of the tasks this generation
-    predicted it would fix, which ones did its eval actually flip from fail (in
-    the parent) to pass? A frozen rule over the two task vectors — not something
-    an operator reports. Returns None when it cannot be computed (no task
-    vectors / no predictions)."""
-    rows = rows_by_genid(workspace)
-    child, parent_row = rows.get(genid, {}), rows.get(parent, {})
-    child_tv, parent_tv = child.get("task_vector"), parent_row.get("task_vector")
-    predicted = child.get("predicted_fixes") or []
-    if not isinstance(child_tv, dict) or not isinstance(parent_tv, dict) or not predicted:
-        return None
-    return [t for t in predicted if child_tv.get(t) is True and parent_tv.get(t) is False]
 
 
 def _resume_tagged_child(
@@ -348,12 +389,11 @@ def _resume_tagged_child(
     operators_config: dict[str, Any],
 ) -> None:
     row = rows_by_genid(workspace).get(genid, {})
-    status = row.get("status")
     needs_gate_record = genid in _evaluation_pending_gate_record_genids(workspace)
-    if status not in {"complete", "partial"} or row.get("score") is None:
+    canonical = row.get("outcome") in CANONICAL_OUTCOMES
+    if row.get("outcome") == Outcome.INFRASTRUCTURE_FAILED.value or not canonical:
         eval_child(workspace, genid, round_number=round_number)
         row = rows_by_genid(workspace).get(genid, {})
-        status = row.get("status")
         needs_gate_record = genid in _evaluation_pending_gate_record_genids(workspace)
     if needs_gate_record:
         _run_gate_and_record(workspace, exp_id, genid, parent, operators_config, round_number=round_number)
@@ -395,6 +435,16 @@ def _run_gate_and_record(
                     "gate",
                     note=_operator_failure_note(gate_result),
                 )
+                _run_terminal_record(
+                    workspace,
+                    exp_id,
+                    genid,
+                    parent,
+                    operators_config,
+                    checkout,
+                    round_number=round_number,
+                    operator_ref=f"gen/{genid}",
+                )
                 return
             gate_payload, gate_error = _load_gate_payload(run_dir)
             if gate_error is not None or gate_payload is None:
@@ -406,11 +456,58 @@ def _run_gate_and_record(
                     "gate",
                     note=_operator_output_note(gate_error),
                 )
+                _run_terminal_record(
+                    workspace,
+                    exp_id,
+                    genid,
+                    parent,
+                    operators_config,
+                    checkout,
+                    round_number=round_number,
+                    operator_ref=f"gen/{genid}",
+                )
                 return
 
-            record_result = _run_operator_guarded(
+            append_event(workspace, exp_id, {"genid": genid, "pending_gate_record": False, **gate_payload})
+            _run_terminal_record(
+                workspace,
+                exp_id,
+                genid,
+                parent,
+                operators_config,
+                checkout,
+                round_number=round_number,
+                operator_ref=f"gen/{genid}",
+                allowed_fields=RECORD_ANNOTATION_FIELDS,
+            )
+        finally:
+            remove_worktree(workspace, checkout)
+
+
+def _run_terminal_record(
+    workspace: Path,
+    exp_id: str,
+    genid: str,
+    parent: str | None,
+    operators_config: dict[str, Any],
+    candidate_checkout: Path | None,
+    round_number: int | None = None,
+    operator_ref: str | None = None,
+    allowed_fields: frozenset[str] = frozenset(),
+) -> None:
+    if not _operator_present(operators_config, "record") or _record_attempted(workspace, genid):
+        return
+    ref = operator_ref or f"gen/{parent}"
+    with tempfile.TemporaryDirectory(prefix=f"evolve-record-{genid}-") as tempdir:
+        operator_checkout = Path(tempdir) / "operator"
+        add_worktree(workspace, operator_checkout, ref)
+        try:
+            context_checkout = candidate_checkout if candidate_checkout and candidate_checkout.exists() else operator_checkout
+            run_dir = _run_dir(workspace, genid)
+            result = _run_operator_guarded(
                 name="record",
-                checkout=checkout,
+                checkout=context_checkout,
+                operator_checkout=operator_checkout,
                 workspace=workspace,
                 exp_id=exp_id,
                 genid=genid,
@@ -420,39 +517,22 @@ def _run_gate_and_record(
                 timeout_s=operator_timeout(operators_config, "record"),
                 round_number=round_number,
             )
-            if record_result.returncode != 0:
-                _append_operator_failed(
-                    workspace,
-                    exp_id,
-                    genid,
-                    parent,
-                    "record",
-                    note=_operator_failure_note(record_result),
-                )
+            if result.returncode != 0:
+                _append_record_error(workspace, exp_id, genid, _operator_failure_note(result))
                 return
-            record_fields_payload, record_error = _load_record_fields(run_dir)
-            if record_error is not None or record_fields_payload is None:
-                _append_operator_failed(
-                    workspace,
-                    exp_id,
-                    genid,
-                    parent,
-                    "record",
-                    note=_operator_output_note(record_error),
-                )
+            fields, error = _load_record_fields(run_dir)
+            if error is not None or fields is None:
+                _append_record_error(workspace, exp_id, genid, _operator_output_note(error))
                 return
-            record_fields(workspace, genid, _strip_record_fields(record_fields_payload))
-            if not _row_matches_gate_payload(rows_by_genid(workspace).get(genid, {}), gate_payload):
-                _append_operator_failed(
-                    workspace,
-                    exp_id,
-                    genid,
-                    parent,
-                    "record",
-                    note="record/fields.json field valid_parent: record output did not record gate verdict fields",
-                )
+            _record_terminal_fields(
+                workspace,
+                exp_id,
+                genid,
+                _strip_record_fields(fields, allowed_fields),
+                allowed_fields=allowed_fields,
+            )
         finally:
-            remove_worktree(workspace, checkout)
+            remove_worktree(workspace, operator_checkout)
 
 
 def fork_child(workspace: Path, parent: str, child_worktree: Path) -> None:
@@ -503,32 +583,27 @@ def commit_child(workspace: Path, child_worktree: Path, parent: str, genid: str)
 
     include, exclude = surface_patterns(workspace)
     violations = check_paths(mutated, include, exclude)
-    commit_paths(child_worktree, mutated, f"evolve gen {genid}")
-    create_tag(child_worktree, tag)
     if violations:
-        append_event(
+        _append_candidate_rejected(
             workspace,
             exp_id,
-            {
-                "genid": genid,
-                "parent": parent,
-                "tag": tag,
-                "score": None,
-                "status": "invalid_proposal",
-                "task_set_hash": None,
-                "evaluator_tree": None,
-                "valid_parent": False,
-                "verdict": "discard",
-                "reason": "changed paths outside mutable surface",
-                "mutated": mutated,
-                "surface_violations": violations,
-                "predicted_fixes": [],
-                "note": "commit rejected by surface",
-                "cost": {"usd": 0, "wall_s": 0},
-            },
+            genid,
+            parent,
+            status="invalid_proposal",
+            reason="changed paths outside mutable surface",
+            mutated=mutated,
+            violations=violations,
         )
         return
 
+    snapshot = build_candidate_snapshot(
+        child_worktree,
+        parent_tag,
+        include=include,
+        exclude=exclude,
+    )
+    commit_candidate_snapshot(child_worktree, snapshot, f"evolve gen {genid}")
+    create_tag(child_worktree, tag)
     append_event(
         workspace,
         exp_id,
@@ -540,7 +615,6 @@ def commit_child(workspace: Path, child_worktree: Path, parent: str, genid: str)
             "surface_violations": [],
         },
     )
-
 
 def record_fields(workspace: Path, genid: str, fields: dict[str, object]) -> None:
     workspace = workspace.resolve()
@@ -554,40 +628,47 @@ def record_fields(workspace: Path, genid: str, fields: dict[str, object]) -> Non
         raise RuntimeError(f"unknown generation: {genid}")
     append_event(workspace, exp_id, {"genid": genid, **fields})
 
-
-def eval_child(workspace: Path, genid: str, *, round_number: int | None = None, kind: str = "eval") -> None:
+def eval_child(
+    workspace: Path, genid: str, *, round_number: int | None = None,
+    kind: str = "eval", force: bool = False,
+) -> EvaluationRecord | None:
     workspace = workspace.resolve()
     genid = _validate_genid(genid)
     exp_id = experiment_id(workspace)
     ensure_local_archive(workspace, exp_id)
-    if round_number is not None and evaluator_sampling(workspace) != "per_round":
-        raise RuntimeError("eval --round requires evaluator.sampling: per_round")
+    evaluator_sampling(workspace)
+    if round_number is not None:
+        raise RuntimeError("per-round evaluation sampling is not supported; use static sampling")
     rows = rows_by_genid(workspace)
     row = rows.get(genid, {})
-    if round_number is None and row.get("status") in {"complete", "partial"} and row.get("score") is not None:
-        return
-    if round_number is not None and _row_has_round_evaluation(row, round_number):
-        return
-    if row.get("status") in UNRETRYABLE_STATUSES:
-        return
-    parent = str(row.get("parent") or _fallback_parent_for_eval(workspace, rows))
+    status = evaluation_status(row)
+    if (
+        not force
+        and round_number is None
+        and row.get("outcome") in CANONICAL_OUTCOMES
+        and row.get("outcome") != Outcome.INFRASTRUCTURE_FAILED.value
+    ):
+        return None
+    if force:
+        kind = "forced_eval"
+    if status in UNRETRYABLE_STATUSES:
+        return None
+    parent = str(row.get("parent") or (genid if genid == "0" else _fallback_parent_for_eval(workspace, rows)))
     tag = f"gen/{genid}"
     mutated = row.get("mutated")
     surface_violations = row.get("surface_violations")
     if isinstance(mutated, list) and isinstance(surface_violations, list):
-        _stamp_evaluation(
+        return _stamp_evaluation(
             workspace,
-            exp_id,
             genid,
             parent,
             tag,
             [str(path) for path in mutated],
             round_number=round_number,
             kind=kind,
+            resume_infrastructure=not force,
         )
-        return
-    _finalize_child(workspace, exp_id, genid, parent, tag, round_number=round_number, kind=kind)
-
+    return _finalize_child(workspace, exp_id, genid, parent, tag, round_number=round_number, kind=kind)
 
 def _finalize_child(
     workspace: Path,
@@ -598,7 +679,7 @@ def _finalize_child(
     *,
     round_number: int | None = None,
     kind: str = "eval",
-) -> None:
+) -> EvaluationRecord | None:
     parent_tag = f"gen/{parent}"
     mutated = git_stdout(workspace, "diff", "--name-only", parent_tag, tag).splitlines()
     include, exclude = surface_patterns(workspace)
@@ -625,13 +706,19 @@ def _finalize_child(
                 "cost": {"usd": 0, "wall_s": 0},
             },
         )
-        return
-    _stamp_evaluation(workspace, exp_id, genid, parent, tag, mutated, round_number=round_number, kind=kind)
-
+        return None
+    return _stamp_evaluation(
+        workspace,
+        genid,
+        parent,
+        tag,
+        mutated,
+        round_number=round_number,
+        kind=kind,
+    )
 
 def _stamp_evaluation(
     workspace: Path,
-    exp_id: str,
     genid: str,
     parent: str,
     tag: str,
@@ -639,119 +726,119 @@ def _stamp_evaluation(
     *,
     round_number: int | None = None,
     kind: str = "eval",
-) -> None:
-    result = evaluate(workspace, tag, genid, round_number=round_number)
-    valid_parent = result.status in {"complete", "partial"}
-    event: dict[str, Any] = {
-        "genid": genid,
+    resume_infrastructure: bool = True,
+) -> EvaluationRecord:
+    metadata = {
         "parent": parent,
-        "tag": tag,
-        "score": result.score,
-        "status": result.status,
-        "task_set_hash": result.task_set_hash,
-        "task_vector": result.task_vector,
-        "evaluator_tree": result.evaluator_tree,
-        "valid_parent": valid_parent,
-        "verdict": "keep" if valid_parent else "discard",
-        "reason": DEFAULT_EVAL_REASON,
         "mutated": mutated,
         "surface_violations": [],
-        "pending_gate_record": True,
         "predicted_fixes": [],
-        "note": PENDING_GATE_RECORD_NOTE,
-        "cost": {"usd": 0, "wall_s": result.wall_s},
     }
     if round_number is not None:
-        event["kind"] = kind
-        event["round"] = round_number
-        event[MECHANISM_EVAL_FIELD] = True
-    append_event(workspace, exp_id, event)
-
-
-def _ensure_selected_parent_round_evaluations(
-    workspace: Path,
-    exp_id: str,
-    selected: dict[str, str],
-    generation: int,
-) -> dict[str, str]:
-    usable = dict(selected)
-    for parent in sorted(set(selected.values())):
-        try:
-            _assert_valid_parent(workspace, parent)
-        except Exception as exc:
-            for genid, selected_parent in selected.items():
-                if selected_parent != parent:
-                    continue
-                _append_operator_failed(
-                    workspace,
-                    exp_id,
-                    genid,
-                    parent,
-                    "select",
-                    note=str(exc),
-                )
-                usable.pop(genid, None)
-            continue
-        _ensure_parent_round_evaluation(workspace, exp_id, parent, generation)
-    return usable
-
-
-def _ensure_parent_round_evaluation(workspace: Path, exp_id: str, parent: str, generation: int) -> None:
-    row = rows_by_genid(workspace).get(parent, {})
-    if _row_has_round_evaluation(row, generation):
-        return
-    result = evaluate(
+        metadata.update(kind=kind, round=round_number)
+    return _evaluate_with_one_infra_retry(
         workspace,
-        f"gen/{parent}",
-        parent,
-        round_number=generation,
-        run_name=f"eval-round-{generation}",
+        tag,
+        genid,
+        purpose="candidate",
+        metadata=metadata,
+        round_number=round_number,
+        pending_gate_on_complete=genid != "0",
+        resume_infrastructure=resume_infrastructure,
     )
-    valid_parent = result.status in {"complete", "partial"}
-    append_event(
+
+def _ensure_genesis_evaluated(workspace: Path) -> None:
+    row = rows_by_genid(workspace).get("0", {})
+    status = evaluation_status(row)
+    if row.get("outcome") == "benchmark_complete" and row.get("selection_eligible") is True:
+        return
+    if status in {
+        Outcome.CANDIDATE_INVALID.value,
+        Outcome.TIMEOUT.value,
+        Outcome.CANCELLED.value,
+    }:
+        raise RuntimeError(f"genesis {status}: repair seed before evolution")
+    result = _evaluate_with_one_infra_retry(
         workspace,
-        exp_id,
-        {
-            "genid": parent,
+        "gen/0",
+        "0",
+        purpose="genesis",
+        metadata={
             "parent": row.get("parent"),
-            "tag": f"gen/{parent}",
-            "score": result.score,
-            "status": result.status,
-            "task_set_hash": result.task_set_hash,
-            "evaluator_tree": result.evaluator_tree,
-            "valid_parent": valid_parent,
-            "verdict": "keep" if valid_parent else "discard",
-            "reason": "mechanism re-evaluation stamp",
             "mutated": row.get("mutated", []),
             "surface_violations": row.get("surface_violations", []),
             "predicted_fixes": row.get("predicted_fixes", []),
-            "note": "parent baseline for per-round task set",
-            "cost": {"usd": 0, "wall_s": result.wall_s},
-            "kind": "reeval",
-            "round": generation,
-            MECHANISM_EVAL_FIELD: True,
+            "note": "genesis evaluated",
+            "pending_gate_record": False,
+            "kind": "genesis_eval",
         },
     )
-    if not valid_parent:
-        raise RuntimeError(f"parent baseline for gen/{parent} round {generation} produced {result.status}")
+    if result.outcome is not Outcome.BENCHMARK_COMPLETE:
+        raise RuntimeError(f"genesis {result.outcome.value}: repair seed before evolution")
 
 
-def _row_has_round_evaluation(row: dict[str, Any], round_number: int) -> bool:
-    if row.get("round") == round_number and _is_scored_evaluation(row):
-        return True
-    return any(
-        isinstance(entry, dict) and entry.get("round") == round_number and _is_scored_evaluation(entry)
-        for entry in row.get("evals", [])
+def _evaluate_with_one_infra_retry(
+    workspace: Path, tag: str, genid: str, *, purpose: str, metadata: dict[str, Any],
+    round_number: int | None = None, pending_gate_on_complete: bool = False,
+    resume_infrastructure: bool = True,
+) -> EvaluationRecord:
+    def run_attempt(**kwargs: Any) -> EvaluationRecord:
+        try:
+            record = evaluate(workspace, tag, genid, purpose=purpose, **kwargs)
+        except EvaluationInterrupted as interrupted:
+            record, cause = interrupted.args
+            _append_lifecycle_evaluation(workspace, record, metadata, pending_gate_on_complete)
+            raise cause
+        _append_lifecycle_evaluation(workspace, record, metadata, pending_gate_on_complete)
+        return record
+
+    previous = _last_evaluation_event(workspace, genid, purpose, round_number) if resume_infrastructure else None
+    if previous is not None and previous.get("outcome") == Outcome.INFRASTRUCTURE_FAILED:
+        if previous.get("retry_of") is not None:
+            raise EvaluationPaused(f"gen/{genid} infrastructure failed twice")
+        first_attempt = int(previous["attempt"])
+        candidate_commit = str(previous["candidate_commit"])
+    else:
+        first = run_attempt()
+        if first.outcome is not Outcome.INFRASTRUCTURE_FAILED:
+            return first
+        first_attempt = first.attempt
+        candidate_commit = first.candidate_commit
+
+    second = run_attempt(
+        retry_of=first_attempt,
     )
+    if second.candidate_commit != candidate_commit:
+        raise RuntimeError(f"gen/{genid} changed commit during infrastructure retry")
+    if second.outcome is Outcome.INFRASTRUCTURE_FAILED:
+        raise EvaluationPaused(f"gen/{genid} infrastructure failed twice")
+    return second
 
 
-def _is_scored_evaluation(event: dict[str, Any]) -> bool:
-    return (
-        event.get("status") in {"complete", "partial"}
-        and event.get("score") is not None
-        and event.get("task_set_hash") is not None
-    )
+def _append_lifecycle_evaluation(
+    workspace: Path,
+    record: EvaluationRecord,
+    metadata: dict[str, Any],
+    pending_gate_on_complete: bool,
+) -> None:
+    complete = record.outcome is Outcome.BENCHMARK_COMPLETE
+    gate_metadata = {
+        "pending_gate_record": complete,
+        "note": PENDING_GATE_RECORD_NOTE if complete else f"candidate evaluation {record.status}",
+    } if pending_gate_on_complete else {}
+    append_evaluation_record(workspace, record, metadata={**metadata, **gate_metadata})
 
+
+def _last_evaluation_event(
+    workspace: Path, genid: str, purpose: str, round_number: int | None,
+) -> dict[str, Any] | None:
+    for event in reversed(read_events(archive_path(workspace))):
+        if (
+            event.get("event_type") == "evaluation" and str(event.get("genid")) == genid
+            and event.get("purpose") == purpose and event.get("round") == round_number
+        ):
+            return event
+    return None
 
 def _select_generation_parents(
     workspace: Path,
@@ -761,11 +848,7 @@ def _select_generation_parents(
     children_per_gen: int,
     operators_config: dict[str, Any],
 ) -> dict[str, str]:
-    candidates = valid_parent_rows(workspace) if evaluator_sampling(workspace) == "per_round" else []
-    selector = max(
-        candidates, key=lambda row: (generation_number(str(row["genid"])) or -1, str(row["genid"])), default=None
-    )
-    best = selector if selector is not None else best_row(workspace)
+    best = best_row(workspace)
     select_tag = str(best.get("tag")) if best else "gen/0"
     run_dir = workspace / "runs" / f"gen-{generation}" / "select"
     with tempfile.TemporaryDirectory(prefix=f"evolve-select-{generation}-") as tempdir:
@@ -782,7 +865,7 @@ def _select_generation_parents(
                 run_dir=run_dir,
                 config_block=_operator_config_block(operators_config, "select"),
                 timeout_s=operator_timeout(operators_config, "select"),
-                round_number=generation if evaluator_sampling(workspace) == "per_round" else None,
+                round_number=None,
             )
         finally:
             remove_worktree(workspace, checkout)
@@ -797,6 +880,16 @@ def _select_generation_parents(
                 "select",
                 note=_operator_failure_note(result),
             )
+            _run_terminal_record(
+                workspace,
+                exp_id,
+                genid,
+                None,
+                operators_config,
+                candidate_checkout=None,
+                round_number=None,
+                operator_ref=select_tag,
+            )
         return {}
 
     parents, parents_error = _load_parents(run_dir)
@@ -809,6 +902,16 @@ def _select_generation_parents(
                 None,
                 "select",
                 note=_operator_output_note(parents_error),
+            )
+            _run_terminal_record(
+                workspace,
+                exp_id,
+                genid,
+                None,
+                operators_config,
+                candidate_checkout=None,
+                round_number=None,
+                operator_ref=select_tag,
             )
         return {}
 
@@ -831,6 +934,16 @@ def _select_generation_parents(
             None,
             "select",
             note="parents.json missing child slot",
+        )
+        _run_terminal_record(
+            workspace,
+            exp_id,
+            genid,
+            None,
+            operators_config,
+            candidate_checkout=None,
+            round_number=None,
+            operator_ref=select_tag,
         )
     return selected
 
@@ -860,10 +973,7 @@ def _evaluation_pending_gate_record_genids(workspace: Path) -> set[str]:
 
 
 def _event_is_evaluation_stamp(event: dict[str, Any]) -> bool:
-    status = event.get("status")
-    return (
-        status == "infra_failed" or (status in {"complete", "partial"} and event.get("score") is not None)
-    ) and _event_marks_pending_gate_record(event)
+    return event.get("outcome") in CANONICAL_OUTCOMES and _event_marks_pending_gate_record(event)
 
 
 def _event_marks_pending_gate_record(event: dict[str, Any]) -> bool:
@@ -871,11 +981,13 @@ def _event_marks_pending_gate_record(event: dict[str, Any]) -> bool:
 
 
 def _event_is_gate_record_event(event: dict[str, Any]) -> bool:
+    if STAMPED_FIELDS.isdisjoint(event) and "record_error" in event:
+        return True
     return STAMPED_FIELDS.isdisjoint(event) and {"valid_parent", "verdict", "reason"} <= set(event)
 
 
 def _generation_is_pending(row: dict[str, Any], needs_gate_record: bool) -> bool:
-    status = row.get("status")
+    status = evaluation_status(row)
     return status not in TERMINAL_STATUSES or needs_gate_record
 
 
@@ -885,6 +997,15 @@ def _load_gate_payload(run_dir: Path) -> tuple[dict[str, Any] | None, OperatorOu
 
 def _load_novelty_payload(run_dir: Path) -> tuple[dict[str, Any] | None, OperatorOutputError | None]:
     return _load_validated_json(run_dir, Path("novelty.json"), "accept", validate_novelty_file_payload)
+
+
+def _load_validate_payload(run_dir: Path) -> tuple[dict[str, Any] | None, OperatorOutputError | None]:
+    return _load_validated_json(
+        run_dir,
+        Path("validate") / "result.json",
+        "accept",
+        validate_validate_file_payload,
+    )
 
 
 def _load_record_fields(run_dir: Path) -> tuple[dict[str, Any] | None, OperatorOutputError | None]:
@@ -924,11 +1045,17 @@ def _operator_output_error(name: str, run_dir: Path) -> OperatorOutputError | No
             (Path("rollout") / "summary.json", "summary", validate_rollout_summary_payload),
             (Path("rollout") / "artifacts.json", "artifacts", validate_rollout_artifacts_payload),
         )
-    elif name == "mutate":
+    elif name == "meta_agent":
         checks = (
-            (Path("mutate") / "predicted_fixes.json", "predicted_fixes", validate_mutate_predicted_fixes_payload),
-            (Path("mutate") / "usage.json", "usage", validate_mutate_usage_payload),
+            (
+                Path("meta_agent") / "predicted_fixes.json",
+                "predicted_fixes",
+                validate_meta_agent_predicted_fixes_payload,
+            ),
+            (Path("meta_agent") / "usage.json", "usage", validate_meta_agent_usage_payload),
         )
+    elif name == "validate":
+        checks = ((Path("validate") / "result.json", "accept", validate_validate_file_payload),)
     elif name == "novelty":
         checks = ((Path("novelty.json"), "accept", validate_novelty_file_payload),)
     else:
@@ -992,10 +1119,44 @@ def _append_operator_failed(
     )
 
 
+def _append_candidate_rejected(
+    workspace: Path,
+    exp_id: str,
+    genid: str,
+    parent: str,
+    *,
+    status: str,
+    reason: str,
+    mutated: list[str],
+    violations: list[str] | None = None,
+) -> None:
+    append_event(
+        workspace,
+        exp_id,
+        {
+            "genid": genid,
+            "parent": parent,
+            "tag": f"gen/{genid}",
+            "score": None,
+            "status": status,
+            "task_set_hash": None,
+            "evaluator_tree": None,
+            "valid_parent": False,
+            "verdict": "discard",
+            "reason": reason,
+            "mutated": mutated,
+            "surface_violations": list(violations or []),
+            "predicted_fixes": [],
+            "note": reason,
+            "cost": {"usd": 0, "wall_s": 0},
+        },
+    )
+
+
 def _append_novelty_rejected(
     workspace: Path, exp_id: str, genid: str, parent: str | None, payload: dict[str, Any]
 ) -> None:
-    """Record a mutation rejected by the novelty gate — discarded, not evaluated,
+    """Record a candidate edit rejected by the novelty gate — discarded, not evaluated,
     and never committed (mechanism 5, DESIGN §7)."""
     append_event(
         workspace,
@@ -1010,7 +1171,7 @@ def _append_novelty_rejected(
             "evaluator_tree": None,
             "valid_parent": False,
             "verdict": "discard",
-            "reason": "novelty gate rejected a near-duplicate mutation",
+            "reason": "novelty gate rejected a near-duplicate candidate edit",
             "mutated": [],
             "surface_violations": [],
             "predicted_fixes": [],
@@ -1021,34 +1182,36 @@ def _append_novelty_rejected(
     )
 
 
+def _append_record_error(workspace: Path, exp_id: str, genid: str, note: str) -> None:
+    append_event(workspace, exp_id, {"genid": genid, "record_error": note})
+
+
+def _record_terminal_fields(
+    workspace: Path,
+    exp_id: str,
+    genid: str,
+    fields: dict[str, object],
+    *,
+    allowed_fields: frozenset[str] = frozenset(),
+) -> None:
+    workspace = workspace.resolve()
+    genid = _validate_genid(genid)
+    forbidden = sorted(set(fields) & (RECORD_FORBIDDEN_FIELDS - allowed_fields))
+    if forbidden:
+        raise RuntimeError(f"record refuses protected fields: {', '.join(forbidden)}")
+    if genid not in rows_by_genid(workspace):
+        raise RuntimeError(f"unknown generation: {genid}")
+    append_event(workspace, exp_id, {"genid": genid, **fields, RECORD_ATTEMPT_FIELD: True})
+
+
 def _operator_output_note(error: OperatorOutputError | None) -> str:
     if error is None:
         return "operator output missing or malformed"
     return f"{error.path.as_posix()} field {error.field}: {error.detail}"
 
 
-def _strip_record_fields(fields: dict[str, Any]) -> dict[str, Any]:
-    return {key: value for key, value in fields.items() if key not in RECORD_FORBIDDEN_FIELDS}
-
-
-def _gate_fallback_fields(
-    *,
-    gate_payload: dict[str, Any] | None,
-    default_reason: str,
-    note: str | None = None,
-) -> dict[str, object]:
-    fields: dict[str, object] = {
-        "valid_parent": False,
-        "verdict": "discard",
-        "reason": default_reason,
-    }
-    if gate_payload is not None:
-        fields["valid_parent"] = gate_payload["valid_parent"]
-        fields["verdict"] = gate_payload["verdict"]
-        fields["reason"] = gate_payload["reason"]
-    if note:
-        fields["note"] = note
-    return fields
+def _strip_record_fields(fields: dict[str, Any], allowed_fields: frozenset[str]) -> dict[str, Any]:
+    return {key: value for key, value in fields.items() if key not in RECORD_FORBIDDEN_FIELDS - allowed_fields}
 
 
 def _operator_config_block(operators_config: dict[str, Any], name: str) -> dict[str, Any]:
@@ -1062,10 +1225,19 @@ def _operator_present(operators_config: dict[str, Any], name: str) -> bool:
     return isinstance(operators_config.get(name), dict)
 
 
+def _record_attempted(workspace: Path, genid: str) -> bool:
+    return any(
+        str(event.get("genid")) == genid
+        and (event.get(RECORD_ATTEMPT_FIELD) is True or "record_error" in event)
+        for event in read_events(archive_path(workspace))
+    )
+
+
 def _run_operator_guarded(
     *,
     name: str,
     checkout: Path,
+    operator_checkout: Path | None = None,
     workspace: Path,
     exp_id: str,
     genid: str,
@@ -1073,7 +1245,6 @@ def _run_operator_guarded(
     run_dir: Path,
     config_block: dict[str, Any],
     timeout_s: float,
-    allow_record: bool = False,
     round_number: int | None = None,
 ) -> OperatorResult:
     before = _archive_line_snapshots(workspace, exp_id)
@@ -1092,15 +1263,9 @@ def _run_operator_guarded(
         config_block=config_block,
         timeout_s=timeout_s,
         round_number=round_number,
+        operator_checkout=operator_checkout,
     )
-    if allow_record and checkout.resolve() != workspace.resolve():
-        kept = [
-            line
-            for line in _archive_lines(archive_path(checkout))[len(before[archive_path(workspace)]) :]
-            if _allowed_record_line(line, genid)
-        ]
-        before = {path: lines + kept for path, lines in before.items()}
-    _restore_operator_archive_writes(before, genid, allow_record)
+    _restore_operator_archive_writes(before)
     return result
 
 
@@ -1112,12 +1277,9 @@ def _archive_lines(path: Path) -> list[str]:
     return path.read_text().splitlines() if path.exists() else []
 
 
-def _restore_operator_archive_writes(before: dict[Path, list[str]], genid: str, allow_record: bool) -> None:
+def _restore_operator_archive_writes(before: dict[Path, list[str]]) -> None:
     for path, original in before.items():
-        current = _archive_lines(path)
-        appended = current[len(original) :] if current[: len(original)] == original else []
-        kept = [line for line in appended if allow_record and _allowed_record_line(line, genid)]
-        _write_archive_lines(path, original + kept)
+        _write_archive_lines(path, original)
 
 
 def _write_archive_lines(path: Path, lines: list[str]) -> None:
@@ -1128,16 +1290,6 @@ def _write_archive_lines(path: Path, lines: list[str]) -> None:
 def _write_json(path: Path, payload: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
-
-
-def _allowed_record_line(line: str, genid: str) -> bool:
-    try:
-        event = json.loads(line)
-    except json.JSONDecodeError:
-        return False
-    if str(event.get("genid")) != genid:
-        return False
-    return not ((set(event) - {"genid"}) & RECORD_FORBIDDEN_FIELDS)
 
 
 def _run_dir(workspace: Path, genid: str) -> Path:
@@ -1153,14 +1305,6 @@ def _operator_failure_note(result: OperatorResult) -> str:
 def _tail_text(text: str, limit: int = 240) -> str:
     stripped = text.strip()
     return "" if not stripped else stripped if len(stripped) <= limit else stripped[-limit:]
-
-
-def _row_matches_gate_payload(row: dict[str, object], gate_payload: dict[str, Any]) -> bool:
-    return (
-        row.get("valid_parent") == gate_payload["valid_parent"]
-        and row.get("verdict") == gate_payload["verdict"]
-        and row.get("reason") == gate_payload["reason"]
-    )
 
 
 def _child_worktree_path(workspace: Path, genid: str) -> Path:
@@ -1194,12 +1338,11 @@ def _validate_genid(genid: str) -> str:
 
 def _assert_valid_parent(workspace: Path, parent: str) -> None:
     parent = _validate_genid(parent)
-    ensure_local_archive(workspace, experiment_id(workspace))
-    rows = rows_by_genid(workspace)
-    row = rows.get(parent)
+    view = ArchiveView(workspace)
+    row = view.row(parent)
     if row is None:
         raise RuntimeError(f"unknown parent: {parent}")
-    if row.get("valid_parent") is not True or row.get("status") not in {"complete", "partial"}:
+    if not any(str(candidate.get("genid")) == parent for candidate in view.valid_parents()):
         raise RuntimeError(f"parent gen/{parent} is not a valid parent")
     if not tag_exists(workspace, f"gen/{parent}"):
         raise RuntimeError(f"missing tag for parent gen/{parent}")

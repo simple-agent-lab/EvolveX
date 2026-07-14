@@ -1,9 +1,9 @@
 ---
 name: evolve-workspace
-description: The operating manual for a single evolve-agent workspace — you work one generation as the mutator. Travels into every workspace under a unified, tool-agnostic skills/ folder (Claude Code, codex, …); the workspace AGENTS.md points to it.
+description: The operating manual for a single evolve-agent workspace — you work one generation as the meta-agent. Travels into every workspace under a unified, tool-agnostic skills/ folder (Claude Code, codex, …); the workspace AGENTS.md points to it.
 ---
 
-# Operating this evolution workspace (the mutator's manual)
+# Operating this evolution workspace (the meta-agent's manual)
 
 You've landed in an evolve-agent workspace. It evolves a candidate (code +
 prompts + config, possibly a weights pointer), scoring each generation with a
@@ -11,11 +11,11 @@ frozen ruler (`evaluator/eval.sh`). Git is the lineage archive (commit =
 candidate, tag `gen/<id>`); `archive.jsonl` is the ledger.
 **Everything goes through `./evolve`. Run `./evolve status` first.**
 
-## The golden path (you work one generation as the mutator)
+## The golden path (you work one generation as the meta-agent)
 
 ```bash
 ./evolve status              # where things stand: champion, recent gens, anything pending
-./evolve run 1               # one generation: select → rollout → mutate → gate → record
+./evolve run 1               # one generation: select → rollout → meta_agent → gate → record
 # Or edit target/ (and optionally operators/) yourself within the mutable surface,
 # then let the next `./evolve run` pick up from a clean tree.
 ```
@@ -33,7 +33,7 @@ Let the loop run itself: `./evolve run 10`.
 4. **Training data never contains gate/sealed tasks.**
 5. **Checkpoints enter the lineage only through canonical eval.**
 
-Your writable area is the mutation scope: `target/ operators/ program.md
+Your writable area is the mutable surface: `target/ operators/ program.md
 evolve.yaml` (plus whatever `surface` includes). Touching `operators/` =
 self-reference — it triggers contract tests + a meta-eval replay admission
 gate; failing it reverts only the operator part of your diff. **Never
@@ -60,4 +60,4 @@ is reference. Strategy for each verb lives beside the script as
 - `PROTOCOL.md` — authoritative operator interfaces / write scopes / exit codes
   (mandatory before editing operators).
 - `program.md` — loop orchestration; `operators/<verb>.md` — per-verb strategy;
-  `operators/mutation_brief.md` — the brief template shown to agentic mutators.
+  `operators/meta_agent_brief.md` — the brief template shown to agentic meta-agents.

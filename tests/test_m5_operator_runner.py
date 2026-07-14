@@ -59,9 +59,9 @@ def test_run_operator_success_env_and_config(tmp_path):
 
 def test_run_operator_nonzero_and_timeout(tmp_path):
     checkout = tmp_path / "checkout"
-    _write_operator(checkout, "mutate", "raise SystemExit(7)\n")
+    _write_operator(checkout, "meta_agent", "raise SystemExit(7)\n")
     failed = run_operator(
-        name="mutate",
+        name="meta_agent",
         checkout=checkout,
         workspace=tmp_path,
         genid="1",

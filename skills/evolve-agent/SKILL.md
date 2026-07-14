@@ -1,6 +1,6 @@
 ---
 name: evolve-agent
-description: Operate a self-evolving agent workspace — run evolution generations, act as the mutator, inspect lineage health, or repair interrupted state. Use when working inside a simple-evolve-agent workspace, or when asked to evolve/improve a candidate agent under a frozen evaluation harness.
+description: Operate a self-evolving agent workspace — run evolution generations, act as the meta-agent, inspect lineage health, or repair interrupted state. Use when working inside a simple-evolve-agent workspace, or when asked to evolve/improve a candidate agent under a frozen evaluation harness.
 ---
 
 # Operating an evolve-agent workspace
@@ -19,9 +19,9 @@ ledger. Everything goes through the workspace's `./evolve` console. This is the
 3. `./evolve status` before anything else; `./evolve doctor` if state looks wrong.
 
 **Two modes:**
-- Autonomous: `./evolve run N` — the operators mutate (no LLM needed in stub
+- Autonomous: `./evolve run N` — the operators edit the candidate (no LLM needed in stub
   mode: `EVAL_STUB=1`).
-- You-as-mutator: edit within the mutable surface, then let `./evolve run`
+- You-as-meta-agent: edit within the mutable surface, then let `./evolve run`
   drive eval/gate/record (interactive `gen begin` / `gen finish` is designed
   but not yet a CLI surface — see `DESIGN.md`).
 

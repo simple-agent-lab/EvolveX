@@ -8,7 +8,7 @@ def test_status_and_report_recompute_best_from_stamped_scores(tmp_path: Path) ->
     workspace = tmp_path / "experiment"
     evolve_home = tmp_path / "home"
     assert (
-        run_evolve("init", str(workspace), "--recipe", "hill_climb", env={"EVOLVE_HOME": str(evolve_home)}).returncode
+        run_evolve("init", str(workspace), "--recipe", "hill_climb-smoke", env={"EVOLVE_HOME": str(evolve_home)}).returncode
         == 0
     )
     run = run_evolve(

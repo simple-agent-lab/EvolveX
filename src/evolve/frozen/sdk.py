@@ -15,14 +15,12 @@ from typing import Any, cast
 
 from ..archive import MECHANISM_EVAL_FIELD, STAMPED_FIELDS
 from ..git import head_tag, working_tree_changed_paths
-from ..population import best_row, valid_parent_rows
-from ..population import rows as population_rows
 from ..surface import check_paths, surface_patterns
 from .interfaces import (
     PROTOCOL_VERSION,
     ArchiveView,
     GateOperator,
-    MutateOperator,
+    MetaAgentOperator,
     NoveltyOperator,
     OperatorContext,
     RecordOperator,
@@ -30,13 +28,15 @@ from .interfaces import (
     RolloutOperator,
     Row,
     SelectOperator,
+    ValidateOperator,
     validate_gate_payload,
-    validate_mutate_payload,
+    validate_meta_agent_payload,
     validate_novelty_payload,
     validate_record_payload,
     validate_reflect_payload,
     validate_rollout_payload,
     validate_select_payload,
+    validate_validate_payload,
 )
 
 RECORD_STRIPPED_FIELDS = STAMPED_FIELDS | {
@@ -47,13 +47,13 @@ RECORD_STRIPPED_FIELDS = STAMPED_FIELDS | {
     "surface_violations",
     "evals",
     "kind",
-    "round",
+    "round", "pending_gate_record",
     MECHANISM_EVAL_FIELD,
 }
 
 
 def rows(workspace: Path | str = ".") -> list[dict[str, Any]]:
-    return population_rows(Path(workspace).resolve())
+    return ArchiveView(Path(workspace).resolve()).rows()
 
 
 def row(workspace: Path | str, genid: str) -> dict[str, Any] | None:
@@ -64,11 +64,11 @@ def row(workspace: Path | str, genid: str) -> dict[str, Any] | None:
 
 
 def valid_parents(workspace: Path | str = ".") -> list[dict[str, Any]]:
-    return valid_parent_rows(Path(workspace).resolve())
+    return ArchiveView(Path(workspace).resolve()).valid_parents()
 
 
 def best_ever(workspace: Path | str = ".") -> dict[str, Any] | None:
-    return best_row(Path(workspace).resolve())
+    return ArchiveView(Path(workspace).resolve()).best_ever()
 
 
 def run_dir(workspace: Path | str, genid: str) -> Path:
@@ -99,16 +99,19 @@ def main(operator_cls: type[object]) -> None:
         payload = validate_rollout_payload(operator.rollout(ctx.checkout, ctx))
         _write_json(ctx.run_dir / "rollout" / "summary.json", payload["summary"])
         _write_json(ctx.run_dir / "rollout" / "artifacts.json", payload["artifacts"])
-    elif issubclass(operator_cls, MutateOperator):
-        payload = validate_mutate_payload(operator.mutate(ctx.checkout, _observation(ctx.run_dir), ctx))
-        mutate_dir = ctx.run_dir / "mutate"
-        _write_json(mutate_dir / "changed.json", payload["changed"])
-        if not (mutate_dir / "predicted_fixes.json").exists():
-            _write_json(mutate_dir / "predicted_fixes.json", payload["changed"])
-        if payload["notes"] and not (mutate_dir / "rationale.md").exists():
-            (mutate_dir / "rationale.md").write_text("\n".join(payload["notes"]) + "\n")
-        if not (mutate_dir / "usage.json").exists():
-            _write_json(mutate_dir / "usage.json", payload["usage"])
+    elif issubclass(operator_cls, MetaAgentOperator):
+        payload = validate_meta_agent_payload(operator.run(ctx.checkout, _observation(ctx.run_dir), ctx))
+        meta_agent_dir = ctx.run_dir / "meta_agent"
+        _write_json(meta_agent_dir / "changed.json", payload["changed"])
+        if not (meta_agent_dir / "predicted_fixes.json").exists():
+            _write_json(meta_agent_dir / "predicted_fixes.json", payload["changed"])
+        if payload["notes"] and not (meta_agent_dir / "rationale.md").exists():
+            (meta_agent_dir / "rationale.md").write_text("\n".join(payload["notes"]) + "\n")
+        if not (meta_agent_dir / "usage.json").exists():
+            _write_json(meta_agent_dir / "usage.json", payload["usage"])
+    elif issubclass(operator_cls, ValidateOperator):
+        payload = validate_validate_payload(operator.validate(ctx.checkout, ctx))
+        _write_json(ctx.run_dir / "validate" / "result.json", payload)
     elif issubclass(operator_cls, NoveltyOperator):
         payload = validate_novelty_payload(operator.assess(ctx.checkout, ctx))
         _write_json(ctx.run_dir / "novelty.json", payload)
@@ -143,14 +146,13 @@ def _parse_args() -> argparse.Namespace:
 def _context(config: dict[str, Any]) -> OperatorContext:
     seed = config.get("seed", 0)
     fan_out = config.get("fan_out", 1)
-    round_value = os.environ.get("EVOLVE_ROUND")
     return OperatorContext(
         workspace=Path(os.environ["EVOLVE_WORKSPACE"]),
         checkout=Path(os.environ["EVOLVE_CHECKOUT"]),
         run_dir=Path(os.environ["EVOLVE_RUN_DIR"]),
         genid=os.environ["EVOLVE_GENID"],
         parent=os.environ.get("EVOLVE_PARENT") or None,
-        round=int(round_value) if round_value else None,
+        round=None,
         fan_out=int(fan_out),
         config=config,
         rng=random.Random(int(seed)),
@@ -170,13 +172,8 @@ def _assert_protocol_version(ctx: OperatorContext) -> None:
 
 
 def _observation(run_dir: Path) -> str:
-    manifest = _read_json_if_exists(run_dir / "feedback" / "manifest.json")
-    if isinstance(manifest, list):
-        return "\n".join(str(item) for item in manifest)
-    summary_path = run_dir / "feedback" / "summary.json"
-    if summary_path.exists():
-        return summary_path.read_text()
-    return ""
+    summary_path = run_dir / "rollout" / "summary.json"
+    return summary_path.read_text() if summary_path.exists() else ""
 
 
 def _child_row(archive: ArchiveView, ctx: OperatorContext) -> Row:

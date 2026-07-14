@@ -4,6 +4,10 @@ from pathlib import Path
 
 import pytest
 
+from evolve.frozen import sdk
+from evolve.frozen.interfaces import ValidateOperator, ValidateResult
+from evolve.operators import run_operator
+
 
 def test_operator_abcs_have_one_kind_specific_abstract_method():
     from evolve.frozen import interfaces
@@ -11,12 +15,25 @@ def test_operator_abcs_have_one_kind_specific_abstract_method():
     expected = {
         interfaces.SelectOperator: {"pick"},
         interfaces.RolloutOperator: {"rollout"},
-        interfaces.MutateOperator: {"mutate"},
+        interfaces.MetaAgentOperator: {"run"},
+        interfaces.ValidateOperator: {"validate"},
         interfaces.GateOperator: {"decide"},
         interfaces.RecordOperator: {"annotate"},
     }
     for cls, methods in expected.items():
         assert cls.__abstractmethods__ == methods
+
+
+def test_operator_registry_uses_meta_agent_not_mutate():
+    from evolve.frozen import interfaces
+
+    kinds = {spec.kind for spec in interfaces.OPERATORS}
+    assert "meta_agent" in kinds
+    assert "mutate" not in kinds
+    assert hasattr(interfaces, "MetaAgentOperator")
+    assert hasattr(interfaces, "MetaAgentResult")
+    assert not hasattr(interfaces, "MutateOperator")
+    assert not hasattr(interfaces, "MutateResult")
 
 
 def test_sdk_main_runs_select_operator_and_writes_parents(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -39,6 +56,95 @@ def test_sdk_main_runs_select_operator_and_writes_parents(tmp_path: Path, monkey
     sdk.main(TinySelect)
 
     assert json.loads((tmp_path / "run" / "parents.json").read_text()) == {"parents": ["0"]}
+
+
+def test_sdk_main_runs_meta_agent_operator_and_writes_meta_agent_artifacts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from evolve.frozen import interfaces, sdk
+
+    class TinyMetaAgent(interfaces.MetaAgentOperator):
+        def run(self, checkout, observation, ctx):
+            assert checkout == tmp_path / "checkout"
+            assert observation == '{"failed": ["task-1"]}\n'
+            assert ctx.parent == "0"
+            return interfaces.MetaAgentResult(
+                changed=["target/agent.py"],
+                notes=["edited target"],
+                usage={"usd": 1.25},
+            )
+
+    _set_sdk_env(monkeypatch, tmp_path, parent="0")
+    rollout_dir = tmp_path / "run" / "rollout"
+    rollout_dir.mkdir(parents=True)
+    (rollout_dir / "summary.json").write_text('{"failed": ["task-1"]}\n')
+
+    sdk.main(TinyMetaAgent)
+
+    meta_agent_dir = tmp_path / "run" / "meta_agent"
+    assert json.loads((meta_agent_dir / "changed.json").read_text()) == ["target/agent.py"]
+    assert json.loads((meta_agent_dir / "predicted_fixes.json").read_text()) == ["target/agent.py"]
+    assert json.loads((meta_agent_dir / "usage.json").read_text()) == {"usd": 1.25}
+    assert (meta_agent_dir / "rationale.md").read_text() == "edited target\n"
+
+
+def test_sdk_main_runs_validate_operator_and_writes_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run_dir = tmp_path / "run"
+    _set_sdk_env(monkeypatch, tmp_path)
+
+    class TinyValidate(ValidateOperator):
+        def validate(self, checkout: Path, ctx) -> ValidateResult:
+            return ValidateResult(accept=True, reason="imports pass", artifacts=["validate/imports.log"])
+
+    sdk.main(TinyValidate)
+
+    assert json.loads((run_dir / "validate" / "result.json").read_text()) == {
+        "accept": True,
+        "artifacts": ["validate/imports.log"],
+        "reason": "imports pass",
+    }
+
+
+def test_run_operator_can_use_trusted_operator_source_with_candidate_context(tmp_path: Path) -> None:
+    candidate_checkout = tmp_path / "candidate"
+    operator_checkout = tmp_path / "trusted"
+    workspace = tmp_path / "ws"
+    run_dir = tmp_path / "run"
+    (candidate_checkout / "target").mkdir(parents=True)
+    (operator_checkout / "operators").mkdir(parents=True)
+    workspace.mkdir()
+    (operator_checkout / "operators" / "record.py").write_text(
+        "import json, os\n"
+        "from pathlib import Path\n"
+        "Path(os.environ['EVOLVE_RUN_DIR']).mkdir(parents=True, exist_ok=True)\n"
+        "Path(os.environ['EVOLVE_RUN_DIR'], 'probe.json').write_text(json.dumps({\n"
+        "    'checkout': os.environ['EVOLVE_CHECKOUT'],\n"
+        "    'cwd': os.getcwd(),\n"
+        "    'script': __file__,\n"
+        "}))\n"
+    )
+
+    result = run_operator(
+        name="record",
+        checkout=candidate_checkout,
+        operator_checkout=operator_checkout,
+        workspace=workspace,
+        genid="1",
+        parent="0",
+        run_dir=run_dir,
+        config_block={},
+        timeout_s=30,
+    )
+
+    assert result.returncode == 0, result.stderr
+    probe = json.loads((run_dir / "probe.json").read_text())
+    assert probe == {
+        "checkout": str(candidate_checkout.resolve()),
+        "cwd": str(candidate_checkout.resolve()),
+        "script": str((operator_checkout / "operators" / "record.py").resolve()),
+    }
 
 
 def _set_sdk_env(

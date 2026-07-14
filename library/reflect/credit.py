@@ -1,9 +1,9 @@
 """Credit-backfill reflect: turn verified fixes into playbook insights.
 
 Reads the ledger and, for every generation whose predictions were verified
-(`verified_fixes`), credits the mutation's note as an insight. Emits full-state
+(`verified_fixes`), credits the candidate note as an insight. Emits full-state
 op lines (append-only; folding by id gives current state) so an insight's credit
-accumulates across the lineage — the memory a future mutator can consult and
+accumulates across the lineage — the memory a future meta-agent can consult and
 report as `used_insights`. Never rewrites the playbook.
 """
 

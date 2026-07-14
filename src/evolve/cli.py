@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import functools
 import json
+import os
 import sys
 from pathlib import Path
 
 import typer
 
 from .archive import archive_path, merged_rows, verify_integrity
+from .candidate_runtime import run_candidate_smoke
 from .config import RECIPE_NAMES, experiment_int
 from .driver import RunOptions, commit_child, eval_child, fork_child, record_fields
 from .driver import doctor as doctor_workspace
@@ -96,10 +98,10 @@ def commit(
 def eval_cmd(
     workspace: Path,
     genid: str,
-    round_number: int | None = typer.Option(None, "--round"),
+    force: bool = typer.Option(False, "--force", help="re-run evaluation even when a scored row already exists"),
 ) -> None:
     """Evaluate a tagged child version."""
-    eval_child(workspace, genid, round_number=round_number)
+    eval_child(workspace, genid, force=force)
     print(f"Evaluated gen/{genid}")
 
 
@@ -129,6 +131,32 @@ def surface_check(
     print({"ok": not violations, "mutated": mutated, "violations": violations})
     if violations:
         raise typer.Exit(1)
+
+
+@app.command("candidate-smoke")
+@_guard
+def candidate_smoke(
+    full: bool = typer.Option(False, "--full"),
+    checkout: Path = typer.Option(Path("."), "--checkout"),
+) -> None:
+    """Run the evaluator-provided full smoke against an exact candidate snapshot."""
+    if not full:
+        raise typer.BadParameter("--full is required", param_hint="--full")
+    checkout = checkout.resolve()
+    workspace = Path(os.environ.get("EVOLVE_WORKSPACE", checkout)).resolve()
+    result = run_candidate_smoke(checkout, workspace=workspace)
+    tail = result.stderr_path.read_text().splitlines()[-200:]
+    if tail:
+        print("\n".join(tail), file=sys.stderr)
+    print(
+        f"candidate-smoke: {result.status} tree={result.snapshot_tree} "
+        f"result={(result.attempt_dir / 'result.json').resolve()} "
+        f"stdout={result.stdout_path.resolve()} stderr={result.stderr_path.resolve()}"
+    )
+    if result.status == "failed":
+        raise typer.Exit(2)
+    if result.status == "unsupported":
+        raise typer.Exit(3)
 
 
 @app.command()

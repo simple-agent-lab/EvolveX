@@ -3,30 +3,33 @@ experiment:
   max_generations: 8
   target_score: null
   budget_usd: 150
-  children_per_gen: 2
+  children_per_gen: 1
   mode: driver
   seed: 0
 target:
-  seed: builtin-dummy
+  seed: https://github.com/SWE-agent/mini-swe-agent.git
+  harbor_agent: miniswe-source
 surface:
   include:
     - target/**
-    - operators/**
+    - operators/meta_agent.py
+    - operators/meta_agent.md
   exclude: []
 operators:
-  select: {variant: random, seed: 0}
-  rollout: {variant: failure_focused, budget_tasks: 32}
-  mutate: {variant: fixed, timeout_s: 3600}
+  select: {variant: score_child_prop, seed: 0}
+  rollout: {variant: noop}
+  meta_agent: {variant: hyperagents, timeout_s: 21600}
+  validate: {variant: hyperagents, timeout_s: 300}
   gate: {variant: parent_eligible}
-  record: {variant: jsonl}
+  record: {variant: hyperagents}
   timeout_s: 600
 evaluator:
-  engine: docker-report
-  dataset: report.json
+  engine: harbor
+  dataset: swe-bench-lite
+  agent: target.harbor_agent:MiniSweSourceAgent
   split: {train: 0.5, gate: 0.4, sealed: 0.1, seed: 0}
   sampling: static
   tasks_per_round: 16
-  anchor: {final: true, every_rounds: 0}
   k: 1
   n_concurrent: 16
   partial_floor: 0.8

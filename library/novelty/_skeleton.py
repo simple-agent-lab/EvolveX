@@ -1,4 +1,4 @@
-"""Skeleton novelty operator template for custom mutation-dedup recipes."""
+"""Skeleton novelty operator template for custom candidate-dedup recipes."""
 
 # ruff: noqa: E402
 
@@ -14,7 +14,7 @@ from evolve.frozen.interfaces import NoveltyOperator, NoveltyResult
 class SkeletonNovelty(NoveltyOperator):
     def assess(self, checkout, ctx):
         # Fill in a similarity/novelty policy; this permissive default accepts
-        # every mutation until customized.
+        # every candidate edit until customized.
         return NoveltyResult(novelty=1.0, accept=True)
 
 
