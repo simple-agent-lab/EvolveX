@@ -8,7 +8,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from .evaluation import EvaluationRecord, evaluation_status
+from .evaluation import CANONICAL_OUTCOMES, EvaluationRecord, evaluation_status
 
 STAMPED_FIELDS = {
     "experiment_id", "generation", "candidate_commit", "purpose", "attempt", "retry_of",
@@ -134,11 +134,10 @@ def merged_rows(path: Path) -> list[dict[str, Any]]:
             if event.get("kind") == "anchor":
                 _merge_auxiliary_evaluation(rows[genid], evals_by_genid[genid], event, prefix="anchor")
                 continue
-            if event.get("kind") == "genesis_eval" and not _is_genesis_replacement(rows[genid], genid, event):
+            if event.get("kind") == "genesis_eval" and genid != "0":
                 _merge_auxiliary_evaluation(rows[genid], evals_by_genid[genid], event, prefix="genesis")
                 continue
-            auxiliary_hash = genid in top_eval_hash and str(event["task_set_hash"]) != top_eval_hash[genid]
-            if auxiliary_hash and not _has_evaluation_provenance(event, genid, receipts):
+            if genid in top_eval_hash and not _has_evaluation_provenance(event, genid, receipts):
                 _merge_auxiliary_non_stamped_fields(rows[genid], event)
                 continue
             _merge_keyed_evaluation(rows[genid], evals_by_genid[genid], top_eval_hash, genid, event)
@@ -276,10 +275,11 @@ def _evaluation_entry(event: dict[str, Any]) -> dict[str, Any]:
 def _is_genesis_replacement(row: dict[str, Any], genid: str, event: dict[str, Any]) -> bool:
     return (
         genid == "0"
-        and row.get("note") == "initial scaffold"
+        and evaluation_status(row) == "pending"
+        and row.get("score") is None
+        and row.get("valid_parent") is False
         and event.get("kind") == "genesis_eval"
-        and evaluation_status(event) in {"complete", "partial"}
-        and event.get("score") is not None
+        and event.get(MECHANISM_EVAL_FIELD) is True
     )
 
 
@@ -308,10 +308,6 @@ def _merge_auxiliary_non_stamped_fields(row: dict[str, Any], event: dict[str, An
             row[key] = value
 
 
-def _top_eval(row: dict[str, Any]) -> dict[str, Any]:
-    return {key: row.get(key) for key in STAMPED_FIELDS}
-
-
 def _can_replace_stamped(current: dict[str, Any], event: dict[str, Any]) -> bool:
     if (
         (
@@ -328,7 +324,10 @@ def _can_replace_stamped(current: dict[str, Any], event: dict[str, Any]) -> bool
         return True
     return (
         evaluation_status(current) in {"infra_failed", "infrastructure_failed"}
-        and current.get("score") is None
-        and evaluation_status(event) in {"complete", "partial"}
-        and event.get("score") is not None
+        and event.get(MECHANISM_EVAL_FIELD) is True
+        and event.get("outcome") in CANONICAL_OUTCOMES
+        and all(event.get(key) == current.get(key) for key in ("generation", "candidate_commit", "purpose"))
+        and all(isinstance(values.get("attempt"), int) for values in (current, event))
+        and event["attempt"] > current["attempt"]
+        and event.get("retry_of") == current["attempt"]
     )

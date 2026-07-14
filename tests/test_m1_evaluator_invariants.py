@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from conftest import git, init_workspace, rows_by_genid, run_evolve, smoke_agent_command
 
-from evolve.archive import MECHANISM_EVAL_FIELD, append_event, verify_integrity
+from evolve.archive import MECHANISM_EVAL_FIELD, append_evaluation_record, append_event, verify_integrity
 from evolve.driver import RunOptions
 from evolve.driver import run as driver_run
 from evolve.evaluation import Outcome, evaluation_status
@@ -126,6 +126,11 @@ def test_eval_script_receives_persistent_workspace_uv_cache(tmp_path: Path) -> N
 
 def test_evaluator_path_commit_is_invalid_and_eval_does_not_stamp_score(tmp_path: Path) -> None:
     workspace, evolve_home = init_workspace(tmp_path)
+    baseline = run_evolve(
+        "run", str(workspace), "--max-generations", "0",
+        env={"EVAL_STUB": "1", "EVOLVE_HOME": str(evolve_home)},
+    )
+    assert baseline.returncode == 0, baseline.stderr
     child = tmp_path / "child"
     forked = run_evolve("fork", str(workspace), "0", str(child), env={"EVOLVE_HOME": str(evolve_home)})
     assert forked.returncode == 0, forked.stderr
@@ -171,6 +176,11 @@ def test_evaluator_path_commit_is_invalid_and_eval_does_not_stamp_score(tmp_path
 
 def test_infrastructure_failed_eval_is_scoreless_invalid_parent(tmp_path: Path) -> None:
     workspace, evolve_home = init_workspace(tmp_path)
+    baseline = run_evolve(
+        "run", str(workspace), "--max-generations", "0",
+        env={"EVAL_STUB": "1", "EVOLVE_HOME": str(evolve_home)},
+    )
+    assert baseline.returncode == 0, baseline.stderr
     first = run_evolve(
         "run",
         str(workspace),
@@ -178,7 +188,8 @@ def test_infrastructure_failed_eval_is_scoreless_invalid_parent(tmp_path: Path) 
         "1",
         env={"EVAL_STUB": None, "EVOLVE_HOME": str(evolve_home), "EVOLVE_AGENT_COMMAND": smoke_agent_command()},
     )
-    assert first.returncode == 0, first.stderr
+    assert first.returncode == 1
+    assert "gen/1 infrastructure failed twice" in first.stderr
 
     failed = rows_by_genid(workspace)["1"]
     assert failed["status"] == "infrastructure_failed"
@@ -242,7 +253,12 @@ def test_canonical_infrastructure_failure_retries_and_success_replaces_it(
     workspace, _evolve_home = init_workspace(tmp_path)
     prepare_lifecycle_generation(workspace)
     monkeypatch.setenv("TEST_EVAL_OUTCOME", "infrastructure_failed")
-    driver_run(RunOptions(workspace, max_generations=1))
+    first = evaluate(workspace, "gen/1", "1")
+    append_evaluation_record(
+        workspace,
+        first,
+        metadata={"parent": "0", "mutated": [], "surface_violations": []},
+    )
 
     failed = rows_by_genid(workspace)["1"]
     assert failed["outcome"] == "infrastructure_failed"
@@ -254,13 +270,14 @@ def test_canonical_infrastructure_failure_retries_and_success_replaces_it(
     attempts = list((workspace / "runs/evaluations/candidate/gen-1").glob("candidate-*/attempt-*"))
     assert len(attempts) == 2
     assert row["attempt"] == 2
+    assert row["retry_of"] == 1
     assert row["outcome"] == "benchmark_complete"
     assert evaluation_status(row) == "complete"
     assert row["selection_eligible"] is True
 
 
 def test_mechanism_eval_can_replace_initial_scaffold_score(tmp_path: Path) -> None:
-    workspace, _evolve_home = init_workspace(tmp_path, experiment="manual-attempt")
+    workspace, evolve_home = init_workspace(tmp_path, experiment="manual-attempt")
     initial = rows_by_genid(workspace)["0"]
 
     append_event(
@@ -273,43 +290,18 @@ def test_mechanism_eval_can_replace_initial_scaffold_score(tmp_path: Path) -> No
             "note": "manual attempt",
         },
     )
-    assert rows_by_genid(workspace)["0"]["score"] == 1.0
+    assert rows_by_genid(workspace)["0"]["score"] is None
 
-    workspace, _evolve_home = init_workspace(tmp_path, experiment="mechanism-attempt")
-    initial = rows_by_genid(workspace)["0"]
-    append_event(
-        workspace,
-        workspace.name,
-        {
-            **initial,
-            "score": None,
-            "status": "infra_failed",
-            "valid_parent": False,
-            "verdict": "discard",
-            "reason": "mechanism evaluation stamp",
-            "note": "mechanism evaluation recorded before gate/record",
-            "cost": {"usd": 0, "wall_s": 1.0},
-            MECHANISM_EVAL_FIELD: True,
-        },
+    evaluated = run_evolve(
+        "run", str(workspace), "--max-generations", "0",
+        env={"EVAL_STUB": "1", "EVOLVE_HOME": str(evolve_home)},
     )
-    append_event(
-        workspace,
-        workspace.name,
-        {
-            **initial,
-            "score": 0.25,
-            "task_vector": {"baseline": False},
-            "reason": "mechanism evaluation stamp",
-            "note": "real baseline eval",
-            "cost": {"usd": 0, "wall_s": 1.2},
-            MECHANISM_EVAL_FIELD: True,
-        },
-    )
+    assert evaluated.returncode == 0, evaluated.stderr
 
     row = rows_by_genid(workspace)["0"]
-    assert row["score"] == 0.25
-    assert row["task_vector"] == {"baseline": False}
-    assert row["note"] == "real baseline eval"
+    assert row["score"] == 1.0
+    assert row["attempt"] == 1
+    assert row["note"] == "genesis evaluated"
 
 
 def test_eval_force_re_evaluates_completed_generation_zero(tmp_path: Path) -> None:

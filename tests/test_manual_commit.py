@@ -5,6 +5,11 @@ from conftest import git, init_miniswe_workspace, init_workspace, rows_by_genid,
 
 def test_manual_commit_rejects_surface_violation_without_child_commit_or_tag(tmp_path: Path) -> None:
     workspace, evolve_home = init_workspace(tmp_path)
+    baseline = run_evolve(
+        "run", str(workspace), "--max-generations", "0",
+        env={"EVAL_STUB": "1", "EVOLVE_HOME": str(evolve_home)},
+    )
+    assert baseline.returncode == 0, baseline.stderr
     child = tmp_path / "child"
 
     fork = run_evolve("fork", str(workspace), "0", str(child), env={"EVOLVE_HOME": str(evolve_home)})
@@ -36,6 +41,11 @@ def test_manual_commit_rejects_surface_violation_without_child_commit_or_tag(tmp
 
 def test_manual_commit_has_no_package_manager_specific_admission(tmp_path: Path) -> None:
     workspace, evolve_home = init_miniswe_workspace(tmp_path)
+    baseline = run_evolve(
+        "run", str(workspace), "--max-generations", "0",
+        env={"EVAL_STUB": "1", "EVOLVE_HOME": str(evolve_home)},
+    )
+    assert baseline.returncode == 0, baseline.stderr
     child = tmp_path / "child"
     fork = run_evolve("fork", str(workspace), "0", str(child), env={"EVOLVE_HOME": str(evolve_home)})
     assert fork.returncode == 0, fork.stderr

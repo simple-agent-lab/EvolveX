@@ -23,12 +23,10 @@ from .config import (
     SOURCE_ROOT,
     default_config,
     library_root,
-    load_config,
     recipe_root,
     render_yaml,
     resource_root,
 )
-from .task_sets import effective_task_set_identity
 
 _SEED_IGNORE_PATTERNS = (".git", ".venv", ".env", ".env.*", "__pycache__", "*.pyc", ".pytest_cache", ".mypy_cache", ".ruff_cache", "node_modules")
 
@@ -422,8 +420,6 @@ def _init_git(workspace: Path) -> None:
 
 
 def _write_gen0_archive(workspace: Path) -> None:
-    evaluator = load_config(workspace / "evolve.yaml")["evaluator"]
-    task_set = effective_task_set_identity(workspace, evaluator)
     append_event(
         workspace,
         workspace.name,
@@ -431,15 +427,11 @@ def _write_gen0_archive(workspace: Path) -> None:
             "genid": "0",
             "parent": None,
             "tag": "gen/0",
-            "score": 1.0,
-            "status": "complete",
-            "task_set_hash": task_set.digest,
-            "task_set_members": list(task_set.members),
-            "task_vector": {f"task-{i}": True for i in range(8)},
-            "evaluator_tree": _git(workspace, "rev-parse", "HEAD:evaluator").strip(),
-            "valid_parent": True,
-            "verdict": "keep",
-            "reason": "built-in init stub stamped generation 0",
+            "score": None,
+            "status": "pending",
+            "valid_parent": False,
+            "verdict": "pending",
+            "reason": "generation zero requires real evaluation",
             "mutated": [],
             "surface_violations": [],
             "predicted_fixes": [],

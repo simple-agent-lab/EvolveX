@@ -131,8 +131,12 @@ def test_driver_has_no_package_manager_specific_admission(tmp_path: Path) -> Non
 
 def test_jsonl_record_computes_verified_fixes_from_task_vectors(tmp_path: Path) -> None:
     workspace, evolve_home = init_workspace(tmp_path)
+    baseline = run_evolve(
+        "run", str(workspace), "--max-generations", "0", env=smoke_env(evolve_home)
+    )
+    assert baseline.returncode == 0, baseline.stderr
     parent = rows_by_genid(workspace)["0"]
-    parent["task_vector"]["task-0"] = False
+    parent["task_vector"]["tasks"]["task-0"]["trials"][0]["reward"] = 0.0
     parent["note"] = "baseline evaluated"
     archive = json.dumps(parent) + "\n"
     (workspace / "archive.jsonl").write_text(archive)
@@ -166,8 +170,12 @@ def test_jsonl_record_computes_verified_fixes_from_task_vectors(tmp_path: Path) 
 
 def test_driver_does_not_inject_verified_fixes_for_other_record_operators(tmp_path: Path) -> None:
     workspace, evolve_home = init_workspace(tmp_path)
+    baseline = run_evolve(
+        "run", str(workspace), "--max-generations", "0", env=smoke_env(evolve_home)
+    )
+    assert baseline.returncode == 0, baseline.stderr
     parent = rows_by_genid(workspace)["0"]
-    parent["task_vector"]["task-0"] = False
+    parent["task_vector"]["tasks"]["task-0"]["trials"][0]["reward"] = 0.0
     parent["note"] = "baseline evaluated"
     archive = json.dumps(parent) + "\n"
     (workspace / "archive.jsonl").write_text(archive)

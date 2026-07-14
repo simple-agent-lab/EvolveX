@@ -24,7 +24,7 @@ from .archive import (
 )
 from .candidate_snapshot import build_candidate_snapshot, commit_candidate_snapshot
 from .config import evaluator_sampling, experiment_id, operator_blocks
-from .evaluation import CANONICAL_OUTCOMES, Outcome, evaluation_status
+from .evaluation import CANONICAL_OUTCOMES, EvaluationRecord, Outcome, evaluation_status
 from .evaluator import evaluate
 from .frozen.interfaces import (
     PayloadValidationError,
@@ -78,6 +78,9 @@ class RunOptions:
     children_per_gen: int = 1
 
 
+class EvaluationPaused(RuntimeError):
+    """The same committed candidate exhausted its one infrastructure retry."""
+
 @dataclass(frozen=True)
 class OperatorOutputError:
     path: Path
@@ -91,7 +94,7 @@ def run(options: RunOptions) -> None:
         raise RuntimeError("children_per_gen must be at least 1")
     exp_id = experiment_id(workspace)
     ensure_local_archive(workspace, exp_id)
-    _ensure_genesis_evaluated(workspace, exp_id)
+    _ensure_genesis_evaluated(workspace)
     operators_config = operator_blocks(workspace)
 
     for gen in range(1, options.max_generations + 1):
@@ -314,7 +317,9 @@ def _run_child(
     if row.get("status") in {"no_proposal", "invalid_proposal", "operator_failed"}:
         return
 
-    eval_child(workspace, genid, round_number=round_number)
+    evaluation = eval_child(workspace, genid, round_number=round_number)
+    if evaluation is None or evaluation.outcome is not Outcome.BENCHMARK_COMPLETE:
+        return
     _run_gate_and_record(workspace, exp_id, genid, parent, operators_config, round_number=round_number)
 
     # Reflect (mechanism 2, DESIGN §7) — optional, off unless the recipe configures
@@ -635,7 +640,10 @@ def record_fields(workspace: Path, genid: str, fields: dict[str, object]) -> Non
         raise RuntimeError(f"unknown generation: {genid}")
     append_event(workspace, exp_id, {"genid": genid, **fields})
 
-def eval_child(workspace: Path, genid: str, *, round_number: int | None = None, kind: str = "eval", force: bool = False) -> None:
+def eval_child(
+    workspace: Path, genid: str, *, round_number: int | None = None,
+    kind: str = "eval", force: bool = False,
+) -> EvaluationRecord | None:
     workspace = workspace.resolve()
     genid = _validate_genid(genid)
     exp_id = experiment_id(workspace)
@@ -646,30 +654,29 @@ def eval_child(workspace: Path, genid: str, *, round_number: int | None = None, 
     row = rows.get(genid, {})
     status = evaluation_status(row)
     if not force and round_number is None and status in {"complete", "partial"} and row.get("score") is not None:
-        return
+        return None
     if not force and round_number is not None and _row_has_round_evaluation(row, round_number):
-        return
+        return None
     if force:
         kind = "forced_eval"
     if status in UNRETRYABLE_STATUSES:
-        return
-    parent = str(row.get("parent") or _fallback_parent_for_eval(workspace, rows))
+        return None
+    parent = str(row.get("parent") or (genid if genid == "0" else _fallback_parent_for_eval(workspace, rows)))
     tag = f"gen/{genid}"
     mutated = row.get("mutated")
     surface_violations = row.get("surface_violations")
     if isinstance(mutated, list) and isinstance(surface_violations, list):
-        _stamp_evaluation(
+        return _stamp_evaluation(
             workspace,
-            exp_id,
             genid,
             parent,
             tag,
             [str(path) for path in mutated],
             round_number=round_number,
             kind=kind,
+            resume_infrastructure=not force,
         )
-        return
-    _finalize_child(workspace, exp_id, genid, parent, tag, round_number=round_number, kind=kind)
+    return _finalize_child(workspace, exp_id, genid, parent, tag, round_number=round_number, kind=kind)
 
 def _finalize_child(
     workspace: Path,
@@ -680,7 +687,7 @@ def _finalize_child(
     *,
     round_number: int | None = None,
     kind: str = "eval",
-) -> None:
+) -> EvaluationRecord | None:
     parent_tag = f"gen/{parent}"
     mutated = git_stdout(workspace, "diff", "--name-only", parent_tag, tag).splitlines()
     include, exclude = surface_patterns(workspace)
@@ -707,10 +714,9 @@ def _finalize_child(
                 "cost": {"usd": 0, "wall_s": 0},
             },
         )
-        return
-    _stamp_evaluation(
+        return None
+    return _stamp_evaluation(
         workspace,
-        exp_id,
         genid,
         parent,
         tag,
@@ -721,7 +727,6 @@ def _finalize_child(
 
 def _stamp_evaluation(
     workspace: Path,
-    exp_id: str,
     genid: str,
     parent: str,
     tag: str,
@@ -729,28 +734,43 @@ def _stamp_evaluation(
     *,
     round_number: int | None = None,
     kind: str = "eval",
-) -> None:
-    result = evaluate(workspace, tag, genid, round_number=round_number)
-    metadata: dict[str, Any] = {
+    resume_infrastructure: bool = True,
+) -> EvaluationRecord:
+    metadata = {
         "parent": parent,
         "mutated": mutated,
         "surface_violations": [],
-        "pending_gate_record": True,
         "predicted_fixes": [],
-        "note": PENDING_GATE_RECORD_NOTE,
     }
     if round_number is not None:
         metadata.update(kind=kind, round=round_number)
-    append_evaluation_record(workspace, result, metadata=metadata)
-
-def _ensure_genesis_evaluated(workspace: Path, exp_id: str) -> None:
-    row = rows_by_genid(workspace).get("0", {})
-    if row.get("note") != "initial scaffold":
-        return
-    result = evaluate(workspace, "gen/0", "0", purpose="genesis")
-    append_evaluation_record(
+    return _evaluate_with_one_infra_retry(
         workspace,
-        result,
+        tag,
+        genid,
+        purpose="candidate",
+        metadata=metadata,
+        round_number=round_number,
+        pending_gate_on_complete=True,
+        resume_infrastructure=resume_infrastructure,
+    )
+
+def _ensure_genesis_evaluated(workspace: Path) -> None:
+    row = rows_by_genid(workspace).get("0", {})
+    status = evaluation_status(row)
+    if row.get("note") != "initial scaffold" and status == "complete" and row.get("score") is not None:
+        return
+    if status in {
+        Outcome.CANDIDATE_INVALID.value,
+        Outcome.TIMEOUT.value,
+        Outcome.CANCELLED.value,
+    }:
+        raise RuntimeError(f"genesis {status}: repair seed before evolution")
+    result = _evaluate_with_one_infra_retry(
+        workspace,
+        "gen/0",
+        "0",
+        purpose="genesis",
         metadata={
             "parent": row.get("parent"),
             "mutated": row.get("mutated", []),
@@ -761,6 +781,8 @@ def _ensure_genesis_evaluated(workspace: Path, exp_id: str) -> None:
             "kind": "genesis_eval",
         },
     )
+    if result.outcome is not Outcome.BENCHMARK_COMPLETE:
+        raise RuntimeError(f"genesis {result.outcome.value}: repair seed before evolution")
 
 
 def _ensure_selected_parent_round_evaluations(
@@ -787,36 +809,92 @@ def _ensure_selected_parent_round_evaluations(
                 )
                 usable.pop(genid, None)
             continue
-        _ensure_parent_round_evaluation(workspace, exp_id, parent, generation)
+        _ensure_parent_round_evaluation(workspace, parent, generation)
     return usable
 
-def _ensure_parent_round_evaluation(workspace: Path, exp_id: str, parent: str, generation: int) -> None:
+def _ensure_parent_round_evaluation(workspace: Path, parent: str, generation: int) -> None:
     row = rows_by_genid(workspace).get(parent, {})
     if _row_has_round_evaluation(row, generation):
         return
-    result = evaluate(
+    result = _evaluate_with_one_infra_retry(
         workspace,
         f"gen/{parent}",
         parent,
         purpose=f"round-{generation}",
         round_number=generation,
-    )
-    append_evaluation_record(
-        workspace,
-        result,
         metadata={
             "parent": row.get("parent"),
             "mutated": row.get("mutated", []),
             "surface_violations": row.get("surface_violations", []),
             "predicted_fixes": row.get("predicted_fixes", []),
             "note": "parent baseline for per-round task set",
-            "cost": {"usd": 0, "wall_s": result.wall_s},
             "kind": "reeval",
             "round": generation,
         },
     )
     if result.outcome is not Outcome.BENCHMARK_COMPLETE:
         raise RuntimeError(f"parent baseline for gen/{parent} round {generation} produced {result.status}")
+
+
+def _evaluate_with_one_infra_retry(
+    workspace: Path, tag: str, genid: str, *, purpose: str, metadata: dict[str, Any],
+    round_number: int | None = None, pending_gate_on_complete: bool = False,
+    resume_infrastructure: bool = True,
+) -> EvaluationRecord:
+    previous = _last_evaluation_event(workspace, genid, purpose, round_number) if resume_infrastructure else None
+    if previous is not None and previous.get("outcome") == Outcome.INFRASTRUCTURE_FAILED:
+        if previous.get("retry_of") is not None:
+            raise EvaluationPaused(f"gen/{genid} infrastructure failed twice")
+        first_attempt = int(previous["attempt"])
+        candidate_commit = str(previous["candidate_commit"])
+    else:
+        first = evaluate(workspace, tag, genid, purpose=purpose, round_number=round_number)
+        _append_lifecycle_evaluation(workspace, first, metadata, pending_gate_on_complete)
+        if first.outcome is not Outcome.INFRASTRUCTURE_FAILED:
+            return first
+        first_attempt = first.attempt
+        candidate_commit = first.candidate_commit
+
+    second = evaluate(
+        workspace,
+        tag,
+        genid,
+        purpose=purpose,
+        retry_of=first_attempt,
+        round_number=round_number,
+    )
+    if second.candidate_commit != candidate_commit:
+        raise RuntimeError(f"gen/{genid} changed commit during infrastructure retry")
+    _append_lifecycle_evaluation(workspace, second, metadata, pending_gate_on_complete)
+    if second.outcome is Outcome.INFRASTRUCTURE_FAILED:
+        raise EvaluationPaused(f"gen/{genid} infrastructure failed twice")
+    return second
+
+
+def _append_lifecycle_evaluation(
+    workspace: Path,
+    record: EvaluationRecord,
+    metadata: dict[str, Any],
+    pending_gate_on_complete: bool,
+) -> None:
+    complete = record.outcome is Outcome.BENCHMARK_COMPLETE
+    gate_metadata = {
+        "pending_gate_record": complete,
+        "note": PENDING_GATE_RECORD_NOTE if complete else f"candidate evaluation {record.status}",
+    } if pending_gate_on_complete else {}
+    append_evaluation_record(workspace, record, metadata={**metadata, **gate_metadata})
+
+
+def _last_evaluation_event(
+    workspace: Path, genid: str, purpose: str, round_number: int | None,
+) -> dict[str, Any] | None:
+    for event in reversed(read_events(archive_path(workspace))):
+        if (
+            event.get("event_type") == "evaluation" and str(event.get("genid")) == genid
+            and event.get("purpose") == purpose and event.get("round") == round_number
+        ):
+            return event
+    return None
 
 def _row_has_round_evaluation(row: dict[str, Any], round_number: int) -> bool:
     if row.get("round") == round_number and _is_scored_evaluation(row):

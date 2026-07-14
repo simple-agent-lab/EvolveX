@@ -114,13 +114,16 @@ def test_init_creates_generation_zero_git_snapshot_and_archive_event(tmp_path: P
     assert row["genid"] == "0"
     assert row["parent"] is None
     assert row["tag"] == "gen/0"
-    assert row["status"] == "complete"
-    assert row["score"] == 1.0
-    assert row["valid_parent"] is True
+    assert row["status"] == "pending"
+    assert row["score"] is None
+    assert row["valid_parent"] is False
+    assert row["verdict"] == "pending"
+    assert row["reason"] == "generation zero requires real evaluation"
     assert row["mutated"] == []
     assert row["surface_violations"] == []
-    assert row["task_set_hash"]
-    assert row["evaluator_tree"]
+    assert "task_set_hash" not in row
+    assert "task_vector" not in row
+    assert "evaluator_tree" not in row
     assert row["cost"]["usd"] == 0
 
 

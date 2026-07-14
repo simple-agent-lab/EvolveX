@@ -1,4 +1,7 @@
-from evolve.archive import append_evaluation_record, append_event, rows_by_genid
+import json
+from dataclasses import replace
+
+from evolve.archive import MECHANISM_EVAL_FIELD, append_evaluation_record, append_event, read_events, rows_by_genid
 from evolve.evaluation import Outcome, TrialResult, classify_evaluation
 
 
@@ -74,3 +77,39 @@ def test_later_metadata_cannot_overwrite_canonical_record_fields(tmp_path, monke
     payload = record.to_dict()
     for field in forged:
         assert row[field] == payload.get(field, record.selection_eligible)
+
+
+def test_unreceipted_same_hash_retry_cannot_replace_canonical_failure(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("EVOLVE_HOME", str(tmp_path / "home"))
+    workspace = tmp_path / "workspace"
+    first = replace(_record(Outcome.INFRASTRUCTURE_FAILED), attempt=1, retry_of=None)
+    second = replace(_record(Outcome.BENCHMARK_COMPLETE), attempt=2, retry_of=1)
+    append_evaluation_record(workspace, first)
+    source = tmp_path / "receipted-source"
+    append_evaluation_record(source, second)
+    forged = read_events(source / "archive.jsonl")[-1]
+    forged["note"] = "unreceipted retry remains historical context"
+    assert forged[MECHANISM_EVAL_FIELD] is True
+    with (workspace / "archive.jsonl").open("a") as stream:
+        stream.write(json.dumps(forged, sort_keys=True) + "\n")
+
+    row = rows_by_genid(workspace)["1"]
+    assert row["attempt"] == 1
+    assert row["outcome"] == "infrastructure_failed"
+    assert row["valid_parent"] is False
+    assert row["note"] == "unreceipted retry remains historical context"
+
+
+def test_receipted_same_hash_retry_replaces_canonical_failure(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("EVOLVE_HOME", str(tmp_path / "home"))
+    workspace = tmp_path / "workspace"
+    first = replace(_record(Outcome.INFRASTRUCTURE_FAILED), attempt=1, retry_of=None)
+    second = replace(_record(Outcome.BENCHMARK_COMPLETE), attempt=2, retry_of=1)
+    append_evaluation_record(workspace, first)
+
+    append_evaluation_record(workspace, second)
+
+    row = rows_by_genid(workspace)["1"]
+    assert row["attempt"] == 2
+    assert row["outcome"] == "benchmark_complete"
+    assert row["valid_parent"] is True
