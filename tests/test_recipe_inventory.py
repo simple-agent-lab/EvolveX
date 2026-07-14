@@ -11,6 +11,7 @@ def test_repository_contains_only_supported_recipes() -> None:
     }
 
     assert recipe_names == {
+        "ahe",
         "hill_climb",
         "hill_climb-smoke",
         "hyperagents",

@@ -38,6 +38,11 @@ def _text(value: object | None) -> str:
     return str(value)
 
 
+def _progress(message: str) -> None:
+    if os.environ.get("EVOLVE_PROGRESS", "1") != "0":
+        print(f"[evolve] {message}", flush=True)
+
+
 def run_operator(
     *,
     name: str,
@@ -64,6 +69,7 @@ def run_operator(
         )
 
     run_dir.mkdir(parents=True, exist_ok=True)
+    _progress(f"gen/{genid} {name}: started; artifacts: {run_dir}")
     base_env = (
         {**os.environ, "EVOLVE_HOME": str((run_dir / "operator-home").resolve())}
         if checkout.resolve() != workspace.resolve()
@@ -79,6 +85,7 @@ def run_operator(
         "EVOLVE_CHECKOUT": str(checkout.resolve()),
     }
     try:
+        live_output = os.environ.get("EVOLVE_LIVE_OUTPUT") == "1"
         completed = subprocess.run(
             [
                 sys.executable,
@@ -91,29 +98,33 @@ def run_operator(
             cwd=checkout,
             env=env,
             text=True,
-            capture_output=True,
+            capture_output=not live_output,
             timeout=timeout_s,
             check=False,
         )
-        return OperatorResult(
+        result = OperatorResult(
             name=name,
             returncode=completed.returncode,
-            stdout=completed.stdout,
-            stderr=completed.stderr,
+            stdout=completed.stdout or "",
+            stderr=completed.stderr or "",
             wall_s=time.monotonic() - start,
         )
+        _progress(f"gen/{genid} {name}: exit={result.returncode}, elapsed={result.wall_s:.1f}s")
+        return result
     except subprocess.TimeoutExpired as exc:
         stderr = _text(exc.stderr)
         if stderr:
             stderr = f"{stderr.rstrip()}\n"
         stderr += f"timeout after {timeout_s}s"
-        return OperatorResult(
+        result = OperatorResult(
             name=name,
             returncode=-1,
             stdout=_text(exc.stdout),
             stderr=stderr,
             wall_s=time.monotonic() - start,
         )
+        _progress(f"gen/{genid} {name}: timed out after {result.wall_s:.1f}s")
+        return result
 
 
 def operator_timeout(operators_config: dict[str, Any], name: str) -> float:

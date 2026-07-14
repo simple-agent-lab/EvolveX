@@ -84,9 +84,10 @@ Enforced, not documented-and-hoped. Everything else is open to evolution.
 3. **`best-ever` is recomputed by a frozen rule**, and a champion change
    requires a replication re-eval. However loose a gate is, it cannot touch
    this.
-4. **Training data never contains gate/sealed tasks** and never comes from
-   audit-flagged generations. (To be enforced by a frozen decontam guard when
-   auto-train is enabled — **planned, not yet built**; dormant until weights land.)
+4. **Training data never contains gate/sealed tasks.** Harbor task membership
+   is frozen at init and rollout receives exact train task-name filters. The
+   additional decontam guard for learned weights and audit-flagged generations
+   remains planned until auto-train is enabled.
 5. **Checkpoints enter the lineage only through canonical eval.** A checkpoint
    is a candidate; training is a variation operator; the same ruler scores it.
 
@@ -148,11 +149,11 @@ simple-evolve-agent/
 │        operators/README.md · library/<verb>/ palette · evaluator/… · target/ seed · skills/ · PROTOCOL.md)
 │
 ├─ library/                       the framework's operator catalog (consult & adapt)
-│   ├─ select/ mutate/ gate/ rollout/ record/ novelty/ reflect/   variants, each with a _skeleton.py
+│   ├─ select/ rollout/ trace_analyzer/ meta_agent/ validate/ gate/ record/ novelty/ reflect/
 │   └─ README.md                  how the mutator draws from here (surfaced via the skill)
 │       init vendors a per-recipe subset into the workspace's OWN library/
 │
-├─ recipes/                       a paradigm = a config (hill_climb, dgm, ahe, autoresearch, hyperagents, metaagent)
+├─ recipes/                       a paradigm = a config (hill_climb, AHE, HyperAgents, plus smoke variants)
 ├─ tests/                         flat test_m<N>_<topic>.py + test_coherence.py (the enforced map guard)
 └─ docs/coding-style.md     coding conventions
 ```
@@ -203,13 +204,14 @@ deploy — never two lineages.
 Canonical verb set — this supersedes any earlier "six-verb" list:
 
 ```
-select · rollout · mutate · novelty · gate · record · reflect     (+ distill, deferred with weights)
+select · rollout · meta_agent · gate · record
+optional: trace_analyzer · validate · novelty · reflect
 ```
 
 `observe` is retired (migration step S5): the feedback bundle is ledger-derived,
-so the mechanism writes it after rollout and before mutate (a new
+so the mechanism writes it after trace analysis and before `meta_agent` (a new
 `src/evolve/feedback.py`) — it exists even when rollout is a noop variant, and no
-operator can suppress it. The mutator reads files with its own tools; the
+operator can suppress it. The meta-agent reads files with its own tools; the
 workspace is the medium between operators — nothing is pre-chewed.
 
 Each operator is a standalone subprocess script (crash isolation), invoked with
@@ -232,7 +234,7 @@ at runtime. So they are neither harness (`src/`) nor per-workspace genome
   committed copy ever runs — so meta_eval replay and the self-reference gate
   always act on in-tree code, and the catalog needs no digest, no freeze, no
   gate. It can grow freely without bloating a workspace.
-- The catalog is surfaced through the skill (`operators/mutate.md` points at
+- The catalog is surfaced through the skill and the active operator prompts,
   it), not copied in — fat-skills, again.
 - It is also the sink for **harvest**: operators that evolve well in real runs
   get promoted back into `library/`, closing the loop

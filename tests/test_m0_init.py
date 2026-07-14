@@ -86,7 +86,10 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
     assert "archive.jsonl" in gitignore
 
     splits = json.loads((workspace / "evaluator" / "splits.json").read_text())
-    assert set(splits) == {"train", "gate", "sealed", "seed"}
+    assert splits["version"] == 1
+    assert splits["resolved"] is False
+    assert splits["ratios"] == {"train": 0.5, "gate": 0.4, "sealed": 0.1}
+    assert splits["tasks"] == {"train": [], "gate": [], "sealed": []}
 
 
 def test_init_creates_generation_zero_git_snapshot_and_archive_event(tmp_path: Path) -> None:

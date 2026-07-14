@@ -23,9 +23,10 @@ from .archive import (
     rows_by_genid,
 )
 from .candidate_snapshot import build_candidate_snapshot, commit_candidate_snapshot
-from .config import evaluator_sampling, experiment_id, operator_blocks
+from .config import evaluator_anchor, evaluator_sampling, experiment_id, operator_blocks
 from .evaluation import CANONICAL_OUTCOMES, EvaluationInterrupted, EvaluationRecord, Outcome, evaluation_status
 from .evaluator import evaluate
+from .feedback import write_feedback_bundle
 from .frozen.interfaces import (
     ArchiveView,
     PayloadValidationError,
@@ -137,6 +138,40 @@ def run(options: RunOptions) -> None:
                 _resume_tagged_child(workspace, exp_id, genid, parent, round_number, operators_config)
                 continue
             _run_child(workspace, exp_id, genid, parent, round_number, operators_config)
+    _maybe_final_anchor(workspace, options.max_generations)
+
+
+def _maybe_final_anchor(workspace: Path, generation: int) -> None:
+    if generation <= 0 or evaluator_anchor(workspace).get("final") is not True:
+        return
+    candidates = ArchiveView(workspace).valid_parents()
+    candidate = best_row(workspace) or max(
+        candidates,
+        key=lambda row: (generation_number(str(row.get("genid"))) or -1, str(row.get("genid"))),
+        default=None,
+    )
+    if candidate is None:
+        return
+    if any(isinstance(entry, dict) and entry.get("kind") == "anchor" for entry in candidate.get("evals", [])):
+        return
+    genid = str(candidate["genid"])
+    _evaluate_with_one_infra_retry(
+        workspace,
+        str(candidate["tag"]),
+        genid,
+        purpose="anchor",
+        metadata={
+            "parent": candidate.get("parent"),
+            "mutated": candidate.get("mutated", []),
+            "surface_violations": candidate.get("surface_violations", []),
+            "predicted_fixes": candidate.get("predicted_fixes", []),
+            "note": "sealed anchor evaluation; excluded from meta-agent feedback",
+            "kind": "anchor",
+            "round": generation,
+        },
+        round_number=generation,
+        pending_gate_on_complete=False,
+    )
 
 
 def _run_operator_or_fail(
@@ -212,7 +247,13 @@ def _run_child(
             record_terminal_attempt(None)
             return
 
-        for name in ("rollout", "meta_agent"):
+        stages = ["rollout"]
+        if _operator_present(operators_config, "trace_analyzer"):
+            stages.append("trace_analyzer")
+        stages.append("meta_agent")
+        for name in stages:
+            if name == "meta_agent" and _operator_present(operators_config, "trace_analyzer"):
+                write_feedback_bundle(workspace=workspace, run_dir=_run_dir(workspace, genid))
             if not _run_operator_or_fail(
                 name=name,
                 checkout=child,
@@ -1044,6 +1085,11 @@ def _operator_output_error(name: str, run_dir: Path) -> OperatorOutputError | No
         checks = (
             (Path("rollout") / "summary.json", "summary", validate_rollout_summary_payload),
             (Path("rollout") / "artifacts.json", "artifacts", validate_rollout_artifacts_payload),
+        )
+    elif name == "trace_analyzer":
+        checks = (
+            (Path("trace_analyzer") / "summary.json", "summary", validate_rollout_summary_payload),
+            (Path("trace_analyzer") / "artifacts.json", "artifacts", validate_rollout_artifacts_payload),
         )
     elif name == "meta_agent":
         checks = (

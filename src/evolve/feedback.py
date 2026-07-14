@@ -1,0 +1,211 @@
+"""The feedback bundle the meta-agent reads — mechanism-owned assembly.
+
+Folded out of the retired `observe` operator (DESIGN §7: the canonical verb set
+is select/rollout/trace_analyzer/meta_agent/…/gate/record). The bundle is derived
+from the ledger + workspace, plus bounded evidence emitted by trace analysis. The driver calls
+`write_feedback_bundle` after trace analysis and before meta_agent, which reads
+`runs/gen-<id>/feedback/`. It therefore exists even when rollout is a noop
+variant. This is the one home for the logic — `library/observe/*` is deleted.
+"""
+
+from __future__ import annotations
+
+import json
+import shutil
+from pathlib import Path
+from typing import Any
+
+from .archive import archive_path, merged_rows
+from .git import git_stdout, tag_exists
+from .surface import surface_patterns
+
+Row = dict[str, Any]
+
+
+def _write_json(path: Path, payload: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+
+
+def _lineage(rows: list[Row]) -> list[Row]:
+    return [
+        {
+            "genid": row.get("genid"),
+            "parent": row.get("parent"),
+            "score": row.get("score"),
+            "status": row.get("status"),
+            "valid_parent": row.get("valid_parent"),
+        }
+        for row in rows
+    ]
+
+
+def _latest_accepted_diff(workspace: Path, rows: list[Row]) -> str:
+    for candidate in reversed(rows):
+        parent = candidate.get("parent")
+        tag = candidate.get("tag")
+        if candidate.get("valid_parent") is not True or not parent or not tag:
+            continue
+        if not (tag_exists(workspace, str(tag)) and tag_exists(workspace, f"gen/{parent}")):
+            continue
+        diff = git_stdout(workspace, "diff", f"gen/{parent}", str(tag))
+        return diff + ("" if not diff or diff.endswith("\n") else "\n")
+    return ""
+
+
+def _surface_rule_lists(workspace: Path) -> tuple[list[str], list[str]]:
+    try:
+        return surface_patterns(workspace)
+    except Exception:
+        return ["target/**"], []
+
+
+def _copy_trace_feedback(run_dir: Path, failures: Path) -> str | None:
+    for source in (run_dir / "trace_analyzer" / "feedback.md", run_dir / "rollout" / "feedback.md"):
+        if source.is_file():
+            destination = failures / "trace_analyzer.md"
+            destination.write_text(source.read_text())
+            return "feedback/failures/trace_analyzer.md"
+    return None
+
+
+def _copy_trace_evidence(run_dir: Path, destination: Path) -> list[str]:
+    source = run_dir / "trace_analyzer" / "evidence"
+    if not source.is_dir():
+        source = run_dir / "rollout" / "evidence"
+    if not source.is_dir():
+        return []
+    destination.mkdir(parents=True, exist_ok=True)
+    copied: list[str] = []
+    for name in (
+        "manifest.json",
+        "selected.md",
+        "metrics.json",
+        "failure_patterns.json",
+        "passing_behaviors.json",
+    ):
+        path = source / name
+        if not path.is_file():
+            continue
+        target = destination / name
+        shutil.copyfile(path, target)
+        copied.append(f"feedback/evidence/{name}")
+    return copied
+
+
+def _rollout_history(workspace: Path, rows: list[Row], history_k: int) -> list[Row]:
+    history: list[Row] = []
+    for row in rows[-int(history_k) :]:
+        genid = str(row.get("genid") or "")
+        evidence_root = workspace / "runs" / f"gen-{genid}" / "trace_analyzer" / "evidence"
+        if not evidence_root.is_dir():
+            evidence_root = workspace / "runs" / f"gen-{genid}" / "rollout" / "evidence"
+        manifest: dict[str, Any] = {}
+        metrics: dict[str, Any] = {}
+        for path, target in ((evidence_root / "manifest.json", manifest), (evidence_root / "metrics.json", metrics)):
+            try:
+                payload = json.loads(path.read_text())
+            except (OSError, json.JSONDecodeError):
+                payload = {}
+            if isinstance(payload, dict):
+                target.update(payload)
+        history.append(
+            {
+                "genid": row.get("genid"),
+                "parent": row.get("parent"),
+                "score": row.get("score"),
+                "status": row.get("status"),
+                "valid_parent": row.get("valid_parent"),
+                "verdict": row.get("verdict"),
+                "reason": row.get("reason"),
+                "mutated": row.get("mutated"),
+                "predicted_fixes": row.get("predicted_fixes"),
+                "verified_fixes": row.get("verified_fixes"),
+                "trace_analyzer_variant": manifest.get("selected_variant"),
+                "rollout_metrics": metrics,
+                "raw_evidence_dir": str(evidence_root) if evidence_root.is_dir() else None,
+                "source_tag": row.get("tag"),
+            }
+        )
+    return history
+
+
+def write_feedback_bundle(*, workspace: Path, run_dir: Path, history_k: int = 8) -> list[str]:
+    """Write the feedback bundle under run_dir/feedback/ and return its manifest.
+
+    Rows come from the ledger (the bundle is ledger-derived); the driver only
+    passes the workspace and the persistent run_dir.
+    """
+    rows = merged_rows(archive_path(workspace))
+    feedback = run_dir / "feedback"
+    feedback.mkdir(parents=True, exist_ok=True)
+    _write_json(feedback / "lineage.json", _lineage(rows))
+
+    attempts = ["# Attempts", ""]
+    attempts += [
+        "- gen %s: status=%s score=%s valid_parent=%s reason=%s"
+        % (row.get("genid"), row.get("status"), row.get("score"), row.get("valid_parent"), row.get("reason"))
+        for row in rows[-int(history_k) :]
+    ]
+    attempts.append("")
+    (feedback / "attempts.md").write_text("\n".join(attempts))
+
+    failures = feedback / "failures"
+    failures.mkdir(exist_ok=True)
+    (failures / "README.md").write_text("The feedback bundle writes a minimal failure summary.\n")
+    trace_feedback = _copy_trace_feedback(run_dir, failures)
+    evidence_files = _copy_trace_evidence(run_dir, feedback / "evidence")
+    _write_json(feedback / "evidence" / "history.json", _rollout_history(workspace, rows, history_k))
+    evidence_files.append("feedback/evidence/history.json")
+    (feedback / "last_accepted.diff").write_text(_latest_accepted_diff(workspace, rows))
+
+    prior = [row for row in rows if row.get("predicted_fixes")]
+    lines = ["# Falsification", ""]
+    lines.extend(
+        "- gen %s predicted %s before score %s" % (row.get("genid"), row.get("predicted_fixes"), row.get("score"))
+        for row in prior
+    )
+    if len(lines) == 2:
+        lines.append("- No prior predicted fixes recorded.")
+    lines.append("")
+    (feedback / "falsification.md").write_text("\n".join(lines))
+
+    include, exclude = _surface_rule_lists(workspace)
+    (feedback / "rules.md").write_text(
+        "# Rules\n\n- Surface include: %s\n- Surface exclude: %s\n- Self-check: `evolve surface-check`\n"
+        % (include, exclude)
+    )
+    has_selected_evidence = "feedback/evidence/selected.md" in evidence_files
+    trace_link = (
+        "- [current trace analysis](failures/trace_analyzer.md)\n"
+        if trace_feedback and not has_selected_evidence
+        else ""
+    )
+    evidence_link = "- [selected trace evidence](evidence/selected.md)\n" if has_selected_evidence else ""
+    history_link = "- [rollout and edit history](evidence/history.json)\n"
+    (feedback / "index.md").write_text(
+        "# Feedback Bundle\n\n"
+        "- [lineage](lineage.json)\n"
+        "- [attempts](attempts.md)\n"
+        "- [failures](failures/)\n"
+        f"{trace_link}"
+        f"{evidence_link}"
+        f"{history_link}"
+        "- [last accepted diff](last_accepted.diff)\n"
+        "- [falsification](falsification.md)\n"
+        "- [rules](rules.md)\n"
+    )
+    manifest = [
+        "feedback/lineage.json",
+        "feedback/index.md",
+        "feedback/attempts.md",
+        "feedback/failures/README.md",
+        "feedback/last_accepted.diff",
+        "feedback/falsification.md",
+        "feedback/rules.md",
+    ]
+    if trace_feedback:
+        manifest.append(trace_feedback)
+    manifest.extend(evidence_files)
+    _write_json(run_dir / "feedback" / "manifest.json", manifest)
+    return manifest

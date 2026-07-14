@@ -28,6 +28,7 @@ from .interfaces import (
     RolloutOperator,
     Row,
     SelectOperator,
+    TraceAnalyzerOperator,
     ValidateOperator,
     validate_gate_payload,
     validate_meta_agent_payload,
@@ -36,6 +37,7 @@ from .interfaces import (
     validate_reflect_payload,
     validate_rollout_payload,
     validate_select_payload,
+    validate_trace_analyzer_payload,
     validate_validate_payload,
 )
 
@@ -99,6 +101,11 @@ def main(operator_cls: type[object]) -> None:
         payload = validate_rollout_payload(operator.rollout(ctx.checkout, ctx))
         _write_json(ctx.run_dir / "rollout" / "summary.json", payload["summary"])
         _write_json(ctx.run_dir / "rollout" / "artifacts.json", payload["artifacts"])
+    elif issubclass(operator_cls, TraceAnalyzerOperator):
+        payload = validate_trace_analyzer_payload(operator.analyze(ctx.checkout, ctx))
+        root = ctx.run_dir / "trace_analyzer"
+        _write_json(root / "summary.json", payload["summary"])
+        _write_json(root / "artifacts.json", payload["artifacts"])
     elif issubclass(operator_cls, MetaAgentOperator):
         payload = validate_meta_agent_payload(operator.run(ctx.checkout, _observation(ctx.run_dir), ctx))
         meta_agent_dir = ctx.run_dir / "meta_agent"

@@ -77,6 +77,11 @@ class RolloutOperator(ABC):
     def rollout(self, checkout: Path, ctx) -> RolloutResult: ...
 
 
+class TraceAnalyzerOperator(ABC):
+    @abstractmethod
+    def analyze(self, checkout: Path, ctx) -> TraceAnalyzerResult: ...
+
+
 class MetaAgentOperator(ABC):
     @abstractmethod
     def run(self, checkout: Path, observation: str, ctx) -> MetaAgentResult: ...
@@ -114,6 +119,12 @@ class SelectResult:
 
 @dataclass(frozen=True)
 class RolloutResult:
+    summary: dict[str, Any]
+    artifacts: list[str]
+
+
+@dataclass(frozen=True)
+class TraceAnalyzerResult:
     summary: dict[str, Any]
     artifacts: list[str]
 
@@ -163,6 +174,13 @@ def validate_select_payload(payload: SelectResult | dict[str, Any]) -> dict[str,
 
 
 def validate_rollout_payload(payload: RolloutResult | dict[str, Any]) -> dict[str, Any]:
+    data = _payload_dict(payload)
+    _require_type(data, "summary", dict, "summary must be a dict")
+    _require_type(data, "artifacts", list, "artifacts must be a list")
+    return {"summary": data["summary"], "artifacts": [str(artifact) for artifact in data["artifacts"]]}
+
+
+def validate_trace_analyzer_payload(payload: TraceAnalyzerResult | dict[str, Any]) -> dict[str, Any]:
     data = _payload_dict(payload)
     _require_type(data, "summary", dict, "summary must be a dict")
     _require_type(data, "artifacts", list, "artifacts must be a list")
@@ -308,6 +326,7 @@ class OperatorSpec:
 OPERATORS: tuple[OperatorSpec, ...] = (
     OperatorSpec("select", SelectOperator, SelectResult, "pick", True),
     OperatorSpec("rollout", RolloutOperator, RolloutResult, "rollout", True),
+    OperatorSpec("trace_analyzer", TraceAnalyzerOperator, TraceAnalyzerResult, "analyze", False),
     OperatorSpec("meta_agent", MetaAgentOperator, MetaAgentResult, "run", True),
     OperatorSpec("validate", ValidateOperator, ValidateResult, "validate", False),
     OperatorSpec("novelty", NoveltyOperator, NoveltyResult, "assess", False),

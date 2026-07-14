@@ -31,14 +31,14 @@ def _write_outputs(run_dir: Path, *, status: str, metrics: dict[str, object], sc
     (run_dir / "metrics.json").write_text(json.dumps({"dimensions": metrics}, indent=2, sort_keys=True) + "\n")
 
 
-def main(argv: list[str]) -> int:
-    if len(argv) != 4:
-        raise SystemExit("usage: parse_score.py <jobs_dir> <run_dir> <harbor_rc>")
-    jobs_dir = Path(argv[1])
-    run_dir = Path(argv[2])
-    harbor_rc = int(argv[3])
-    env_values = _load_eval_env(Path("evaluator") / "eval.env")
-    expected_trials = max(
+def _expected_trials(run_dir: Path, env_values: dict[str, str]) -> int:
+    selection = run_dir / "task-split.json"
+    if selection.exists():
+        payload = json.loads(selection.read_text())
+        tasks = payload.get("tasks") if isinstance(payload, dict) else None
+        if isinstance(tasks, list):
+            return max(1, len(tasks) * int(env_values.get("EVOLVE_HARBOR_ATTEMPTS", "1")))
+    return max(
         1,
         int(
             os.environ.get(
@@ -47,8 +47,24 @@ def main(argv: list[str]) -> int:
             )
         ),
     )
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) != 4:
+        raise SystemExit("usage: parse_score.py <jobs_dir> <run_dir> <harbor_rc>")
+    jobs_dir = Path(argv[1])
+    run_dir = Path(argv[2])
+    harbor_rc = int(argv[3])
+    env_values = _load_eval_env(Path("evaluator") / "eval.env")
+    expected_trials = _expected_trials(run_dir, env_values)
     partial_floor = float(env_values.get("EVOLVE_PARTIAL_FLOOR", "0.8"))
     rewards = write_harbor_artifacts(jobs_dir, run_dir)
+    if not rewards:
+        for reward_path in sorted(jobs_dir.rglob("verifier/reward.txt")) if jobs_dir.exists() else []:
+            try:
+                rewards.append(float(reward_path.read_text().strip()))
+            except (OSError, ValueError):
+                continue
     completed_trials = len(rewards)
     missing_trials = max(expected_trials - completed_trials, 0)
     if harbor_rc != 0:

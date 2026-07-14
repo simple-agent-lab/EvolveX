@@ -28,6 +28,7 @@ from .config import (
     render_yaml,
     resource_root,
 )
+from .splits import build_manifest
 
 _SEED_IGNORE_PATTERNS = (".git", ".venv", ".env", ".env.*", "__pycache__", "*.pyc", ".pytest_cache", ".mypy_cache", ".ruff_cache", "node_modules")
 
@@ -36,6 +37,7 @@ class InitOptions:
     workspace: Path
     recipe: str
     seed: str | None = None
+    dataset: str | None = None
 
 
 @dataclass(frozen=True)
@@ -57,6 +59,14 @@ def init_workspace(options: InitOptions) -> None:
     assert isinstance(target, dict)
     if options.seed:
         target["seed"] = options.seed
+    elif options.dataset:
+        # Dataset-backed experiments should be self-contained and must not need
+        # a network clone merely to freeze their evaluator split.
+        target["seed"] = "builtin-codex"
+    if options.dataset:
+        evaluator = config["evaluator"]
+        assert isinstance(evaluator, dict)
+        evaluator["dataset"] = options.dataset
 
     _write_files(workspace, config, recipe=options.recipe, init_cwd=Path.cwd())
     _write_target(workspace, target)
@@ -117,6 +127,19 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
     tasks_per_round = int(evaluator.get("tasks_per_round", evaluator_trials))
     evaluator_n = int(evaluator.get("n_concurrent", evaluator_trials))
     partial_floor = float(evaluator.get("partial_floor", 0.8))
+    setup_timeout_multiplier = float(evaluator.get("agent_setup_timeout_multiplier", 1))
+    max_retries = int(evaluator.get("max_retries", 0))
+    split = evaluator.get("split")
+    if not isinstance(split, dict):
+        raise ValueError("evaluator.split must be a mapping")
+    split_manifest = build_manifest(
+        evaluator_dataset,
+        split,
+        base_dir=init_cwd,
+        sampling=str(evaluator.get("sampling", "static")),
+        gate_limit=tasks_per_round,
+    )
+    evaluator_dataset = str(split_manifest["dataset"])
     files = {
         "evolve.yaml": render_yaml(_runtime_config(config)),
         "README.md": _template("workspace/README.md"),
@@ -143,8 +166,10 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
             evaluator_agent,
             dataset_mode=str(evaluator.get("dataset_mode", "path")),
             task_file=str(evaluator["task_file"]) if "task_file" in evaluator else None,
+            setup_timeout_multiplier=setup_timeout_multiplier,
+            max_retries=max_retries,
         ),
-        "evaluator/splits.json": json.dumps({"train": 0.5, "gate": 0.4, "sealed": 0.1, "seed": 0}, indent=2) + "\n",
+        "evaluator/splits.json": json.dumps(split_manifest, indent=2, sort_keys=True) + "\n",
         "evaluator/dataset.pin": f"dataset={evaluator_dataset}\nchecksum=sha256:stub\n",
         "evaluator/runtime.pin": f"{runtime_digest}\n",
         "evaluator/harbor_artifacts.py": _template("evaluator/harbor_artifacts.py"),
@@ -351,6 +376,13 @@ def _write_target(workspace: Path, target_config: dict[str, Any]) -> None:
         )
         _write_target_harbor_agent(workspace, target_config)
         return
+    if seed_text == "builtin-codex":
+        _copy_resource_tree(resource_root("templates") / "target" / "codex", workspace / "target")
+        (workspace / "target" / "UPSTREAM.json").write_text(
+            json.dumps({"kind": "builtin", "seed": "builtin-codex"}, sort_keys=True) + "\n"
+        )
+        _write_target_harbor_agent(workspace, target_config)
+        return
     if _looks_like_git_url(seed_text):
         with tempfile.TemporaryDirectory(prefix="evolve-seed-") as tmp:
             checkout = Path(tmp) / "seed"
@@ -372,6 +404,16 @@ def _write_target_harbor_agent(workspace: Path, target_config: dict[str, Any]) -
     if kind != "miniswe-source":
         raise ValueError(f"unsupported target.harbor_agent: {kind}")
     (workspace / "target" / "harbor_agent.py").write_text(_template("target/harbor/miniswe_source_agent.py"))
+
+
+def _copy_resource_tree(source: Traversable, destination: Path) -> None:
+    destination.mkdir(parents=True, exist_ok=True)
+    for entry in source.iterdir():
+        target = destination / entry.name
+        if entry.is_dir():
+            _copy_resource_tree(entry, target)
+        else:
+            target.write_bytes(entry.read_bytes())
 
 
 def _vendor_seed(workspace: Path, source: Path, fallback_remote: str) -> None:
@@ -470,6 +512,7 @@ def _eval_env(
     trials: int,
     partial_floor: float,
     agent: str, *, dataset_mode: str = "path", task_file: str | None = None,
+    setup_timeout_multiplier: float = 1, max_retries: int = 0,
 ) -> str:
     expected_trials = tasks_per_round * max(trials, 1)
     text = (
@@ -483,6 +526,10 @@ def _eval_env(
         f"EVOLVE_HARBOR_AGENT={shlex.quote(agent)}\n"
         f"EVOLVE_PARTIAL_FLOOR={partial_floor}\n"
     )
+    if setup_timeout_multiplier > 1:
+        text += f"EVOLVE_HARBOR_AGENT_SETUP_TIMEOUT_MULTIPLIER={setup_timeout_multiplier}\n"
+    if max_retries > 0:
+        text += f"EVOLVE_HARBOR_MAX_RETRIES={max_retries}\n"
     return text + (f"EVOLVE_HARBOR_TASK_FILE={shlex.quote(task_file)}\n" if task_file else "")
 
 

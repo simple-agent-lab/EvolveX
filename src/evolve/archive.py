@@ -310,6 +310,8 @@ def _merge_auxiliary_non_stamped_fields(row: dict[str, Any], event: dict[str, An
 
 
 def _can_replace_stamped(current: dict[str, Any], event: dict[str, Any]) -> bool:
+    if event.get("kind") == "baseline" and event.get(MECHANISM_EVAL_FIELD) is True:
+        return True
     if (
         (
             current.get("note") in {"initial scaffold", "mechanism evaluation recorded before gate/record"}

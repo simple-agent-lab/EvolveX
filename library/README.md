@@ -6,11 +6,11 @@ adapt**, one folder per verb. This is reference material, not the runtime: it is
 
 See `DESIGN.md` §7 for the full rationale. In short:
 
-- The mutator (an agent) reads `library/<verb>/*.py`, then adapts a variant
+- The meta-agent reads `library/<verb>/*.py`, then adapts a variant
   **into** the workspace's active `operators/<verb>.py`. Only that adapted-in,
   committed copy ever runs — so meta_eval replay and the self-reference gate
   always act on in-tree code, and the catalog needs no freeze, digest, or gate.
-- It is surfaced to the mutator through the skill (`operators/mutate.md` points here),
+- It is surfaced to the meta-agent through the workspace skill and operator prompts,
   not vendored in — fat skills, thin workspace.
 - It is also the **harvest sink**: operators that evolve well in real runs get
   promoted back here, closing `framework seeds → workspace evolves → good
@@ -21,14 +21,42 @@ See `DESIGN.md` §7 for the full rationale. In short:
 ```
 library/
 ├─ select/   greedy · newest · random · score_weighted
-├─ mutate/   fixed · noop · llm · agent_command
+├─ rollout/  failure_focused · harbor · noop
+├─ trace_analyzer/ failure_patterns · failed_traces · trace_browser · execution_records · utility_metrics
+├─ meta_agent/ agent_command · hyperagents
+├─ validate/ hyperagents
 ├─ gate/     hillclimb · parent_eligible
-├─ rollout/  failure_focused · noop
-├─ record/   jsonl
+├─ record/   jsonl · hyperagents
 └─ _skeletons/   "write a new operator of verb X" starting points   (planned move)
 ```
 
 ## Canonical verb set
 
-`select · rollout · mutate · novelty · gate · record · reflect` (+ `distill`,
-deferred with weights). The authority is `src/evolve/frozen/interfaces.py`.
+Required: `select · rollout · meta_agent · gate · record`. Optional:
+`trace_analyzer · validate · novelty · reflect`.
+The authority is `src/evolve/frozen/interfaces.py`.
+
+## Harbor rollout
+
+`rollout/harbor.py` is an opt-in live variant. It runs the current candidate
+through the frozen Harbor train split and normalizes results into
+`rollout/cases.json`. A separate `trace_analyzer` operator chooses and renders
+bounded meta-agent evidence under `trace_analyzer/evidence/`.
+
+Select it in a recipe before `evolve init`:
+
+```yaml
+operators:
+  rollout: {variant: harbor, path: /path/to/train-tasks, budget_tasks: 8, n_concurrent: 2}
+```
+
+The train `path` is required in config or through `EVOLVE_HARBOR_ROLLOUT_TASKS`.
+Optional keys are `agent`, `model`, `include_task_name`, `jobs_dir`,
+`field_limit`, and `pass_threshold` (default `1.0`). The custom checkout agent
+defaults to `evaluator/eval.env`; `EVOLVE_HARBOR_MODEL` and
+`EVOLVE_ROLLOUT_JOBS_DIR` are additional environment overrides.
+
+The rollout path is intentionally not inherited from `EVOLVE_HARBOR_TASKS`:
+verifier output is meta-agent feedback and may reveal tests. Set `path` or
+`EVOLVE_HARBOR_ROLLOUT_TASKS` to a train-only task set, never the gate or sealed
+set used for final evaluation.

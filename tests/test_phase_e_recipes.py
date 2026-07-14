@@ -4,8 +4,8 @@ from evolve.config import RECIPE_NAMES
 
 ROOT = Path(__file__).resolve().parents[1]
 RECIPES = ROOT / "recipes"
-REAL_RECIPES = {"hill_climb", "hyperagents"}
-SMOKE_RECIPES = {f"{name}-smoke" for name in REAL_RECIPES}
+REAL_RECIPES = {"ahe", "hill_climb", "hyperagents"}
+SMOKE_RECIPES = {"hill_climb-smoke", "hyperagents-smoke"}
 
 
 def _config(name: str) -> str:
@@ -39,11 +39,18 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
     for name in REAL_RECIPES:
         config = _config(name)
         assert "engine: harbor" in config
-        assert "dataset: swe-bench-lite" in config
-        assert "seed: https://github.com/SWE-agent/mini-swe-agent.git" in config
         assert "target/**" in config
         assert "target/agent.py" not in config
-        if name == "hyperagents":
+        if name == "ahe":
+            assert "dataset: pass@k" in config
+            assert "seed: builtin-codex" in config
+            assert "rollout: {variant: harbor" in config
+            assert "trace_analyzer: {variant: failure_patterns" in config
+            assert "meta_agent: {variant: agent_command" in config
+            assert "agent: target.agent:HarborAgent" in config
+        elif name == "hyperagents":
+            assert "dataset: swe-bench-lite" in config
+            assert "seed: https://github.com/SWE-agent/mini-swe-agent.git" in config
             assert "    - operators/meta_agent.py" in config
             assert "    - operators/meta_agent.md" in config
             assert "    - operators/**" not in config
@@ -54,11 +61,14 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "gate: {variant: parent_eligible}" in config
             assert "record: {variant: hyperagents}" in config
         else:
+            assert "dataset: swe-bench-lite" in config
+            assert "seed: https://github.com/SWE-agent/mini-swe-agent.git" in config
             assert "meta_agent: {variant: agent_command" in config
             assert "variant: noop" not in config
         assert "mutate:" not in config
-        assert "agent: target.harbor_agent:MiniSweSourceAgent" in config
-        assert "harbor_agent: miniswe-source" in config
+        if name != "ahe":
+            assert "agent: target.harbor_agent:MiniSweSourceAgent" in config
+            assert "harbor_agent: miniswe-source" in config
         assert "variant: fixed" not in config
         assert "engine: docker-report" not in config
         assert "engine: reflection" not in config

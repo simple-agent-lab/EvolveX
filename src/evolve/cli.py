@@ -23,6 +23,11 @@ from .workspace import InitOptions, init_workspace
 app = typer.Typer(add_completion=False, no_args_is_help=True, help="evolve mechanism CLI")
 
 
+def _enable_live_output(enabled: bool) -> None:
+    if enabled:
+        os.environ["EVOLVE_LIVE_OUTPUT"] = "1"
+
+
 def _guard(fn):
     """Wrap a command so any error prints `evolve: <error>` and exits 1, while
     Typer/Click control-flow exceptions (Exit, usage errors like BadParameter)
@@ -46,14 +51,17 @@ def _guard(fn):
 def init(
     workspace: Path,
     recipe: str = typer.Option("hill_climb", help="paradigm recipe to scaffold"),
-    seed: str | None = typer.Option(None, help="local target dir or git URL to vendor into target/"),
+    seed: str | None = typer.Option(
+        None, help="builtin-dummy, builtin-codex, local target dir, or git URL to vendor into target/"
+    ),
+    dataset: str | None = typer.Option(None, help="local Harbor task directory to split and freeze"),
 ) -> None:
     """Scaffold a new evolve workspace."""
     if recipe not in RECIPE_NAMES:
         raise typer.BadParameter(
             f"invalid choice: {recipe!r} (choose from {', '.join(RECIPE_NAMES)})", param_hint="--recipe"
         )
-    init_workspace(InitOptions(workspace=workspace, recipe=recipe, seed=seed))
+    init_workspace(InitOptions(workspace=workspace, recipe=recipe, seed=seed, dataset=dataset))
     print(f"Initialized evolve workspace at {workspace}")
 
 
@@ -64,10 +72,12 @@ def run(
     max_generations: int | None = typer.Option(None, "--max-generations"),
     children_per_gen: int | None = typer.Option(None, "--children-per-gen"),
     resume: bool = typer.Option(False, "--resume", help="accepted no-op; resume is the default"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="stream evaluator and operator output"),
 ) -> None:
     """Start or resume the built-in evolution loop."""
     gens = max_generations if max_generations is not None else experiment_int(workspace, "max_generations", 40)
     children = children_per_gen if children_per_gen is not None else experiment_int(workspace, "children_per_gen", 1)
+    _enable_live_output(verbose)
     driver_run(RunOptions(workspace=workspace, max_generations=gens, children_per_gen=children))
     print(f"Ran evolve loop through generation {gens}")
 

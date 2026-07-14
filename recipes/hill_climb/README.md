@@ -10,7 +10,7 @@ population memory, but the population has only one active frontier.
 `mode: driver` keeps the framework as the loop runner.
 `surface.include: target/**` allows only the seed agent to evolve.
 `select.variant: greedy` picks the best eligible parent.
-`mutate.variant: fixed` is the CI-safe scaffold; live experiments may replace it with the shared agent command adapter.
+`meta_agent.variant: agent_command` delegates candidate edits to the configured coding-agent command.
 `gate.variant: hillclimb` compares child and parent on the same task hash.
 `evaluator.engine: harbor` runs the canonical black-box benchmark.
 `sampling: static` keeps every recipe on the same frozen validation set.
@@ -19,6 +19,6 @@ population memory, but the population has only one active frontier.
 
 `select: {variant: greedy}` resolves to [`library/select/greedy.py`](../../library/select/greedy.py).
 `rollout: {variant: failure_focused, budget_tasks: 32}` resolves to [`library/rollout/failure_focused.py`](../../library/rollout/failure_focused.py).
-`mutate: {variant: fixed, timeout_s: 3600}` resolves to [`library/mutate/fixed.py`](../../library/mutate/fixed.py).
+`meta_agent: {variant: agent_command, timeout_s: 3600}` resolves to [`library/meta_agent/agent_command.py`](../../library/meta_agent/agent_command.py).
 `gate: {variant: hillclimb}` resolves to [`library/gate/hillclimb.py`](../../library/gate/hillclimb.py).
 `record: {variant: jsonl}` resolves to [`library/record/jsonl.py`](../../library/record/jsonl.py).

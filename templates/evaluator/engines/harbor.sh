@@ -10,7 +10,20 @@ if [ -z "${EVOLVE_GENID:-}" ]; then
   EVOLVE_GENID=${EVOLVE_GENID#gen-}
 fi
 export EVOLVE_GENID
+: "${EVOLVE_ATTEMPT_ID:=manual-$EVOLVE_GENID}"
+: "${EVOLVE_FRAMEWORK_PYTHON:=$(command -v python3)}"
+export EVOLVE_ATTEMPT_ID EVOLVE_FRAMEWORK_PYTHON
 export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
+split_name=${EVOLVE_EVAL_SPLIT:-gate}
+if python3 -c 'import json,sys; raise SystemExit(0 if json.load(open(sys.argv[1])).get("resolved") else 1)' evaluator/splits.json; then
+  if ! PYTHONPATH="$PWD/.evolve${PYTHONPATH:+:$PYTHONPATH}" python3 -m evolve.splits \
+    select evaluator/splits.json "$EVOLVE_HARBOR_TASKS" "$split_name" "$EVOLVE_RUN_DIR"; then
+    printf 'infra_failed\n' > "$EVOLVE_RUN_DIR/status"
+    exit 3
+  fi
+  EVOLVE_HARBOR_TASK_FILE="$EVOLVE_RUN_DIR/task-names.txt"
+  export EVOLVE_HARBOR_TASK_FILE
+fi
 : "${EVOLVE_UV_CACHE_DIR:=$HOME/.evolve/uv-cache}"
 mkdir -p "$EVOLVE_UV_CACHE_DIR"
 uv_mount=$(python3 -c 'import json,sys; print(json.dumps([{"type":"bind","source":sys.argv[1],"target":"/installed-agent/uv-cache"}]))' "$EVOLVE_UV_CACHE_DIR")
@@ -90,12 +103,28 @@ fi
 if [ -n "${EVOLVE_HARBOR_AGENT_SETUP_TIMEOUT_MULTIPLIER:-}" ]; then
   set -- "$@" --agent-setup-timeout-multiplier "$EVOLVE_HARBOR_AGENT_SETUP_TIMEOUT_MULTIPLIER"
 fi
+if [ -n "${EVOLVE_HARBOR_MAX_RETRIES:-}" ]; then
+  set -- "$@" --max-retries "$EVOLVE_HARBOR_MAX_RETRIES"
+fi
+proxy_http=${EVOLVE_HARBOR_HTTP_PROXY:-${http_proxy:-${HTTP_PROXY:-}}}
+proxy_https=${EVOLVE_HARBOR_HTTPS_PROXY:-${https_proxy:-${HTTPS_PROXY:-}}}
+proxy_no=${EVOLVE_HARBOR_NO_PROXY:-${no_proxy:-${NO_PROXY:-}}}
+for proxy_entry in \
+  "http_proxy=$proxy_http" "HTTP_PROXY=$proxy_http" \
+  "https_proxy=$proxy_https" "HTTPS_PROXY=$proxy_https" \
+  "no_proxy=$proxy_no" "NO_PROXY=$proxy_no"; do
+  if [ -n "${proxy_entry#*=}" ]; then set -- "$@" --ae "$proxy_entry" --ve "$proxy_entry"; fi
+done
 set -- "$@" --job-name "$EVOLVE_ATTEMPT_ID" --jobs-dir "$jobs_dir" --n-attempts "${EVOLVE_HARBOR_ATTEMPTS:-1}" -n "${EVOLVE_HARBOR_N_CONCURRENT:-$EVOLVE_HARBOR_N}" -y -q
 if [ -n "${EVOLVE_CANDIDATE_SMOKE_MODE:-}" ]; then
   harbor "$@"
   exit $?
 fi
-harbor "$@" > "$EVOLVE_RUN_DIR/harbor.log" 2>&1 || harbor_rc=$?
+if [ "${EVOLVE_LIVE_OUTPUT:-0}" = "1" ]; then
+  harbor "$@" 2>&1 | tee "$EVOLVE_RUN_DIR/harbor.log" || harbor_rc=$?
+else
+  harbor "$@" > "$EVOLVE_RUN_DIR/harbor.log" 2>&1 || harbor_rc=$?
+fi
 python3 evaluator/parse_score.py "$jobs_dir" "$EVOLVE_RUN_DIR" "$harbor_rc"
 parser_rc=$?
 [ "$harbor_rc" -eq 0 ] || exit 3

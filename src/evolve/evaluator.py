@@ -40,7 +40,7 @@ def evaluate(
         try:
             evaluator = load_config(checkout / "evolve.yaml")["evaluator"]
             timeout_zero = evaluator_boolean(evaluator, "benchmark_timeout_is_zero")
-            task_set = effective_task_set_identity(checkout, evaluator)
+            task_set = effective_task_set_identity(checkout, evaluator, purpose=purpose)
             runtime_fingerprint = hashlib.sha256((checkout / "evaluator" / "runtime.pin").read_bytes()).hexdigest()
             expected = _expected_trials(evaluator, task_limit)
             if attempt is None:
@@ -142,6 +142,7 @@ def _run_eval_script(checkout: Path, run_dir: Path, genid: str, task_limit: int 
         **os.environ, "EVOLVE_RUN_DIR": str(run_dir), "EVOLVE_GENID": genid,
         "EVOLVE_EVAL_KIND": purpose, "EVOLVE_ATTEMPT_ID": owned_attempt_id(runs_dir.parent, run_dir),
     }
+    env["EVOLVE_EVAL_SPLIT"] = "sealed" if purpose == "anchor" else "gate"
     env.setdefault("EVOLVE_FRAMEWORK_PYTHON", sys.executable)
     uv_cache = runs_dir / "runtime" / "uv-cache"
     uv_cache.mkdir(parents=True, exist_ok=True)
