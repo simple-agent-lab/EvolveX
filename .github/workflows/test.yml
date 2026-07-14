@@ -38,6 +38,8 @@ jobs:
         run: uv run pytest -q
 
       - name: self-driving smoke (init → run → verify)
+        env:
+          EVOLVE_RUNTIME_DIGEST: sha256:ci-smoke-runtime
         run: |
           rm -rf /tmp/ci-smoke
           uv run evolve init /tmp/ci-smoke --recipe hill_climb

@@ -1,4 +1,5 @@
 import json
+import re
 import shlex
 import stat
 from pathlib import Path
@@ -10,6 +11,8 @@ from evolve import candidate_runtime as candidate_runtime_module
 from evolve.candidate_runtime import run_candidate_smoke
 from evolve.config import default_config
 from evolve.workspace import InitOptions, init_workspace
+
+ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 
 
 def _write_executable(path: Path, text: str) -> None:
@@ -192,7 +195,7 @@ def test_candidate_smoke_cli_requires_full_and_prints_bounded_stderr_tail(tmp_pa
 
     unsupported_mode = run_evolve("candidate-smoke", "--quick", "--checkout", str(checkout))
     assert unsupported_mode.returncode != 0
-    assert "No such option: --quick" in unsupported_mode.stderr
+    assert "No such option: --quick" in ANSI_ESCAPE.sub("", unsupported_mode.stderr)
 
     missing_full = run_evolve("candidate-smoke", "--checkout", str(checkout))
     assert missing_full.returncode != 0
