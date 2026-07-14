@@ -32,7 +32,7 @@ EVALUATION_FIELDS = STAMPED_FIELDS | {
     "predicted_fixes",
     "note",
     "kind",
-    "round",
+    "round", "pending_gate_record",
     RECEIPT_CERTIFIED_FIELD,
 }
 AUXILIARY_BLOCKED_FIELDS = (EVALUATION_FIELDS - {"note"}) | {"evals", MECHANISM_EVAL_FIELD}

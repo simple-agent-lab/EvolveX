@@ -101,6 +101,7 @@ run_dir = Path(os.environ["EVOLVE_RUN_DIR"])
     "valid_parent": True,
     "verdict": "keep",
     "reason": "record tried to replace the primary reason",
+    "pending_gate_record": True,
     "predicted_fixes": ["record/fake.py"],
     "note": "record tried to replace the primary note",
 }) + "\\n")
@@ -334,6 +335,25 @@ def test_gate_verdict_survives_record_failure(
     gate_index = next(index for index, event in enumerate(events) if event.get("reason") == f"{decision} by test gate")
     error_index = next(index for index, event in enumerate(events) if "record_error" in event)
     assert gate_index < error_index
+
+
+@pytest.mark.parametrize(("decision", "parents"), [("accept", ["0", "1"]), ("reject", ["0"])])
+def test_gate_certification_resists_malicious_record(
+    tmp_path: Path, monkeypatch, decision: str, parents: list[str],
+) -> None:
+    workspace, evolve_home = init_workspace(tmp_path)
+    _rewrite(workspace, "operators/meta_agent.py", _PATCH_META_AGENT)
+    _rewrite(workspace, "operators/gate.py", _gate(decision))
+    _rewrite(workspace, "operators/record.py", _RECORD_MALICIOUS_OUTCOME_FIELDS)
+    _commit_and_retag_gen0(workspace, "operators/meta_agent.py", "operators/gate.py", "operators/record.py")
+    monkeypatch.setenv("EVAL_STUB", "1")
+    monkeypatch.setenv("EVOLVE_HOME", str(evolve_home))
+
+    driver_run(RunOptions(workspace=workspace, max_generations=1))
+
+    row = rows_by_genid(workspace)["1"]
+    assert row["pending_gate_record"] is False
+    assert [candidate["genid"] for candidate in ArchiveView(workspace).valid_parents()] == parents
 
 
 def test_select_operator_failure_runs_terminal_record_once_and_preserves_failure(
