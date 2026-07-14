@@ -6,7 +6,8 @@ from dataclasses import asdict, dataclass, is_dataclass
 from pathlib import Path
 from typing import Any, Literal, cast
 
-from ..archive import archive_path, merged_rows
+from ..archive import archive_path, ensure_local_archive, merged_rows
+from ..population import fixed_evaluation_identity, is_parent_record
 
 PROTOCOL_VERSION = 1
 Row = dict[str, Any]
@@ -36,18 +37,17 @@ class ArchiveView:
     workspace: Path
 
     def rows(self) -> list[Row]:
-        return merged_rows(archive_path(self.workspace))
+        from ..config import experiment_id
+
+        workspace = self.workspace.resolve()
+        ensure_local_archive(workspace, experiment_id(workspace))
+        return merged_rows(archive_path(workspace))
 
     def valid_parents(self) -> list[Row]:
-        if (self.workspace / ".git").exists():
-            from ..population import valid_parent_rows  # lazy: keep interfaces a leaf (no import cycle)
-
-            return valid_parent_rows(self.workspace, self.rows())
-        return [
-            row
-            for row in self.rows()
-            if row.get("valid_parent") is True and row.get("status") in {"complete", "partial"}
-        ]
+        expected = fixed_evaluation_identity(self.workspace)
+        if expected is None:
+            return []
+        return [row for row in self.rows() if is_parent_record(row, expected)]
 
     def best_ever(self) -> Row | None:
         candidates = [

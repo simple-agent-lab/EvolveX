@@ -15,8 +15,6 @@ from typing import Any, cast
 
 from ..archive import MECHANISM_EVAL_FIELD, STAMPED_FIELDS
 from ..git import head_tag, working_tree_changed_paths
-from ..population import best_row, valid_parent_rows
-from ..population import rows as population_rows
 from ..surface import check_paths, surface_patterns
 from .interfaces import (
     PROTOCOL_VERSION,
@@ -55,7 +53,7 @@ RECORD_STRIPPED_FIELDS = STAMPED_FIELDS | {
 
 
 def rows(workspace: Path | str = ".") -> list[dict[str, Any]]:
-    return population_rows(Path(workspace).resolve())
+    return ArchiveView(Path(workspace).resolve()).rows()
 
 
 def row(workspace: Path | str, genid: str) -> dict[str, Any] | None:
@@ -66,11 +64,11 @@ def row(workspace: Path | str, genid: str) -> dict[str, Any] | None:
 
 
 def valid_parents(workspace: Path | str = ".") -> list[dict[str, Any]]:
-    return valid_parent_rows(Path(workspace).resolve())
+    return ArchiveView(Path(workspace).resolve()).valid_parents()
 
 
 def best_ever(workspace: Path | str = ".") -> dict[str, Any] | None:
-    return best_row(Path(workspace).resolve())
+    return ArchiveView(Path(workspace).resolve()).best_ever()
 
 
 def run_dir(workspace: Path | str, genid: str) -> Path:

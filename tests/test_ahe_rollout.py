@@ -66,6 +66,8 @@ def _scope(task_ids: list[str]) -> dict[str, object]:
         "task_set_hash": "fixture-task-set",
         "task_set_members": sorted(task_ids),
         "status": "complete",
+        "outcome": "benchmark_complete",
+        "selection_eligible": True,
         "score": 0.0,
     }
 
@@ -345,6 +347,26 @@ def test_training_evaluation_uses_matching_auxiliary_task_set(tmp_path: Path) ->
     )
 
     assert selected == auxiliary
+
+
+def test_training_evaluation_rejects_legacy_complete_auxiliary_row(tmp_path: Path) -> None:
+    task_ids = ["task-a", "task-b"]
+    artifacts = _write_artifacts(tmp_path, "0", task_ids)
+    legacy = {
+        **_scope(task_ids),
+        "score": 0.5,
+        "task_vector": _vector({task_id: [1, 0] for task_id in task_ids}),
+        "artifacts": artifacts,
+    }
+    legacy.pop("outcome")
+    legacy.pop("selection_eligible")
+
+    with pytest.raises(ValueError, match="no complete evaluation"):
+        AHE_ROLLOUT._training_evaluation(
+            {"genid": "0", "evals": [legacy]},
+            _rollout_config(task_ids),
+            tmp_path,
+        )
 
 
 def test_verified_bytes_rehashes_exact_returned_bytes(tmp_path: Path, monkeypatch) -> None:

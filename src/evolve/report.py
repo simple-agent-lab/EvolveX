@@ -4,47 +4,47 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from .population import (
-    SCORED_STATUSES,
-    baseline_task_set_hash,
-    best_row,
-    looks_mechanism_written,
-    rows,
-)
+from .archive import RECEIPT_CERTIFIED_FIELD
+from .frozen.interfaces import ArchiveView
+from .git import tag_exists
+from .population import fixed_evaluation_identity, is_parent_record, looks_mechanism_written
 
 
 def format_status(workspace: Path) -> str:
-    workspace = workspace.resolve()
-    rows_ = rows(workspace)
-    best = best_row(workspace, rows_)
+    view = ArchiveView(workspace.resolve())
+    rows = view.rows()
+    best = view.best_ever()
     lines = [
-        f"rows: {len(rows_)}",
+        f"rows: {len(rows)}",
         f"best_genid: {_value(best.get('genid') if best else None)}",
         f"best_score: {_value(best.get('score') if best else None)}",
-        f"budget_spent_usd: {_format_number(_budget_spent(rows_))}",
+        f"budget_spent_usd: {_format_number(_budget_spent(rows))}",
     ]
-    for status, count in sorted(Counter(str(row.get("status", "pending")) for row in rows_).items()):
+    for status, count in sorted(Counter(str(row.get("status", "pending")) for row in rows).items()):
         lines.append(f"status.{status}: {count}")
     return "\n".join(lines) + "\n"
 
 
 def format_report(workspace: Path) -> str:
-    workspace = workspace.resolve()
-    rows_ = rows(workspace)
-    task_set_status = _task_set_hash_status(workspace, rows_)
-    best = best_row(workspace, rows_) if task_set_status == "consistent" else None
-    cohorts = _cohort_bests(workspace, rows_)
-    anchor = _anchor_best(workspace, rows_)
+    view = ArchiveView(workspace.resolve())
+    rows = view.rows()
+    expected = fixed_evaluation_identity(view.workspace)
+    parents = [] if expected is None else [row for row in rows if is_parent_record(row, expected)]
+    claims = _claim_evaluations(view.workspace, rows, parents, expected)
+    task_set_status = _task_set_hash_status(claims)
+    best = max(parents, key=lambda row: float(row["score"]), default=None) if task_set_status == "consistent" else None
+    cohorts = _cohort_bests(claims)
+    anchor = _anchor_best(claims)
     lines = [
         "Research claim checklist",
-        f"rows: {len(rows_)}",
+        f"rows: {len(rows)}",
         f"best_genid: {_value(best.get('genid') if best else None)}",
         f"best_score: {_value(best.get('score') if best else None)}",
         f"task_set_hash: {task_set_status}",
-        f"unstamped_rows: {_unstamped_count(workspace, rows_)}",
+        f"unstamped_rows: {_unstamped_count(view.workspace, rows)}",
         f"comparison_allowed: {str(task_set_status == 'consistent').lower()}",
         f"cross_round_claim: {'anchor_only' if task_set_status != 'consistent' else 'same_hash'}",
-        f"budget_spent_usd: {_format_number(_budget_spent(rows_))}",
+        f"budget_spent_usd: {_format_number(_budget_spent(rows))}",
     ]
     for task_hash, row in sorted(cohorts.items()):
         lines.append(f"cohort.{task_hash}.best_genid: {row['genid']}")
@@ -55,20 +55,14 @@ def format_report(workspace: Path) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _task_set_hash_status(workspace: Path, rows: list[dict[str, Any]]) -> str:
-    hashes = {
-        str(evaluation["task_set_hash"])
-        for evaluation in _claim_evaluations(workspace, rows)
-        if evaluation.get("kind") != "anchor"
-    }
-    if len(hashes) <= 1:
-        return "consistent"
-    return "mismatch"
+def _task_set_hash_status(claims: list[dict[str, Any]]) -> str:
+    hashes = {str(evaluation["task_set_hash"]) for evaluation in claims if evaluation.get("kind") != "anchor"}
+    return "consistent" if len(hashes) <= 1 else "mismatch"
 
 
-def _cohort_bests(workspace: Path, rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+def _cohort_bests(claims: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     bests: dict[str, dict[str, Any]] = {}
-    for evaluation in _claim_evaluations(workspace, rows):
+    for evaluation in claims:
         if evaluation.get("kind") == "anchor":
             continue
         task_hash = str(evaluation["task_set_hash"])
@@ -78,81 +72,64 @@ def _cohort_bests(workspace: Path, rows: list[dict[str, Any]]) -> dict[str, dict
     return bests
 
 
-def _anchor_best(workspace: Path, rows: list[dict[str, Any]]) -> dict[str, Any] | None:
-    best: dict[str, Any] | None = None
-    for evaluation in _claim_evaluations(workspace, rows):
-        if evaluation.get("kind") != "anchor":
-            continue
-        if best is None or float(evaluation["score"]) > float(best["score"]):
-            best = evaluation
-    return best
+def _anchor_best(claims: list[dict[str, Any]]) -> dict[str, Any] | None:
+    anchors = [evaluation for evaluation in claims if evaluation.get("kind") == "anchor"]
+    return max(anchors, key=lambda evaluation: float(evaluation["score"]), default=None)
 
 
-def _claim_evaluations(workspace: Path, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    evaluations: list[dict[str, Any]] = []
+def _claim_evaluations(
+    workspace: Path,
+    rows: list[dict[str, Any]],
+    parents: list[dict[str, Any]],
+    expected: dict[str, str] | None,
+) -> list[dict[str, Any]]:
+    evaluations = [
+        {
+            "genid": row.get("genid"),
+            "score": row["score"],
+            "task_set_hash": row["task_set_hash"],
+            "kind": "eval",
+        }
+        for row in parents
+    ]
     for row in rows:
-        if not _looks_mechanism_written(workspace, row):
-            continue
-        if row.get("valid_parent") is not True:
-            continue
-        _append_claim_evaluation(evaluations, row, row)
         for entry in row.get("evals", []) or []:
-            if isinstance(entry, dict) and _entry_looks_mechanism_written(row, entry):
-                _append_claim_evaluation(evaluations, row, entry)
+            if (
+                isinstance(entry, dict)
+                and _reportable_anchor(workspace, row, entry, expected)
+            ):
+                evaluations.append(
+                    {
+                        "genid": row.get("genid"),
+                        "score": entry["score"],
+                        "task_set_hash": entry["task_set_hash"],
+                        "kind": "anchor",
+                    }
+                )
     return evaluations
 
 
-def _entry_looks_mechanism_written(row: dict[str, Any], entry: dict[str, Any]) -> bool:
-    if entry.get("tag") != row.get("tag"):
-        return False
-    if entry.get("valid_parent") is not True:
-        return False
-    if entry.get("status") not in SCORED_STATUSES:
-        return False
-    if entry.get("task_set_hash") is None or not (entry.get("evaluator_fingerprint") or entry.get("evaluator_tree")):
-        return False
-    cost = entry.get("cost")
-    if not isinstance(cost, dict):
-        return False
-    return _is_number(entry.get("score"))
-
-
-def _append_claim_evaluation(evaluations: list[dict[str, Any]], row: dict[str, Any], source: dict[str, Any]) -> None:
-    if source.get("status") not in SCORED_STATUSES:
-        return
-    if source.get("task_set_hash") is None or not _is_number(source.get("score")):
-        return
-    evaluations.append(
-        {
-            "genid": row.get("genid"),
-            "score": source.get("score"),
-            "task_set_hash": source.get("task_set_hash"),
-            "kind": source.get("kind", "eval"),
-        }
+def _reportable_anchor(
+    workspace: Path, row: dict[str, Any], entry: dict[str, Any], expected: dict[str, str] | None
+) -> bool:
+    genid = str(row.get("genid", ""))
+    return (
+        expected is not None
+        and entry.get(RECEIPT_CERTIFIED_FIELD) is True
+        and entry.get("kind") == "anchor"
+        and entry.get("outcome") == "benchmark_complete"
+        and entry.get("purpose") == "anchor"
+        and entry.get("evaluator_fingerprint") == expected["evaluator_fingerprint"]
+        and entry.get("runtime_fingerprint") == expected["runtime_fingerprint"]
+        and entry.get("tag") == f"gen/{genid}"
+        and tag_exists(workspace, f"gen/{genid}")
+        and _is_number(entry.get("score"))
+        and isinstance(entry.get("task_set_hash"), str)
     )
 
 
 def _unstamped_count(workspace: Path, rows: list[dict[str, Any]]) -> int:
-    return sum(1 for row in rows if not _looks_mechanism_written(workspace, row))
-
-
-def _looks_mechanism_written(workspace: Path, row: dict[str, Any]) -> bool:
-    return looks_mechanism_written(workspace, row)
-
-
-def _is_claim_candidate(workspace: Path, row: dict[str, Any], comparison_hash: str | None) -> bool:
-    return (
-        comparison_hash is not None
-        and _looks_mechanism_written(workspace, row)
-        and row.get("valid_parent") is True
-        and row.get("status") in SCORED_STATUSES
-        and row.get("task_set_hash") == comparison_hash
-        and _is_number(row.get("score"))
-    )
-
-
-def _baseline_task_set_hash(workspace: Path, rows: list[dict[str, Any]]) -> str | None:
-    return baseline_task_set_hash(workspace, rows)
+    return sum(1 for row in rows if not looks_mechanism_written(workspace, row))
 
 
 def _budget_spent(rows: list[dict[str, Any]]) -> float:

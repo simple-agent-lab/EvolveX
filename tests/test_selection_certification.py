@@ -1,8 +1,26 @@
+import hashlib
+import importlib.util
 import json
 from dataclasses import replace
+from pathlib import Path
 
-from evolve.archive import MECHANISM_EVAL_FIELD, append_evaluation_record, append_event, read_events, rows_by_genid
+import pytest
+from conftest import git, init_workspace
+
+from evolve.archive import (
+    MECHANISM_EVAL_FIELD,
+    RECEIPT_CERTIFIED_FIELD,
+    append_evaluation_record,
+    append_event,
+    read_events,
+    rows_by_genid,
+)
+from evolve.config import load_config
 from evolve.evaluation import Outcome, TrialResult, classify_evaluation
+from evolve.frozen.interfaces import ArchiveView
+from evolve.population import looks_mechanism_written
+from evolve.report import format_report
+from evolve.task_sets import effective_task_set_identity
 
 
 def _record(outcome: Outcome):
@@ -24,6 +42,22 @@ def _record(outcome: Outcome):
         retry_of=1,
         artifacts={"path": "runs/evaluations/candidate/index.json", "sha256": "a" * 64},
     )
+
+
+def _archive_workspace(tmp_path: Path) -> tuple[Path, dict[str, str]]:
+    workspace, _evolve_home = init_workspace(tmp_path)
+    git(workspace, "tag", "gen/1", "gen/0")
+    evaluator = load_config(workspace / "evolve.yaml")["evaluator"]
+    expected = {
+        "evaluator_fingerprint": git(workspace, "rev-parse", "gen/0:evaluator"),
+        "task_set_hash": effective_task_set_identity(workspace, evaluator).digest,
+        "runtime_fingerprint": hashlib.sha256((workspace / "evaluator/runtime.pin").read_bytes()).hexdigest(),
+    }
+    return workspace, expected
+
+
+def _append_evaluation(workspace: Path, expected: dict[str, str], outcome: Outcome) -> None:
+    append_evaluation_record(workspace, replace(_record(outcome), experiment_id=workspace.name, **expected))
 
 
 def test_failed_and_cancelled_records_cannot_become_parents(tmp_path, monkeypatch) -> None:
@@ -113,3 +147,195 @@ def test_receipted_same_hash_retry_replaces_canonical_failure(tmp_path, monkeypa
     assert row["attempt"] == 2
     assert row["outcome"] == "benchmark_complete"
     assert row["valid_parent"] is True
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    [Outcome.CANDIDATE_INVALID, Outcome.INFRASTRUCTURE_FAILED, Outcome.TIMEOUT, Outcome.CANCELLED],
+)
+def test_gate_cannot_promote_invalid_evaluation(tmp_path: Path, outcome: Outcome) -> None:
+    workspace, expected = _archive_workspace(tmp_path)
+    _append_evaluation(workspace, expected, outcome)
+    append_event(
+        workspace,
+        workspace.name,
+        {"genid": "1", "valid_parent": True, "verdict": "keep", "reason": "recipe"},
+    )
+
+    assert ArchiveView(workspace).valid_parents() == []
+
+
+def test_legacy_partial_is_visible_but_not_selectable(tmp_path: Path) -> None:
+    workspace, expected = _archive_workspace(tmp_path)
+    append_event(
+        workspace,
+        workspace.name,
+        {
+            "genid": "1",
+            "tag": "gen/1",
+            "status": "partial",
+            "score": 0.5,
+            "valid_parent": True,
+            "cost": {"usd": 0, "wall_s": 0},
+            **expected,
+        },
+    )
+
+    assert ArchiveView(workspace).row("1") is not None
+    assert ArchiveView(workspace).valid_parents() == []
+
+
+@pytest.mark.parametrize("field", ["evaluator_fingerprint", "task_set_hash", "runtime_fingerprint"])
+def test_mismatched_fixed_identity_is_not_selectable(tmp_path: Path, field: str) -> None:
+    workspace, expected = _archive_workspace(tmp_path)
+    _append_evaluation(workspace, {**expected, field: "wrong"}, Outcome.BENCHMARK_COMPLETE)
+
+    assert ArchiveView(workspace).valid_parents() == []
+
+
+def test_markerless_unreceipted_canonical_row_is_readable_but_not_selectable(tmp_path: Path) -> None:
+    workspace, expected = _archive_workspace(tmp_path)
+    source = tmp_path / "source"
+    event = append_evaluation_record(
+        source,
+        replace(_record(Outcome.BENCHMARK_COMPLETE), experiment_id="source-exp", **expected),
+    )
+    event.pop(MECHANISM_EVAL_FIELD)
+    event["_evolve_receipt_certified"] = True
+    append_event(workspace, workspace.name, event)
+
+    assert ArchiveView(workspace).row("1") is not None
+    assert ArchiveView(workspace).valid_parents() == []
+
+
+def test_certified_same_hash_evaluation_atomically_replaces_uncertified_evidence(tmp_path: Path) -> None:
+    workspace, expected = _archive_workspace(tmp_path)
+    source = tmp_path / "forged-source"
+    forged = append_evaluation_record(
+        source,
+        replace(_record(Outcome.BENCHMARK_COMPLETE), experiment_id="forged-source-exp", **expected),
+    )
+    forged.pop(MECHANISM_EVAL_FIELD)
+    forged[RECEIPT_CERTIFIED_FIELD] = True
+    forged["score"] = 999.0
+    forged["trials"] = [{"forged": True}]
+    forged["note"] = "harmless earlier note"
+    append_event(workspace, workspace.name, forged)
+
+    append_evaluation_record(
+        workspace,
+        replace(_record(Outcome.BENCHMARK_COMPLETE), experiment_id=workspace.name, **expected),
+    )
+
+    row = ArchiveView(workspace).row("1")
+    assert row is not None
+    assert row[RECEIPT_CERTIFIED_FIELD] is True
+    assert row["score"] == 1.0
+    assert row["trials"][0]["task_id"] == "task-a"
+    assert row["note"] == "harmless earlier note"
+    history = [event for event in read_events(workspace / "archive.jsonl") if event.get("genid") == "1"]
+    assert [(event["score"], event["trials"]) for event in history] == [
+        (999.0, [{"forged": True}]),
+        (1.0, [
+            {
+                "exception_message": None,
+                "exception_type": None,
+                "outcome": "benchmark_complete",
+                "owner": "benchmark",
+                "reward": 1.0,
+                "task_id": "task-a",
+                "trial": 0,
+            }
+        ]),
+    ]
+    assert [parent["score"] for parent in ArchiveView(workspace).valid_parents()] == [1.0]
+
+
+@pytest.mark.parametrize("purpose", ["smoke", "canary", "round", "round-1", "anchor"])
+def test_non_parent_evaluation_purpose_is_not_selectable(tmp_path: Path, purpose: str) -> None:
+    workspace, expected = _archive_workspace(tmp_path)
+    record = replace(
+        _record(Outcome.BENCHMARK_COMPLETE),
+        experiment_id=workspace.name,
+        purpose=purpose,
+        **expected,
+    )
+    append_evaluation_record(workspace, record)
+
+    assert ArchiveView(workspace).valid_parents() == []
+
+
+@pytest.mark.parametrize("purpose", ["smoke", "canary", "round-1", "anchor"])
+def test_receipt_certified_non_parent_evaluation_is_mechanism_written(
+    tmp_path: Path, purpose: str,
+) -> None:
+    workspace, expected = _archive_workspace(tmp_path)
+    record = replace(
+        _record(Outcome.BENCHMARK_COMPLETE),
+        experiment_id=workspace.name,
+        purpose=purpose,
+        task_set_hash="dynamic-task-set",
+        evaluator_fingerprint=expected["evaluator_fingerprint"],
+        runtime_fingerprint=expected["runtime_fingerprint"],
+    )
+    append_evaluation_record(workspace, record)
+
+    row = ArchiveView(workspace).row("1")
+    assert row is not None
+    assert looks_mechanism_written(workspace, row)
+
+
+def test_unreceipted_anchor_cannot_affect_report_metrics(tmp_path: Path) -> None:
+    workspace, expected = _archive_workspace(tmp_path)
+    source = tmp_path / "anchor-source"
+    record = replace(
+        _record(Outcome.BENCHMARK_COMPLETE),
+        experiment_id="anchor-source-exp",
+        purpose="anchor",
+        task_set_hash="anchor-task-set",
+        evaluator_fingerprint=expected["evaluator_fingerprint"],
+        runtime_fingerprint=expected["runtime_fingerprint"],
+    )
+    event = append_evaluation_record(source, record, metadata={"kind": "anchor"})
+    event.pop(MECHANISM_EVAL_FIELD)
+    event["_evolve_receipt_certified"] = True
+    append_event(workspace, workspace.name, event)
+
+    assert "anchor.best_genid" not in format_report(workspace)
+
+
+def test_receipted_fixed_identity_anchor_remains_reportable(tmp_path: Path) -> None:
+    workspace, expected = _archive_workspace(tmp_path)
+    record = replace(
+        _record(Outcome.BENCHMARK_COMPLETE),
+        experiment_id=workspace.name,
+        purpose="anchor",
+        task_set_hash="anchor-task-set",
+        evaluator_fingerprint=expected["evaluator_fingerprint"],
+        runtime_fingerprint=expected["runtime_fingerprint"],
+    )
+    append_evaluation_record(workspace, record, metadata={"kind": "anchor"})
+
+    report = format_report(workspace)
+    assert "anchor.best_genid: 1" in report
+    assert "anchor.best_score: 1.0" in report
+
+
+def test_missing_immutable_git_identity_returns_no_parents(tmp_path: Path) -> None:
+    workspace = tmp_path / "not-a-git-workspace"
+    append_evaluation_record(workspace, _record(Outcome.BENCHMARK_COMPLETE))
+
+    assert ArchiveView(workspace).row("1") is not None
+    assert ArchiveView(workspace).valid_parents() == []
+
+
+def test_generic_gate_rejects_legacy_complete_row() -> None:
+    path = Path(__file__).resolve().parents[1] / "library/gate/parent_eligible.py"
+    spec = importlib.util.spec_from_file_location("parent_eligible_test", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    keep, _reason = module._parent_eligible({"status": "complete", "score": 1.0})
+
+    assert keep is False

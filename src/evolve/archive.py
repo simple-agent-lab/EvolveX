@@ -17,6 +17,7 @@ STAMPED_FIELDS = {
     "status", "selection_eligible", "task_set_members", "task_vector", "cost",
 }
 MECHANISM_EVAL_FIELD = "_evolve_mechanism_eval"
+RECEIPT_CERTIFIED_FIELD = "_evolve_receipt_certified"
 RECORD_ATTEMPT_FIELD = "_evolve_record_attempted"
 RESERVED_AUXILIARY_FIELDS = {"evals", "kind", "round", MECHANISM_EVAL_FIELD, RECORD_ATTEMPT_FIELD}
 EVALUATION_FIELDS = STAMPED_FIELDS | {
@@ -32,6 +33,7 @@ EVALUATION_FIELDS = STAMPED_FIELDS | {
     "note",
     "kind",
     "round",
+    RECEIPT_CERTIFIED_FIELD,
 }
 AUXILIARY_BLOCKED_FIELDS = (EVALUATION_FIELDS - {"note"}) | {"evals", MECHANISM_EVAL_FIELD}
 _SAFE_EXPERIMENT_ID = re.compile(r"^[A-Za-z0-9._-]+$")
@@ -81,9 +83,7 @@ def append_event(workspace: Path, experiment_id: str, event: dict[str, Any]) -> 
             _append_eval_receipt(target, event)
 
 
-def append_evaluation_record(
-    workspace: Path, record: EvaluationRecord, *, metadata: dict[str, Any] | None = None
-) -> dict[str, Any]:
+def append_evaluation_record(workspace: Path, record: EvaluationRecord, *, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
     valid_parent = record.selection_eligible
     tasks: dict[str, dict[str, list[dict[str, object]]]] = {}
     for trial in record.trials:
@@ -124,20 +124,24 @@ def merged_rows(path: Path) -> list[dict[str, Any]]:
     top_eval_hash: dict[str, str] = {}
     receipts = _eval_receipts(path)
     order: list[str] = []
-    for event in read_events(path):
+    for raw_event in read_events(path):
+        event = {key: value for key, value in raw_event.items() if key != RECEIPT_CERTIFIED_FIELD}
         genid = str(event["genid"])
         if genid not in rows:
             rows[genid] = {}
             evals_by_genid[genid] = {}
             order.append(genid)
         if _is_keyed_evaluation(event):
+            certified = _has_evaluation_provenance(raw_event, genid, receipts)
+            if certified:
+                event[RECEIPT_CERTIFIED_FIELD] = True
             if event.get("kind") == "anchor":
                 _merge_auxiliary_evaluation(rows[genid], evals_by_genid[genid], event, prefix="anchor")
                 continue
             if event.get("kind") == "genesis_eval" and genid != "0":
                 _merge_auxiliary_evaluation(rows[genid], evals_by_genid[genid], event, prefix="genesis")
                 continue
-            if genid in top_eval_hash and not _has_evaluation_provenance(event, genid, receipts):
+            if genid in top_eval_hash and not certified:
                 _merge_auxiliary_non_stamped_fields(rows[genid], event)
                 continue
             _merge_keyed_evaluation(rows[genid], evals_by_genid[genid], top_eval_hash, genid, event)
@@ -148,15 +152,6 @@ def merged_rows(path: Path) -> list[dict[str, Any]]:
 
 def rows_by_genid(workspace: Path) -> dict[str, dict[str, Any]]:
     return {str(row["genid"]): row for row in merged_rows(archive_path(workspace))}
-
-
-def highest_complete_generation(workspace: Path) -> int:
-    highest = -1
-    for row in merged_rows(archive_path(workspace)):
-        genid = str(row.get("genid", ""))
-        if genid.isdigit() and evaluation_status(row) == "complete":
-            highest = max(highest, int(genid))
-    return highest
 
 
 def _safe_experiment_dir(experiment_id: str) -> str:
@@ -239,7 +234,13 @@ def _merge_keyed_evaluation(
         return
 
     if task_hash == top_eval_hash[genid]:
-        _merge_event_fields(row, row, event)
+        if event.get(RECEIPT_CERTIFIED_FIELD) is True and row.get(RECEIPT_CERTIFIED_FIELD) is not True:
+            retained = {key: row[key] for key in ("evals", "note") if key in row and key not in event}
+            row.clear()
+            row.update(retained)
+            _replace_top_evaluation(row, event)
+        else:
+            _merge_event_fields(row, row, event)
         return
 
     current = evals.get(task_hash)
@@ -293,7 +294,7 @@ def _merge_event_fields(row: dict[str, Any], current: dict[str, Any], event: dic
     replace_stamped = _can_replace_stamped(current, event)
     terminal_override = current.get("pending_gate_record") is True and event.get("status") == "operator_failed"
     for key, value in event.items():
-        if key == "valid_parent" and value is True and row.get("selection_eligible") is False:
+        if key == "valid_parent" and value is True and "selection_eligible" in row and row.get("selection_eligible") is not True:
             continue
         protected = key in STAMPED_FIELDS and key in row and not replace_stamped
         if terminal_override and key in {"status", "score", "cost"}:
@@ -317,7 +318,8 @@ def _can_replace_stamped(current: dict[str, Any], event: dict[str, Any]) -> bool
         and event.get(MECHANISM_EVAL_FIELD) is True
         and event.get("genid") == current.get("genid")
         and event.get("tag") == current.get("tag")
-        and evaluation_status(event) in {"complete", "partial"}
+        and event.get("outcome") == "benchmark_complete"
+        and event.get("selection_eligible") is True
         and event.get("score") is not None
         and event.get("valid_parent") is True
     ):

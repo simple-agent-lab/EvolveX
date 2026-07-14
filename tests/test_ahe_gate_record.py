@@ -78,6 +78,8 @@ def _prepared_run(tmp_path: Path) -> tuple[Path, Path, dict[str, object]]:
     manifest_path.write_text(json.dumps(manifest) + "\n")
     child = {
         "status": "complete",
+        "outcome": "benchmark_complete",
+        "selection_eligible": True,
         "score": 0.1,
         "task_vector": _vector(),
         "mutated": ["target/agent.py"],
@@ -96,6 +98,18 @@ def test_gate_accepts_structurally_valid_child_without_parent_score_comparison(t
     result = gate.AheArtifactValidGate().decide(child, {"score": 0.9}, _ctx(workspace, run_dir))
 
     assert result.decision == "accept"
+
+
+def test_gate_rejects_display_complete_child_without_canonical_eligibility(tmp_path: Path) -> None:
+    workspace, run_dir, child = _prepared_run(tmp_path)
+    child.pop("outcome")
+    child.pop("selection_eligible")
+    gate = _module(ROOT / "library" / "gate" / "ahe_artifact_valid.py", "ahe_artifact_valid_legacy")
+
+    result = gate.AheArtifactValidGate().decide(child, {"score": 0.9}, _ctx(workspace, run_dir))
+
+    assert result.decision == "reject"
+    assert "evaluation" in result.reason
 
 
 def test_gate_rejects_corrupt_evaluation_artifact_hash_before_manifest(tmp_path: Path) -> None:

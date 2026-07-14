@@ -36,8 +36,9 @@ def _reject(artifact: str, error: Exception | str) -> GateResult:
 class AheArtifactValidGate(GateOperator):
     def decide(self, child: Row, parent: Row | None, ctx: OperatorContext) -> GateResult:
         del parent
-        if child.get("status") not in {"complete", "partial"}:
-            return _reject("status", "not complete or partial")
+        keep = child.get("outcome") == "benchmark_complete" and child.get("selection_eligible") is True
+        if not keep:
+            return _reject("evaluation", "not canonically parent-eligible")
         score = child.get("score")
         if not isinstance(score, (int, float)) or isinstance(score, bool):
             return _reject("score", "not numeric")

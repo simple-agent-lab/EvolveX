@@ -12,15 +12,8 @@ from evolve.frozen import sdk
 from evolve.frozen.interfaces import SelectOperator, SelectResult
 
 
-def selection_weights(rows):
-    candidates = {
-        str(row["genid"]): row
-        for row in rows
-        if row.get("valid_parent") is True
-        and row.get("status") in {"complete", "partial"}
-        and isinstance(row.get("score"), (int, float))
-        and not isinstance(row.get("score"), bool)
-    }
+def selection_weights(parents, rows):
+    candidates = {str(row["genid"]): row for row in parents}
     if not candidates:
         return []
     child_counts = {genid: 0 for genid in candidates}
@@ -42,7 +35,7 @@ def selection_weights(rows):
 
 class ScoreChildProportionalSelect(SelectOperator):
     def pick(self, archive, ctx) -> SelectResult:
-        weighted = selection_weights(archive.rows())
+        weighted = selection_weights(archive.valid_parents(), archive.rows())
         if not weighted:
             raise RuntimeError("score_child_prop found no valid scored parents")
         genids = [genid for genid, _weight in weighted]

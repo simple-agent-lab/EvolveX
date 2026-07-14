@@ -27,6 +27,7 @@ from .config import evaluator_sampling, experiment_id, operator_blocks
 from .evaluation import CANONICAL_OUTCOMES, EvaluationRecord, Outcome, evaluation_status
 from .evaluator import evaluate
 from .frozen.interfaces import (
+    ArchiveView,
     PayloadValidationError,
     validate_gate_file_payload,
     validate_meta_agent_predicted_fixes_payload,
@@ -368,13 +369,13 @@ def _maybe_quarantine(workspace: Path, genid: str) -> None:
     margin = os.environ.get("EVOLVE_AUDIT_JUMP")
     if not margin:
         return
-    rows = rows_by_genid(workspace)
-    child = rows.get(genid, {})
+    view = ArchiveView(workspace)
+    child = view.row(genid) or {}
     score = child.get("score")
     prior = [
         float(r["score"])
-        for gid, r in rows.items()
-        if gid != genid and r.get("valid_parent") is True and isinstance(r.get("score"), (int, float))
+        for r in view.valid_parents()
+        if str(r.get("genid")) != genid
     ]
     if isinstance(score, (int, float)) and prior and float(score) - max(prior) > float(margin):
         record_fields(workspace, genid, {"audit": "pending"})
@@ -389,12 +390,9 @@ def _resume_tagged_child(
     operators_config: dict[str, Any],
 ) -> None:
     row = rows_by_genid(workspace).get(genid, {})
-    status = evaluation_status(row)
     needs_gate_record = genid in _evaluation_pending_gate_record_genids(workspace)
     canonical = row.get("outcome") in CANONICAL_OUTCOMES
-    if status == Outcome.INFRASTRUCTURE_FAILED or (
-        not canonical and (status not in {"complete", "partial"} or row.get("score") is None)
-    ):
+    if row.get("outcome") == Outcome.INFRASTRUCTURE_FAILED.value or not canonical:
         eval_child(workspace, genid, round_number=round_number)
         row = rows_by_genid(workspace).get(genid, {})
         needs_gate_record = genid in _evaluation_pending_gate_record_genids(workspace)
@@ -653,7 +651,12 @@ def eval_child(
     rows = rows_by_genid(workspace)
     row = rows.get(genid, {})
     status = evaluation_status(row)
-    if not force and round_number is None and status in {"complete", "partial"} and row.get("score") is not None:
+    if (
+        not force
+        and round_number is None
+        and row.get("outcome") in CANONICAL_OUTCOMES
+        and row.get("outcome") != Outcome.INFRASTRUCTURE_FAILED.value
+    ):
         return None
     if not force and round_number is not None and _row_has_round_evaluation(row, round_number):
         return None
@@ -758,7 +761,7 @@ def _stamp_evaluation(
 def _ensure_genesis_evaluated(workspace: Path) -> None:
     row = rows_by_genid(workspace).get("0", {})
     status = evaluation_status(row)
-    if row.get("note") != "initial scaffold" and status == "complete" and row.get("score") is not None:
+    if row.get("outcome") == "benchmark_complete" and row.get("selection_eligible") is True:
         return
     if status in {
         Outcome.CANDIDATE_INVALID.value,
@@ -906,7 +909,7 @@ def _row_has_round_evaluation(row: dict[str, Any], round_number: int) -> bool:
 
 def _is_scored_evaluation(event: dict[str, Any]) -> bool:
     return (
-        evaluation_status(event) in {"complete", "partial"}
+        event.get("outcome") == "benchmark_complete"
         and event.get("score") is not None
         and event.get("task_set_hash") is not None
     )
@@ -1049,12 +1052,7 @@ def _evaluation_pending_gate_record_genids(workspace: Path) -> set[str]:
 
 
 def _event_is_evaluation_stamp(event: dict[str, Any]) -> bool:
-    if event.get("outcome") in CANONICAL_OUTCOMES:
-        return _event_marks_pending_gate_record(event)
-    status = evaluation_status(event)
-    return (
-        status == "infra_failed" or (status in {"complete", "partial"} and event.get("score") is not None)
-    ) and _event_marks_pending_gate_record(event)
+    return event.get("outcome") in CANONICAL_OUTCOMES and _event_marks_pending_gate_record(event)
 
 
 def _event_marks_pending_gate_record(event: dict[str, Any]) -> bool:
@@ -1450,12 +1448,11 @@ def _validate_genid(genid: str) -> str:
 
 def _assert_valid_parent(workspace: Path, parent: str) -> None:
     parent = _validate_genid(parent)
-    ensure_local_archive(workspace, experiment_id(workspace))
-    rows = rows_by_genid(workspace)
-    row = rows.get(parent)
+    view = ArchiveView(workspace)
+    row = view.row(parent)
     if row is None:
         raise RuntimeError(f"unknown parent: {parent}")
-    if row.get("valid_parent") is not True or evaluation_status(row) not in {"complete", "partial"}:
+    if not any(str(candidate.get("genid")) == parent for candidate in view.valid_parents()):
         raise RuntimeError(f"parent gen/{parent} is not a valid parent")
     if not tag_exists(workspace, f"gen/{parent}"):
         raise RuntimeError(f"missing tag for parent gen/{parent}")

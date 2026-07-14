@@ -231,7 +231,11 @@ def _matching_training_evaluation(
             continue
         if set(members) != allowed:
             continue
-        if candidate.get("status") not in {"complete", "partial"} or candidate.get("score") is None:
+        if (
+            candidate.get("outcome") != "benchmark_complete"
+            or candidate.get("selection_eligible") is not True
+            or candidate.get("score") is None
+        ):
             continue
         if not isinstance(candidate.get("task_set_hash"), str) or not candidate["task_set_hash"]:
             continue

@@ -7,6 +7,7 @@ from pathlib import Path
 
 from conftest import git, init_miniswe_workspace, init_workspace, rows_by_genid, run_evolve, smoke_env
 
+from evolve.archive import MECHANISM_EVAL_FIELD, append_event, eval_receipt_path, read_events
 from evolve.driver import RunOptions
 from evolve.driver import run as driver_run
 from evolve.frozen.interfaces import OperatorContext
@@ -38,6 +39,22 @@ def _commit_and_retag_gen0(workspace: Path, *paths: str) -> None:
     git(workspace, "add", *paths)
     git(workspace, "commit", "-m", "adjust gen 0 scaffolding")
     git(workspace, "tag", "-f", "gen/0")
+
+
+def _rewrite_baseline_task_failure(workspace: Path, evolve_home: Path) -> None:
+    local = workspace / "archive.jsonl"
+    parent = next(
+        event
+        for event in read_events(local)
+        if event.get("genid") == "0" and event.get(MECHANISM_EVAL_FIELD) is True
+    )
+    parent["task_vector"]["tasks"]["task-0"]["trials"][0]["reward"] = 0.0
+    parent["note"] = "baseline evaluated"
+    mirror = evolve_home / "mirrors" / workspace.name / "archive.jsonl"
+    for archive in (local, mirror):
+        archive.write_text("")
+        eval_receipt_path(archive).unlink(missing_ok=True)
+    append_event(workspace, workspace.name, parent)
 
 
 def test_run_uses_operator_subprocesses_for_loop_steps(tmp_path: Path) -> None:
@@ -135,12 +152,7 @@ def test_jsonl_record_computes_verified_fixes_from_task_vectors(tmp_path: Path) 
         "run", str(workspace), "--max-generations", "0", env=smoke_env(evolve_home)
     )
     assert baseline.returncode == 0, baseline.stderr
-    parent = rows_by_genid(workspace)["0"]
-    parent["task_vector"]["tasks"]["task-0"]["trials"][0]["reward"] = 0.0
-    parent["note"] = "baseline evaluated"
-    archive = json.dumps(parent) + "\n"
-    (workspace / "archive.jsonl").write_text(archive)
-    (evolve_home / "mirrors" / workspace.name / "archive.jsonl").write_text(archive)
+    _rewrite_baseline_task_failure(workspace, evolve_home)
 
     _rewrite(
         workspace,
@@ -174,12 +186,7 @@ def test_driver_does_not_inject_verified_fixes_for_other_record_operators(tmp_pa
         "run", str(workspace), "--max-generations", "0", env=smoke_env(evolve_home)
     )
     assert baseline.returncode == 0, baseline.stderr
-    parent = rows_by_genid(workspace)["0"]
-    parent["task_vector"]["tasks"]["task-0"]["trials"][0]["reward"] = 0.0
-    parent["note"] = "baseline evaluated"
-    archive = json.dumps(parent) + "\n"
-    (workspace / "archive.jsonl").write_text(archive)
-    (evolve_home / "mirrors" / workspace.name / "archive.jsonl").write_text(archive)
+    _rewrite_baseline_task_failure(workspace, evolve_home)
 
     _rewrite(
         workspace,
