@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
-import subprocess
+import sys
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Literal
 
 from .candidate_snapshot import build_candidate_snapshot, materialize_snapshot
+from .runtime import owned_attempt_id, run_owned
 from .surface import surface_patterns
 
 SmokeStatus = Literal["passed", "failed", "unsupported"]
@@ -44,14 +45,9 @@ def run_candidate_smoke(checkout: Path, *, workspace: Path) -> SmokeResult:
         script = materialized / "evaluator" / "smoke.sh"
         if not script.is_file():
             return _write_result(attempt, "unsupported", snapshot.tree, None, "", "", time.monotonic() - started)
-        completed = subprocess.run(
-            [str(script)],
-            cwd=materialized,
-            env={**os.environ, "EVOLVE_RUN_DIR": str(attempt), "EVOLVE_ATTEMPT_ID": attempt.name},
-            text=True,
-            capture_output=True,
-            check=False,
-        )
+        env = {**os.environ, "EVOLVE_RUN_DIR": str(attempt), "EVOLVE_ATTEMPT_ID": owned_attempt_id(workspace, attempt)}
+        env.setdefault("EVOLVE_FRAMEWORK_PYTHON", sys.executable)
+        completed = run_owned([str(script)], cwd=materialized, env=env)
     return _write_result(
         attempt,
         "passed" if completed.returncode == 0 else "failed",

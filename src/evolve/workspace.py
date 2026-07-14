@@ -8,6 +8,7 @@ import shlex
 import shutil
 import stat
 import subprocess
+import sys
 import tempfile
 from dataclasses import dataclass
 from importlib.resources.abc import Traversable
@@ -73,25 +74,20 @@ def init_workspace(options: InitOptions) -> None:
 
 
 _CONSOLE = """#!/usr/bin/env bash
-# Self-contained evolve console. The mechanism is vendored under .evolve/, so
-# this workspace drives its own evolution loop without an installed CLI:
-#   ./evolve run . --max-generations 5
-# The vendored mechanism is outside the mutable surface — evolution never
-# edits it. The mechanism needs Python >=3.11; prefer uv, else a modern
-# python3.x on PATH.
+# Self-contained console for the mechanism vendored under .evolve/.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export PYTHONPATH="$HERE/.evolve${PYTHONPATH:+:$PYTHONPATH}"
-# The console uses Typer and PyYAML; the driver/operators stay stdlib-only. uv
-# supplies both on the fly via --with, so the workspace needs no install step.
-if command -v uv >/dev/null 2>&1; then
-  exec uv run --quiet --with "typer>=0.12" --with "PyYAML>=6.0" --python ">=3.11" python -m evolve "$@"
+if [ -n "${EVOLVE_FRAMEWORK_PYTHON:-}" ]; then
+  PYTHON="$EVOLVE_FRAMEWORK_PYTHON"
+else
+  PYTHON=@FRAMEWORK_PYTHON@
 fi
-for py in python3.13 python3.12 python3.11 python3; do
-  if command -v "$py" >/dev/null 2>&1; then exec "$py" -m evolve "$@"; fi
-done
-echo "evolve: need uv (recommended) or Python >=3.11 with typer and PyYAML on PATH" >&2
-exit 1
+if [ ! -x "$PYTHON" ]; then
+  echo "evolve: pinned framework Python is unavailable; set EVOLVE_FRAMEWORK_PYTHON" >&2
+  exit 1
+fi
+exec "$PYTHON" -m evolve "$@"
 """
 
 
@@ -103,7 +99,7 @@ def _vendor_mechanism(workspace: Path) -> None:
         workspace / ".evolve" / "evolve",
         ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
     )
-    (workspace / "evolve").write_text(_CONSOLE)
+    (workspace / "evolve").write_text(_CONSOLE.replace("@FRAMEWORK_PYTHON@", shlex.quote(sys.executable)))
 
 
 def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, init_cwd: Path) -> None:
@@ -158,6 +154,7 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
         "archive.jsonl": "",
     }
     if evaluator_engine == "harbor":
+        files["evaluator/cleanup_harbor.py"] = _template("evaluator/cleanup_harbor.py")
         files["evaluator/smoke.sh"] = _template("evaluator/smoke.sh")
     bindings = _operator_bindings(config, recipe=recipe, init_cwd=init_cwd)
     for binding in bindings:
@@ -468,7 +465,7 @@ def _make_executable(*paths: Path) -> None:
 
 
 def _eval_env(
-    workspace_name: str, dataset: str, n_concurrent: int,
+    _workspace_name: str, dataset: str, n_concurrent: int,
     tasks_per_round: int,
     trials: int,
     partial_floor: float,
@@ -483,7 +480,6 @@ def _eval_env(
         f"EVOLVE_HARBOR_ATTEMPTS={max(trials, 1)}\n"
         f"EVOLVE_HARBOR_EXPECTED_TRIALS={expected_trials}\n"
         f"EVOLVE_HARBOR_N={n_concurrent}\n"
-        f'EVOLVE_JOBS_DIR="$HOME/.evolve/harbor-jobs/{workspace_name}"\n'
         f"EVOLVE_HARBOR_AGENT={shlex.quote(agent)}\n"
         f"EVOLVE_PARTIAL_FLOOR={partial_floor}\n"
     )

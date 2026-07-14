@@ -1,5 +1,7 @@
 import json
+import os
 import sys
+import time
 from decimal import Decimal
 from pathlib import Path
 
@@ -98,16 +100,32 @@ def test_run_meta_agent_uses_env_command_and_reports_missing_command(tmp_path: P
 def test_run_meta_agent_timeout_kills_command_group(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    script = tmp_path / "sleep.py"
-    script.write_text("import time\nprint('started', flush=True)\ntime.sleep(60)\n")
+    pid_file = tmp_path / "child.pid"
+    script = tmp_path / "pause.py"
+    script.write_text(
+        "import pathlib, signal, subprocess, sys\n"
+        "child = subprocess.Popen([sys.executable, '-c', 'import signal; signal.pause()'])\n"
+        "pathlib.Path(sys.argv[1]).write_text(str(child.pid))\n"
+        "print('started', flush=True)\n"
+        "signal.pause()\n"
+    )
 
     with pytest.raises(AgentCommandError) as excinfo:
         run_meta_agent(
             workspace=workspace,
             prompt="x",
-            config={"command": f"{sys.executable} {script}", "timeout_s": 0.05},
+            config={"command": f"{sys.executable} {script} {pid_file}", "timeout_s": 0.2},
         )
 
     assert "timeout" in str(excinfo.value).lower()
     assert excinfo.value.usage["usd"] == 0
     assert excinfo.value.usage["wall_s"] >= 0
+    child_pid = int(pid_file.read_text())
+    for _ in range(100):
+        try:
+            os.kill(child_pid, 0)
+        except ProcessLookupError:
+            break
+        time.sleep(0.01)
+    else:
+        pytest.fail(f"child process {child_pid} survived group timeout")

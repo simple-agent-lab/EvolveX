@@ -2,9 +2,11 @@ import json
 import shlex
 import stat
 from pathlib import Path
+from types import SimpleNamespace
 
 from conftest import git, run_evolve
 
+from evolve import candidate_runtime as candidate_runtime_module
 from evolve.candidate_runtime import run_candidate_smoke
 from evolve.config import default_config
 from evolve.workspace import InitOptions, init_workspace
@@ -53,6 +55,31 @@ def test_smoke_exposes_missing_module_from_snapshot(tmp_path: Path) -> None:
 
     assert result.status == "failed"
     assert "No module named 'fastapi'" in result.stderr_path.read_text()
+
+
+def test_smoke_runs_through_owned_process_helper(tmp_path: Path, monkeypatch) -> None:
+    checkout = smoke_checkout(tmp_path)
+    calls: list[tuple[list[str], dict[str, str]]] = []
+    ticks = iter((10.0, 12.0))
+    monkeypatch.setattr(candidate_runtime_module.time, "monotonic", lambda: next(ticks))
+
+    def fake_run_owned(
+        command: list[str], *, cwd: Path, env: dict[str, str], timeout_s: float | None = None,
+    ) -> SimpleNamespace:
+        calls.append((command, env))
+        return SimpleNamespace(returncode=0, stdout="owned\n", stderr="", wall_s=0.01, timed_out=False)
+
+    monkeypatch.setattr(candidate_runtime_module, "run_owned", fake_run_owned, raising=False)
+
+    result = run_candidate_smoke(checkout, workspace=checkout)
+
+    assert result.status == "passed"
+    assert result.stdout_path.read_text() == "owned\n"
+    assert json.loads((result.attempt_dir / "result.json").read_text())["duration_s"] == 2.0
+    assert len(calls) == 1
+    assert calls[0][1]["EVOLVE_ATTEMPT_ID"] == candidate_runtime_module.owned_attempt_id(
+        checkout, result.attempt_dir,
+    )
 
 
 def test_smoke_redacts_proxy_credential_only(tmp_path: Path, monkeypatch) -> None:
@@ -197,7 +224,6 @@ def test_init_generates_executable_smoke_only_for_harbor(tmp_path: Path, monkeyp
         "set -eu\n"
         ': "${EVOLVE_RUN_DIR:?EVOLVE_RUN_DIR is required}"\n'
         "export EVOLVE_CANDIDATE_SMOKE_MODE=full\n"
-        'export EVOLVE_CANDIDATE_SMOKE_JOBS_DIR="$EVOLVE_RUN_DIR/jobs"\n'
         "exec ./evaluator/eval.sh\n"
     )
     assert smoke.stat().st_mode & stat.S_IXUSR

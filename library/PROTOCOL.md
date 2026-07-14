@@ -232,6 +232,19 @@ Exit code 0 means passed, 2 means failed, and 3 means unsupported.
 Smoke diagnostics are not selection classifications and never authorize
 changes to evaluator-owned runtime machinery.
 
+The generated `./evolve` console uses the framework Python pinned during
+initialization, with `EVOLVE_FRAMEWORK_PYTHON` as its only explicit override;
+it never installs packages dynamically or searches arbitrary system Python
+executables. Evaluation and smoke own their subprocess groups, sending TERM
+and then KILL when necessary so children do not outlive an attempt. Harbor
+receives the exact attempt ID as its job name. On exit or interruption, cleanup
+derives exact Compose project labels only from that attempt's trial
+`config.json` files and removes only container IDs returned for those labels.
+The attempt ID combines a readable full-attempt prefix with a workspace-bound
+digest, so equal attempt numbers in other purposes, candidates, or workspaces
+do not collide. Harbor uses only `$EVOLVE_RUN_DIR/jobs`; creation is exclusive,
+and a pre-existing jobs directory fails as infrastructure without deletion.
+
 ## Stability Tiers
 
 | Tier | Stability | What to depend on |

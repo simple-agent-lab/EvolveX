@@ -21,7 +21,7 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `__init__.py` | 10 | package marker, version |
 | `__main__.py` | 10 | `python -m evolve` entry |
 | `cli.py` | 215 | argument parsing and verb dispatch only — no logic |
-| `candidate_runtime.py` | 200 | candidate smoke orchestration and append-only materialization records |
+| `candidate_runtime.py` | 200 | candidate smoke orchestration through the owned runtime and append-only materialization records |
 | `candidate_snapshot.py` | 80 | exact candidate tree construction, materialization, and verified commit |
 | `config.py` | 300 | read/render `evolve.yaml`: recipes, experiment values, surface lists, operator blocks |
 | `driver.py` | 1541 | the generation sequencer: orchestrates verbs + operators, validates operator file outputs at the seam, and owns audit quarantine/doctor repair |
@@ -30,7 +30,7 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `archive.py` | 335 | append-only event store: certificate stamping, merge semantics, stamped-field protection, mirroring, integrity fsck |
 | `asset_discovery.py` | 30 | bounded direct-root Python helper discovery without recursive pre-reading |
 | `agent.py` | 180 | meta-agent command runner: prompt-file setup, timeout/process-group handling, output + usage capture |
-| `evaluator.py` | 155 | clean-checkout canonical evaluation: tree assertion, exit-code contract, score parsing, shared dependency cache binding |
+| `evaluator.py` | 155 | clean-checkout canonical evaluation: owned execution, tree assertion, exit-code contract, score parsing, shared cache binding |
 | `evaluation.py` | 110 | immutable canonical trial outcomes and framework-derived evaluation certificates |
 | `task_sets.py` | 60 | canonical evaluator task-set membership and dataset/attempt identity stamps |
 | `task_vectors.py` | 90 | generic task-vector schema normalization, validation, and tri-state per-task pass lookup |
@@ -38,8 +38,8 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `patching.py` | 120 | candidate patch assembly: changed paths, diffs, surface-violation repair |
 | `surface.py` | 150 | mutable-surface pattern matching and violation checks |
 | `report.py` | 182 | status/report rendering, best-ever recomputation, claim checklist |
-| `runtime.py` | 80 | evaluator runtime fingerprints, epoch preflight marker, and append-only attempt identity |
-| `workspace.py` | 525 | `evolve init` scaffolding: file copies, operator binding (required + optional), the generated `operators/README.md` index + `library/` variant palette, protocol stamping, seed + mechanism vendoring, inner-skill copy |
+| `runtime.py` | 80 | shared process-group ownership and append-only evaluation attempt identity |
+| `workspace.py` | 525 | `evolve init` scaffolding: pinned console, file copies, operator binding, generated operator/library assets, protocol stamping, seed + mechanism vendoring |
 
 ### The frozen ring (`src/evolve/frozen/`)
 

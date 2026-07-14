@@ -39,10 +39,11 @@ Inside that generated workspace, the six core concepts are:
 | archive | `archive.jsonl` plus `gen/<id>` git tags. |
 | mutable surface | The paths proposals are allowed to change. |
 
-`evolve init` also vendors the (stdlib-only) mechanism into the workspace
-under `.evolve/`, with a root `evolve` console, so a generated workspace
-drives its own loop without an installed CLI — hand an agent a workspace and
-it is self-contained:
+`evolve init` also vendors the mechanism into the workspace under `.evolve/`,
+with a root `evolve` console pinned to the framework Python used at
+initialization. A generated workspace drives its own loop without an installed
+CLI; `EVOLVE_FRAMEWORK_PYTHON` is the explicit override when that interpreter
+moves:
 
 ```bash
 cd /path/to/experiment && ./evolve run . --max-generations 5
@@ -216,7 +217,11 @@ The design centers on three guardrails:
 1. Scores and statuses are stamped by the mechanism, not by workspace
    operators.
 2. Evaluation runs on clean checkouts of tagged snapshots and asserts
-   the evaluator tree matches the baseline evaluator.
+   the evaluator tree matches the baseline evaluator. Evaluator and candidate
+   smoke subprocesses own complete process groups, terminating every child on
+   timeout or cancellation. Each append-only attempt has a workspace-distinct
+   Harbor job identity and an exclusively created jobs directory inside its
+   own run directory; an existing jobs directory is never replaced.
 3. Best-ever and reports are recomputed from stamped archive rows, not
    from mutable operator claims.
 
@@ -237,7 +242,8 @@ mechanism-written receipt sidecar before they are trusted.
 | `src/evolve/workspace.py` | Workspace scaffolding and generation-zero archive event. |
 | `src/evolve/config.py` | Recipe config rendering and lightweight config readers. |
 | `src/evolve/driver.py` | Built-in loop, proposal surface/validation/admission gates, and commit/eval orchestration. |
-| `src/evolve/evaluator.py` | Clean-checkout evaluator execution and exit-code contract. |
+| `src/evolve/evaluator.py` | Clean-checkout evaluator execution, owned lifecycle, and exit-code contract. |
+| `src/evolve/runtime.py` | Shared owned-process lifecycle and append-only evaluation attempt identity. |
 | `src/evolve/archive.py` | Append-only archive, mirror reconciliation, stamped-field merge rules. |
 | `src/evolve/surface.py` | Mutable-surface include/exclude checking. |
 | `src/evolve/report.py` | `status` and `report` summaries. |

@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import subprocess
+import sys
 import tempfile
 import time
 from pathlib import Path
@@ -12,7 +12,7 @@ from typing import Any
 from .config import evaluator_boolean, experiment_id, load_config
 from .evaluation import EvaluationRecord, Outcome, classify_evaluation
 from .git import evaluator_tree, git, git_stdout
-from .runtime import attempt_dir, next_attempt
+from .runtime import OwnedResult, attempt_dir, next_attempt, owned_attempt_id, run_owned
 from .task_sets import TaskSetIdentity, effective_task_set_identity
 from .task_vectors import trial_results, validate_task_vector
 
@@ -129,13 +129,13 @@ def _expected_trials(evaluator: dict[str, Any], task_limit: int | None) -> int:
     return max(1, tasks) * attempts
 
 
-def _run_eval_script(
-    checkout: Path, run_dir: Path, genid: str, round_number: int | None,
-    task_limit: int | None, purpose: str,
-) -> subprocess.CompletedProcess[str]:
-    env: dict[str, str] = {**os.environ, "EVOLVE_RUN_DIR": str(run_dir), "EVOLVE_GENID": genid,
-                           "EVOLVE_EVAL_KIND": purpose}
+def _run_eval_script(checkout: Path, run_dir: Path, genid: str, round_number: int | None, task_limit: int | None, purpose: str) -> OwnedResult:
     runs_dir = next(parent for parent in run_dir.parents if parent.name == "runs")
+    env: dict[str, str] = {
+        **os.environ, "EVOLVE_RUN_DIR": str(run_dir), "EVOLVE_GENID": genid,
+        "EVOLVE_EVAL_KIND": purpose, "EVOLVE_ATTEMPT_ID": owned_attempt_id(runs_dir.parent, run_dir),
+    }
+    env.setdefault("EVOLVE_FRAMEWORK_PYTHON", sys.executable)
     uv_cache = runs_dir / "runtime" / "uv-cache"
     uv_cache.mkdir(parents=True, exist_ok=True)
     env["EVOLVE_UV_CACHE_DIR"] = str(uv_cache)
@@ -144,8 +144,7 @@ def _run_eval_script(
     env.pop("EVOLVE_ROUND", None)
     if round_number is not None:
         env["EVOLVE_ROUND"] = str(round_number)
-    result = subprocess.run([str(checkout / "evaluator" / "eval.sh")], cwd=checkout,
-                            env=env, text=True, capture_output=True, check=False)
+    result = run_owned([str(checkout / "evaluator" / "eval.sh")], cwd=checkout, env=env)
     (run_dir / "stdout.log").write_text(result.stdout)
     (run_dir / "stderr.log").write_text(result.stderr)
     return result
