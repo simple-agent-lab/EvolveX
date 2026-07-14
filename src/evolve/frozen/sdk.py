@@ -146,14 +146,13 @@ def _parse_args() -> argparse.Namespace:
 def _context(config: dict[str, Any]) -> OperatorContext:
     seed = config.get("seed", 0)
     fan_out = config.get("fan_out", 1)
-    round_value = os.environ.get("EVOLVE_ROUND")
     return OperatorContext(
         workspace=Path(os.environ["EVOLVE_WORKSPACE"]),
         checkout=Path(os.environ["EVOLVE_CHECKOUT"]),
         run_dir=Path(os.environ["EVOLVE_RUN_DIR"]),
         genid=os.environ["EVOLVE_GENID"],
         parent=os.environ.get("EVOLVE_PARENT") or None,
-        round=int(round_value) if round_value else None,
+        round=None,
         fan_out=int(fan_out),
         config=config,
         rng=random.Random(int(seed)),

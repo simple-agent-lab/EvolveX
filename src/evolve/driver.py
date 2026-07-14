@@ -468,7 +468,7 @@ def _run_gate_and_record(
                 )
                 return
 
-            append_event(workspace, exp_id, {"genid": genid, **gate_payload})
+            append_event(workspace, exp_id, {"genid": genid, "pending_gate_record": False, **gate_payload})
             _run_terminal_record(
                 workspace,
                 exp_id,
@@ -636,6 +636,7 @@ def eval_child(
     genid = _validate_genid(genid)
     exp_id = experiment_id(workspace)
     ensure_local_archive(workspace, exp_id)
+    evaluator_sampling(workspace)
     if round_number is not None:
         raise RuntimeError("per-round evaluation sampling is not supported; use static sampling")
     rows = rows_by_genid(workspace)
@@ -742,7 +743,7 @@ def _stamp_evaluation(
         purpose="candidate",
         metadata=metadata,
         round_number=round_number,
-        pending_gate_on_complete=True,
+        pending_gate_on_complete=genid != "0",
         resume_infrastructure=resume_infrastructure,
     )
 

@@ -323,6 +323,7 @@ def test_gate_verdict_survives_record_failure(
 
     row = rows_by_genid(workspace)["1"]
     assert row["valid_parent"] is valid_parent
+    assert row["pending_gate_record"] is False
     assert row["verdict"] == verdict
     assert row["reason"] == f"{decision} by test gate"
     assert "record_error" in row

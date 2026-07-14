@@ -82,7 +82,7 @@ Milestones M0-M6 are implemented and tested in the mechanism suite:
 | M3 | Population fan-out and early widened-surface self-reference tests; real child-gate self-reference landed later in M5. |
 | M4 | Six recipes, agent bootstrapping instructions, `status`, and `report`. |
 | M5 | Real subprocess operator runtime, `evolve record`, `evolve.sdk`, operator config variants, and child-owned gate/record self-reference. |
-| M6 | Harbor-first evaluator templates, `agent_command` meta-agent adapter, target seed vendoring, and per-round same-hash evaluation. |
+| M6 | Harbor-first evaluator templates, `agent_command` meta-agent adapter, target seed vendoring, and static task-set identity. |
 
 Harbor is the only real benchmark execution path. Real recipes call Harbor with
 an explicit `evaluator.agent` value. Smoke recipes are named `*-smoke` and are

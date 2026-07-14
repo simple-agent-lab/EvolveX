@@ -21,8 +21,6 @@ Runtime state arrives through environment variables:
 - `EVOLVE_RUN_DIR`: current generation run directory.
 - `EVOLVE_GENID`: child generation id.
 - `EVOLVE_PARENT`: selected parent id, when there is one.
-- `EVOLVE_ROUND`: numeric round when the runner is executing a per-round
-  operator. The variable is absent when no round applies.
 - `EVOLVE_OPERATOR_TIMEOUT_S`: inherited timeout cap for adapters.
 
 Operator-specific YAML settings are passed as `--config` JSON. The framework
@@ -38,9 +36,10 @@ another value exits nonzero with `protocol_version` in stderr.
 ## Per-Kind Contract
 
 All Python operators receive an `OperatorContext` with these fields: `workspace`,
-`checkout`, `run_dir`, `genid`, `parent`, `round`, `fan_out`, `config`, and
+`checkout`, `run_dir`, `genid`, `parent`, `fan_out`, `config`, and
 `rng`. `workspace`, `checkout`, and `run_dir` are `Path` values. `config` is the
 operator config dict, and `rng` is seeded from that config.
+The legacy `round` attribute remains `None` for source compatibility.
 
 ### Select
 

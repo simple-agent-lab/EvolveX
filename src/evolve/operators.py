@@ -78,11 +78,6 @@ def run_operator(
         "EVOLVE_WORKSPACE": str(workspace.resolve()),
         "EVOLVE_CHECKOUT": str(checkout.resolve()),
     }
-    if round_number is None:
-        env.pop("EVOLVE_ROUND", None)
-    else:
-        env["EVOLVE_ROUND"] = str(round_number)
-
     try:
         completed = subprocess.run(
             [

@@ -82,9 +82,9 @@ def append_event(workspace: Path, experiment_id: str, event: dict[str, Any]) -> 
         for target in targets:
             _append_eval_receipt(target, event)
 
-
 def append_evaluation_record(workspace: Path, record: EvaluationRecord, *, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
-    valid_parent = record.selection_eligible
+    pending_gate = (metadata or {}).get("pending_gate_record") is True
+    valid_parent = record.selection_eligible and not pending_gate
     tasks: dict[str, dict[str, list[dict[str, object]]]] = {}
     for trial in record.trials:
         raw = asdict(trial)
@@ -99,6 +99,7 @@ def append_evaluation_record(workspace: Path, record: EvaluationRecord, *, metad
         "tag": f"gen/{record.generation}",
         "status": record.status,
         "selection_eligible": record.selection_eligible,
+        "pending_gate_record": pending_gate,
         "task_set_members": sorted(tasks),
         "task_vector": {"schema_version": 1, "tasks": tasks},
         "valid_parent": valid_parent,
@@ -157,8 +158,7 @@ def rows_by_genid(workspace: Path) -> dict[str, dict[str, Any]]:
 def _safe_experiment_dir(experiment_id: str) -> str:
     if _SAFE_EXPERIMENT_ID.fullmatch(experiment_id) and experiment_id not in {".", ".."} and ".." not in experiment_id:
         return experiment_id
-    digest = hashlib.sha256(experiment_id.encode("utf-8")).hexdigest()[:16]
-    return f"unsafe-{digest}"
+    return f"unsafe-{hashlib.sha256(experiment_id.encode('utf-8')).hexdigest()[:16]}"
 
 
 def _is_keyed_evaluation(event: dict[str, Any]) -> bool:

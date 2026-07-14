@@ -75,6 +75,7 @@ def is_parent_record(row: dict[str, Any], expected: dict[str, str]) -> bool:
         row.get("outcome") == "benchmark_complete"
         and row.get("purpose") in {"candidate", "genesis"}
         and row.get("selection_eligible") is True
+        and row.get("pending_gate_record") is False
         and row.get("valid_parent") is True
         and row.get(RECEIPT_CERTIFIED_FIELD) is True
         and all(row.get(field) == value for field, value in expected.items())

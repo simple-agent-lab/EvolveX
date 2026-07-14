@@ -82,6 +82,35 @@ def test_complete_candidate_record_is_a_parent(tmp_path, monkeypatch) -> None:
     assert event["artifacts"]["sha256"] == "a" * 64
 
 
+def test_pending_candidate_requires_explicit_gate_certification(tmp_path: Path) -> None:
+    workspace, expected = _archive_workspace(tmp_path)
+    append_evaluation_record(
+        workspace,
+        replace(_record(Outcome.BENCHMARK_COMPLETE), experiment_id=workspace.name, **expected),
+        metadata={"pending_gate_record": True},
+    )
+
+    pending = ArchiveView(workspace).row("1")
+    assert pending is not None
+    assert pending["pending_gate_record"] is True
+    assert pending["valid_parent"] is False
+    assert ArchiveView(workspace).valid_parents() == []
+
+    append_event(
+        workspace,
+        workspace.name,
+        {
+            "genid": "1",
+            "pending_gate_record": False,
+            "valid_parent": True,
+            "verdict": "keep",
+            "reason": "accepted by trusted gate",
+        },
+    )
+
+    assert [row["genid"] for row in ArchiveView(workspace).valid_parents()] == ["1"]
+
+
 def test_later_archive_event_cannot_promote_failed_record(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("EVOLVE_HOME", str(tmp_path / "home"))
     workspace = tmp_path / "workspace"

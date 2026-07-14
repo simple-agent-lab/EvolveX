@@ -143,6 +143,29 @@ def test_cancelled_attempt_is_recorded_and_never_retried(
     assert not git(workspace, "tag", "--list", "gen/1")
 
 
+def test_cleanup_cancellation_is_recorded_under_allocated_attempt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace = _lifecycle_workspace(tmp_path, {"genesis": ["benchmark_complete"]})
+    original_git = evaluator_module.git
+
+    def interrupt_cleanup(path, *args, **kwargs):
+        if args[:2] == ("worktree", "remove"):
+            raise KeyboardInterrupt("cleanup cancelled by test")
+        return original_git(path, *args, **kwargs)
+
+    monkeypatch.setattr(evaluator_module, "git", interrupt_cleanup)
+    with pytest.raises(KeyboardInterrupt, match="cleanup cancelled by test"):
+        run(RunOptions(workspace, max_generations=0))
+    with pytest.raises(RuntimeError, match="genesis cancelled"):
+        run(RunOptions(workspace, max_generations=0))
+
+    events = _evaluation_events(workspace, "0")
+    assert [(event["attempt"], event["outcome"]) for event in events] == [(1, "cancelled")]
+    attempts = list((workspace / "runs/evaluations/genesis/gen-0").glob("candidate-*/attempt-*"))
+    assert [path.name for path in attempts] == ["attempt-1"]
+
+
 @pytest.mark.parametrize("outcome", ["candidate_invalid", "timeout", "cancelled"])
 def test_genesis_retry_terminal_is_canonical_and_persistent(tmp_path: Path, outcome: str) -> None:
     workspace = _lifecycle_workspace(

@@ -6,6 +6,8 @@ import pytest
 from conftest import git, init_workspace, rows_by_genid, run_evolve, smoke_agent_command
 
 from evolve.config import evaluator_sampling
+from evolve.driver import eval_child
+from evolve.evaluator import evaluate
 
 
 def _replace(workspace: Path, relative_path: str, old: str, new: str) -> None:
@@ -18,9 +20,16 @@ def _replace(workspace: Path, relative_path: str, old: str, new: str) -> None:
 def test_per_round_sampling_is_rejected_clearly(tmp_path: Path) -> None:
     workspace, _evolve_home = init_workspace(tmp_path)
     _replace(workspace, "evolve.yaml", "  partial_floor: 0.8\n", "  partial_floor: 0.8\n  sampling: per_round\n")
+    git(workspace, "add", "evolve.yaml")
+    git(workspace, "commit", "-m", "configure unsupported sampling")
+    git(workspace, "tag", "-f", "gen/0")
 
     with pytest.raises(ValueError, match="evaluator.sampling.*static"):
         evaluator_sampling(workspace)
+    with pytest.raises(ValueError, match="evaluator.sampling.*static"):
+        eval_child(workspace, "0", force=True)
+    with pytest.raises(ValueError, match="evaluator.sampling.*static"):
+        evaluate(workspace, "gen/0", "0", purpose="genesis")
 
 
 def test_static_sampling_can_select_generation_one_for_generation_two(tmp_path: Path) -> None:
