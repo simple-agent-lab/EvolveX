@@ -34,7 +34,7 @@ Inside that generated workspace, the six core concepts are:
 | --- | --- |
 | workspace | The generated experiment repository. |
 | target | The code or agent being improved. |
-| operator | Evolvable scripts for select, rollout, mutate, gate, and record. |
+| operator | Evolvable scripts for select, rollout, trace analysis, mutate, gate, and record. |
 | evaluator | A pinned black-box evaluator contract. |
 | archive | `archive.jsonl` plus `gen/<id>` git tags. |
 | mutable surface | The paths proposals are allowed to change. |
@@ -87,10 +87,9 @@ and generated evaluator templates use the checkout's own `target/` via a
 custom Harbor agent path. A full mini-swe target live smoke is still
 pending; real long-running experiments should run on a Linux machine.
 
-Harbor rollout retention is configurable independently of execution through
-research-inspired `evidence_profile` values. See
-[`ROLLOUT_EVIDENCE.md`](ROLLOUT_EVIDENCE.md) for the Self-Harness, DGM,
-Hyperagents, Meta-Harness, SIA, ACE/MCE, ADAS/AFlow, GEPA, and STOP mappings.
+Trace retention is a separate operator from rollout. See
+[`TRACE_ANALYZER.md`](TRACE_ANALYZER.md) for the descriptive analyzer variants
+and the migration from the former research-method profile names.
 
 ## Install For Development
 

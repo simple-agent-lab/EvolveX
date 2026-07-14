@@ -34,4 +34,4 @@ def test_init_binds_dgm_select_to_score_weighted_library_variant_and_stamps_prot
     assert "mechanism will never overwrite it" in header
     assert "evolve it" in header
     assert body == expected_source
-    assert (workspace / ".evolve-protocol-version").read_text() == "1\n"
+    assert (workspace / ".evolve-protocol-version").read_text() == "2\n"

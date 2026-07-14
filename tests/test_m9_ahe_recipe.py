@@ -51,8 +51,8 @@ def _fake_codex(path: Path) -> None:
         "import sys\n"
         "from pathlib import Path\n"
         "prompt = sys.stdin.read()\n"
-        "if 'Harbor Rollout Feedback' not in prompt:\n"
-        "    raise SystemExit('missing rollout feedback')\n"
+        "if 'Trace Analysis Feedback' not in prompt:\n"
+        "    raise SystemExit('missing trace analysis')\n"
         "target = Path('target/prompt.md')\n"
         "target.write_text(target.read_text() + '\\nAHE_GENERATION_1 = true\\n')\n"
         "print('predicted_fixes: []')\n"
@@ -79,6 +79,10 @@ def test_ahe_recipe_runs_train_rollout_codex_mutation_and_gate(tmp_path: Path) -
         "seed": "builtin-codex",
     }
     assert "source=library/rollout/harbor.py" in (workspace / "operators" / "rollout.py").read_text()
+    assert (
+        "source=library/trace_analyzer/failure_patterns.py"
+        in (workspace / "operators" / "trace_analyzer.py").read_text()
+    )
     assert "source=library/mutate/agent_command.py" in (workspace / "operators" / "mutate.py").read_text()
     assert "source=library/gate/hillclimb.py" in (workspace / "operators" / "gate.py").read_text()
     eval_env = (workspace / "evaluator" / "eval.env").read_text()
@@ -86,9 +90,13 @@ def test_ahe_recipe_runs_train_rollout_codex_mutation_and_gate(tmp_path: Path) -
     assert "EVOLVE_HARBOR_AGENT_SETUP_TIMEOUT_MULTIPLIER=3.0" in eval_env
     assert "EVOLVE_HARBOR_MAX_RETRIES=1" in eval_env
     operators = operator_blocks(workspace)
-    assert {name: operator_timeout(operators, name) for name in ("select", "rollout", "mutate", "gate", "record")} == {
+    assert {
+        name: operator_timeout(operators, name)
+        for name in ("select", "rollout", "trace_analyzer", "mutate", "gate", "record")
+    } == {
         "select": 600,
         "rollout": 3600,
+        "trace_analyzer": 600,
         "mutate": 3600,
         "gate": 600,
         "record": 600,
@@ -118,6 +126,14 @@ def test_ahe_recipe_runs_train_rollout_codex_mutation_and_gate(tmp_path: Path) -
     assert result.returncode == 0, result.stderr
     assert "harbor-live-marker" in result.stdout
     assert "[evolve] gen/0 baseline: evaluating gate split" in result.stdout
+    generation_run = workspace / "runs" / "gen-1"
+    assert not (generation_run / "rollout" / "evidence").exists()
+    assert (generation_run / "rollout" / "cases.json").is_file()
+    assert (generation_run / "trace_analyzer" / "evidence" / "selected.md").is_file()
+    trace_manifest = json.loads(
+        (generation_run / "trace_analyzer" / "evidence" / "manifest.json").read_text()
+    )
+    assert trace_manifest["selected_variant"] == "failure_patterns"
     expected_agent_env = {
         "http_proxy=http://proxy.example:8118",
         "HTTP_PROXY=http://proxy.example:8118",

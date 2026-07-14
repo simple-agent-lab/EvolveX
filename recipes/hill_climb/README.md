@@ -19,6 +19,7 @@ population memory, but the population has only one active frontier.
 
 `select: {variant: greedy}` resolves to [`library/select/greedy.py`](../../library/select/greedy.py).
 `rollout: {variant: failure_focused, budget_tasks: 32}` resolves to [`library/rollout/failure_focused.py`](../../library/rollout/failure_focused.py).
+`trace_analyzer: {variant: failure_patterns}` resolves to [`library/trace_analyzer/failure_patterns.py`](../../library/trace_analyzer/failure_patterns.py).
 `mutate: {variant: fixed, timeout_s: 3600}` resolves to [`library/mutate/fixed.py`](../../library/mutate/fixed.py).
 `gate: {variant: hillclimb}` resolves to [`library/gate/hillclimb.py`](../../library/gate/hillclimb.py).
 `record: {variant: jsonl}` resolves to [`library/record/jsonl.py`](../../library/record/jsonl.py).

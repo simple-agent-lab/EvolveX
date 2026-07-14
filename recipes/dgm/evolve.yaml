@@ -15,6 +15,7 @@ surface:
 operators:
   select: {variant: score_weighted, seed: 0}
   rollout: {variant: failure_focused, budget_tasks: 32}
+  trace_analyzer: {variant: failed_traces, max_chars: 30000}
   mutate: {variant: fixed, timeout_s: 3600}
   gate: {variant: parent_eligible}
   record: {variant: jsonl}

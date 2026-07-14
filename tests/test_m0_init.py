@@ -24,6 +24,7 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
         "program.md",
         "operators/select.py",
         "operators/rollout.py",
+        "operators/trace_analyzer.py",
         "operators/mutate.py",
         "operators/gate.py",
         "operators/record.py",
@@ -31,6 +32,7 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
         "operators/preflight.sh",
         "operators/select.md",
         "operators/rollout.md",
+        "operators/trace_analyzer.md",
         "operators/mutate.md",
         "operators/gate.md",
         "operators/record.md",
@@ -60,7 +62,7 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
     assert "script:" not in config
     assert "mutate: {timeout_s: 3600}" in config
     assert "- target/**" in config
-    assert (workspace / ".evolve-protocol-version").read_text() == "1\n"
+    assert (workspace / ".evolve-protocol-version").read_text() == "2\n"
 
     upstream = json.loads((workspace / "target" / "UPSTREAM.json").read_text())
     assert upstream == {"kind": "builtin", "seed": "builtin-dummy"}

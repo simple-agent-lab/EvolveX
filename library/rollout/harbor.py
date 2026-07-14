@@ -22,7 +22,6 @@ sys.path = [p for p in sys.path if os.path.abspath(p or os.getcwd()) != os.path.
 
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import OperatorContext, RolloutOperator, RolloutResult
-from evolve.rollout_evidence import normalize_profile, write_evidence_bundle
 from evolve.splits import harbor_task_pattern, load_manifest, select_dataset_tasks
 
 _INFRA_EXCEPTION_MARKERS = (
@@ -327,11 +326,11 @@ def _artifact_inventory(trial_dir: Path) -> dict[str, list[str]]:
     inventory: dict[str, list[str]] = {}
     for name in ("agent", "verifier"):
         root = trial_dir / name
-        inventory[name] = [
-            path.relative_to(root).as_posix()
-            for path in sorted(root.rglob("*"))
-            if path.is_file()
-        ] if root.exists() else []
+        inventory[name] = (
+            [path.relative_to(root).as_posix() for path in sorted(root.rglob("*")) if path.is_file()]
+            if root.exists()
+            else []
+        )
     return inventory
 
 
@@ -392,74 +391,6 @@ def _collect_cases(jobs_dir: Path, field_limit: int = 2000, pass_threshold: floa
             }
         )
     return cases
-
-
-def _case_markdown(case: dict[str, Any], *, concise: bool = False) -> str:
-    lines = [
-        f"### {case['task_name']}",
-        f"- Outcome: {case['outcome']}",
-        f"- Reward: {case['reward']}",
-    ]
-    usage = case.get("usage") or {}
-    lines.append(
-        "- Usage: input=%s cache=%s output=%s cost_usd=%s"
-        % (usage.get("input_tokens"), usage.get("cache_tokens"), usage.get("output_tokens"), usage.get("cost_usd"))
-    )
-    if concise:
-        if case.get("instruction"):
-            lines.append(f"- Instruction: {case['instruction']}")
-        if case.get("agent_messages"):
-            lines.append(f"- Final response: {case['agent_messages'][-1]}")
-        return "\n".join(lines)
-    sections = (
-        ("Task instruction", case.get("instruction")),
-        ("Agent messages", "\n".join(f"- {item}" for item in case.get("agent_messages") or [])),
-        (
-            "Tool calls",
-            "\n".join(f"- `{call['name']}`: {call['arguments']}" for call in case.get("tool_calls") or []),
-        ),
-        ("Tool observations", "\n".join(f"- {item}" for item in case.get("observations") or [])),
-        ("Raw agent output", case.get("raw_agent_output")),
-        ("Verifier output", case.get("verifier_output")),
-    )
-    for title, content in sections:
-        if content:
-            lines.extend(["", f"#### {title}", str(content)])
-    exception = case.get("exception") or {}
-    if exception.get("type") or exception.get("message"):
-        lines.extend(["", "#### Exception", f"{exception.get('type')}: {exception.get('message')}"])
-    return "\n".join(lines)
-
-
-def _render_feedback(cases: list[dict[str, Any]], max_chars: int) -> str:
-    counts = {name: sum(case["outcome"] == name for case in cases) for name in _OUTCOME_ORDER}
-    rewards = [case["reward"] for case in cases if isinstance(case.get("reward"), (int, float))]
-    parts = [
-        "# Harbor Rollout Feedback",
-        "",
-        "Use task failures and agent execution errors as mutation evidence. Infrastructure errors are diagnostic only; do not mutate the agent solely to address them.",
-        "",
-        "- Trials: %s" % len(cases),
-        "- Passed: %s" % counts["passed"],
-        "- Failed: %s" % counts["failed"],
-        "- Agent errors: %s" % counts["agent_error"],
-        "- Infrastructure errors: %s" % (counts["infra_error"] + counts["incomplete"]),
-        "- Mean observed reward: %s" % (round(sum(rewards) / len(rewards), 6) if rewards else "unavailable"),
-    ]
-    headings = {
-        "failed": "Actionable task failures",
-        "agent_error": "Agent execution errors",
-        "infra_error": "Infrastructure-only errors",
-        "incomplete": "Incomplete trials",
-        "passed": "Successful samples",
-    }
-    for outcome in _OUTCOME_ORDER:
-        selected = [case for case in cases if case["outcome"] == outcome]
-        if not selected:
-            continue
-        parts.extend(["", f"## {headings[outcome]}", ""])
-        parts.extend(_case_markdown(case, concise=outcome == "passed") for case in selected)
-    return _clip("\n\n".join(parts) + "\n", max_chars)
 
 
 _OUTCOME_ORDER = ("failed", "agent_error", "infra_error", "incomplete", "passed")
@@ -591,8 +522,6 @@ class HarborRollout(RolloutOperator):
             int(ctx.config.get("max_retries") or eval_env.get("EVOLVE_HARBOR_MAX_RETRIES") or 0),
         )
         field_limit = _positive_int(ctx.config.get("field_limit"), 2000)
-        max_feedback_chars = _positive_int(ctx.config.get("max_feedback_chars"), 30000)
-        evidence_profile = normalize_profile(ctx.config.get("evidence_profile"))
         pass_threshold = _float_value(ctx.config.get("pass_threshold"), 1.0)
         jobs_root = Path(
             str(
@@ -644,13 +573,6 @@ class HarborRollout(RolloutOperator):
         returncode = _run_harbor(command, checkout, rollout_dir / "harbor.log")
         cases = _collect_cases(jobs_dir, field_limit=field_limit, pass_threshold=pass_threshold)
         _write_json(rollout_dir / "cases.json", cases)
-        feedback, evidence_artifacts = write_evidence_bundle(
-            rollout_dir,
-            cases,
-            profile=evidence_profile,
-            max_chars=max_feedback_chars,
-        )
-        (rollout_dir / "feedback.md").write_text(feedback)
         if not cases:
             raise SystemExit(
                 f"harbor rollout produced no trial results (exit {returncode}); see {rollout_dir / 'harbor.log'}"
@@ -660,7 +582,6 @@ class HarborRollout(RolloutOperator):
         counts = {name: sum(case["outcome"] == name for case in cases) for name in _OUTCOME_ORDER}
         summary = {
             "variant": "harbor",
-            "evidence_profile": evidence_profile,
             "split": "dedicated" if dedicated_tasks else "train",
             "harbor_returncode": returncode,
             "tasks_requested": budget_tasks,
@@ -677,8 +598,6 @@ class HarborRollout(RolloutOperator):
             artifacts=[
                 "rollout/harbor.log",
                 "rollout/cases.json",
-                "rollout/feedback.md",
-                *evidence_artifacts,
                 f"harbor-jobs:{jobs_dir}",
             ],
         )

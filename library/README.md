@@ -21,6 +21,7 @@ See `DESIGN.md` §7 for the full rationale. In short:
 ```
 library/
 ├─ select/   greedy · newest · random · score_weighted
+├─ trace_analyzer/ failure_patterns · failed_traces · trace_browser · execution_records · utility_metrics
 ├─ mutate/   fixed · noop · llm · agent_command
 ├─ gate/     hillclimb · parent_eligible
 ├─ rollout/  failure_focused · harbor · noop
@@ -30,19 +31,15 @@ library/
 
 ## Canonical verb set
 
-`select · rollout · mutate · novelty · gate · record · reflect` (+ `distill`,
-deferred with weights). The authority is `src/evolve/frozen/interfaces.py`.
+`select · rollout · trace_analyzer · mutate · novelty · gate · record · reflect`.
+The authority is `src/evolve/frozen/interfaces.py`.
 
 ## Harbor rollout
 
 `rollout/harbor.py` is an opt-in live variant. It runs the current candidate
-through an explicit Harbor training task path, then distills trial results into
-`rollout/cases.json` and bounded mutation evidence in
-`rollout/feedback.md`. The distillation keeps task instructions, rewards,
-agent messages, tool calls and observations, verifier output, exception class,
-timings, tokens, and cost. It excludes system prompts, environment values, and
-full tracebacks, and marks verifier/environment failures as infrastructure
-evidence rather than candidate failures.
+through the frozen Harbor train split and normalizes results into
+`rollout/cases.json`. A separate `trace_analyzer` operator chooses and renders
+bounded mutation evidence under `trace_analyzer/evidence/`.
 
 Select it in a recipe before `evolve init`:
 

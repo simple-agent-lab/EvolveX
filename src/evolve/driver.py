@@ -314,10 +314,10 @@ def _run_child(
             )
             return
 
-        for name in ("rollout", "mutate"):
+        for name in ("rollout", "trace_analyzer", "mutate"):
             if name == "mutate":
                 # The feedback bundle (retired `observe`) is ledger-derived
-                # mechanism bookkeeping: written after rollout, before mutate,
+                # mechanism bookkeeping: written after trace analysis, before mutate,
                 # so it exists regardless of the rollout variant.
                 write_feedback_bundle(workspace=workspace, run_dir=_run_dir(workspace, genid))
             if not _run_operator_or_fail(
@@ -1042,6 +1042,11 @@ def _operator_output_error(name: str, run_dir: Path) -> OperatorOutputError | No
         checks = (
             (Path("rollout") / "summary.json", "summary", validate_rollout_summary_payload),
             (Path("rollout") / "artifacts.json", "artifacts", validate_rollout_artifacts_payload),
+        )
+    elif name == "trace_analyzer":
+        checks = (
+            (Path("trace_analyzer") / "summary.json", "summary", validate_rollout_summary_payload),
+            (Path("trace_analyzer") / "artifacts.json", "artifacts", validate_rollout_artifacts_payload),
         )
     elif name == "mutate":
         checks = (

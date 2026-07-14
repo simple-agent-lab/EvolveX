@@ -30,6 +30,7 @@ from .interfaces import (
     RolloutOperator,
     Row,
     SelectOperator,
+    TraceAnalyzerOperator,
     validate_gate_payload,
     validate_mutate_payload,
     validate_novelty_payload,
@@ -37,6 +38,7 @@ from .interfaces import (
     validate_reflect_payload,
     validate_rollout_payload,
     validate_select_payload,
+    validate_trace_analyzer_payload,
 )
 
 RECORD_STRIPPED_FIELDS = STAMPED_FIELDS | {
@@ -99,6 +101,11 @@ def main(operator_cls: type[object]) -> None:
         payload = validate_rollout_payload(operator.rollout(ctx.checkout, ctx))
         _write_json(ctx.run_dir / "rollout" / "summary.json", payload["summary"])
         _write_json(ctx.run_dir / "rollout" / "artifacts.json", payload["artifacts"])
+    elif issubclass(operator_cls, TraceAnalyzerOperator):
+        payload = validate_trace_analyzer_payload(operator.analyze(ctx.checkout, ctx))
+        root = ctx.run_dir / "trace_analyzer"
+        _write_json(root / "summary.json", payload["summary"])
+        _write_json(root / "artifacts.json", payload["artifacts"])
     elif issubclass(operator_cls, MutateOperator):
         payload = validate_mutate_payload(operator.mutate(ctx.checkout, _observation(ctx.run_dir), ctx))
         mutate_dir = ctx.run_dir / "mutate"

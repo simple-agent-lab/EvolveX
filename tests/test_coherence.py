@@ -29,7 +29,7 @@ APPROVED_MODULES = {
     "operators.py",
     "population.py",
     "report.py",
-    "rollout_evidence.py",
+    "trace_analysis.py",
     "splits.py",
     "surface.py",
     "workspace.py",

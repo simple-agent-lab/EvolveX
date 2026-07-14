@@ -204,11 +204,11 @@ deploy — never two lineages.
 Canonical verb set — this supersedes any earlier "six-verb" list:
 
 ```
-select · rollout · mutate · novelty · gate · record · reflect     (+ distill, deferred with weights)
+select · rollout · trace_analyzer · mutate · novelty · gate · record · reflect
 ```
 
 `observe` is retired (migration step S5): the feedback bundle is ledger-derived,
-so the mechanism writes it after rollout and before mutate (a new
+so the mechanism writes it after trace analysis and before mutate (a new
 `src/evolve/feedback.py`) — it exists even when rollout is a noop variant, and no
 operator can suppress it. The mutator reads files with its own tools; the
 workspace is the medium between operators — nothing is pre-chewed.

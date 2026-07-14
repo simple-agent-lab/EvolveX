@@ -2,8 +2,9 @@
 
 Precise meanings for the domain terms this project uses.
 
-> **Note:** the canonical operator set is `select · rollout · mutate · gate ·
-> record` (`observe` retired). `novelty` and `reflect` are optional operators
+> **Note:** the canonical required operator set is
+> `select · rollout · trace_analyzer · mutate · gate · record` (`observe`
+> retired). `novelty` and `reflect` are optional operators
 > (off unless a recipe configures them). Authority is `DESIGN.md`.
 
 - **Agent** — the thing being improved. Open-source agent (e.g. mini-swe) =
@@ -20,7 +21,7 @@ Precise meanings for the domain terms this project uses.
   `operators/**`). The evaluator, archive, and vendored mechanism are always
   excluded.
 
-- **Operator** — a swappable step in the loop: select, rollout, mutate, gate,
+- **Operator** — a swappable step in the loop: select, rollout, trace analysis, mutate, gate,
   record. Framework machinery configured per experiment, run as a subprocess;
   not part of the agent being evolved. (`observe` is retired — the mechanism
   writes the feedback bundle itself; see `src/evolve/feedback.py`.)
@@ -39,13 +40,16 @@ Precise meanings for the domain terms this project uses.
   only human-triggered. (Task-level enforcement lands with Harbor
   partitioning; today the shape is honored by convention.)
 
-- **Rollout** — runs the candidate on the train split to produce trajectories.
-  The mechanism (`feedback.py`) then writes the ledger-derived feedback bundle
-  the mutator reads (the retired `observe` operator's former job).
+- **Rollout** — runs the candidate on the train split and writes method-neutral
+  cases and trajectories.
 
-- **Trace / trajectory** — the step record of a rollout. Harbor writes traces
-  under `runs/gen-N/eval/` and `~/.evolve/harbor-jobs`. Subtask-level
-  trajectory analysis is not yet modelled.
+- **Trace analyzer** — independently transforms rollout cases into raw,
+  structured, and bounded selected evidence. The mechanism (`feedback.py`)
+  then writes the ledger-derived feedback bundle the mutator reads.
+
+- **Trace / trajectory** — the ordered message/tool-call/tool-result record of
+  a rollout. Harbor writes raw jobs under `~/.evolve`; normalized and analyzed
+  traces live under `runs/gen-N/rollout/` and `trace_analyzer/`.
 
 - **Archive / lineage** — every candidate version in git (commit = candidate,
   tag `gen/N`) plus `archive.jsonl`. Keep everything.

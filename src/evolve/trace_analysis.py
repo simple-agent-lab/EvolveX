@@ -1,8 +1,4 @@
-"""Research-inspired views over Harbor rollout artifacts.
-
-Harbor remains the execution engine.  This module only changes the evidence
-retained for the agent that proposes the next harness edit.
-"""
+"""Shared deterministic trace analysis used by workspace analyzer variants."""
 
 from __future__ import annotations
 
@@ -12,37 +8,25 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
+from evolve.frozen.interfaces import OperatorContext, TraceAnalyzerOperator, TraceAnalyzerResult
+
 Case = dict[str, Any]
 
-PROFILES = (
-    "self_harness",
-    "dgm",
-    "hyperagents",
-    "meta_harness",
-    "sia",
-    "ace",
-    "mce",
-    "adas",
-    "aflow",
-    "gepa",
-    "stop",
+VARIANTS = (
+    "failure_patterns",
+    "failed_traces",
+    "trace_browser",
+    "execution_records",
+    "utility_metrics",
 )
 
-_PROFILE_ALIASES = {
-    "self-harness": "self_harness",
-    "meta-harness": "meta_harness",
-    "raw": "meta_harness",
-    "full": "meta_harness",
-}
 
-
-def normalize_profile(value: object) -> str:
-    profile = str(value or "self_harness").strip().lower()
-    profile = _PROFILE_ALIASES.get(profile, profile)
-    if profile not in PROFILES:
-        supported = ", ".join(PROFILES)
-        raise ValueError(f"unknown rollout evidence profile {profile!r}; choose one of: {supported}")
-    return profile
+def normalize_variant(value: object) -> str:
+    variant = str(value or "failure_patterns").strip().lower().replace("-", "_")
+    if variant not in VARIANTS:
+        supported = ", ".join(VARIANTS)
+        raise ValueError(f"unknown trace analyzer variant {variant!r}; choose one of: {supported}")
+    return variant
 
 
 def _write_json(path: Path, payload: object) -> None:
@@ -271,23 +255,17 @@ def _metrics(cases: list[Case]) -> Case:
     }
 
 
-_PROFILE_GUIDANCE = {
-    "self_harness": "Prioritize recurring, actionable failure signatures. Preserve passing behaviors and propose a narrow edit tied to one agent mechanism.",
-    "dgm": "Diagnose one concrete capability weakness from failed task logs, then make an interesting self-modification that can generalize beyond that task.",
-    "hyperagents": "Inspect evaluation files and scores with tools. You may improve both task-solving behavior and the mechanism used to generate future improvements.",
-    "meta_harness": "Use filesystem tools to inspect raw traces, scores, source, and prior candidates. Do not rely only on summaries; compare failures across candidates.",
-    "sia": "Inspect the complete structured execution log: prompts, responses, tool calls/results, extracted outputs, verifier feedback, and performance metrics.",
-    "ace": "Act as reflector/curator: extract reusable lessons from successes and failures as localized, itemized updates; avoid rewriting away useful prior knowledge.",
-    "mce": "Analyze the rollout batch globally, especially incorrect predictions and cross-example patterns. Use iteration metrics/history to detect over- or under-fitting.",
-    "adas": "Use the archive view of candidate design, code, and fitness to invent a distinct agentic workflow rather than patching one task response.",
-    "aflow": "Use candidate score, execution feedback, cost, and tree/lineage experience to propose a code-level workflow expansion.",
-    "gepa": "Reflect on inputs, outputs, tool traces, textual verifier feedback, and scores; diagnose errors and transfer complementary lessons into the editable component.",
-    "stop": "Treat per-task reward as the utility of the current improver. Modify the improver/scaffold so it produces higher-utility solutions across downstream tasks.",
+_VARIANT_GUIDANCE = {
+    "failure_patterns": "Prioritize recurring, actionable failure signatures. Preserve passing behaviors and propose a narrow edit tied to one agent mechanism.",
+    "failed_traces": "Diagnose concrete capability weaknesses from failed executions and make a change that generalizes beyond one task.",
+    "trace_browser": "Use filesystem tools to inspect raw traces, metrics, source, and prior generations instead of relying only on this bounded summary.",
+    "execution_records": "Reflect across complete per-case inputs, outputs, ordered actions, tool results, verifier feedback, metrics, and history.",
+    "utility_metrics": "Treat per-task reward as downstream utility and improve the editable component for average utility across tasks.",
 }
 
 
 def _render_selected(
-    profile: str,
+    variant: str,
     metrics: Case,
     patterns: list[Case],
     passes: list[Case],
@@ -295,13 +273,13 @@ def _render_selected(
     max_chars: int,
 ) -> str:
     lines = [
-        "# Harbor Rollout Feedback",
+        "# Trace Analysis Feedback",
         "",
-        f"## Rollout Evidence Profile: {profile}",
+        f"## Trace Analyzer Variant: {variant}",
         "",
-        _PROFILE_GUIDANCE[profile],
+        _VARIANT_GUIDANCE[variant],
         "",
-        "The full redacted evidence is under `$EVOLVE_RUN_DIR/rollout/evidence/`; use filesystem tools to inspect it when the selected profile calls for raw or historical evidence.",
+        "The full redacted evidence is under `$EVOLVE_RUN_DIR/trace_analyzer/evidence/`; use filesystem tools to inspect it when the selected view calls for raw or historical evidence.",
         "",
         "## Aggregate metrics",
         "",
@@ -309,12 +287,12 @@ def _render_selected(
         json.dumps(metrics, indent=2, sort_keys=True),
         "```",
     ]
-    if profile == "self_harness":
-        lines.extend(["", "## Verifier-grounded failure patterns", "", "```json", json.dumps(patterns, indent=2), "```"])
+    if variant == "failure_patterns":
+        lines.extend(
+            ["", "## Verifier-grounded failure patterns", "", "```json", json.dumps(patterns, indent=2), "```"]
+        )
         lines.extend(["", "## Passing behaviors to preserve", "", "```json", json.dumps(passes, indent=2), "```"])
-    elif profile in {"ace", "gepa", "mce"}:
-        lines.extend(["", "## Reflective rollout records", "", "```json", json.dumps(reflections, indent=2), "```"])
-    elif profile == "dgm":
+    elif variant == "failed_traces":
         failed_reflections = [
             record
             for record in reflections
@@ -323,9 +301,7 @@ def _render_selected(
         lines.extend(
             ["", "## Detailed failed executions", "", "```json", json.dumps(failed_reflections, indent=2), "```"]
         )
-    elif profile == "sia":
-        lines.extend(["", "## Detailed executions", "", "```json", json.dumps(reflections, indent=2), "```"])
-    elif profile in {"meta_harness", "hyperagents"}:
+    elif variant == "trace_browser":
         lines.extend(
             [
                 "",
@@ -334,26 +310,31 @@ def _render_selected(
                 "Inspect `raw_traces.jsonl`, `reflective_records.jsonl`, `failure_patterns.json`, and `metrics.json`. Compare these with prior generation directories under `$EVOLVE_WORKSPACE/runs/` and with the candidate source currently checked out.",
             ]
         )
-    elif profile in {"adas", "aflow"}:
-        lines.extend(["", "## Candidate execution experience", "", "```json", json.dumps(reflections, indent=2), "```"])
-    else:
-        lines.extend(["", "## Downstream utility observations", "", "```json", json.dumps(metrics["per_task"], indent=2), "```"])
+    elif variant == "execution_records":
+        lines.extend(["", "## Execution records", "", "```json", json.dumps(reflections, indent=2), "```"])
+    elif variant == "utility_metrics":
+        lines.extend(
+            ["", "## Downstream utility observations", "", "```json", json.dumps(metrics["per_task"], indent=2), "```"]
+        )
     rendered = "\n".join(lines) + "\n"
     if len(rendered) <= max_chars:
         return rendered
-    return rendered[:max_chars] + f"\n...[selected evidence truncated {len(rendered) - max_chars} chars; inspect files]...\n"
+    return (
+        rendered[:max_chars]
+        + f"\n...[selected evidence truncated {len(rendered) - max_chars} chars; inspect files]...\n"
+    )
 
 
 def write_evidence_bundle(
-    rollout_dir: Path,
+    run_dir: Path,
     cases: list[Case],
     *,
-    profile: object = "self_harness",
+    variant: object = "failure_patterns",
     max_chars: int = 30000,
 ) -> tuple[str, list[str]]:
-    """Persist method-neutral evidence once and render a method-specific view."""
-    selected = normalize_profile(profile)
-    root = rollout_dir / "evidence"
+    """Persist method-neutral evidence once and render a bounded selected view."""
+    selected = normalize_variant(variant)
+    root = run_dir / "trace_analyzer" / "evidence"
     records = failure_records(cases)
     patterns = cluster_failure_patterns(records)
     passes = passing_behaviors(cases)
@@ -367,32 +348,56 @@ def write_evidence_bundle(
     _write_jsonl(root / "reflective_records.jsonl", reflections)
     _write_json(root / "metrics.json", metrics)
     manifest = {
-        "selected_profile": selected,
-        "profiles": {
-            "self_harness": ["failure_patterns.json", "passing_behaviors.json", "metrics.json"],
-            "dgm": ["reflective_records.jsonl", "metrics.json"],
-            "hyperagents": ["raw_traces.jsonl", "metrics.json", "prior generation runs + source tree"],
-            "meta_harness": ["raw_traces.jsonl", "metrics.json", "prior generation runs + source tree"],
-            "sia": ["raw_traces.jsonl", "reflective_records.jsonl", "metrics.json"],
-            "ace": ["reflective_records.jsonl", "passing_behaviors.json"],
-            "mce": ["reflective_records.jsonl", "metrics.json", "prior generation metrics"],
-            "adas": ["metrics.json", "source tree", "candidate archive"],
-            "aflow": ["metrics.json", "reflective_records.jsonl", "lineage/search experience"],
-            "gepa": ["reflective_records.jsonl", "metrics.json"],
-            "stop": ["metrics.json", "source tree"],
+        "selected_variant": selected,
+        "variants": {
+            "failure_patterns": ["failure_patterns.json", "passing_behaviors.json", "metrics.json"],
+            "failed_traces": ["reflective_records.jsonl", "metrics.json"],
+            "trace_browser": ["raw_traces.jsonl", "metrics.json", "prior generation runs + source tree"],
+            "execution_records": ["raw_traces.jsonl", "reflective_records.jsonl", "metrics.json", "history"],
+            "utility_metrics": ["metrics.json", "source tree"],
         },
     }
     _write_json(root / "manifest.json", manifest)
     selected_md = _render_selected(selected, metrics, patterns, passes, reflections, max_chars)
     (root / "selected.md").write_text(selected_md)
     artifacts = [
-        "rollout/evidence/manifest.json",
-        "rollout/evidence/raw_traces.jsonl",
-        "rollout/evidence/failure_records.json",
-        "rollout/evidence/failure_patterns.json",
-        "rollout/evidence/passing_behaviors.json",
-        "rollout/evidence/reflective_records.jsonl",
-        "rollout/evidence/metrics.json",
-        "rollout/evidence/selected.md",
+        "trace_analyzer/evidence/manifest.json",
+        "trace_analyzer/evidence/raw_traces.jsonl",
+        "trace_analyzer/evidence/failure_records.json",
+        "trace_analyzer/evidence/failure_patterns.json",
+        "trace_analyzer/evidence/passing_behaviors.json",
+        "trace_analyzer/evidence/reflective_records.jsonl",
+        "trace_analyzer/evidence/metrics.json",
+        "trace_analyzer/evidence/selected.md",
     ]
     return selected_md, artifacts
+
+
+def _load_cases(path: Path) -> list[Case]:
+    try:
+        payload = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return []
+    return [row for row in payload if isinstance(row, dict)] if isinstance(payload, list) else []
+
+
+class TraceAnalyzerBase(TraceAnalyzerOperator):
+    variant = "failure_patterns"
+
+    def analyze(self, checkout: Path, ctx: OperatorContext) -> TraceAnalyzerResult:
+        del checkout
+        selected = normalize_variant(self.variant)
+        cases_path = ctx.run_dir / "rollout" / "cases.json"
+        cases = _load_cases(cases_path)
+        max_chars = max(1, int(ctx.config.get("max_chars", 30000)))
+        feedback, artifacts = write_evidence_bundle(
+            ctx.run_dir,
+            cases,
+            variant=selected,
+            max_chars=max_chars,
+        )
+        (ctx.run_dir / "trace_analyzer" / "feedback.md").write_text(feedback)
+        return TraceAnalyzerResult(
+            summary={"variant": selected, "cases": len(cases), "source": str(cases_path)},
+            artifacts=["trace_analyzer/feedback.md", *artifacts],
+        )

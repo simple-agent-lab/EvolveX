@@ -16,6 +16,7 @@ surface:
 operators:
   select: {variant: newest}
   rollout: {variant: failure_focused, budget_tasks: 32}
+  trace_analyzer: {variant: trace_browser, max_chars: 30000}
   mutate: {variant: fixed, timeout_s: 3600}
   gate: {variant: parent_eligible}
   record: {variant: jsonl}

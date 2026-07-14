@@ -1,9 +1,9 @@
 """The feedback bundle the mutator reads — mechanism-owned assembly.
 
 Folded out of the retired `observe` operator (DESIGN §7: the canonical verb set
-is select/rollout/mutate/…/gate/record). The bundle is derived from the ledger +
-workspace, plus bounded evidence emitted by the current rollout. The driver calls
-`write_feedback_bundle` after rollout and before mutate, and mutate reads
+is select/rollout/trace_analyzer/mutate/…/gate/record). The bundle is derived
+from the ledger + workspace, plus bounded evidence emitted by trace analysis. The driver calls
+`write_feedback_bundle` after trace analysis and before mutate, and mutate reads
 `runs/gen-<id>/feedback/`. It therefore exists even when rollout is a noop
 variant. This is the one home for the logic — `library/observe/*` is deleted.
 """
@@ -60,17 +60,19 @@ def _surface_rule_lists(workspace: Path) -> tuple[list[str], list[str]]:
         return ["target/**"], []
 
 
-def _copy_rollout_feedback(run_dir: Path, failures: Path) -> str | None:
-    source = run_dir / "rollout" / "feedback.md"
-    if not source.is_file():
-        return None
-    destination = failures / "rollout.md"
-    destination.write_text(source.read_text())
-    return "feedback/failures/rollout.md"
+def _copy_trace_feedback(run_dir: Path, failures: Path) -> str | None:
+    for source in (run_dir / "trace_analyzer" / "feedback.md", run_dir / "rollout" / "feedback.md"):
+        if source.is_file():
+            destination = failures / "trace_analyzer.md"
+            destination.write_text(source.read_text())
+            return "feedback/failures/trace_analyzer.md"
+    return None
 
 
-def _copy_rollout_evidence(run_dir: Path, destination: Path) -> list[str]:
-    source = run_dir / "rollout" / "evidence"
+def _copy_trace_evidence(run_dir: Path, destination: Path) -> list[str]:
+    source = run_dir / "trace_analyzer" / "evidence"
+    if not source.is_dir():
+        source = run_dir / "rollout" / "evidence"
     if not source.is_dir():
         return []
     destination.mkdir(parents=True, exist_ok=True)
@@ -95,7 +97,9 @@ def _rollout_history(workspace: Path, rows: list[Row], history_k: int) -> list[R
     history: list[Row] = []
     for row in rows[-int(history_k) :]:
         genid = str(row.get("genid") or "")
-        evidence_root = workspace / "runs" / f"gen-{genid}" / "rollout" / "evidence"
+        evidence_root = workspace / "runs" / f"gen-{genid}" / "trace_analyzer" / "evidence"
+        if not evidence_root.is_dir():
+            evidence_root = workspace / "runs" / f"gen-{genid}" / "rollout" / "evidence"
         manifest: dict[str, Any] = {}
         metrics: dict[str, Any] = {}
         for path, target in ((evidence_root / "manifest.json", manifest), (evidence_root / "metrics.json", metrics)):
@@ -117,7 +121,7 @@ def _rollout_history(workspace: Path, rows: list[Row], history_k: int) -> list[R
                 "mutated": row.get("mutated"),
                 "predicted_fixes": row.get("predicted_fixes"),
                 "verified_fixes": row.get("verified_fixes"),
-                "evidence_profile": manifest.get("selected_profile"),
+                "trace_analyzer_variant": manifest.get("selected_variant"),
                 "rollout_metrics": metrics,
                 "raw_evidence_dir": str(evidence_root) if evidence_root.is_dir() else None,
                 "source_tag": row.get("tag"),
@@ -149,8 +153,8 @@ def write_feedback_bundle(*, workspace: Path, run_dir: Path, history_k: int = 8)
     failures = feedback / "failures"
     failures.mkdir(exist_ok=True)
     (failures / "README.md").write_text("The feedback bundle writes a minimal failure summary.\n")
-    rollout_feedback = _copy_rollout_feedback(run_dir, failures)
-    evidence_files = _copy_rollout_evidence(run_dir, feedback / "evidence")
+    trace_feedback = _copy_trace_feedback(run_dir, failures)
+    evidence_files = _copy_trace_evidence(run_dir, feedback / "evidence")
     _write_json(feedback / "evidence" / "history.json", _rollout_history(workspace, rows, history_k))
     evidence_files.append("feedback/evidence/history.json")
     (feedback / "last_accepted.diff").write_text(_latest_accepted_diff(workspace, rows))
@@ -172,15 +176,19 @@ def write_feedback_bundle(*, workspace: Path, run_dir: Path, history_k: int = 8)
         % (include, exclude)
     )
     has_selected_evidence = "feedback/evidence/selected.md" in evidence_files
-    rollout_link = "- [current rollout](failures/rollout.md)\n" if rollout_feedback and not has_selected_evidence else ""
-    evidence_link = "- [selected rollout evidence](evidence/selected.md)\n" if has_selected_evidence else ""
+    trace_link = (
+        "- [current trace analysis](failures/trace_analyzer.md)\n"
+        if trace_feedback and not has_selected_evidence
+        else ""
+    )
+    evidence_link = "- [selected trace evidence](evidence/selected.md)\n" if has_selected_evidence else ""
     history_link = "- [rollout and edit history](evidence/history.json)\n"
     (feedback / "index.md").write_text(
         "# Feedback Bundle\n\n"
         "- [lineage](lineage.json)\n"
         "- [attempts](attempts.md)\n"
         "- [failures](failures/)\n"
-        f"{rollout_link}"
+        f"{trace_link}"
         f"{evidence_link}"
         f"{history_link}"
         "- [last accepted diff](last_accepted.diff)\n"
@@ -196,8 +204,8 @@ def write_feedback_bundle(*, workspace: Path, run_dir: Path, history_k: int = 8)
         "feedback/falsification.md",
         "feedback/rules.md",
     ]
-    if rollout_feedback:
-        manifest.append(rollout_feedback)
+    if trace_feedback:
+        manifest.append(trace_feedback)
     manifest.extend(evidence_files)
     _write_json(run_dir / "feedback" / "manifest.json", manifest)
     return manifest

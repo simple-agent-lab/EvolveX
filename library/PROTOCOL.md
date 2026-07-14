@@ -1,6 +1,6 @@
 # Evolve Operator Protocol
 
-This document describes protocol version `1` for workspace operators. The
+This document describes protocol version `2` for workspace operators. The
 mechanism launches operator files as subprocesses and consumes files from the
 run directory. The Python ABCs and `sdk.main(...)` are the supported authoring
 path, but the file contract is the protocol.
@@ -8,7 +8,7 @@ path, but the file contract is the protocol.
 ## Subprocess Contract
 
 The mechanism invokes one file per operator kind under `operators/`: select,
-rollout, mutate, gate, and record. The copied file may be a library
+rollout, trace_analyzer, mutate, gate, and record. The copied file may be a library
 variant, a recipe-local operator, or a user-provided `script:`. Python variants
 normally end with `sdk.main(VariantClass)`, but any executable file that honors
 the same files is valid.
@@ -32,7 +32,7 @@ timeout, or malformed required output makes the generation an
 the failed file or field when validation reaches a file read.
 
 `sdk.main(...)` checks `.evolve-protocol-version` from `EVOLVE_WORKSPACE` or
-`EVOLVE_CHECKOUT`. Protocol version `1` is accepted; a missing marker or
+`EVOLVE_CHECKOUT`. Protocol version `2` is accepted; a missing marker or
 another value exits nonzero with `protocol_version` in stderr.
 
 ## Per-Kind Contract
@@ -72,11 +72,24 @@ Implement `rollout`. Return `RolloutResult` with fields `summary` and
 `rollout/artifacts.json`. `summary` is a JSON object; `artifacts` is a list of
 artifact paths or labels.
 
-The mechanism (not an operator) writes the feedback bundle under
-`runs/gen-<id>/feedback/` after rollout, from the ledger, for the mutator to
-read (the retired `observe` operator's job). If the rollout writes a bounded
-`rollout/feedback.md`, the mechanism copies it into `feedback/failures/` and
-links it from the bundle index.
+### Trace Analyzer
+
+ABC signature:
+
+```python
+def analyze(self, checkout: Path, ctx) -> TraceAnalyzerResult:
+```
+
+Implement `analyze`. Read method-neutral rollout artifacts such as
+`rollout/cases.json`, then write the selected and raw trace views under
+`trace_analyzer/`. Return `TraceAnalyzerResult` with `summary` and `artifacts`;
+the subprocess writes `trace_analyzer/summary.json` and
+`trace_analyzer/artifacts.json`.
+
+After trace analysis, the mechanism writes the normalized feedback bundle under
+`runs/gen-<id>/feedback/` for the mutator to read. If the analyzer writes
+`trace_analyzer/feedback.md` and `trace_analyzer/evidence/selected.md`, the
+mechanism copies the bounded selection into the feedback bundle.
 
 ### Mutate
 
@@ -177,6 +190,7 @@ may appear in recipe prose, but `variant:` values point to these files:
 
 - select: `greedy`, `random`, `score_weighted`, `newest`
 - rollout: `failure_focused`, `harbor`, `noop`
+- trace_analyzer: `failure_patterns`, `failed_traces`, `trace_browser`, `execution_records`, `utility_metrics`
 - mutate: `fixed`, `noop`, `llm`, `agent_command`
 - gate: `hillclimb`, `parent_eligible`
 - record: `jsonl`
@@ -203,6 +217,7 @@ may appear in recipe prose, but `variant:` values point to these files:
 
 Files, not classes, are normative. The mechanism runs subprocess files and
 consumes `parents.json`, `rollout/summary.json`, `rollout/artifacts.json`,
+`trace_analyzer/summary.json`, `trace_analyzer/artifacts.json`,
 `mutate/usage.json`, `gate.json`,
 `record/fields.json`, and the other artifacts listed above. Non-Python
 operators are valid when they honor those files, environment variables, exit

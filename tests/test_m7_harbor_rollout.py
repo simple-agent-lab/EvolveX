@@ -5,7 +5,7 @@ from pathlib import Path
 from conftest import init_workspace
 
 from evolve.feedback import write_feedback_bundle
-from evolve.rollout_evidence import PROFILES, write_evidence_bundle
+from evolve.trace_analysis import VARIANTS, write_evidence_bundle
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -103,11 +103,6 @@ def test_harbor_rollout_distinguishes_task_agent_and_infra_failures(tmp_path: Pa
     assert "[REDACTED]" in by_name["task-failed"]["verifier_output"]
     assert "json-secret" not in module._redact('{"OPENAI_API_KEY":"json-secret"}')
 
-    feedback = module._render_feedback(cases, 30000)
-    assert "Actionable task failures" in feedback
-    assert "Infrastructure-only errors" in feedback
-    assert "do not mutate the agent solely" in feedback
-
 
 def test_harbor_rollout_reads_codex_session_jsonl_when_trajectory_is_absent(tmp_path: Path) -> None:
     module = _harbor_rollout_module()
@@ -122,7 +117,12 @@ def test_harbor_rollout_reads_codex_session_jsonl_when_trajectory_is_absent(tmp_
         {
             "timestamp": "t3",
             "type": "response_item",
-            "payload": {"type": "function_call", "name": "exec_command", "arguments": "{\"cmd\":\"pytest\"}", "call_id": "c1"},
+            "payload": {
+                "type": "function_call",
+                "name": "exec_command",
+                "arguments": '{"cmd":"pytest"}',
+                "call_id": "c1",
+            },
         },
         {
             "timestamp": "t4",
@@ -151,18 +151,18 @@ def test_harbor_rollout_reads_codex_session_jsonl_when_trajectory_is_absent(tmp_
 def test_feedback_bundle_exposes_current_rollout_to_mutator(tmp_path: Path) -> None:
     workspace, _ = init_workspace(tmp_path)
     run_dir = workspace / "runs" / "gen-1"
-    (run_dir / "rollout").mkdir(parents=True)
-    (run_dir / "rollout" / "feedback.md").write_text("# Harbor Rollout Feedback\n\nfailed task evidence\n")
+    (run_dir / "trace_analyzer").mkdir(parents=True)
+    (run_dir / "trace_analyzer" / "feedback.md").write_text("# Trace Analysis Feedback\n\nfailed task evidence\n")
 
     manifest = write_feedback_bundle(workspace=workspace, run_dir=run_dir)
 
-    copied = run_dir / "feedback" / "failures" / "rollout.md"
+    copied = run_dir / "feedback" / "failures" / "trace_analyzer.md"
     assert copied.read_text().endswith("failed task evidence\n")
-    assert "[current rollout](failures/rollout.md)" in (run_dir / "feedback" / "index.md").read_text()
-    assert "feedback/failures/rollout.md" in manifest
+    assert "[current trace analysis](failures/trace_analyzer.md)" in (run_dir / "feedback" / "index.md").read_text()
+    assert "feedback/failures/trace_analyzer.md" in manifest
 
 
-def test_research_evidence_profiles_share_raw_harbor_facts(tmp_path: Path) -> None:
+def test_trace_analyzer_variants_share_raw_harbor_facts(tmp_path: Path) -> None:
     module = _harbor_rollout_module()
     jobs = tmp_path / "jobs"
     _write_trial(jobs, name="missing-output-a", reward=0)
@@ -170,33 +170,37 @@ def test_research_evidence_profiles_share_raw_harbor_facts(tmp_path: Path) -> No
     _write_trial(jobs, name="passing", reward=1)
     cases = module._collect_cases(jobs)
 
-    for profile in PROFILES:
-        rollout_dir = tmp_path / profile
+    for variant in VARIANTS:
+        run_dir = tmp_path / variant
         selected, artifacts = write_evidence_bundle(
-            rollout_dir,
+            run_dir,
             cases,
-            profile=profile,
+            variant=variant,
             max_chars=100_000,
         )
-        assert f"Profile: {profile}" in selected
-        assert "rollout/evidence/raw_traces.jsonl" in artifacts
-        assert (rollout_dir / "evidence" / "manifest.json").is_file()
+        assert f"Variant: {variant}" in selected
+        assert "trace_analyzer/evidence/raw_traces.jsonl" in artifacts
+        assert (run_dir / "trace_analyzer" / "evidence" / "manifest.json").is_file()
 
-    patterns = json.loads((tmp_path / "self_harness" / "evidence" / "failure_patterns.json").read_text())
+    patterns = json.loads(
+        (tmp_path / "failure_patterns" / "trace_analyzer" / "evidence" / "failure_patterns.json").read_text()
+    )
     assert patterns[0]["support"] == 2
     assert patterns[0]["signature"]["terminal_cause"] == "missing_artifact"
-    passing = json.loads((tmp_path / "self_harness" / "evidence" / "passing_behaviors.json").read_text())
+    passing = json.loads(
+        (tmp_path / "failure_patterns" / "trace_analyzer" / "evidence" / "passing_behaviors.json").read_text()
+    )
     assert passing[0]["task_name"] == "harbor/passing"
 
 
 def test_feedback_bundle_copies_selected_evidence_and_history(tmp_path: Path) -> None:
     workspace, _ = init_workspace(tmp_path)
     run_dir = workspace / "runs" / "gen-1"
-    evidence = run_dir / "rollout" / "evidence"
+    evidence = run_dir / "trace_analyzer" / "evidence"
     evidence.mkdir(parents=True)
-    (run_dir / "rollout" / "feedback.md").write_text("legacy duplicate\n")
+    (run_dir / "trace_analyzer" / "feedback.md").write_text("duplicate selected view\n")
     (evidence / "selected.md").write_text("# selected profile evidence\n")
-    (evidence / "manifest.json").write_text(json.dumps({"selected_profile": "self_harness"}))
+    (evidence / "manifest.json").write_text(json.dumps({"selected_variant": "failure_patterns"}))
     (evidence / "metrics.json").write_text(json.dumps({"trials": 1}))
 
     manifest = write_feedback_bundle(workspace=workspace, run_dir=run_dir)
@@ -204,5 +208,5 @@ def test_feedback_bundle_copies_selected_evidence_and_history(tmp_path: Path) ->
     assert (run_dir / "feedback" / "evidence" / "selected.md").read_text().startswith("# selected")
     assert "feedback/evidence/history.json" in manifest
     index = (run_dir / "feedback" / "index.md").read_text()
-    assert "[selected rollout evidence](evidence/selected.md)" in index
-    assert "[current rollout]" not in index
+    assert "[selected trace evidence](evidence/selected.md)" in index
+    assert "[current trace analysis]" not in index

@@ -8,7 +8,7 @@ from typing import Any, Literal, cast
 
 from ..archive import archive_path, merged_rows
 
-PROTOCOL_VERSION = 1
+PROTOCOL_VERSION = 2
 Row = dict[str, Any]
 
 
@@ -77,6 +77,11 @@ class RolloutOperator(ABC):
     def rollout(self, checkout: Path, ctx) -> RolloutResult: ...
 
 
+class TraceAnalyzerOperator(ABC):
+    @abstractmethod
+    def analyze(self, checkout: Path, ctx) -> TraceAnalyzerResult: ...
+
+
 class MutateOperator(ABC):
     @abstractmethod
     def mutate(self, checkout: Path, observation: str, ctx) -> MutateResult: ...
@@ -109,6 +114,12 @@ class SelectResult:
 
 @dataclass(frozen=True)
 class RolloutResult:
+    summary: dict[str, Any]
+    artifacts: list[str]
+
+
+@dataclass(frozen=True)
+class TraceAnalyzerResult:
     summary: dict[str, Any]
     artifacts: list[str]
 
@@ -151,6 +162,15 @@ def validate_select_payload(payload: SelectResult | dict[str, Any]) -> dict[str,
 
 
 def validate_rollout_payload(payload: RolloutResult | dict[str, Any]) -> dict[str, Any]:
+    data = _payload_dict(payload)
+    if not isinstance(data.get("summary"), dict):
+        raise PayloadValidationError("summary", "summary must be a dict")
+    if not isinstance(data.get("artifacts"), list):
+        raise PayloadValidationError("artifacts", "artifacts must be a list")
+    return {"summary": data["summary"], "artifacts": [str(artifact) for artifact in data["artifacts"]]}
+
+
+def validate_trace_analyzer_payload(payload: TraceAnalyzerResult | dict[str, Any]) -> dict[str, Any]:
     data = _payload_dict(payload)
     if not isinstance(data.get("summary"), dict):
         raise PayloadValidationError("summary", "summary must be a dict")
@@ -293,6 +313,7 @@ class OperatorSpec:
 OPERATORS: tuple[OperatorSpec, ...] = (
     OperatorSpec("select", SelectOperator, SelectResult, "pick", True),
     OperatorSpec("rollout", RolloutOperator, RolloutResult, "rollout", True),
+    OperatorSpec("trace_analyzer", TraceAnalyzerOperator, TraceAnalyzerResult, "analyze", True),
     OperatorSpec("mutate", MutateOperator, MutateResult, "mutate", True),
     OperatorSpec("novelty", NoveltyOperator, NoveltyResult, "assess", False),
     OperatorSpec("gate", GateOperator, GateResult, "decide", True),

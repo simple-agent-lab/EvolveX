@@ -19,6 +19,7 @@ the population policy.
 
 `select: {variant: score_weighted, seed: 0}` resolves to [`library/select/score_weighted.py`](../../library/select/score_weighted.py).
 `rollout: {variant: failure_focused, budget_tasks: 32}` resolves to [`library/rollout/failure_focused.py`](../../library/rollout/failure_focused.py).
+`trace_analyzer: {variant: failed_traces}` resolves to [`library/trace_analyzer/failed_traces.py`](../../library/trace_analyzer/failed_traces.py).
 `mutate: {variant: fixed, timeout_s: 3600}` resolves to [`library/mutate/fixed.py`](../../library/mutate/fixed.py).
 `gate: {variant: parent_eligible}` resolves to [`library/gate/parent_eligible.py`](../../library/gate/parent_eligible.py).
 `record: {variant: jsonl}` resolves to [`library/record/jsonl.py`](../../library/record/jsonl.py).

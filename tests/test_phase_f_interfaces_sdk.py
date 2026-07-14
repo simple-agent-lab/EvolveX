@@ -56,7 +56,7 @@ def _set_sdk_env(
     workspace.mkdir()
     checkout.mkdir()
     if write_protocol_marker:
-        (workspace / ".evolve-protocol-version").write_text("1\n")
+        (workspace / ".evolve-protocol-version").write_text("2\n")
     monkeypatch.setenv("EVOLVE_WORKSPACE", str(workspace))
     monkeypatch.setenv("EVOLVE_CHECKOUT", str(checkout))
     monkeypatch.setenv("EVOLVE_RUN_DIR", str(run_dir))

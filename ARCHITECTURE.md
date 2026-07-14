@@ -31,7 +31,7 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `git.py` | 150 | thin git subprocess helpers — nothing evolve-specific |
 | `surface.py` | 150 | mutable-surface pattern matching and violation checks |
 | `report.py` | 182 | status/report rendering, best-ever recomputation, claim checklist |
-| `rollout_evidence.py` | 410 | normalize Harbor traces into research-inspired failure, reflection, raw-history, workflow, and utility views |
+| `trace_analysis.py` | 410 | deterministic shared transforms used by the independent trace-analyzer operator variants |
 | `splits.py` | 210 | freeze deterministic train/gate/sealed Harbor task membership and materialize exact runtime selections |
 | `workspace.py` | 510 | `evolve init` scaffolding: file copies, operator binding, deterministic dataset and Harbor runtime config, generated operator palette, protocol stamping, seed + mechanism vendoring, inner-skill copy |
 
@@ -45,12 +45,12 @@ each workspace, immutable there because it sits outside the mutable surface
 | File | Budget (lines) | Responsibility (one line — keep it true) |
 | --- | --- | --- |
 | `frozen/__init__.py` | 30 | the frozen-ring definition (litmus + two homes: contract/gate vs the ruler) — the canonical anchor a contributor reads |
-| `frozen/interfaces.py` | 320 | operator ABCs (incl. novelty + reflect), the OPERATORS registry (single source), context/archive view, result schemas, payload validation |
+| `frozen/interfaces.py` | 330 | operator ABCs (incl. trace analyzer, novelty, and reflect), the registry, result schemas, payload validation |
 | `frozen/sdk.py` | 420 | Python operator entrypoint and file-contract IO; no library algorithm policy |
 | `frozen/meta_eval.py` | 130 | self-modification admission gate: confound-free replay of old vs new operator surface (mechanism 1) |
 
 Total `src/evolve/` budget: **4800 lines**. The increase admits the explicit,
-redacted rollout-evidence boundary shared by Harbor and feedback assembly; if the mechanism wants to
+redacted trace-analysis boundary between rollout and feedback assembly; if the mechanism wants to
 grow past that, something belongs in a workspace operator instead —
 that is the spec's rule, not a style preference.
 

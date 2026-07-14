@@ -3,4 +3,5 @@
 The executable baseline uses Harbor train failures as adversarial evidence and
 the canonical non-regression gate as rollback. More sophisticated adversary
 generation can replace `operators/rollout.py` without changing the frozen
-train/gate/sealed contract.
+train/gate/sealed contract. Evidence-selection changes belong in
+`operators/trace_analyzer.py` and do not require rerunning Harbor cases.

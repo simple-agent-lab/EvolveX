@@ -15,7 +15,7 @@ candidate, tag `gen/<id>`); `archive.jsonl` is the ledger.
 
 ```bash
 ./evolve status              # where things stand: champion, recent gens, anything pending
-./evolve run 1               # one generation: select → rollout → mutate → gate → record
+./evolve run 1               # one generation: select → rollout → trace_analyzer → mutate → gate → record
 # Or edit target/ (and optionally operators/) yourself within the mutable surface,
 # then let the next `./evolve run` pick up from a clean tree.
 ```

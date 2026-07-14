@@ -1,8 +1,8 @@
 # Evolution Program
 
-Run select, rollout, mutate, commit, eval, gate, and record through the
+Run select, rollout, trace analysis, mutate, commit, eval, gate, and record through the
 mechanism verbs. The mechanism writes the feedback bundle (`runs/gen-<id>/
-feedback/`) after rollout for the mutator to read. The canonical evaluator and
+feedback/`) after trace analysis for the mutator to read. The canonical evaluator and
 archive are not part of the mutable surface. Mutators should run `evolve
 surface-check` before proposing a child so out-of-surface edits are caught early.
 

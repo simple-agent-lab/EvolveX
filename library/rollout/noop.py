@@ -1,6 +1,6 @@
 """No-op rollout emits an empty rollout summary without running tasks.
 
-It is the baseline recipe for pipelines that skip rollout before mutate.
+It is the baseline recipe for pipelines that skip task execution before trace analysis.
 """
 
 # ruff: noqa: E402

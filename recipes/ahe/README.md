@@ -10,9 +10,10 @@ hidden until the final anchor evaluation.
 `select.variant: greedy` chooses the strongest eligible archive parent.
 `target.seed: builtin-codex` exposes prompt, skills, and Codex policy as the genome.
 `rollout.variant: harbor` gathers bounded train-split failure evidence.
-`rollout.evidence_profile: self_harness` clusters verifier-grounded failure
-signatures and retains passing behaviors for the modify agent; other retention
-interfaces are documented in [`ROLLOUT_EVIDENCE.md`](../../ROLLOUT_EVIDENCE.md).
+`trace_analyzer.variant: failure_patterns` independently clusters
+verifier-grounded failure signatures and retains passing behaviors for the
+modify agent; other trace views are documented in
+[`TRACE_ANALYZER.md`](../../TRACE_ANALYZER.md).
 `mutate.variant: agent_command` runs the host Codex CLI in the candidate checkout.
 `gate.variant: hillclimb` rejects gate-score regressions.
 `evaluator.engine: harbor` supplies pass/fail reward evidence.
@@ -21,7 +22,8 @@ interfaces are documented in [`ROLLOUT_EVIDENCE.md`](../../ROLLOUT_EVIDENCE.md).
 `agent_setup_timeout_multiplier: 3` allows up to three times Harbor's default setup timeout.
 `max_retries: 1` retries transient setup and network failures once.
 Each enabled operator has an explicit timeout: 3600 seconds for the long-running
-`rollout` and `mutate` stages, and 600 seconds for `select`, `gate`, and `record`.
+`rollout` and `mutate` stages, and 600 seconds for `select`, `trace_analyzer`,
+`gate`, and `record`.
 The top-level `operators.timeout_s: 600` remains the fallback for newly added operators.
 
 ## Run
@@ -53,6 +55,7 @@ Linux; set it only when Docker uses a non-default socket such as Colima.
 
 `select: {variant: greedy}` resolves to [`library/select/greedy.py`](../../library/select/greedy.py).
 `rollout: {variant: harbor, budget_tasks: 1, ...}` resolves to [`library/rollout/harbor.py`](../../library/rollout/harbor.py).
+`trace_analyzer: {variant: failure_patterns, ...}` resolves to [`library/trace_analyzer/failure_patterns.py`](../../library/trace_analyzer/failure_patterns.py).
 `mutate: {variant: agent_command, ...}` resolves to [`library/mutate/agent_command.py`](../../library/mutate/agent_command.py).
 `gate: {variant: hillclimb}` resolves to [`library/gate/hillclimb.py`](../../library/gate/hillclimb.py).
 `record: {variant: jsonl}` resolves to [`library/record/jsonl.py`](../../library/record/jsonl.py).

@@ -142,13 +142,14 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
         "AGENTS.md": _template("workspace/AGENTS.md"),
         "program.md": _template("workspace/program.md"),
         ".gitignore": _template("workspace/.gitignore"),
-        ".evolve-protocol-version": "1\n",
+        ".evolve-protocol-version": "2\n",
         "operators/engines/local.sh": _shell_script("operator local engine"),
         "operators/preflight.sh": _shell_script("operator preflight"),
         # Per-verb strategy prose lives beside the active scripts (not a parallel
         # meta/ tree) so code + policy travel as one pair.
         "operators/select.md": _template("workspace/operators/select.md"),
         "operators/rollout.md": _template("workspace/operators/rollout.md"),
+        "operators/trace_analyzer.md": _template("workspace/operators/trace_analyzer.md"),
         "operators/mutate.md": _template("workspace/operators/mutate.md"),
         "operators/gate.md": _template("workspace/operators/gate.md"),
         "operators/record.md": _template("workspace/operators/record.md"),

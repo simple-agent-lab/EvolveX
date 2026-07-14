@@ -15,6 +15,7 @@ surface:
 operators:
   select: {variant: greedy}
   rollout: {variant: failure_focused, budget_tasks: 32}
+  trace_analyzer: {variant: failure_patterns, max_chars: 30000}
   mutate: {variant: fixed, timeout_s: 3600}
   gate: {variant: hillclimb}
   record: {variant: jsonl}
