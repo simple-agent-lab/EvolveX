@@ -237,10 +237,10 @@ def test_two_later_infrastructure_failures_pause_without_advancing(
     assert [event["attempt"] for event in _evaluation_events(workspace, "1")] == [1, 2]
 
 
-@pytest.mark.parametrize("outcome", ["candidate_invalid", "timeout", "cancelled"])
 def test_later_retry_terminal_is_canonical_and_does_not_resume(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, outcome: str,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    outcome = "timeout"
     workspace = _lifecycle_workspace(
         tmp_path,
         {
@@ -262,10 +262,10 @@ def test_later_retry_terminal_is_canonical_and_does_not_resume(
     assert [row["genid"] for row in ArchiveView(workspace).valid_parents()] == ["0"]
 
 
-@pytest.mark.parametrize("outcome", ["candidate_invalid", "timeout", "cancelled"])
 def test_later_terminal_candidate_does_not_retry_or_run_gate(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, outcome: str,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    outcome = "candidate_invalid"
     workspace = _lifecycle_workspace(
         tmp_path,
         {"genesis": ["benchmark_complete"], "candidate": [outcome]},

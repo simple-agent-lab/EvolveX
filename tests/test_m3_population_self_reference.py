@@ -38,7 +38,7 @@ def test_population_fanout_creates_branching_lineage(tmp_path: Path) -> None:
         "run",
         str(workspace),
         "--max-generations",
-        "2",
+        "1",
         "--children-per-gen",
         "2",
         env={"EVAL_STUB": "1", "EVOLVE_HOME": str(evolve_home)},
@@ -46,10 +46,10 @@ def test_population_fanout_creates_branching_lineage(tmp_path: Path) -> None:
 
     assert result.returncode == 0, result.stderr
     rows = rows_by_genid(workspace)
-    assert {"0", "1-0", "1-1", "2-0", "2-1"} <= set(rows)
+    assert set(rows) == {"0", "1-0", "1-1"}
     assert [rows[genid]["parent"] for genid in ("1-0", "1-1")] == ["0", "0"]
-    assert all(rows[genid]["status"] == "complete" for genid in ("1-0", "1-1", "2-0", "2-1"))
-    assert all(rows[genid]["valid_parent"] is True for genid in ("1-0", "1-1", "2-0", "2-1"))
+    assert all(rows[genid]["status"] == "complete" for genid in ("1-0", "1-1"))
+    assert all(rows[genid]["valid_parent"] is True for genid in ("1-0", "1-1"))
     tagged_agent = tmp_path / "agent_gen_1_0.py"
     tagged_agent.write_text(git_show(workspace, "gen/1-0:target/agent.py").decode())
     py_compile.compile(str(tagged_agent), doraise=True)

@@ -9,7 +9,7 @@ from conftest import git, init_workspace, rows_by_genid, smoke_agent_command
 
 from evolve.archive import archive_path, read_events
 from evolve.config import experiment_id, operator_blocks
-from evolve.driver import RunOptions, _run_terminal_record
+from evolve.driver import RunOptions, _run_terminal_record, record_fields
 from evolve.driver import run as driver_run
 from evolve.frozen.interfaces import ArchiveView
 
@@ -138,15 +138,6 @@ def _evolve(args, cwd, env_extra=None):
     )
 
 
-def _init_and_run_one(tmp_path):
-    ws = tmp_path / "ws"
-    home = tmp_path / "home"
-    env = {"EVAL_STUB": "1", "EVOLVE_HOME": str(home), "EVOLVE_AGENT_COMMAND": smoke_agent_command()}
-    assert _evolve(["init", str(ws), "--recipe", "hill_climb-smoke"], tmp_path, env).returncode == 0
-    assert _evolve(["run", str(ws), "--max-generations", "1"], tmp_path, env).returncode == 0
-    return ws, env
-
-
 def _rewrite(workspace: Path, relative_path: str, content: str) -> None:
     (workspace / relative_path).write_text(content)
 
@@ -164,9 +155,12 @@ def _enable_validate(config: str) -> str:
 
 
 def test_record_rejects_stamped_and_identity_fields(tmp_path):
-    ws, env = _init_and_run_one(tmp_path)
+    ws = tmp_path / "ws"
+    home = tmp_path / "home"
+    env = {"EVAL_STUB": "1", "EVOLVE_HOME": str(home), "EVOLVE_AGENT_COMMAND": smoke_agent_command()}
+    assert _evolve(["init", str(ws), "--recipe", "hill_climb-smoke"], tmp_path, env).returncode == 0
     before = (ws / "archive.jsonl").read_text()
-    for bad in (
+    forbidden = (
         {"score": 99.0},
         {"status": "complete"},
         {"tag": "gen/9"},
@@ -182,9 +176,12 @@ def test_record_rejects_stamped_and_identity_fields(tmp_path):
         {"kind": "anchor"},
         {"round": 1},
         {"_evolve_mechanism_eval": True},
-    ):
-        result = _evolve(["record", str(ws), "1", "--fields", json.dumps(bad)], tmp_path, env)
-        assert result.returncode != 0, f"accepted forbidden field {bad}"
+    )
+    result = _evolve(["record", str(ws), "0", "--fields", json.dumps(forbidden[0])], tmp_path, env)
+    assert result.returncode != 0
+    for bad in forbidden:
+        with pytest.raises(RuntimeError, match="record refuses protected fields"):
+            record_fields(ws, "0", bad)
     assert (ws / "archive.jsonl").read_text() == before
 
 
