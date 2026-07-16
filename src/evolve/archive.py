@@ -20,6 +20,7 @@ MECHANISM_EVAL_FIELD = "_evolve_mechanism_eval"
 RECEIPT_CERTIFIED_FIELD = "_evolve_receipt_certified"
 RECORD_ATTEMPT_FIELD = "_evolve_record_attempted"
 RESERVED_AUXILIARY_FIELDS = {"evals", "kind", "round", MECHANISM_EVAL_FIELD, RECORD_ATTEMPT_FIELD}
+LEGACY_WRITE_BLOCKED_FIELDS = {"predicted_fixes", "verified_fixes"}
 EVALUATION_FIELDS = STAMPED_FIELDS | {
     "genid",
     "parent",
