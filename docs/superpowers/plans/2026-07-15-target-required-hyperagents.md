@@ -12,7 +12,7 @@
 
 - New experiment root: `/data00/home/zimuwang/simple-evolve-agent-project/experiments/hyperagents-target-required-20260715`.
 - Preserve editable surface exactly as `target/**` and `operators/**`.
-- Behavioral change is limited to `recipes/hyperagents/operators/meta_agent.md`.
+- Behavioral change is limited to `library/meta_agent/hyperagents.md`, which `evolve init` materializes as workspace `operators/meta_agent.md`.
 - Start from the verified seed commit `7cee6331e94c0c6b132724dd10e29d33377dc385`.
 - Reuse the fixed train-list hash `5da1bad49642d737fe276db3338b6fe3df910c92218fe59fca0eeb72bdb22186` and sealed-test hash `8171064f410d01a22a58b53300a86c6a823a5d0122fb9b215fb7ec5629c93988`.
 - Smoke uses three fixed tasks, three generations, one child per generation.
@@ -26,7 +26,7 @@
 
 **Files:**
 - Create: remote experiment directory `/data00/home/zimuwang/simple-evolve-agent-project/experiments/hyperagents-target-required-20260715/`
-- Modify: remote `framework/recipes/hyperagents/operators/meta_agent.md`
+- Modify: remote `framework/library/meta_agent/hyperagents.md`
 - Copy unchanged: setup helper, proxy environment, fixed task lists, and runtime cache references from the stopped experiment
 
 **Interfaces:**
@@ -91,7 +91,7 @@ git -C /data00/home/zimuwang/simple-evolve-agent-project/experiments/hyperagents
 Expected sole output path:
 
 ```text
-recipes/hyperagents/operators/meta_agent.md
+library/meta_agent/hyperagents.md
 ```
 
 Commit with message `recipe: require substantive target edits` and record the resulting commit SHA in `status/framework-commit.txt`.
