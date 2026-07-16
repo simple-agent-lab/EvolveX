@@ -21,6 +21,7 @@
 - Keep the evaluator, mechanism, workspace configuration, archive authority, credentials, endpoints, task partitions, and resource limits frozen.
 - Keep AHE-specific schemas and decisions out of `src/evolve`.
 - Treat a malformed or unsafe returned artifact as a failed proposal and leave the checkout unchanged.
+- After local verification, run an authorized Terminal-Bench 2 experiment on `DevBoxS`: inspect the existing Harbor/SWE-bench Pro setup without printing credentials or proxy values, run a 2-task smoke first, and start the 30-task run only after the smoke is healthy.
 
 ---
 
@@ -79,12 +80,13 @@ Expected: `git log -3 --format='%h %an %s'` shows Xiaobo Wang's three PR 5 commi
 
 ```bash
 uv run ruff check .
-uv run ruff format --check .
+changed_python=$(git diff --diff-filter=ACMR --name-only origin/main...HEAD -- '*.py')
+uv run ruff format --check $changed_python
 uv run ty check
 uv run pytest -q
 ```
 
-Expected: all four commands exit 0; pytest reports the PR 5 baseline suite passing.
+Expected: all four commands exit 0; pytest reports the PR 5 baseline suite passing. The scoped format gate is intentional because the repository-wide baseline contains unrelated pre-existing formatting drift.
 
 - [ ] **Step 4: Record the integration design on the new branch**
 
@@ -767,7 +769,8 @@ Expected: all focused tests pass.
 
 ```bash
 uv run ruff check .
-uv run ruff format --check .
+changed_python=$(git diff --diff-filter=ACMR --name-only origin/main...HEAD -- '*.py')
+uv run ruff format --check $changed_python
 uv run ty check
 git diff --check origin/main...HEAD
 ```
@@ -807,4 +810,51 @@ git commit -m "fix: close combined integration regressions"
 
 If no fixes were required, do not create an empty commit.
 
-The final handoff reports the local branch, commit range, exact verification results, and deferred publication work. It does not push or modify either GitHub PR.
+The local verification report records the branch, commit range, and exact results before the remote experiment. It does not push or modify either GitHub PR.
+
+---
+
+### Task 12: Run Terminal-Bench 2 smoke and 30-task experiments on DevBoxS
+
+**Files:**
+- Do not modify local source unless the smoke exposes a reproducible implementation defect.
+- Create remote run directories/configuration only inside the existing experiment area discovered on `DevBoxS`.
+- Record: remote commands, immutable code revision, Harbor version, Terminal-Bench dataset identifier, selected task IDs, run IDs, and result/log paths without copying credentials.
+
+**Interfaces:**
+- Consumes: the locally verified integration commit, the existing remote Harbor/proxy/API setup, and Harbor's Terminal-Bench 2 registry dataset.
+- Produces: one completed 2-task smoke and one started 30-task experiment with enough metadata to monitor or reproduce them.
+
+- [ ] **Step 1: Inspect the existing remote experiment setup read-only**
+
+Connect with `ssh DevBoxS`. Locate the prior SWE-bench Pro experiment scripts, configs, logs, code checkout, Harbor installation, and runtime conventions. Check only whether required proxy/API variables are present; never print their values. Record available disk space and current competing experiment processes before launching work.
+
+Expected: the established launch pattern and safe experiment directory are known, and no secret value appears in captured output.
+
+- [ ] **Step 2: Stage the exact integration revision without publishing it**
+
+Transfer the verified local revision to `DevBoxS` using the existing checkout or an archive/patch transport that does not push GitHub state. Create a dedicated Terminal-Bench 2 experiment directory and record the source commit SHA and dirty status.
+
+Expected: the remote code exactly matches the locally verified commit and its working tree is clean, apart from explicitly recorded experiment-only configuration.
+
+- [ ] **Step 3: Resolve Terminal-Bench 2 and choose deterministic task sets**
+
+Use the installed Harbor CLI to resolve the canonical Terminal-Bench 2 dataset identifier and enumerate tasks. Select two deterministic tasks for smoke coverage, then a deterministic 30-task set for the real run. Persist both manifests and ensure the two smoke tasks are included in or clearly related to the 30-task selection.
+
+Expected: task manifests contain exactly 2 and 30 unique valid task IDs, respectively.
+
+- [ ] **Step 4: Run and diagnose the 2-task smoke**
+
+Launch the two smoke tasks using the production Harbor-backed recipe and MiniSWE CLI meta-agent path. Monitor them through completion. Validate that Harbor starts, the dataset resolves, containers run, model calls authenticate, editable artifacts return, evaluator artifacts parse, and no frozen-boundary or credential-leak violation occurs.
+
+Expected: both task trials finish with structurally valid results. If infrastructure or implementation fails, diagnose and resolve it before starting the 30-task run; do not treat a benchmark task score of zero by itself as an infrastructure failure.
+
+- [ ] **Step 5: Start the real 30-task experiment**
+
+Launch the deterministic 30-task manifest using the remote machine's established resource-safe concurrency and logging conventions. Capture the PID/session or scheduler job ID, run directory, command/config snapshot, and first healthy progress evidence.
+
+Expected: 30 unique trials are scheduled, the process remains alive past initialization, logs show healthy task progress, and the run can be monitored without an interactive SSH session.
+
+- [ ] **Step 6: Report experiment state**
+
+Report the two smoke outcomes, the 30-task run identifier and status, exact remote result/log paths, source revision, dataset identifier, task manifests, and any remaining operational concern. Do not push code, create/edit/close a PR, or expose proxy/API values.
