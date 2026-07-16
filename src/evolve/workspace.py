@@ -45,7 +45,6 @@ class _OperatorBinding:
     kind: str
     source: str
     text: str
-    companion_text: str | None
 
 
 def init_workspace(options: InitOptions) -> None:
@@ -151,10 +150,8 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
         "operators/preflight.sh": _shell_script("operator preflight"),
         "operators/select.md": _template("workspace/operators/select.md"),
         "operators/rollout.md": _template("workspace/operators/rollout.md"),
-        "operators/meta_agent.md": _template("workspace/operators/meta_agent.md"),
         "operators/gate.md": _template("workspace/operators/gate.md"),
         "operators/record.md": _template("workspace/operators/record.md"),
-        "operators/meta_agent_brief.md": _template("workspace/operators/meta_agent_brief.md"),
         "skills/evolve-workspace/SKILL.md": _skill("evolve-workspace/SKILL.md"),
         "PROTOCOL.md": (library_root() / "PROTOCOL.md").read_text(),
         "evaluator/eval.sh": _eval_sh(evaluator_engine, evaluator_dataset),
@@ -184,8 +181,6 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
     bindings = _operator_bindings(config, recipe=recipe, init_cwd=init_cwd)
     for binding in bindings:
         files[f"operators/{binding.kind}.py"] = _with_provenance(binding.kind, binding.source, binding.text)
-        if binding.companion_text is not None:
-            files[f"operators/{binding.kind}.md"] = binding.companion_text
     if any(binding.kind == "novelty" for binding in bindings):
         files["operators/novelty.md"] = _template("workspace/operators/novelty.md")
     files["operators/README.md"] = _operator_index(bindings, recipe)
@@ -216,14 +211,10 @@ def _operator_bindings(config: dict[str, object], *, recipe: str, init_cwd: Path
             source_path = source if source.is_absolute() else init_cwd / source
             if not source_path.is_file():
                 raise ValueError(f"operators.{kind} script not found: {script}")
-            companion = source_path.with_suffix(".md")
-            companion_text = companion.read_text() if companion.is_file() else None
-            bindings.append(_OperatorBinding(kind, str(source_path), source_path.read_text(), companion_text))
+            bindings.append(_OperatorBinding(kind, str(source_path), source_path.read_text()))
             continue
         source = _resolve_operator_variant(recipe, kind, str(variant or "default"))
-        companion = source.with_suffix(".md")
-        companion_text = companion.read_text() if companion.is_file() else None
-        bindings.append(_OperatorBinding(kind, _source_label(source), source.read_text(), companion_text))
+        bindings.append(_OperatorBinding(kind, _source_label(source), source.read_text()))
     return bindings
 
 
@@ -473,7 +464,6 @@ def _write_gen0_archive(workspace: Path) -> None:
             "reason": "generation zero requires real evaluation",
             "mutated": [],
             "surface_violations": [],
-            "predicted_fixes": [],
             "note": "initial scaffold",
             "cost": {"usd": 0, "wall_s": 0},
         },

@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import signal
@@ -13,6 +14,7 @@ from evolve import runtime as runtime_module
 from evolve import workspace as workspace_module
 from evolve.evaluation import Outcome
 from evolve.evaluator import evaluate
+from evolve.feedback import write_feedback_bundle
 from evolve.runtime import attempt_dir
 from evolve.workspace import InitOptions, init_workspace
 
@@ -205,6 +207,20 @@ def test_console_has_no_accidental_python_fallback(tmp_path: Path) -> None:
     assert "python3.13 python3.12 python3.11 python3" not in text
     assert "uv run --quiet --with" not in text
     assert (workspace / "evaluator" / "cleanup_harbor.py").is_file()
+
+
+def test_init_and_feedback_do_not_create_prediction_contracts(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(InitOptions(workspace=workspace, recipe="hill_climb-smoke"))
+    archive_row = json.loads((workspace / "archive.jsonl").read_text())
+    run_dir = workspace / "runs" / "contract-check"
+
+    manifest = write_feedback_bundle(workspace=workspace, run_dir=run_dir)
+
+    assert "predicted_fixes" not in archive_row
+    assert "verified_fixes" not in archive_row
+    assert not (run_dir / "feedback" / "falsification.md").exists()
+    assert "feedback/falsification.md" not in manifest
 
 
 def test_console_shell_quotes_unusual_pinned_interpreter_path(

@@ -31,7 +31,6 @@ from .frozen.interfaces import (
     ArchiveView,
     PayloadValidationError,
     validate_gate_file_payload,
-    validate_meta_agent_predicted_fixes_payload,
     validate_meta_agent_usage_payload,
     validate_novelty_file_payload,
     validate_record_fields_payload,
@@ -71,7 +70,7 @@ TERMINAL_STATUSES = {
 }
 UNRETRYABLE_STATUSES = TERMINAL_STATUSES - {"complete", "partial"}
 RECORD_FORBIDDEN_FIELDS = EVALUATION_FIELDS | RESERVED_AUXILIARY_FIELDS
-RECORD_ANNOTATION_FIELDS = frozenset({"note", "predicted_fixes"})
+RECORD_ANNOTATION_FIELDS = frozenset({"note"})
 
 
 @dataclass(frozen=True)
@@ -164,7 +163,6 @@ def _maybe_final_anchor(workspace: Path, generation: int) -> None:
             "parent": candidate.get("parent"),
             "mutated": candidate.get("mutated", []),
             "surface_violations": candidate.get("surface_violations", []),
-            "predicted_fixes": candidate.get("predicted_fixes", []),
             "note": "sealed anchor evaluation; excluded from meta-agent feedback",
             "kind": "anchor",
             "round": generation,
@@ -615,7 +613,6 @@ def commit_child(workspace: Path, child_worktree: Path, parent: str, genid: str)
                 "reason": "no changes to commit",
                 "mutated": [],
                 "surface_violations": [],
-                "predicted_fixes": [],
                 "note": "no proposal",
                 "cost": {"usd": 0, "wall_s": 0},
             },
@@ -742,7 +739,6 @@ def _finalize_child(
                 "reason": "changed paths outside mutable surface",
                 "mutated": mutated,
                 "surface_violations": violations,
-                "predicted_fixes": [],
                 "note": "commit rejected by surface",
                 "cost": {"usd": 0, "wall_s": 0},
             },
@@ -773,7 +769,6 @@ def _stamp_evaluation(
         "parent": parent,
         "mutated": mutated,
         "surface_violations": [],
-        "predicted_fixes": [],
     }
     if round_number is not None:
         metadata.update(kind=kind, round=round_number)
@@ -808,7 +803,6 @@ def _ensure_genesis_evaluated(workspace: Path) -> None:
             "parent": row.get("parent"),
             "mutated": row.get("mutated", []),
             "surface_violations": row.get("surface_violations", []),
-            "predicted_fixes": row.get("predicted_fixes", []),
             "note": "genesis evaluated",
             "pending_gate_record": False,
             "kind": "genesis_eval",
@@ -1092,14 +1086,7 @@ def _operator_output_error(name: str, run_dir: Path) -> OperatorOutputError | No
             (Path("trace_analyzer") / "artifacts.json", "artifacts", validate_rollout_artifacts_payload),
         )
     elif name == "meta_agent":
-        checks = (
-            (
-                Path("meta_agent") / "predicted_fixes.json",
-                "predicted_fixes",
-                validate_meta_agent_predicted_fixes_payload,
-            ),
-            (Path("meta_agent") / "usage.json", "usage", validate_meta_agent_usage_payload),
-        )
+        checks = ((Path("meta_agent") / "usage.json", "usage", validate_meta_agent_usage_payload),)
     elif name == "validate":
         checks = ((Path("validate") / "result.json", "accept", validate_validate_file_payload),)
     elif name == "novelty":
@@ -1158,7 +1145,6 @@ def _append_operator_failed(
             "reason": f"operator {operator_name} failed",
             "mutated": [],
             "surface_violations": [],
-            "predicted_fixes": [],
             "note": note,
             "cost": {"usd": 0, "wall_s": 0},
         },
@@ -1192,7 +1178,6 @@ def _append_candidate_rejected(
             "reason": reason,
             "mutated": mutated,
             "surface_violations": list(violations or []),
-            "predicted_fixes": [],
             "note": reason,
             "cost": {"usd": 0, "wall_s": 0},
         },
@@ -1220,7 +1205,6 @@ def _append_novelty_rejected(
             "reason": "novelty gate rejected a near-duplicate candidate edit",
             "mutated": [],
             "surface_violations": [],
-            "predicted_fixes": [],
             "novelty": payload.get("novelty"),
             "note": f"novelty={payload.get('novelty')}",
             "cost": {"usd": 0, "wall_s": 0},

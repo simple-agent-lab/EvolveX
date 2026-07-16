@@ -29,7 +29,6 @@ EVALUATION_FIELDS = STAMPED_FIELDS | {
     "reason",
     "mutated",
     "surface_violations",
-    "predicted_fixes",
     "note",
     "kind",
     "round", "pending_gate_record",

@@ -83,7 +83,7 @@ def test_sdk_main_runs_meta_agent_operator_and_writes_meta_agent_artifacts(
 
     meta_agent_dir = tmp_path / "run" / "meta_agent"
     assert json.loads((meta_agent_dir / "changed.json").read_text()) == ["target/agent.py"]
-    assert json.loads((meta_agent_dir / "predicted_fixes.json").read_text()) == ["target/agent.py"]
+    assert not (meta_agent_dir / "predicted_fixes.json").exists()
     assert json.loads((meta_agent_dir / "usage.json").read_text()) == {"usd": 1.25}
     assert (meta_agent_dir / "rationale.md").read_text() == "edited target\n"
 
@@ -105,6 +105,26 @@ def test_sdk_main_runs_validate_operator_and_writes_result(
         "artifacts": ["validate/imports.log"],
         "reason": "imports pass",
     }
+
+
+def test_historical_prediction_fields_remain_readable_as_unknown_archive_data(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from evolve.frozen.interfaces import ArchiveView
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setenv("EVOLVE_HOME", str(tmp_path / "home"))
+    (workspace / "evolve.yaml").write_text("experiment:\n  id: historical\n")
+    (workspace / "archive.jsonl").write_text(
+        '{"genid":"old","predicted_fixes":["task-1"],"verified_fixes":["task-1"]}\n'
+    )
+
+    row = ArchiveView(workspace).row("old")
+
+    assert row is not None
+    assert row["predicted_fixes"] == ["task-1"]
+    assert row["verified_fixes"] == ["task-1"]
 
 
 def test_run_operator_can_use_trusted_operator_source_with_candidate_context(tmp_path: Path) -> None:
