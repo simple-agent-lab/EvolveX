@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from evolve import workspace as workspace_module
 from evolve.workspace import InitOptions, _eval_env, init_workspace
 
 
@@ -18,6 +19,35 @@ def test_eval_env_uses_configured_harbor_agent() -> None:
 
     assert "EVOLVE_HARBOR_AGENT=target.harbor_agent:MiniSweSourceAgent\n" in env
     assert "CheckoutTargetAgent" not in env
+
+
+def test_agent_env_renders_frozen_miniswe_limits_deterministically() -> None:
+    assert workspace_module._agent_env(
+        {
+            "MINISWE_STEP_LIMIT": "100",
+            "MINISWE_ENV_TIMEOUT": 30,
+            "MINISWE_COST_LIMIT": 3.0,
+        }
+    ) == (
+        "MINISWE_COST_LIMIT=3.0\n"
+        "MINISWE_ENV_TIMEOUT=30\n"
+        "MINISWE_STEP_LIMIT=100\n"
+    )
+
+
+@pytest.mark.parametrize(
+    ("value", "message"),
+    [
+        ({"BAD-NAME": "1"}, "invalid evaluator.agent_env name"),
+        ({"GOOD": "first\nsecond"}, "single-line"),
+        ({"GOOD": "first\0second"}, "NUL"),
+        ({"GOOD": ["nested"]}, "scalar"),
+        (["not", "a", "mapping"], "must be a mapping"),
+    ],
+)
+def test_agent_env_rejects_unsafe_values(value: object, message: str) -> None:
+    with pytest.raises(ValueError, match=message):
+        workspace_module._agent_env(value)
 
 
 def test_init_real_harbor_recipe_requires_evaluator_agent(
@@ -53,4 +83,5 @@ def test_init_writes_recipe_harbor_agent_to_eval_env(tmp_path: Path) -> None:
     env = (workspace / "evaluator" / "eval.env").read_text()
     assert "EVOLVE_HARBOR_AGENT=target.harbor_agent:MiniSweSourceAgent\n" in env
     assert "CheckoutTargetAgent" not in env
+    assert (workspace / "evaluator" / "agent.env").read_text() == ""
     assert not (workspace / "evaluator" / "checkout_agent.py").exists()

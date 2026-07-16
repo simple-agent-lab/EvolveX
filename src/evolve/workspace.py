@@ -4,6 +4,7 @@ import copy
 import hashlib
 import json
 import os
+import re
 import shlex
 import shutil
 import stat
@@ -31,6 +32,7 @@ from .config import (
 from .splits import build_manifest
 
 _SEED_IGNORE_PATTERNS = (".git", ".venv", ".env", ".env.*", "__pycache__", "*.pyc", ".pytest_cache", ".mypy_cache", ".ruff_cache", "node_modules")
+_ENV_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 @dataclass(frozen=True)
 class InitOptions:
@@ -167,6 +169,7 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
             setup_timeout_multiplier=setup_timeout_multiplier,
             max_retries=max_retries,
         ),
+        "evaluator/agent.env": _agent_env(evaluator.get("agent_env")),
         "evaluator/splits.json": json.dumps(split_manifest, indent=2, sort_keys=True) + "\n",
         "evaluator/dataset.pin": f"dataset={evaluator_dataset}\nchecksum=sha256:stub\n",
         "evaluator/runtime.pin": f"{runtime_digest}\n",
@@ -501,6 +504,31 @@ def _sha256_file(path: Path) -> str:
 def _make_executable(*paths: Path) -> None:
     for path in paths:
         path.chmod(path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+
+def _agent_env(value: object) -> str:
+    if value is None:
+        return ""
+    if not isinstance(value, dict):
+        raise ValueError("evaluator.agent_env must be a mapping")
+    for name in value:
+        if not isinstance(name, str) or _ENV_NAME.fullmatch(name) is None:
+            raise ValueError(f"invalid evaluator.agent_env name: {name!r}")
+    lines: list[str] = []
+    for name in sorted(value):
+        raw = value[name]
+        if isinstance(raw, bool):
+            rendered = "true" if raw else "false"
+        elif isinstance(raw, (str, int, float)):
+            rendered = str(raw)
+        else:
+            raise ValueError(f"evaluator.agent_env value for {name} must be scalar")
+        if "\0" in rendered:
+            raise ValueError(f"evaluator.agent_env value for {name} must not contain NUL")
+        if "\n" in rendered or "\r" in rendered:
+            raise ValueError(f"evaluator.agent_env value for {name} must be single-line")
+        lines.append(f"{name}={rendered}\n")
+    return "".join(lines)
 
 
 def _eval_env(

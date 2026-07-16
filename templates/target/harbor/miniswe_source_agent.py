@@ -241,6 +241,10 @@ class MiniSweSourceAgent(MiniSweAgent):
         if api_base is not None:
             env["OPENAI_BASE_URL"] = api_base
             env["OPENAI_API_BASE"] = api_base
+        for name in ("MINISWE_STEP_LIMIT", "MINISWE_COST_LIMIT", "MINISWE_ENV_TIMEOUT"):
+            value = self._get_env(name)
+            if value is not None:
+                env[name] = value
         smoke_mode = self._get_env("EVOLVE_CANDIDATE_SMOKE_MODE")
         if smoke_mode is not None:
             env["EVOLVE_CANDIDATE_SMOKE_MODE"] = smoke_mode
