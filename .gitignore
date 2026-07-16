@@ -41,6 +41,7 @@ archive.jsonl
 
 # Local agent/tooling state
 .superpowers/
+.worktrees/
 doc/
 
 # Editor, OS, and logs
