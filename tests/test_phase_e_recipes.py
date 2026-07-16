@@ -70,9 +70,6 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "agent: target.harbor_agent:MiniSweSourceAgent" in config
             assert "harbor_agent: miniswe-source" in config
         assert "variant: fixed" not in config
-        assert "engine: docker-report" not in config
-        assert "engine: reflection" not in config
-        assert "engine: train-bpb" not in config
 
 
 def test_smoke_recipes_are_explicitly_named_and_deterministic() -> None:

@@ -534,7 +534,7 @@ def _eval_env(
 
 
 def _eval_sh(engine: str, dataset: str) -> str:
-    names = {"harbor": "harbor", "docker-report": "docker-report", "train-bpb": "train-bpb", "reflection": "reflection"}
+    names = {"harbor": "harbor"}
     body = _template(f"evaluator/engines/{names[engine]}.sh") if engine in names else _template("evaluator/engines/unknown.sh")
     body = body.replace("@ENGINE@", engine).replace("@DATASET@", dataset)
     return _template("evaluator/eval-prefix.sh") + body

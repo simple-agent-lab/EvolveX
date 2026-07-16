@@ -32,7 +32,7 @@ Precise meanings for the domain terms this project uses.
   auto-repaired before the mechanism sees them.
 
 - **Evaluator / ruler** — the frozen scorer, wired to **Harbor**. Runs a
-  candidate through a standard entry (`checkout_agent.py`) and returns a score.
+  candidate via `target.harbor_agent` / `HarborAgent` and returns a score.
   Frozen: its tree must match `gen/0` on every eval.
 
 - **Split** — `train / gate / sealed` (`evaluator/splits.json`): train feeds
