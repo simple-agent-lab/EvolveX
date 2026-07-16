@@ -81,7 +81,7 @@ def test_run_operator_nonzero_and_timeout(tmp_path):
         parent=None,
         run_dir=tmp_path / "r2",
         config_block={},
-        timeout_s=1,
+        timeout_s=0.1,
     )
     assert timed_out.returncode == -1
     assert "timeout" in timed_out.stderr.lower()

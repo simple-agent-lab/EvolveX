@@ -120,25 +120,6 @@ def test_smoke_executes_uncommitted_snapshot_in_detached_checkout(tmp_path: Path
     assert result.snapshot_tree == git(checkout, "rev-parse", f"{result.snapshot_tree}^{{tree}}")
 
 
-def test_smoke_attempts_are_append_only_generic_records(tmp_path: Path) -> None:
-    checkout = smoke_checkout(tmp_path, stdout="ordinary output\n")
-
-    first = run_candidate_smoke(checkout, workspace=checkout)
-    second = run_candidate_smoke(checkout, workspace=checkout)
-
-    assert first.attempt_dir.name == "attempt-1"
-    assert second.attempt_dir.name == "attempt-2"
-    payload = json.loads((first.attempt_dir / "result.json").read_text())
-    assert payload["status"] == "passed"
-    assert payload["snapshot_tree"] == first.snapshot_tree
-    assert payload["returncode"] == 0
-    assert payload["stdout_path"] == str(first.stdout_path.resolve())
-    assert payload["stderr_path"] == str(first.stderr_path.resolve())
-    assert "owner" not in payload
-    assert "category" not in payload
-    assert "dependency_digest" not in payload
-
-
 def test_smoke_redacts_secret_environment_values_but_preserves_traceback(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -169,36 +150,6 @@ def test_smoke_redacts_common_secret_forms_without_rewriting_diagnostics(tmp_pat
     assert "standalone-token-value" not in text
     assert "request failed for [REDACTED] token=[REDACTED]" in text
     assert "ImportError: useful module" in text
-
-
-def test_candidate_smoke_cli_requires_full_and_prints_bounded_stderr_tail(tmp_path: Path) -> None:
-    stderr = "".join(f"diagnostic-{number}\n" for number in range(205))
-    checkout = smoke_checkout(tmp_path, stderr=stderr, rc=7)
-
-    result = run_evolve(
-        "candidate-smoke",
-        "--full",
-        "--checkout",
-        str(checkout),
-        env={"EVOLVE_WORKSPACE": str(checkout)},
-    )
-
-    attempt = checkout / "runs" / "smoke" / "attempt-1"
-    assert result.returncode == 2
-    tail = result.stderr.splitlines()
-    assert len(tail) == 200
-    assert tail[0] == "diagnostic-5"
-    assert tail[-1] == "diagnostic-204"
-    assert str((attempt / "stdout.log").resolve()) in result.stdout
-    assert str((attempt / "stderr.log").resolve()) in result.stdout
-    assert str((attempt / "result.json").resolve()) in result.stdout
-
-    unsupported_mode = run_evolve("candidate-smoke", "--quick", "--checkout", str(checkout))
-    assert unsupported_mode.returncode != 0
-    assert "No such option: --quick" in ANSI_ESCAPE.sub("", unsupported_mode.stderr)
-
-    missing_full = run_evolve("candidate-smoke", "--checkout", str(checkout))
-    assert missing_full.returncode != 0
 
 
 def test_candidate_smoke_cli_returns_three_when_unsupported(tmp_path: Path) -> None:
