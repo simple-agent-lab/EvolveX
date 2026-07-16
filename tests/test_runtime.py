@@ -49,7 +49,7 @@ def test_owned_process_kills_child_group_on_timeout(tmp_path: Path) -> None:
         [sys.executable, str(script), str(pid_file)],
         cwd=tmp_path,
         env=os.environ.copy(),
-        timeout_s=0.2,
+        timeout_s=1.0,
     )
 
     assert result.timed_out is True
