@@ -1,5 +1,4 @@
 import importlib.util
-import json
 import os
 import random
 import subprocess
@@ -7,14 +6,17 @@ from pathlib import Path
 
 import pytest
 
+from evolve.agent import AgentCommandError
 from evolve.frozen.interfaces import OperatorContext
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def _feedback_guided_meta_agent_module():
-    path = ROOT / "library" / "meta_agent" / "feedback_guided.py"
-    spec = importlib.util.spec_from_file_location("feedback_guided_harbor_under_test", path)
+def _harbor_runner_module():
+    spec = importlib.util.spec_from_file_location(
+        "harbor_meta_agent_runner_under_test",
+        ROOT / "library" / "meta_agent" / "runners" / "harbor.py",
+    )
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -46,7 +48,7 @@ def _checkout(tmp_path: Path) -> tuple[Path, Path]:
         "experiment:\n  id: test\n"
         "target:\n  seed: builtin-dummy\n"
         "surface:\n  include:\n    - target/**\n  exclude: []\n"
-        "operators:\n  meta_agent: {variant: feedback_guided, runner: harbor, timeout_s: 30}\n"
+        "operators:\n  meta_agent: {variant: hyperagents, runner: harbor, timeout_s: 30}\n"
         "evaluator:\n  engine: harbor\n  dataset: pass@k\n"
         "  agent: target.harbor_agent:MiniSweSourceAgent\n"
     )
@@ -69,7 +71,7 @@ def _ctx(checkout: Path, run_dir: Path) -> OperatorContext:
         round=None,
         fan_out=1,
         config={
-            "variant": "feedback_guided",
+            "variant": "hyperagents",
             "runner": "harbor",
             "agent": "codex",
             "model": "gpt-test",
@@ -202,30 +204,19 @@ def test_harbor_meta_agent_round_trips_target_and_writes_artifacts(
     _install_fake_harbor(bin_dir)
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
 
-    module = _feedback_guided_meta_agent_module()
-    result = module.FeedbackGuidedMetaAgent().run(checkout, "failure evidence", _ctx(checkout, run_dir))
+    runner = _harbor_runner_module()
+    result = runner.run_agent(checkout, "failure evidence", _ctx(checkout, run_dir))
 
     assert (checkout / "target" / "agent.py").read_text() == "print('child')\n"
     assert (checkout / "target" / "added.txt").read_text() == "created in Harbor\n"
     assert not (checkout / "target" / "obsolete.txt").exists()
-    assert set(result.changed) == {
-        "target/added.txt",
-        "target/agent.py",
-        "target/obsolete.txt",
-    }
-
     meta_dir = run_dir / "meta_agent"
-    assert json.loads((meta_dir / "changed.json").read_text()) == result.changed
-    assert json.loads((meta_dir / "predicted_fixes.json").read_text()) == ["task-1"]
-    assert json.loads((meta_dir / "surface-check.json").read_text())["ok"] is True
-    usage = json.loads((meta_dir / "usage.json").read_text())
+    usage = result.usage
     assert usage["usd"] == 0.25
     assert usage["input_tokens"] == 100
     assert usage["cache_tokens"] == 25
     assert usage["output_tokens"] == 10
-    assert "diff --git a/target/agent.py b/target/agent.py" in (meta_dir / "patch.diff").read_text()
-    assert "variant: feedback_guided" in (meta_dir / "rationale.md").read_text()
-    assert "runner: harbor" in (meta_dir / "rationale.md").read_text()
+    assert 'predicted_fixes: ["task-1"]' in result.output
     assert "failure evidence" in (meta_dir / "harbor" / "prompt.md").read_text()
     assert "/app/target" in (meta_dir / "harbor" / "prompt.md").read_text()
     assert list((meta_dir / "harbor" / "jobs").glob("*/*/result.json"))
@@ -243,20 +234,18 @@ def test_harbor_trial_exception_does_not_modify_target(tmp_path: Path, monkeypat
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
     monkeypatch.setenv("FAKE_HARBOR_MODE", "agent-error")
 
-    module = _feedback_guided_meta_agent_module()
-    with pytest.raises(SystemExit) as excinfo:
-        module.FeedbackGuidedMetaAgent().run(checkout, "failure evidence", _ctx(checkout, run_dir))
+    runner = _harbor_runner_module()
+    with pytest.raises(AgentCommandError) as excinfo:
+        runner.run_agent(checkout, "failure evidence", _ctx(checkout, run_dir))
 
-    assert excinfo.value.code == 1
+    assert excinfo.value.returncode == 1
     after = {
         path.relative_to(checkout / "target").as_posix(): path.read_bytes()
         for path in (checkout / "target").rglob("*")
         if path.is_file()
     }
     assert after == before
-    meta_dir = run_dir / "meta_agent"
-    assert json.loads((meta_dir / "changed.json").read_text()) == []
-    assert "NonZeroAgentExitCodeError" in (meta_dir / "rationale.md").read_text()
+    assert "NonZeroAgentExitCodeError" in str(excinfo.value)
 
 
 def test_harbor_meta_agent_rejects_source_symlinks_before_launch(
@@ -276,14 +265,14 @@ def test_harbor_meta_agent_rejects_source_symlinks_before_launch(
     )
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
 
-    module = _feedback_guided_meta_agent_module()
-    with pytest.raises(SystemExit) as excinfo:
-        module.FeedbackGuidedMetaAgent().run(checkout, "failure evidence", _ctx(checkout, run_dir))
+    runner = _harbor_runner_module()
+    with pytest.raises(AgentCommandError) as excinfo:
+        runner.run_agent(checkout, "failure evidence", _ctx(checkout, run_dir))
 
-    assert excinfo.value.code == 1
+    assert excinfo.value.returncode == 1
     assert not marker.exists()
     assert (checkout / "target" / "leak.txt").is_symlink()
-    assert "symlink" in (run_dir / "meta_agent" / "rationale.md").read_text().lower()
+    assert "symlink" in str(excinfo.value).lower()
 
 
 def test_harbor_meta_agent_rejects_returned_symlinks_without_modifying_target(
@@ -300,15 +289,15 @@ def test_harbor_meta_agent_rejects_returned_symlinks_without_modifying_target(
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
     monkeypatch.setenv("FAKE_HARBOR_MODE", "artifact-symlink")
 
-    module = _feedback_guided_meta_agent_module()
-    with pytest.raises(SystemExit) as excinfo:
-        module.FeedbackGuidedMetaAgent().run(checkout, "failure evidence", _ctx(checkout, run_dir))
+    runner = _harbor_runner_module()
+    with pytest.raises(AgentCommandError) as excinfo:
+        runner.run_agent(checkout, "failure evidence", _ctx(checkout, run_dir))
 
-    assert excinfo.value.code == 1
+    assert excinfo.value.returncode == 1
     after = {
         path.relative_to(checkout / "target").as_posix(): path.read_bytes()
         for path in (checkout / "target").rglob("*")
         if path.is_file()
     }
     assert after == before
-    assert "symlink" in (run_dir / "meta_agent" / "rationale.md").read_text().lower()
+    assert "symlink" in str(excinfo.value).lower()

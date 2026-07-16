@@ -83,8 +83,8 @@ def test_ahe_recipe_runs_train_rollout_trace_analysis_meta_agent_and_gate(tmp_pa
         "source=library/trace_analyzer/failure_patterns.py"
         in (workspace / "operators" / "trace_analyzer.py").read_text()
     )
-    assert "source=library/meta_agent/feedback_guided.py" in (workspace / "operators" / "meta_agent.py").read_text()
-    assert (workspace / "library" / "meta_agent" / "runners" / "agent_command.py").is_file()
+    assert "source=library/meta_agent/hyperagents.py" in (workspace / "operators" / "meta_agent.py").read_text()
+    assert (workspace / "library" / "meta_agent" / "runners" / "local.py").is_file()
     assert (workspace / "library" / "meta_agent" / "runners" / "harbor.py").is_file()
     assert "source=library/gate/hillclimb.py" in (workspace / "operators" / "gate.py").read_text()
     eval_env = (workspace / "evaluator" / "eval.env").read_text()

@@ -26,10 +26,10 @@ Precise meanings for the domain terms this project uses.
   not part of the agent being evolved. (`observe` is retired — the mechanism
   writes the feedback bundle itself; see `src/evolve/feedback.py`.)
 
-- **Meta-agent** — the operator that changes the candidate. The
-  `agent_command` variant spawns a coding agent that edits the folder in
-  place; agent-agnostic via a configured command. Out-of-surface edits are
-  auto-repaired before the mechanism sees them.
+- **Meta-agent** — the operator that changes the candidate. The `local` runner
+  spawns a coding agent that edits the folder in place through a configured
+  command; the `harbor` runner isolates that agent. Surface validation rejects
+  candidate changes outside the configured mutable paths.
 
 - **Evaluator / ruler** — the frozen scorer, wired to **Harbor**. Runs a
   candidate through a standard entry (`checkout_agent.py`) and returns a score.

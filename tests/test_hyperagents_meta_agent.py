@@ -64,7 +64,7 @@ def _ctx(workspace: Path, checkout: Path, run_dir: Path) -> OperatorContext:
         parent="0",
         round=None,
         fan_out=1,
-        config={"runner": "agent_command", "timeout_s": 30},
+        config={"runner": "local", "timeout_s": 30},
         rng=random.Random(0),
     )
 
@@ -104,7 +104,7 @@ def test_hyperagents_meta_agent_records_complete_patch_for_target_and_workflow_e
 
     def fake_run_agent(workspace: Path, prompt: str, ctx: OperatorContext):
         assert workspace == checkout
-        assert ctx.config["runner"] == "agent_command"
+        assert ctx.config["runner"] == "local"
         assert "Modify any part of the allowed codebase" in prompt
         assert "observation" in prompt
         (workspace / "target" / "agent.py").write_text("print('child')\n")
@@ -121,4 +121,4 @@ def test_hyperagents_meta_agent_records_complete_patch_for_target_and_workflow_e
     assert "diff --git a/operators/meta_agent.py b/operators/meta_agent.py" in diff
     assert (run_dir / "meta_agent" / "patch.diff").read_text() == diff
     assert json.loads((run_dir / "meta_agent" / "usage.json").read_text()) == {"usd": 0.02}
-    assert "runner: agent_command" in (run_dir / "meta_agent" / "rationale.md").read_text()
+    assert "runner: local" in (run_dir / "meta_agent" / "rationale.md").read_text()

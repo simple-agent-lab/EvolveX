@@ -6,19 +6,19 @@ from pathlib import Path
 
 from evolve.agent import AgentCommandError, AgentRunResult
 from evolve.frozen.interfaces import OperatorContext
-from library.meta_agent.runners import agent_command, harbor
+from library.meta_agent.runners import harbor, local
 
-RUNNERS = ("agent_command", "harbor")
+RUNNERS = ("local", "harbor")
 
 
 def runner_name(ctx: OperatorContext) -> str:
-    return str(ctx.config.get("runner") or "agent_command")
+    return str(ctx.config.get("runner") or "local")
 
 
 def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResult:
     name = runner_name(ctx)
-    if name == "agent_command":
-        return agent_command.run_agent(checkout, prompt, ctx)
+    if name == "local":
+        return local.run_agent(checkout, prompt, ctx)
     if name == "harbor":
         return harbor.run_agent(checkout, prompt, ctx)
     raise AgentCommandError(

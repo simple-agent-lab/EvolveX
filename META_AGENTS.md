@@ -4,7 +4,7 @@ The meta-agent receives rollout-derived feedback and edits the uncommitted child
 candidate before canonical evaluation. `variant` selects the improvement strategy;
 `runner` selects how that strategy launches its editing agent.
 
-## `runner: agent_command`: arbitrary trusted host command
+## `runner: local`: arbitrary trusted host command
 
 There is no command catalog or allowlist. The configured string is passed to
 `sh -c` with the child checkout as its working directory. The process inherits
@@ -22,8 +22,8 @@ Examples:
 ```yaml
 # Codex
 meta_agent:
-  variant: feedback_guided
-  runner: agent_command
+  variant: hyperagents
+  runner: local
   command: codex exec --full-auto - < "$EVOLVE_PROMPT_FILE"
   timeout_s: 3600
 ```
@@ -31,8 +31,8 @@ meta_agent:
 ```yaml
 # Claude Code; permission policy should be chosen deliberately for the host.
 meta_agent:
-  variant: feedback_guided
-  runner: agent_command
+  variant: hyperagents
+  runner: local
   command: claude -p --dangerously-skip-permissions "Implement the task supplied on stdin." < "$EVOLVE_PROMPT_FILE"
   timeout_s: 3600
 ```
@@ -40,8 +40,8 @@ meta_agent:
 ```yaml
 # Any custom executable or script
 meta_agent:
-  variant: feedback_guided
-  runner: agent_command
+  variant: hyperagents
+  runner: local
   command: /absolute/path/to/my-agent --prompt-file "$EVOLVE_PROMPT_FILE"
   timeout_s: 3600
 ```
@@ -62,7 +62,7 @@ surface, validation, evaluation, and gate checks still run afterward.
 
 ```yaml
 meta_agent:
-  variant: feedback_guided
+  variant: hyperagents
   runner: harbor
   agent: codex
   model: gpt-5.4
@@ -91,7 +91,7 @@ it importable by the Harbor host process:
 
 ```yaml
 meta_agent:
-  variant: feedback_guided
+  variant: hyperagents
   runner: harbor
   agent: my_agent.harbor_adapter:MyAgent
   agent_pythonpath: /absolute/path/to/folder
@@ -100,7 +100,7 @@ meta_agent:
 ```
 
 A folder containing only an arbitrary executable is not a Harbor agent adapter;
-use `agent_command` for that executable, or add a Harbor adapter class.
+use `local` for that executable, or add a Harbor adapter class.
 
 Keep credentials in the environment rather than recipe YAML. Harbor's Codex
 adapter accepts `OPENAI_API_KEY`, or host `auth.json` when
@@ -121,6 +121,6 @@ runs/gen-N/meta_agent/harbor/jobs/
 runs/gen-N/meta_agent/harbor/tasks/
 ```
 
-The active strategy writes the standard `meta_agent/changed.json`, `patch.diff`,
+On success the active strategy writes the standard `meta_agent/changed.json`, `patch.diff`,
 `surface-check.json`, `predicted_fixes.json`, `rationale.md`, and `usage.json`
 regardless of the selected runner.

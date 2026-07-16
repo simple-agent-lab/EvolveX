@@ -3,7 +3,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_real_recipe_binds_harbor_rollout_trace_analyzer_and_feedback_guided_meta_agent(tmp_path: Path) -> None:
+def test_real_recipe_binds_harbor_rollout_trace_analyzer_and_hyperagents_meta_agent(tmp_path: Path) -> None:
     from evolve import workspace as workspace_module
 
     config = workspace_module.default_config("hill_climb", "hill")
@@ -15,14 +15,14 @@ def test_real_recipe_binds_harbor_rollout_trace_analyzer_and_feedback_guided_met
 
     assert rollout.source == "library/rollout/harbor.py"
     assert trace_analyzer.source == "library/trace_analyzer/failure_patterns.py"
-    expected_source = (ROOT / "library" / "meta_agent" / "feedback_guided.py").read_text()
-    assert meta_agent.source == "library/meta_agent/feedback_guided.py"
+    expected_source = (ROOT / "library" / "meta_agent" / "hyperagents.py").read_text()
+    assert meta_agent.source == "library/meta_agent/hyperagents.py"
     assert meta_agent.text == expected_source
 
     palette = workspace_module._operator_palette("hill_climb")
     assets = workspace_module._operator_assets("hill_climb")
     assert "library/meta_agent/runners/__init__.py" in assets
-    assert "library/meta_agent/runners/agent_command.py" in assets
+    assert "library/meta_agent/runners/local.py" in assets
     assert "library/meta_agent/runners/harbor.py" in assets
     assert "library/meta_agent/support/evidence.py" in assets
     assert "library/meta_agent/fixed.py" not in palette
@@ -34,9 +34,8 @@ def test_meta_agent_runners_are_not_operator_variants(tmp_path: Path) -> None:
     from evolve import workspace as workspace_module
 
     variants = workspace_module._available_operator_variants("hill_climb", "meta_agent")
-    assert "feedback_guided" in variants
-    assert "hyperagents" in variants
-    assert "agent_command" not in variants
+    assert variants == ["hyperagents"]
+    assert "local" not in variants
     assert "harbor" not in variants
 
     config = workspace_module.default_config("hill_climb", "hill")

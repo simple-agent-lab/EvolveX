@@ -45,9 +45,7 @@ def _commit_and_retag_gen0(workspace: Path, *paths: str) -> None:
 def _rewrite_baseline_task_failure(workspace: Path, evolve_home: Path) -> None:
     local = workspace / "archive.jsonl"
     parent = next(
-        event
-        for event in read_events(local)
-        if event.get("genid") == "0" and event.get(MECHANISM_EVAL_FIELD) is True
+        event for event in read_events(local) if event.get("genid") == "0" and event.get(MECHANISM_EVAL_FIELD) is True
     )
     parent["task_vector"]["tasks"]["task-0"]["trials"][0]["reward"] = 0.0
     parent["note"] = "baseline evaluated"
@@ -75,7 +73,7 @@ def test_run_uses_operator_subprocesses_for_loop_steps(tmp_path: Path) -> None:
     assert json.loads((run_dir / "gate.json").read_text())["verdict"] == "keep"
     row = rows_by_genid(workspace)["1"]
     assert row["reason"] == "score 1.0 >= parent 1.0"
-    assert row["note"] == "variant: feedback_guided"
+    assert row["note"] == "variant: hyperagents"
 
 
 def test_run_records_operator_failed_when_meta_agent_operator_crashes(tmp_path: Path) -> None:
@@ -123,10 +121,10 @@ def test_driver_has_no_package_manager_specific_admission(tmp_path: Path) -> Non
     workspace, evolve_home = init_miniswe_workspace(tmp_path)
     # This test exercises admission, not the real recipe's Harbor evidence path.
     _rewrite(workspace, "operators/rollout.py", (workspace / "library/rollout/noop.py").read_text())
-    _rewrite(workspace, "operators/meta_agent.py", (workspace / "library/meta_agent/feedback_guided.py").read_text())
+    _rewrite(workspace, "operators/meta_agent.py", (workspace / "library/meta_agent/hyperagents.py").read_text())
     config = load_config(workspace / "evolve.yaml")
     del config["operators"]["trace_analyzer"]
-    config["operators"]["meta_agent"]["runner"] = "agent_command"
+    config["operators"]["meta_agent"]["runner"] = "local"
     _rewrite(workspace, "evolve.yaml", render_yaml(config))
     _commit_and_retag_gen0(workspace, "operators/rollout.py", "operators/meta_agent.py", "evolve.yaml")
     code = (
@@ -157,9 +155,7 @@ def test_driver_has_no_package_manager_specific_admission(tmp_path: Path) -> Non
 
 def test_jsonl_record_computes_verified_fixes_from_task_vectors(tmp_path: Path) -> None:
     workspace, evolve_home = init_workspace(tmp_path)
-    baseline = run_evolve(
-        "run", str(workspace), "--max-generations", "0", env=smoke_env(evolve_home)
-    )
+    baseline = run_evolve("run", str(workspace), "--max-generations", "0", env=smoke_env(evolve_home))
     assert baseline.returncode == 0, baseline.stderr
     _rewrite_baseline_task_failure(workspace, evolve_home)
 
@@ -191,9 +187,7 @@ def test_jsonl_record_computes_verified_fixes_from_task_vectors(tmp_path: Path) 
 
 def test_driver_does_not_inject_verified_fixes_for_other_record_operators(tmp_path: Path) -> None:
     workspace, evolve_home = init_workspace(tmp_path)
-    baseline = run_evolve(
-        "run", str(workspace), "--max-generations", "0", env=smoke_env(evolve_home)
-    )
+    baseline = run_evolve("run", str(workspace), "--max-generations", "0", env=smoke_env(evolve_home))
     assert baseline.returncode == 0, baseline.stderr
     _rewrite_baseline_task_failure(workspace, evolve_home)
 

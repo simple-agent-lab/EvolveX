@@ -23,9 +23,9 @@ library/
 ├─ select/   greedy · newest · random · score_weighted
 ├─ rollout/  failure_focused · harbor · noop
 ├─ trace_analyzer/ failure_patterns · failed_traces · trace_browser · execution_records · utility_metrics
-├─ meta_agent/ feedback_guided · hyperagents
+├─ meta_agent/ hyperagents
 │  ├─ support/  shared evidence loading
-│  └─ runners/ agent_command · harbor
+│  └─ runners/ local · harbor
 ├─ validate/ hyperagents
 ├─ gate/     hillclimb · parent_eligible
 ├─ record/   jsonl · hyperagents
@@ -65,17 +65,17 @@ set used for final evaluation.
 
 ## Meta-agent execution
 
-Meta-agent variants define the improvement strategy. `feedback_guided.py` uses
-the normalized rollout feedback; `hyperagents.py` implements self-referential
-editing. Their `runner` selects how the editing agent is executed.
+Meta-agent variants define the improvement strategy. `hyperagents.py` consumes
+normalized rollout feedback and implements self-referential editing. Its
+`runner` selects how the editing agent is executed.
 
-`runners/agent_command.py` executes a trusted host command. `runners/harbor.py` instead compiles
+`runners/local.py` executes a trusted host command. `runners/harbor.py` instead compiles
 `target/` into one isolated Harbor Exec task and returns the validated artifact:
 
 ```yaml
 operators:
   meta_agent:
-    variant: feedback_guided
+    variant: hyperagents
     runner: harbor
     agent: codex
     model: gpt-5.4
