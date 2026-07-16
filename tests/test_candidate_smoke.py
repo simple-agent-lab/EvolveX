@@ -5,6 +5,7 @@ import stat
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from conftest import git, run_evolve
 
 from evolve import candidate_runtime as candidate_runtime_module
@@ -190,6 +191,7 @@ def test_init_generates_executable_smoke_only_for_harbor(tmp_path: Path, monkeyp
     local_config["evaluator"].pop("agent", None)
     monkeypatch.setattr(workspace_module, "default_config", lambda recipe, experiment_id: local_config)
     local = tmp_path / "local"
-    init_workspace(InitOptions(workspace=local, recipe="hill_climb-smoke"))
+    with pytest.raises(ValueError, match="unsupported evaluator.engine: local"):
+        init_workspace(InitOptions(workspace=local, recipe="hill_climb-smoke"))
 
     assert not (local / "evaluator" / "smoke.sh").exists()
