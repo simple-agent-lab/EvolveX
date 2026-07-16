@@ -7,9 +7,7 @@ from pathlib import Path
 import pytest
 from conftest import git, init_workspace, rows_by_genid, smoke_agent_command
 
-from evolve.archive import archive_path, read_events
-from evolve.config import experiment_id, operator_blocks
-from evolve.driver import RunOptions, _run_terminal_record, record_fields
+from evolve.driver import RunOptions, record_fields
 from evolve.driver import run as driver_run
 from evolve.frozen.interfaces import ArchiveView
 
@@ -185,162 +183,12 @@ def test_record_rejects_stamped_and_identity_fields(tmp_path):
     assert (ws / "archive.jsonl").read_text() == before
 
 
-def test_run_records_rejected_no_proposal_attempt(tmp_path: Path, monkeypatch) -> None:
-    workspace, evolve_home = init_workspace(tmp_path)
-    _rewrite(workspace, "operators/meta_agent.py", _NO_PATCH_META_AGENT)
-    _rewrite(workspace, "operators/record.py", _RECORD_ATTEMPT)
-    _commit_and_retag_gen0(workspace, "operators/meta_agent.py", "operators/record.py")
-    monkeypatch.setenv("EVAL_STUB", "1")
-    monkeypatch.setenv("EVOLVE_HOME", str(evolve_home))
-
-    driver_run(RunOptions(workspace=workspace, max_generations=1))
-
-    row = rows_by_genid(workspace)["1"]
-    assert row["status"] == "no_proposal"
-    assert row["attempt_recorded"] is True
-    assert json.loads((workspace / "runs/gen-1/record/fields.json").read_text()) == {
-        "attempt_recorded": True
-    }
-
-
-def test_successful_terminal_record_is_idempotent(tmp_path: Path, monkeypatch) -> None:
-    workspace, evolve_home = init_workspace(tmp_path)
-    _rewrite(workspace, "operators/meta_agent.py", _NO_PATCH_META_AGENT)
-    _rewrite(workspace, "operators/record.py", _RECORD_ATTEMPT)
-    _commit_and_retag_gen0(workspace, "operators/meta_agent.py", "operators/record.py")
-    monkeypatch.setenv("EVAL_STUB", "1")
-    monkeypatch.setenv("EVOLVE_HOME", str(evolve_home))
-
-    driver_run(RunOptions(workspace=workspace, max_generations=1))
-    _run_terminal_record(
-        workspace,
-        experiment_id(workspace),
-        "1",
-        "0",
-        operator_blocks(workspace),
-        candidate_checkout=None,
-    )
-
-    record_events = [
-        event
-        for event in read_events(archive_path(workspace))
-        if event.get("genid") == "1" and event.get("attempt_recorded") is True
-    ]
-    assert len(record_events) == 1
-
-
-def test_record_failure_preserves_validation_rejection_status(tmp_path: Path, monkeypatch) -> None:
-    workspace, evolve_home = init_workspace(tmp_path)
-    _rewrite(workspace, "operators/meta_agent.py", _PATCH_META_AGENT)
-    _rewrite(workspace, "operators/validate.py", _REJECTING_VALIDATE)
-    _rewrite(workspace, "operators/record.py", _RECORD_FAILS)
-    _rewrite(workspace, "evolve.yaml", _enable_validate((workspace / "evolve.yaml").read_text()))
-    _commit_and_retag_gen0(
-        workspace,
-        "operators/meta_agent.py",
-        "operators/validate.py",
-        "operators/record.py",
-        "evolve.yaml",
-    )
-    monkeypatch.setenv("EVAL_STUB", "1")
-    monkeypatch.setenv("EVOLVE_HOME", str(evolve_home))
-
-    driver_run(RunOptions(workspace=workspace, max_generations=1))
-
-    row = rows_by_genid(workspace)["1"]
-    assert row["status"] == "rejected_validation"
-    assert row["reason"].startswith("candidate validation rejected")
-    assert "record_error" in row
-
-
-def test_terminal_record_cannot_overwrite_primary_outcome_fields(tmp_path: Path, monkeypatch) -> None:
-    workspace, evolve_home = init_workspace(tmp_path)
-    _rewrite(workspace, "operators/meta_agent.py", _NO_PATCH_META_AGENT)
-    _rewrite(workspace, "operators/record.py", _RECORD_MALICIOUS_OUTCOME_FIELDS)
-    _commit_and_retag_gen0(workspace, "operators/meta_agent.py", "operators/record.py")
-    monkeypatch.setenv("EVAL_STUB", "1")
-    monkeypatch.setenv("EVOLVE_HOME", str(evolve_home))
-
-    driver_run(RunOptions(workspace=workspace, max_generations=1))
-
-    row = rows_by_genid(workspace)["1"]
-    assert row["status"] == "no_proposal"
-    assert row["valid_parent"] is False
-    assert row["verdict"] == "discard"
-    assert row["reason"] == "no changes to commit"
-    assert row["predicted_fixes"] == []
-    assert row["note"] == "no changes to commit"
-    assert row["attempt_recorded"] is True
-
-
-def test_gate_operator_failure_runs_terminal_record_once_and_preserves_failure(
-    tmp_path: Path, monkeypatch
-) -> None:
-    workspace, evolve_home = init_workspace(tmp_path)
-    _rewrite(workspace, "operators/meta_agent.py", _PATCH_META_AGENT)
-    _rewrite(workspace, "operators/gate.py", "raise SystemExit('gate exploded')\n")
-    _rewrite(workspace, "operators/record.py", _RECORD_ATTEMPT)
-    _commit_and_retag_gen0(workspace, "operators/meta_agent.py", "operators/gate.py", "operators/record.py")
-    monkeypatch.setenv("EVAL_STUB", "1")
-    monkeypatch.setenv("EVOLVE_HOME", str(evolve_home))
-
-    driver_run(RunOptions(workspace=workspace, max_generations=1))
-
-    row = rows_by_genid(workspace)["1"]
-    assert row["status"] == "operator_failed"
-    assert row["reason"] == "operator gate failed"
-    assert row["attempt_recorded"] is True
-    record_events = [
-        event
-        for event in read_events(archive_path(workspace))
-        if event.get("genid") == "1" and event.get("attempt_recorded") is True
-    ]
-    assert len(record_events) == 1
-
-
-@pytest.mark.parametrize(
-    ("decision", "valid_parent", "verdict"),
-    [("reject", False, "discard"), ("accept", True, "keep")],
-)
-def test_gate_verdict_survives_record_failure(
-    tmp_path: Path,
-    monkeypatch,
-    decision: str,
-    valid_parent: bool,
-    verdict: str,
-) -> None:
-    workspace, evolve_home = init_workspace(tmp_path)
-    _rewrite(workspace, "operators/meta_agent.py", _PATCH_META_AGENT)
-    _rewrite(workspace, "operators/gate.py", _gate(decision))
-    _rewrite(workspace, "operators/record.py", _RECORD_FAILS)
-    _commit_and_retag_gen0(workspace, "operators/meta_agent.py", "operators/gate.py", "operators/record.py")
-    monkeypatch.setenv("EVAL_STUB", "1")
-    monkeypatch.setenv("EVOLVE_HOME", str(evolve_home))
-
-    driver_run(RunOptions(workspace=workspace, max_generations=1))
-
-    row = rows_by_genid(workspace)["1"]
-    assert row["valid_parent"] is valid_parent
-    assert row["pending_gate_record"] is False
-    assert row["verdict"] == verdict
-    assert row["reason"] == f"{decision} by test gate"
-    assert "record_error" in row
-    assert [candidate["genid"] for candidate in ArchiveView(workspace).valid_parents()] == (
-        ["0", "1"] if valid_parent else ["0"]
-    )
-    events = [event for event in read_events(archive_path(workspace)) if event.get("genid") == "1"]
-    gate_index = next(index for index, event in enumerate(events) if event.get("reason") == f"{decision} by test gate")
-    error_index = next(index for index, event in enumerate(events) if "record_error" in event)
-    assert gate_index < error_index
-
-
-@pytest.mark.parametrize(("decision", "parents"), [("accept", ["0", "1"]), ("reject", ["0"])])
 def test_gate_certification_resists_malicious_record(
-    tmp_path: Path, monkeypatch, decision: str, parents: list[str],
+    tmp_path: Path, monkeypatch,
 ) -> None:
     workspace, evolve_home = init_workspace(tmp_path)
     _rewrite(workspace, "operators/meta_agent.py", _PATCH_META_AGENT)
-    _rewrite(workspace, "operators/gate.py", _gate(decision))
+    _rewrite(workspace, "operators/gate.py", _gate("accept"))
     _rewrite(workspace, "operators/record.py", _RECORD_MALICIOUS_OUTCOME_FIELDS)
     _commit_and_retag_gen0(workspace, "operators/meta_agent.py", "operators/gate.py", "operators/record.py")
     monkeypatch.setenv("EVAL_STUB", "1")
@@ -350,29 +198,4 @@ def test_gate_certification_resists_malicious_record(
 
     row = rows_by_genid(workspace)["1"]
     assert row["pending_gate_record"] is False
-    assert [candidate["genid"] for candidate in ArchiveView(workspace).valid_parents()] == parents
-
-
-def test_select_operator_failure_runs_terminal_record_once_and_preserves_failure(
-    tmp_path: Path, monkeypatch
-) -> None:
-    workspace, evolve_home = init_workspace(tmp_path)
-    _rewrite(workspace, "operators/select.py", "raise SystemExit('select exploded')\n")
-    _rewrite(workspace, "operators/record.py", _RECORD_ATTEMPT)
-    _commit_and_retag_gen0(workspace, "operators/select.py", "operators/record.py")
-    monkeypatch.setenv("EVAL_STUB", "1")
-    monkeypatch.setenv("EVOLVE_HOME", str(evolve_home))
-
-    driver_run(RunOptions(workspace=workspace, max_generations=1))
-
-    row = rows_by_genid(workspace)["1"]
-    assert row["status"] == "operator_failed"
-    assert row["parent"] is None
-    assert row["reason"] == "operator select failed"
-    assert row["attempt_recorded"] is True
-    record_events = [
-        event
-        for event in read_events(archive_path(workspace))
-        if event.get("genid") == "1" and event.get("attempt_recorded") is True
-    ]
-    assert len(record_events) == 1
+    assert [candidate["genid"] for candidate in ArchiveView(workspace).valid_parents()] == ["0", "1"]

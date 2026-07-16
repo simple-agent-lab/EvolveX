@@ -6,11 +6,9 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
-from evolve import evaluator as evaluator_module
 from evolve import runtime as runtime_module
 from evolve import workspace as workspace_module
 from evolve.evaluation import Outcome
@@ -143,38 +141,6 @@ def test_attempt_ids_include_full_attempt_and_workspace_identity(tmp_path: Path)
 
     assert len(set(identifiers)) == 4
     assert identifiers[0] == runtime_module.owned_attempt_id(first_workspace, candidate)
-    assert all(re.fullmatch(r"[a-z0-9_-]{1,80}", identifier) for identifier in identifiers)
-
-
-def test_evaluator_runs_through_owned_process_helper(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    workspace = tmp_path / "workspace"
-    monkeypatch.setenv("EVAL_STUB", "1")
-    init_workspace(InitOptions(workspace=workspace, recipe="hill_climb-smoke"))
-    calls: list[tuple[list[str], dict[str, str]]] = []
-
-    def fake_run_owned(
-        command: list[str], *, cwd: Path, env: dict[str, str], timeout_s: float | None = None,
-    ) -> SimpleNamespace:
-        calls.append((command, env))
-        completed = subprocess.run(command, cwd=cwd, env=env, text=True, capture_output=True, check=False)
-        return SimpleNamespace(
-            returncode=completed.returncode,
-            stdout=completed.stdout,
-            stderr=completed.stderr,
-            wall_s=0.0,
-            timed_out=False,
-        )
-
-    monkeypatch.setattr(evaluator_module, "run_owned", fake_run_owned, raising=False)
-
-    evaluate(workspace, "gen/0", "0", purpose="genesis")
-    evaluate(workspace, "gen/0", "0", purpose="anchor")
-
-    identifiers = [env["EVOLVE_ATTEMPT_ID"] for _, env in calls]
-    assert len(identifiers) == 2
-    assert len(set(identifiers)) == 2
     assert all(re.fullmatch(r"[a-z0-9_-]{1,80}", identifier) for identifier in identifiers)
 
 

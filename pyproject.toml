@@ -64,7 +64,4 @@ packages = ["src/evolve"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = ["-n", "8", "--dist", "worksteal", "-m", "not extended"]
-markers = [
-    "extended: redundant production-faithful lifecycle scenarios excluded from the default developer loop",
-]
+addopts = ["-n", "8", "--dist", "worksteal"]
