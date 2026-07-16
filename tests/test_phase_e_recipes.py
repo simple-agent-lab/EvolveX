@@ -55,7 +55,8 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "    - operators/meta_agent.md" in config
             assert "    - operators/**" not in config
             assert "select: {variant: score_child_prop" in config
-            assert "rollout: {variant: noop}" in config
+            assert "rollout: {variant: harbor" in config
+            assert "trace_analyzer: {variant: trace_browser" in config
             assert "meta_agent: {variant: hyperagents" in config
             assert "runner: agent_command" in config
             assert "validate: {variant: hyperagents" in config
@@ -93,6 +94,7 @@ def test_smoke_recipes_are_explicitly_named_and_deterministic() -> None:
             assert "    - operators/**" not in config
             assert "select: {variant: score_child_prop" in config
             assert "rollout: {variant: noop}" in config
+            assert "trace_analyzer:" not in config
             assert "meta_agent: {variant: hyperagents" in config
             assert "runner: agent_command" in config
             assert "validate: {variant: hyperagents" in config

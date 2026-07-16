@@ -24,6 +24,7 @@ library/
 ├─ rollout/  failure_focused · harbor · noop
 ├─ trace_analyzer/ failure_patterns · failed_traces · trace_browser · execution_records · utility_metrics
 ├─ meta_agent/ feedback_guided · hyperagents
+│  ├─ support/  shared evidence loading
 │  └─ runners/ agent_command · harbor
 ├─ validate/ hyperagents
 ├─ gate/     hillclimb · parent_eligible

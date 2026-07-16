@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -20,6 +19,7 @@ from evolve.frozen import sdk
 from evolve.frozen.interfaces import MetaAgentOperator, MetaAgentResult, OperatorContext
 from evolve.patching import CandidatePatch, create_candidate_patch, load_surface_policy, patch_parent_ref
 from library.meta_agent.runners import run_agent, runner_name
+from library.meta_agent.support.evidence import load_feedback
 
 
 def _write_json(path: Path, payload: object) -> None:
@@ -47,28 +47,8 @@ def _predicted_fixes(text: str) -> list[Any]:
     return []
 
 
-def _feedback_text(run_dir: Path) -> str:
-    root = (run_dir / "feedback").resolve()
-    index = root / "index.md"
-    seen: set[Path] = set()
-    parts: list[tuple[str, str]] = []
-    if index.exists():
-        text = index.read_text()
-        parts.append(("feedback/index.md", text))
-        seen.add(index.resolve())
-        for rel in re.findall(r"\[[^\]]+\]\(([^)#]+)", text):
-            path = (root / rel.strip()).resolve()
-            if path.is_file() and (path == root or root in path.parents) and path not in seen:
-                parts.append((f"feedback/{path.relative_to(root).as_posix()}", path.read_text()))
-                seen.add(path)
-    rules = root / "rules.md"
-    if rules.exists() and rules.resolve() not in seen:
-        parts.append(("feedback/rules.md", rules.read_text()))
-    return "\n".join("## %s\n%s" % (name, text.rstrip()) for name, text in parts if text.strip())
-
-
 def build_prompt(checkout: Path, observation: str, ctx: OperatorContext) -> str:
-    feedback = _feedback_text(ctx.run_dir) or observation.strip()
+    feedback = load_feedback(ctx.run_dir, observation)
     surface = load_surface_policy(checkout)
     return (
         "\n\n".join(

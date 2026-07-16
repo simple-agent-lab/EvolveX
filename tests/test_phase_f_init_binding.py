@@ -24,6 +24,7 @@ def test_real_recipe_binds_harbor_rollout_trace_analyzer_and_feedback_guided_met
     assert "library/meta_agent/runners/__init__.py" in assets
     assert "library/meta_agent/runners/agent_command.py" in assets
     assert "library/meta_agent/runners/harbor.py" in assets
+    assert "library/meta_agent/support/evidence.py" in assets
     assert "library/meta_agent/fixed.py" not in palette
     assert "library/meta_agent/noop.py" not in palette
     assert "library/meta_agent/llm.py" not in palette
