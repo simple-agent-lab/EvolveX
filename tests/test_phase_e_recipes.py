@@ -46,7 +46,7 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "seed: builtin-codex" in config
             assert "rollout: {variant: harbor" in config
             assert "trace_analyzer: {variant: failure_patterns" in config
-            assert "meta_agent: {variant: agent_command" in config
+            assert "meta_agent: {variant: feedback_guided, runner: agent_command" in config
             assert "agent: target.agent:HarborAgent" in config
         elif name == "hyperagents":
             assert "dataset: swe-bench-lite" in config
@@ -57,13 +57,17 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "select: {variant: score_child_prop" in config
             assert "rollout: {variant: noop}" in config
             assert "meta_agent: {variant: hyperagents" in config
+            assert "runner: agent_command" in config
             assert "validate: {variant: hyperagents" in config
             assert "gate: {variant: parent_eligible}" in config
             assert "record: {variant: hyperagents}" in config
         else:
             assert "dataset: swe-bench-lite" in config
             assert "seed: https://github.com/SWE-agent/mini-swe-agent.git" in config
-            assert "meta_agent: {variant: agent_command" in config
+            assert "rollout: {variant: harbor" in config
+            assert "trace_analyzer: {variant: failure_patterns" in config
+            assert "meta_agent: {variant: feedback_guided, runner: harbor" in config
+            assert "agent: codex" in config
             assert "variant: noop" not in config
         assert "mutate:" not in config
         if name != "ahe":
@@ -90,11 +94,14 @@ def test_smoke_recipes_are_explicitly_named_and_deterministic() -> None:
             assert "select: {variant: score_child_prop" in config
             assert "rollout: {variant: noop}" in config
             assert "meta_agent: {variant: hyperagents" in config
+            assert "runner: agent_command" in config
             assert "validate: {variant: hyperagents" in config
             assert "record: {variant: hyperagents}" in config
             assert "budget_usd: 1" in config
             assert "tasks_per_round: 8" in config
         else:
-            assert "meta_agent: {variant: agent_command" in config
+            assert "rollout: {variant: failure_focused" in config
+            assert "trace_analyzer:" not in config
+            assert "meta_agent: {variant: feedback_guided, runner: agent_command" in config
             assert "variant: noop" not in config
         assert "variant: fixed" not in config

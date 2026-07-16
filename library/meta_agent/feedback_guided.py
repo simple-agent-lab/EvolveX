@@ -1,4 +1,4 @@
-"""Agent-command meta-agent delegates candidate edits to a configured command."""
+"""Use rollout-derived feedback to make one targeted candidate improvement."""
 
 # ruff: noqa: E402
 
@@ -12,11 +12,14 @@ from pathlib import Path
 from typing import Any
 
 sys.path = [p for p in sys.path if os.path.abspath(p or os.getcwd()) != os.path.dirname(os.path.abspath(__file__))]
+if os.getcwd() not in sys.path:
+    sys.path.insert(0, os.getcwd())
 
-from evolve.agent import AgentCommandError, AgentRunResult, run_meta_agent
+from evolve.agent import AgentCommandError, AgentRunResult
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import MetaAgentOperator, MetaAgentResult, OperatorContext
 from evolve.patching import CandidatePatch, create_candidate_patch, load_surface_policy, patch_parent_ref
+from library.meta_agent.runners import run_agent, runner_name
 
 
 def _write_json(path: Path, payload: object) -> None:
@@ -64,20 +67,16 @@ def _feedback_text(run_dir: Path) -> str:
     return "\n".join("## %s\n%s" % (name, text.rstrip()) for name, text in parts if text.strip())
 
 
-def _surface_rules(checkout: Path) -> str:
-    surface = load_surface_policy(checkout)
-    return "- Surface include: %s\n- Surface exclude: %s" % (surface.include, surface.exclude)
-
-
-def build_meta_agent_prompt(checkout: Path, observation: str, ctx: OperatorContext) -> str:
+def build_prompt(checkout: Path, observation: str, ctx: OperatorContext) -> str:
     feedback = _feedback_text(ctx.run_dir) or observation.strip()
+    surface = load_surface_policy(checkout)
     return (
         "\n\n".join(
             chunk
             for chunk in [
                 (checkout / "operators" / "meta_agent.md").read_text().rstrip(),
                 feedback,
-                "# Surface Rules\n\n%s" % _surface_rules(checkout),
+                "# Surface Rules\n\n- Surface include: %s\n- Surface exclude: %s" % (surface.include, surface.exclude),
                 '# Output Contract\n\nEdit the checkout directly. Do not output patches, diffs, or fenced file blocks. Optional final line: predicted_fixes: ["task-id"].',
             ]
             if chunk
@@ -86,7 +85,7 @@ def build_meta_agent_prompt(checkout: Path, observation: str, ctx: OperatorConte
     )
 
 
-def _write_meta_agent_result(
+def _write_result(
     run_dir: Path,
     agent_run: AgentRunResult | None,
     patch: CandidatePatch,
@@ -95,87 +94,76 @@ def _write_meta_agent_result(
     output: str = "",
     usage: dict[str, Any] | None = None,
 ) -> MetaAgentResult:
-    meta_agent_dir = run_dir / "meta_agent"
-    meta_agent_dir.mkdir(parents=True, exist_ok=True)
+    root = run_dir / "meta_agent"
+    root.mkdir(parents=True, exist_ok=True)
     combined_output = output or (agent_run.output if agent_run else "")
-    all_notes = [*notes, *patch.notes, "written-by: operators/meta_agent.py", "variant: agent_command"]
+    all_notes = ["variant: feedback_guided", *notes, *patch.notes, "written-by: operators/meta_agent.py"]
     if combined_output.strip():
         all_notes.append("agent-output: %s" % combined_output.strip().splitlines()[0])
     usage_payload = _safe_usage(usage or (agent_run.usage if agent_run else {"usd": 0}))
-    _write_json(meta_agent_dir / "changed.json", patch.changed_paths)
-    _write_json(meta_agent_dir / "surface-check.json", patch.surface_report)
-    (meta_agent_dir / "patch.diff").write_text(patch.diff)
-    (meta_agent_dir / "rationale.md").write_text("\n".join(all_notes) + "\n")
-    (meta_agent_dir / "predicted_fixes.json").write_text(json.dumps(_predicted_fixes(combined_output)) + "\n")
-    _write_json(meta_agent_dir / "usage.json", usage_payload)
+    _write_json(root / "changed.json", patch.changed_paths)
+    _write_json(root / "surface-check.json", patch.surface_report)
+    (root / "patch.diff").write_text(patch.diff)
+    (root / "rationale.md").write_text("\n".join(all_notes) + "\n")
+    (root / "predicted_fixes.json").write_text(json.dumps(_predicted_fixes(combined_output)) + "\n")
+    _write_json(root / "usage.json", usage_payload)
     return MetaAgentResult(changed=patch.changed_paths, notes=all_notes, usage=usage_payload)
 
 
-def _empty_failure_patch(checkout: Path, parent_ref: str, error: Exception) -> CandidatePatch:
+def _failure_patch(checkout: Path, parent_ref: str, error: Exception) -> CandidatePatch:
     try:
-        patch = create_candidate_patch(
+        return create_candidate_patch(
             checkout=checkout,
             parent_ref=parent_ref,
             surface=load_surface_policy(checkout),
         )
     except Exception:
-        patch = CandidatePatch(
+        return CandidatePatch(
             changed_paths=[],
             diff="",
             surface_report={"ok": True, "mutated": [], "violations": [], "error": str(error)},
             notes=[],
         )
-    return patch
 
 
-class AgentCommandMetaAgent(MetaAgentOperator):
+class FeedbackGuidedMetaAgent(MetaAgentOperator):
     def run(self, checkout: Path, observation: str, ctx: OperatorContext) -> MetaAgentResult:
         parent_ref = patch_parent_ref(checkout, ctx)
         try:
-            prompt = build_meta_agent_prompt(checkout, observation, ctx)
-            agent_run = run_meta_agent(workspace=checkout, prompt=prompt, config=ctx.config)
+            prompt = build_prompt(checkout, observation, ctx)
+            agent_run = run_agent(checkout, prompt, ctx)
             patch = create_candidate_patch(
                 checkout=checkout,
                 parent_ref=parent_ref,
                 surface=load_surface_policy(checkout),
             )
-            result = _write_meta_agent_result(ctx.run_dir, agent_run, patch, [])
+            return _write_result(
+                ctx.run_dir,
+                agent_run,
+                patch,
+                [f"runner: {runner_name(ctx)}"],
+            )
         except AgentCommandError as exc:
-            patch = create_candidate_patch(
-                checkout=checkout,
-                parent_ref=parent_ref,
-                surface=load_surface_policy(checkout),
-            )
-            _write_meta_agent_result(
+            patch = _failure_patch(checkout, parent_ref, exc)
+            _write_result(
                 ctx.run_dir,
                 None,
                 patch,
-                ["error: %s" % exc],
+                [f"error: {exc}", f"runner: {runner_name(ctx)}"],
                 output=exc.output,
                 usage=exc.usage,
             )
             raise SystemExit(exc.returncode)
         except SystemExit as exc:
             code = exc.code if isinstance(exc.code, int) and exc.code else 1
-            patch = _empty_failure_patch(checkout, parent_ref, exc)
-            _write_meta_agent_result(ctx.run_dir, None, patch, ["error: %s" % (exc.code or "meta-agent exited")])
+            patch = _failure_patch(checkout, parent_ref, exc)
+            _write_result(ctx.run_dir, None, patch, [f"error: {exc.code or 'meta-agent exited'}"])
             raise SystemExit(code)
         except Exception as exc:
-            patch = _empty_failure_patch(checkout, parent_ref, exc)
-            _write_meta_agent_result(
-                ctx.run_dir,
-                None,
-                patch,
-                ["error: %s: %s" % (exc.__class__.__name__, exc)],
-            )
+            patch = _failure_patch(checkout, parent_ref, exc)
+            _write_result(ctx.run_dir, None, patch, [f"error: {exc.__class__.__name__}: {exc}"])
             raise SystemExit(1)
-        if not result.changed:
-            return result
-        surface = json.loads((ctx.run_dir / "meta_agent" / "surface-check.json").read_text())
-        if not surface.get("ok"):
-            raise SystemExit(1)
-        return result
 
 
 if __name__ == "__main__":
-    sdk.main(AgentCommandMetaAgent)
+    sdk.main(FeedbackGuidedMetaAgent)

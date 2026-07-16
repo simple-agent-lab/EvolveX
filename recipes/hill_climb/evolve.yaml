@@ -15,8 +15,9 @@ surface:
   exclude: []
 operators:
   select: {variant: greedy}
-  rollout: {variant: failure_focused, budget_tasks: 32}
-  meta_agent: {variant: agent_command, timeout_s: 3600}
+  rollout: {variant: harbor, budget_tasks: 32, n_concurrent: 16, agent_setup_timeout_multiplier: 3, max_retries: 1, timeout_s: 3600}
+  trace_analyzer: {variant: failure_patterns, max_chars: 30000, timeout_s: 600}
+  meta_agent: {variant: feedback_guided, runner: harbor, agent: codex, model: gpt-5.4, environment: docker, max_retries: 0, timeout_s: 3600}
   gate: {variant: hillclimb}
   record: {variant: jsonl}
   timeout_s: 600

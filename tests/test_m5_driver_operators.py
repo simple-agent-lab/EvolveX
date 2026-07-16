@@ -8,6 +8,7 @@ from pathlib import Path
 from conftest import git, init_miniswe_workspace, init_workspace, rows_by_genid, run_evolve, smoke_env
 
 from evolve.archive import MECHANISM_EVAL_FIELD, append_event, eval_receipt_path, read_events
+from evolve.config import load_config, render_yaml
 from evolve.driver import RunOptions
 from evolve.driver import run as driver_run
 from evolve.frozen.interfaces import OperatorContext
@@ -74,7 +75,7 @@ def test_run_uses_operator_subprocesses_for_loop_steps(tmp_path: Path) -> None:
     assert json.loads((run_dir / "gate.json").read_text())["verdict"] == "keep"
     row = rows_by_genid(workspace)["1"]
     assert row["reason"] == "score 1.0 >= parent 1.0"
-    assert row["note"] == "variant: agent_command"
+    assert row["note"] == "variant: feedback_guided"
 
 
 def test_run_records_operator_failed_when_meta_agent_operator_crashes(tmp_path: Path) -> None:
@@ -120,6 +121,14 @@ def test_validate_rejection_happens_before_candidate_commit(tmp_path: Path, monk
 
 def test_driver_has_no_package_manager_specific_admission(tmp_path: Path) -> None:
     workspace, evolve_home = init_miniswe_workspace(tmp_path)
+    # This test exercises admission, not the real recipe's Harbor evidence path.
+    _rewrite(workspace, "operators/rollout.py", (workspace / "library/rollout/noop.py").read_text())
+    _rewrite(workspace, "operators/meta_agent.py", (workspace / "library/meta_agent/feedback_guided.py").read_text())
+    config = load_config(workspace / "evolve.yaml")
+    del config["operators"]["trace_analyzer"]
+    config["operators"]["meta_agent"]["runner"] = "agent_command"
+    _rewrite(workspace, "evolve.yaml", render_yaml(config))
+    _commit_and_retag_gen0(workspace, "operators/rollout.py", "operators/meta_agent.py", "evolve.yaml")
     code = (
         "from pathlib import Path\n"
         "path = Path('target/pyproject.toml')\n"

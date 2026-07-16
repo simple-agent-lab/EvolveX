@@ -193,7 +193,7 @@ may appear in recipe prose, but `variant:` values point to these files:
 - select: `greedy`, `random`, `score_weighted`, `newest`
 - rollout: `failure_focused`, `harbor`, `noop`
 - trace_analyzer: `failure_patterns`, `failed_traces`, `trace_browser`, `execution_records`, `utility_metrics`
-- meta_agent: `agent_command`, `hyperagents`
+- meta_agent: `feedback_guided`, `hyperagents` (`runner`: `agent_command` or `harbor`)
 - validate: `hyperagents`
 - gate: `hillclimb`, `parent_eligible`
 - record: `jsonl`

@@ -249,7 +249,7 @@ def _operator_palette(recipe: str) -> dict[str, str]:
 def _walk_files(root: Path | Traversable, prefix: Path = Path("")):
     for item in sorted(root.iterdir(), key=lambda entry: entry.name):
         relative = prefix / item.name
-        if any(part.startswith(".") for part in relative.parts):
+        if any(part.startswith(".") or part == "__pycache__" for part in relative.parts):
             continue
         if isinstance(item, Path) and item.is_symlink():
             raise ValueError(f"operator asset may not be a symlink: {item}")
@@ -273,7 +273,7 @@ def _operator_assets(recipe: str) -> dict[str, str]:
         for directory in (recipe_root() / recipe / "operators" / kind, library_root() / kind):
             if directory.is_dir():
                 for relative, text in _text_files(directory):
-                    if relative.suffix != ".py":
+                    if relative.suffix != ".py" or len(relative.parts) > 1:
                         assets.setdefault(f"library/{kind}/{relative.as_posix()}", text)
     return assets | {f"library/{name}": text for name, text in root_python_helpers(library_root())}
 

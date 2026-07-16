@@ -67,7 +67,7 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
     assert "seed: builtin-dummy" in config
     assert "variant:" not in config
     assert "script:" not in config
-    assert "meta_agent:\n    timeout_s: 3600" in config
+    assert "meta_agent:\n    runner: agent_command\n    timeout_s: 3600" in config
     assert "mutate:" not in config
     assert "- target/**" in config
     assert (workspace / ".evolve-protocol-version").read_text() == "1\n"

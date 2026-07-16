@@ -10,15 +10,15 @@ from evolve.frozen.interfaces import OperatorContext
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def _agent_command_meta_agent_cls():
+def _feedback_guided_meta_agent_cls():
     spec = importlib.util.spec_from_file_location(
-        "agent_command_under_test",
-        ROOT / "library" / "meta_agent" / "agent_command.py",
+        "feedback_guided_under_test",
+        ROOT / "library" / "meta_agent" / "feedback_guided.py",
     )
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module.AgentCommandMetaAgent
+    return module.FeedbackGuidedMetaAgent
 
 
 def _git(root: Path, *args: str) -> str:
@@ -60,7 +60,7 @@ def _ctx(checkout: Path, run_dir: Path, command: str) -> OperatorContext:
         parent="0",
         round=None,
         fan_out=1,
-        config={"command": command, "timeout_s": 30},
+        config={"runner": "agent_command", "command": command, "timeout_s": 30},
         rng=random.Random(0),
     )
 
@@ -74,7 +74,9 @@ def test_agent_command_meta_agent_runs_command_and_writes_artifacts(tmp_path: Pa
         "print('predicted_fixes: [\"task-1\"]')\n"
     )
 
-    result = _agent_command_meta_agent_cls()().run(checkout, "", _ctx(checkout, run_dir, f"{sys.executable} {script}"))
+    result = _feedback_guided_meta_agent_cls()().run(
+        checkout, "", _ctx(checkout, run_dir, f"{sys.executable} {script}")
+    )
 
     assert result.changed == ["target/agent.py"]
     assert json.loads((run_dir / "meta_agent" / "changed.json").read_text()) == ["target/agent.py"]
@@ -86,7 +88,8 @@ def test_agent_command_meta_agent_runs_command_and_writes_artifacts(tmp_path: Pa
     assert "+print('child')" in patch_diff
     rationale = (run_dir / "meta_agent" / "rationale.md").read_text()
     assert "written-by: operators/meta_agent.py" in rationale
-    assert "variant: agent_command" in rationale
+    assert "variant: feedback_guided" in rationale
+    assert "runner: agent_command" in rationale
 
 
 def test_agent_command_meta_agent_exits_nonzero_after_writing_failure_artifacts(tmp_path: Path) -> None:
@@ -95,7 +98,7 @@ def test_agent_command_meta_agent_exits_nonzero_after_writing_failure_artifacts(
     script.write_text("import sys\nprint('bad')\nsys.exit(7)\n")
 
     try:
-        _agent_command_meta_agent_cls()().run(checkout, "", _ctx(checkout, run_dir, f"{sys.executable} {script}"))
+        _feedback_guided_meta_agent_cls()().run(checkout, "", _ctx(checkout, run_dir, f"{sys.executable} {script}"))
     except SystemExit as exc:
         assert exc.code == 7
     else:
@@ -111,7 +114,9 @@ def test_agent_command_meta_agent_repairs_surface_violation(tmp_path: Path) -> N
     script = tmp_path / "agent.py"
     script.write_text("from pathlib import Path\nPath('README.md').write_text('leak\\n')\n")
 
-    result = _agent_command_meta_agent_cls()().run(checkout, "", _ctx(checkout, run_dir, f"{sys.executable} {script}"))
+    result = _feedback_guided_meta_agent_cls()().run(
+        checkout, "", _ctx(checkout, run_dir, f"{sys.executable} {script}")
+    )
 
     assert result.changed == []
     surface = json.loads((run_dir / "meta_agent" / "surface-check.json").read_text())
@@ -127,7 +132,7 @@ def test_agent_command_meta_agent_writes_artifacts_for_prompt_failure(tmp_path: 
     script.write_text("raise SystemExit('should not run')\n")
 
     try:
-        _agent_command_meta_agent_cls()().run(checkout, "", _ctx(checkout, run_dir, f"{sys.executable} {script}"))
+        _feedback_guided_meta_agent_cls()().run(checkout, "", _ctx(checkout, run_dir, f"{sys.executable} {script}"))
     except SystemExit as exc:
         assert exc.code == 1
     else:

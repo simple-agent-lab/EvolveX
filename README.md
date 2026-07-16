@@ -90,6 +90,8 @@ pending; real long-running experiments should run on a Linux machine.
 Trace retention is a separate operator from rollout. See
 [`TRACE_ANALYZER.md`](TRACE_ANALYZER.md) for the descriptive analyzer variants
 and the migration from the former research-method profile names.
+Meta-agents can run as trusted host commands or isolated Harbor agents; see
+[`META_AGENTS.md`](META_AGENTS.md) for both configuration contracts.
 
 ## Install For Development
 
@@ -125,7 +127,7 @@ evolve --help
 Create a new generated workspace:
 
 ```bash
-evolve init /tmp/evolve-demo --recipe hill_climb
+evolve init /tmp/evolve-demo --recipe hill_climb-smoke
 cd /tmp/evolve-demo
 ```
 

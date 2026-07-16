@@ -64,7 +64,7 @@ def _ctx(workspace: Path, checkout: Path, run_dir: Path) -> OperatorContext:
         parent="0",
         round=None,
         fan_out=1,
-        config={"timeout_s": 30},
+        config={"runner": "agent_command", "timeout_s": 30},
         rng=random.Random(0),
     )
 
@@ -92,14 +92,15 @@ def test_hyperagents_meta_agent_records_complete_patch_for_target_and_workflow_e
     checkout, run_dir = _checkout(tmp_path)
     ctx = _ctx(run_dir.parents[1], checkout, run_dir)
 
-    def fake_run_meta_agent(*, workspace: Path, prompt: str, config: dict):
+    def fake_run_agent(workspace: Path, prompt: str, ctx: OperatorContext):
         assert workspace == checkout
+        assert ctx.config["runner"] == "agent_command"
         assert "Modify any part of the allowed codebase" in prompt
         (workspace / "target" / "agent.py").write_text("print('child')\n")
         (workspace / "operators" / "meta_agent.py").write_text("# improved mutation operator\n")
         return SimpleNamespace(output="edited target and workflow", usage={"usd": 0.02})
 
-    monkeypatch.setattr(module, "run_meta_agent", fake_run_meta_agent)
+    monkeypatch.setattr(module, "run_agent", fake_run_agent)
 
     result = module.HyperAgentsMetaAgent().run(checkout, "observation", ctx)
 
@@ -109,3 +110,4 @@ def test_hyperagents_meta_agent_records_complete_patch_for_target_and_workflow_e
     assert "diff --git a/operators/meta_agent.py b/operators/meta_agent.py" in diff
     assert (run_dir / "meta_agent" / "patch.diff").read_text() == diff
     assert json.loads((run_dir / "meta_agent" / "usage.json").read_text()) == {"usd": 0.02}
+    assert "runner: agent_command" in (run_dir / "meta_agent" / "rationale.md").read_text()
