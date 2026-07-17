@@ -24,12 +24,17 @@ from library.meta_agent.support.evidence import load_feedback
 PROMPT = """# HyperAgents Self-Improvement
 
 Modify any part of the allowed codebase to improve downstream task performance.
-The allowed surface is exactly `target/**` and `operators/meta_agent.py`.
-You may improve the task agent, this mutation workflow and prompt, or their
-interaction. Inspect prior generations and evaluation artifacts before editing.
-Make one coherent repository change; descendants inherit the complete patch.
-Do not modify fixed evaluator, selection, validation, gate, record, configuration,
-or mechanism files.
+The benchmark directly evaluates `target/**`. Every proposal must include at
+least one substantive `target/**` change intended to improve downstream task
+performance. `operators/**` remains editable, including this mutation workflow
+and prompt, but operator changes must accompany, not replace, the target
+improvement. Re-evaluating an unchanged target cannot demonstrate improvement.
+Inspect prior generations and evaluation artifacts before editing. Make one
+coherent repository change. An operator mutation becomes active the next time
+that operator is invoked: earlier-stage changes affect later generations, while
+not-yet-run validation, gate, or record changes may affect this generation.
+Do not modify the fixed evaluator, mechanism, workspace configuration, archive,
+task partitions, credentials, endpoints, or resource limits.
 """
 
 
@@ -105,7 +110,6 @@ class HyperAgentsMetaAgent(MetaAgentOperator):
         (out / "patch.diff").write_text(patch.diff)
         (out / "output.txt").write_text(agent_run.output)
         (out / "rationale.md").write_text("\n".join(notes) + "\n")
-        (out / "predicted_fixes.json").write_text("[]\n")
         _write_json(out / "changed.json", patch.changed_paths)
         _write_json(out / "surface-check.json", patch.surface_report)
         _write_json(out / "usage.json", usage)

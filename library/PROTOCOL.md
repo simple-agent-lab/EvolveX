@@ -101,10 +101,9 @@ def run(self, checkout: Path, observation: str, ctx) -> MetaAgentResult:
 ```
 
 Implement `run`. Return `MetaAgentResult` with fields `changed`, `notes`, and
-`usage`. The subprocess writes `meta_agent/changed.json`, ensures
-`meta_agent/predicted_fixes.json`, may write `meta_agent/rationale.md`, and
-writes `meta_agent/usage.json`. `usage` is a JSON object, commonly including
-`usd`.
+`usage`. The subprocess writes `meta_agent/changed.json`, may write
+`meta_agent/rationale.md`, and writes `meta_agent/usage.json`. `usage` is a JSON
+object, commonly including `usd`.
 
 ### Novelty (optional)
 
@@ -120,21 +119,6 @@ configures `operators.novelty` (DESIGN §8, off by default): it sees the
 uncommitted mutation diff, and an `accept: false` discards the generation before
 eval — a near-duplicate is never committed. `NoveltyOperator` implementations
 should read the ledger for prior accepted diffs, not reach for policy helpers.
-
-### Reflect (optional)
-
-ABC signature:
-
-```python
-def reflect(self, archive, ctx) -> ReflectResult:
-```
-
-Implement `reflect`. Return `ReflectResult` with field `ops` (a list of
-full-state playbook entries, each with an `id`). The subprocess appends the ops
-to `insights/playbook.jsonl` (append-only; folding by id gives current state).
-Runs only when a recipe configures `operators.reflect` (DESIGN §7, off by
-default). This is the credit-backfill memory: it turns `verified_fixes` into
-insights a future meta-agent can consult.
 
 ### Gate
 

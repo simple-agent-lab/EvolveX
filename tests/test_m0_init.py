@@ -145,7 +145,4 @@ def test_init_binds_real_hyperagents_method_surface_and_operators(tmp_path: Path
     assert "HyperAgents Self-Improvement" in (workspace / "operators/meta_agent.py").read_text()
     assert "HyperAgentsValidate" in (workspace / "operators/validate.py").read_text()
     assert "HyperAgentsRecord" in (workspace / "operators/record.py").read_text()
-    assert surface_lists(workspace) == (
-        ["target/**", "operators/meta_agent.py", "operators/meta_agent.md"],
-        [],
-    )
+    assert surface_lists(workspace) == (["target/**", "operators/**"], [])

@@ -1,4 +1,5 @@
 # Notes
 
-The executable baseline combines Harbor train failures with failure-pattern
-analysis and the hardened meta-agent candidate-edit pipeline from PR #3.
+The executable method combines bounded Harbor train evidence, the independent
+AHE hypothesis strategy, Harbor's installed MiniSWE editing agent, and frozen
+source-backed canonical evaluation.
