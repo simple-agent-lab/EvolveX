@@ -123,6 +123,9 @@ def test_ahe_prompt_uses_official_decisions_and_required_manifest(tmp_path: Path
         assert required in prompt
     assert "tool error was not recovered" in prompt
     assert str(ctx.run_dir) not in prompt
+    assert "Repository: /app/workspace" in prompt
+    assert "Archive: /app/workspace/archive.jsonl" in prompt
+    assert "Raw trace evidence: /app/workspace/runs/gen-1/trace_analyzer/evidence" in prompt
 
 
 def test_ahe_meta_agent_requires_valid_manifest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

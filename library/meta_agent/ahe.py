@@ -123,12 +123,25 @@ def build_prompt(checkout: Path, observation: str, ctx: OperatorContext) -> str:
     )
     template = dict(MANIFEST_TEMPLATE)
     template["iteration"] = int(ctx.genid)
+    if runner_name(ctx) == "harbor":
+        repository = Path("/app/workspace")
+        current_run = repository / "runs" / f"gen-{ctx.genid}"
+        experiment = repository
+    else:
+        repository = checkout
+        current_run = ctx.run_dir
+        experiment = ctx.workspace
     return (
         f"{AHE_PROMPT.rstrip()}\n\n"
         f"# Current Debugger Reports\n\n{feedback}\n\n"
         f"# Change Attribution\n\n```json\n{attribution}\n```\n\n"
         f"# Previous Change Manifest\n\n```json\n{_prior_manifest(ctx)}\n```\n\n"
         f"# Recent Archive Outcomes\n\n```jsonl\n{_recent_archive(ctx)}\n```\n\n"
+        "# Evidence Locations\n\n"
+        f"Repository: {repository}\n"
+        f"Archive: {experiment / 'archive.jsonl'}\n"
+        f"Current generation artifacts: {current_run}\n"
+        f"Raw trace evidence: {current_run / 'trace_analyzer' / 'evidence'}\n\n"
         f"# Surface Rules\n\n{_surface_rules(checkout)}\n\n"
         "# Required Final Output\n\nEdit the candidate directly. After the concise summary, emit exactly one block:\n\n"
         f"{MANIFEST_START}\n{json.dumps(template, indent=2)}\n{MANIFEST_END}\n"
