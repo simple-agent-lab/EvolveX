@@ -9,23 +9,28 @@ import os
 import re
 import shutil
 import signal
-import stat
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 from pathlib import Path
 from typing import Any
 
 sys.path = [p for p in sys.path if os.path.abspath(p or os.getcwd()) != os.path.dirname(os.path.abspath(__file__))]
+if os.getcwd() not in sys.path:
+    sys.path.insert(0, os.getcwd())
 
 from evolve.agent import AgentCommandError, AgentRunResult
 from evolve.frozen.interfaces import OperatorContext
-from evolve.git import git
-from evolve.patching import patch_parent_ref
+from evolve.patching import load_surface_policy, patch_parent_ref
+from library.meta_agent.runners.editable_bundle import (
+    EditableBundle,
+    cleanup_editable_bundle,
+    install_returned_bundle,
+    prepare_editable_bundle,
+)
 
-_ARTIFACT_SOURCE = "/app/target"
+_ARTIFACT_SOURCE = "/app/candidate"
 _SECRET_ASSIGNMENT = re.compile(
     r"(?i)\b([a-z0-9_-]*(?:api[_-]?key|access[_-]?token|auth(?:orization)?|secret|password))\b"
     r"([\"']?)(\s*[:=]\s*)([^\s,;}]+)"
@@ -36,13 +41,6 @@ _PROXY_ENV = (
     ("EVOLVE_HARBOR_HTTPS_PROXY", "https_proxy", "HTTPS_PROXY"),
     ("EVOLVE_HARBOR_NO_PROXY", "no_proxy", "NO_PROXY"),
 )
-
-
-class _TargetSwap:
-    def __init__(self, staging: Path, backup: Path, target: Path) -> None:
-        self.staging = staging
-        self.backup = backup
-        self.target = target
 
 
 def _write_json(path: Path, payload: object) -> None:
@@ -88,7 +86,7 @@ def _append_agent_env(command: list[str], config: dict[str, Any]) -> None:
 
 def _build_command(
     harbor: str,
-    checkout: Path,
+    bundle: EditableBundle,
     prompt_path: Path,
     jobs_root: Path,
     tasks_dir: Path,
@@ -100,7 +98,7 @@ def _build_command(
         harbor,
         "exec",
         "--path",
-        str((checkout / "target").resolve()),
+        str(bundle.task_root.resolve()),
         "--no-scan",
         "--instruction-path",
         str(prompt_path.resolve()),
@@ -214,7 +212,7 @@ def _trial_result(job_dir: Path) -> tuple[Path, dict[str, Any]]:
     return matches[0]
 
 
-def _artifact_target(trial_dir: Path) -> tuple[Path, list[dict[str, Any]]]:
+def _artifact_candidate(trial_dir: Path) -> tuple[Path, list[dict[str, Any]]]:
     manifest_path = trial_dir / "artifacts" / "manifest.json"
     payload = _read_json(manifest_path)
     if not isinstance(payload, list):
@@ -222,58 +220,15 @@ def _artifact_target(trial_dir: Path) -> tuple[Path, list[dict[str, Any]]]:
     entries = [entry for entry in payload if isinstance(entry, dict)]
     entry = next((item for item in entries if item.get("source") == _ARTIFACT_SOURCE), None)
     if entry is None or entry.get("status") != "ok":
-        raise RuntimeError("Harbor did not collect a successful /app/target artifact")
+        raise RuntimeError("Harbor did not collect a successful /app/candidate artifact")
     destination = entry.get("destination")
     if not isinstance(destination, str) or not destination:
-        raise RuntimeError("Harbor target artifact has no destination")
+        raise RuntimeError("Harbor candidate artifact has no destination")
     artifact = (trial_dir / destination).resolve()
     trial_root = trial_dir.resolve()
     if trial_root not in artifact.parents or not artifact.is_dir():
-        raise RuntimeError("Harbor target artifact escaped the trial or is not a directory")
+        raise RuntimeError("Harbor candidate artifact escaped the trial or is not a directory")
     return artifact, entries
-
-
-def _validate_tree(root: Path) -> None:
-    if not root.is_dir() or root.is_symlink():
-        raise RuntimeError(f"target must be a real directory: {root}")
-    for path in [root, *root.rglob("*")]:
-        mode = path.lstat().st_mode
-        if stat.S_ISLNK(mode):
-            raise RuntimeError(f"Harbor meta-agent does not accept symlinks: {path}")
-        if not (stat.S_ISDIR(mode) or stat.S_ISREG(mode)):
-            raise RuntimeError(f"Harbor meta-agent does not accept special files: {path}")
-
-
-def _stage_target(checkout: Path, artifact: Path) -> _TargetSwap:
-    target = checkout / "target"
-    staging = Path(tempfile.mkdtemp(prefix=".evolve-harbor-target-", dir=checkout))
-    staged = staging / "candidate"
-    backup = staging / "parent"
-    try:
-        shutil.copytree(artifact, staged)
-        _validate_tree(staged)
-        target.rename(backup)
-        try:
-            staged.rename(target)
-        except Exception:
-            backup.rename(target)
-            raise
-        return _TargetSwap(staging=staging, backup=backup, target=target)
-    except Exception:
-        shutil.rmtree(staging, ignore_errors=True)
-        raise
-
-
-def _rollback_swap(swap: _TargetSwap) -> None:
-    if swap.target.exists():
-        shutil.rmtree(swap.target)
-    if swap.backup.exists():
-        swap.backup.rename(swap.target)
-    shutil.rmtree(swap.staging, ignore_errors=True)
-
-
-def _commit_swap(swap: _TargetSwap) -> None:
-    shutil.rmtree(swap.staging, ignore_errors=True)
 
 
 def _agent_output(trial_dir: Path) -> str:
@@ -302,8 +257,9 @@ def _usage(payload: dict[str, Any], wall_s: float) -> dict[str, Any]:
 
 
 def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResult:
-    """Run an isolated Harbor editing agent and return its target artifact."""
+    """Run an isolated Harbor editing agent and install its candidate bundle."""
     parent_ref = patch_parent_ref(checkout, ctx)
+    surface = load_surface_policy(checkout)
     harbor_root = ctx.run_dir / "meta_agent" / "harbor"
     prompt_path = harbor_root / "prompt.md"
     jobs_root = Path(str(ctx.config.get("jobs_dir") or harbor_root / "jobs")).expanduser()
@@ -312,9 +268,9 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
     usage: dict[str, Any] = {"usd": 0, "wall_s": 0}
     output = ""
     returncode = 1
-    swap: _TargetSwap | None = None
+    bundle: EditableBundle | None = None
     try:
-        _validate_tree(checkout / "target")
+        bundle = prepare_editable_bundle(checkout, ctx.config.get("editable_roots", ["target"]), surface)
         if (jobs_root / job_name).exists():
             raise RuntimeError(f"Harbor meta-agent job already exists: {jobs_root / job_name}")
         harbor = shutil.which("harbor")
@@ -323,10 +279,10 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
         prompt_path.parent.mkdir(parents=True, exist_ok=True)
         prompt_path.write_text(
             prompt.rstrip() + "\n\n# Harbor Runner Contract\n\n"
-            "The editable candidate is at `/app/target`. Edit files under that directory "
-            "directly. The complete `/app/target` directory is returned as the candidate artifact.\n"
+            "The editable candidate is at `/app/candidate`. Edit only paths allowed by the supplied "
+            "surface rules. The complete `/app/candidate` directory is returned as the candidate artifact.\n"
         )
-        command = _build_command(harbor, checkout, prompt_path, jobs_root, tasks_dir, job_name, ctx.config)
+        command = _build_command(harbor, bundle, prompt_path, jobs_root, tasks_dir, job_name, ctx.config)
         _write_json(harbor_root / "command.json", [_redact(arg) for arg in command])
         returncode, wall_s = _run_harbor(command, checkout, harbor_root / "harbor.log", ctx.config)
         usage["wall_s"] = wall_s
@@ -347,16 +303,10 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
             raise RuntimeError(f"harbor exec exited {returncode}; see {harbor_root / 'harbor.log'}")
         if trial.get("exception_info") not in (None, {}):
             raise RuntimeError(f"Harbor meta-agent trial failed: {_redact(str(trial.get('exception_info')))}")
-        artifact, manifest = _artifact_target(trial_dir)
+        artifact, manifest = _artifact_candidate(trial_dir)
         _write_json(harbor_root / "artifact-manifest.json", manifest)
-        _validate_tree(artifact)
         output = _agent_output(trial_dir)
-        swap = _stage_target(checkout, artifact)
-        diff_check = git(checkout, "diff", "--check", parent_ref, "--", "target", check=False)
-        if diff_check.returncode != 0:
-            raise RuntimeError(f"Harbor candidate failed git diff --check: {diff_check.stderr.strip()}")
-        _commit_swap(swap)
-        swap = None
+        install_returned_bundle(checkout, artifact, bundle, parent_ref, surface)
         return AgentRunResult(
             stdout=output,
             stderr="",
@@ -366,11 +316,12 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
             usage=usage,
         )
     except Exception as exc:
-        if swap is not None:
-            _rollback_swap(swap)
         raise AgentCommandError(
             f"{exc.__class__.__name__}: {_redact(str(exc))}",
             output=output,
             usage=usage,
             returncode=returncode,
         ) from exc
+    finally:
+        if bundle is not None:
+            cleanup_editable_bundle(bundle)
