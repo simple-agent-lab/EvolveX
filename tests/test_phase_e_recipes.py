@@ -49,7 +49,7 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "meta_agent: {variant: ahe, runner: harbor" in config
             assert "agent: mini-swe-agent" in config
             assert "editable_roots: [target]" in config
-            assert "agent: target.harbor_agent:MiniSweSourceAgent" in config
+            assert "agent: evolve_harbor_adapter:MiniSweSourceAgent" in config
         elif name == "hyperagents":
             assert "dataset: swe-bench-lite" in config
             assert "seed: https://github.com/SWE-agent/mini-swe-agent.git" in config
@@ -74,7 +74,7 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "agent: codex" in config
             assert "variant: noop" not in config
         assert "mutate:" not in config
-        assert "agent: target.harbor_agent:MiniSweSourceAgent" in config
+        assert "agent: evolve_harbor_adapter:MiniSweSourceAgent" in config
         assert "harbor_agent: miniswe-source" in config
         assert "variant: fixed" not in config
 
@@ -85,7 +85,7 @@ def test_smoke_recipes_are_explicitly_named_and_deterministic() -> None:
         assert "engine: harbor" in config
         assert "dataset: pass@k" in config
         assert "seed: builtin-dummy" in config
-        assert "agent: target.harbor_agent:MiniSweSourceAgent" in config
+        assert "agent: evolve_harbor_adapter:MiniSweSourceAgent" in config
         assert "mutate:" not in config
         if name == "hyperagents-smoke":
             assert "    - operators/**" in config

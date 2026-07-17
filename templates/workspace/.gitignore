@@ -2,5 +2,6 @@ runs/
 archive.jsonl
 insights/
 .evolve-eval-receipts.jsonl
+.venv/
 __pycache__/
 *.pyc

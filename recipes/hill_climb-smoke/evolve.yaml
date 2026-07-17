@@ -22,7 +22,7 @@ operators:
 evaluator:
   engine: harbor
   dataset: pass@k
-  agent: target.harbor_agent:MiniSweSourceAgent
+  agent: evolve_harbor_adapter:MiniSweSourceAgent
   split: {train: 0.5, gate: 0.4, sealed: 0.1, seed: 0}
   sampling: static
   tasks_per_round: 16
