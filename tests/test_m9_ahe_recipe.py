@@ -42,10 +42,10 @@ def test_ahe_recipe_initializes_harbor_miniswe_composition(tmp_path: Path) -> No
         "library/meta_agent/runners/__init__.py",
         "library/meta_agent/runners/local.py",
         "library/meta_agent/runners/harbor.py",
-        "library/meta_agent/support/ahe_manifest.py",
         "library/meta_agent/support/evidence.py",
     ):
         assert (workspace / relative).is_file(), relative
+    assert not (workspace / "library/meta_agent/support/ahe_manifest.py").exists()
     assert (workspace / "target/harbor_agent.py").is_file()
     assert (workspace / "evaluator/agent.env").read_text() == (
         "MINISWE_COST_LIMIT=3.0\nMINISWE_ENV_TIMEOUT=30\nMINISWE_STEP_LIMIT=100\n"

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -19,13 +20,10 @@ from evolve.frozen import sdk
 from evolve.frozen.interfaces import MetaAgentOperator, MetaAgentResult, OperatorContext
 from evolve.patching import create_candidate_patch, load_surface_policy, patch_parent_ref
 from library.meta_agent.runners import run_agent, runner_name
-from library.meta_agent.support.ahe_manifest import (
-    MANIFEST_END,
-    MANIFEST_START,
-    extract_manifest,
-    validate_manifest,
-)
 from library.meta_agent.support.evidence import load_feedback
+
+MANIFEST_START = "<AHE_CHANGE_MANIFEST>"
+MANIFEST_END = "</AHE_CHANGE_MANIFEST>"
 
 AHE_PROMPT = """# Agentic Harness Engineering
 
@@ -40,7 +38,7 @@ For this generation:
 5. Choose the harness component matching the root cause.
 6. If the same failure survived repeated changes at one component, pivot levels.
 7. Make one coherent target/** change and run proportionate checks.
-8. End with exactly one delimited version-1 change manifest covering every changed file.
+8. End with one delimited official-style change manifest describing the changes.
 
 Current debugger reports evaluate the selected parent. The new edit will be
 evaluated by the next loop. Do not edit the Harbor adapter, evaluator, mechanism,
@@ -49,24 +47,20 @@ endpoints, or resource limits.
 """
 
 MANIFEST_TEMPLATE = {
-    "schema_version": 1,
-    "generation": "GENERATION",
-    "parent": "PARENT",
-    "decision": "keep|revise|rollback_pivot",
+    "iteration": 1,
     "changes": [
         {
-            "id": "change-1",
+            "id": "chg-1",
             "type": "new|improvement|rollback",
+            "description": "what changed and why",
             "files": ["target/path.py"],
-            "evidence_tasks": ["task-name"],
-            "root_cause": "causal hypothesis",
-            "targeted_fix": "specific mechanism change",
-            "predicted_effects": ["task-name"],
+            "failure_pattern": "failure class addressed",
+            "predicted_fixes": ["task-name"],
             "risk_tasks": [],
-            "component": "prompt|tool|control_flow|memory|middleware|other",
+            "constraint_level": "middleware|tool_impl|tool_desc|skill|prompt",
+            "why_this_component": "why this component level fits the root cause",
         }
     ],
-    "validation": {"commands": ["command"], "result": "passed"},
 }
 
 
@@ -113,6 +107,22 @@ def _recent_archive(ctx: OperatorContext) -> str:
     return "\n".join(path.read_text().splitlines()[-20:])
 
 
+def _extract_manifest(output: str, genid: str) -> dict[str, Any]:
+    starts = [match.start() for match in re.finditer(re.escape(MANIFEST_START), output)]
+    ends = [match.start() for match in re.finditer(re.escape(MANIFEST_END), output)]
+    if len(starts) != 1 or len(ends) != 1 or ends[0] <= starts[0]:
+        raise ValueError("meta-agent output must contain exactly one AHE manifest block")
+    raw = output[starts[0] + len(MANIFEST_START) : ends[0]].strip()
+    payload = json.loads(raw)
+    if not isinstance(payload, dict):
+        raise ValueError("AHE manifest must be a JSON object")
+    if str(payload.get("iteration")) != genid:
+        raise ValueError("AHE manifest iteration does not match operator context")
+    if not isinstance(payload.get("changes"), list) or not payload["changes"]:
+        raise ValueError("AHE manifest changes must be a nonempty list")
+    return payload
+
+
 def build_prompt(checkout: Path, observation: str, ctx: OperatorContext) -> str:
     feedback = load_feedback(ctx.run_dir, observation)
     attribution = _required_text(
@@ -120,8 +130,7 @@ def build_prompt(checkout: Path, observation: str, ctx: OperatorContext) -> str:
         "AHE change evaluation",
     )
     template = dict(MANIFEST_TEMPLATE)
-    template["generation"] = ctx.genid
-    template["parent"] = ctx.parent
+    template["iteration"] = int(ctx.genid)
     return (
         f"{AHE_PROMPT.rstrip()}\n\n"
         f"# Current Debugger Reports\n\n{feedback}\n\n"
@@ -132,21 +141,6 @@ def build_prompt(checkout: Path, observation: str, ctx: OperatorContext) -> str:
         "# Required Final Output\n\nEdit the candidate directly. After the concise summary, emit exactly one block:\n\n"
         f"{MANIFEST_START}\n{json.dumps(template, indent=2)}\n{MANIFEST_END}\n"
     )
-
-
-def _evidence_tasks(run_dir: Path) -> set[str]:
-    path = run_dir / "trace_analyzer" / "evidence" / "overview.json"
-    try:
-        payload = json.loads(path.read_text())
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise RuntimeError(f"missing AHE debugger overview: {path}") from exc
-    cases = payload.get("cases") if isinstance(payload, dict) else None
-    if not isinstance(cases, list):
-        raise RuntimeError(f"invalid AHE debugger overview: {path}")
-    tasks = {str(case.get("task_name")) for case in cases if isinstance(case, dict) and case.get("task_name")}
-    if not tasks:
-        raise RuntimeError("AHE debugger overview contains no tasks")
-    return tasks
 
 
 class AheMetaAgent(MetaAgentOperator):
@@ -176,18 +170,12 @@ class AheMetaAgent(MetaAgentOperator):
         _write_json(out / "changed.json", patch.changed_paths)
         _write_json(out / "surface-check.json", patch.surface_report)
         _write_json(out / "usage.json", usage)
-        manifest = validate_manifest(
-            extract_manifest(agent_run.output),
-            genid=ctx.genid,
-            parent=ctx.parent,
-            changed_paths=patch.changed_paths,
-            evidence_tasks=_evidence_tasks(ctx.run_dir),
-        )
+        manifest = _extract_manifest(agent_run.output, ctx.genid)
         _write_json(out / "change_manifest.json", manifest)
         notes = [
             "variant: ahe",
             f"runner: {runner_name(ctx)}",
-            "change-manifest: validated",
+            "change-manifest: parsed",
             "written-by: operators/meta_agent.py",
             *patch.notes,
         ]

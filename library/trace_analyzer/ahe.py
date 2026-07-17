@@ -459,7 +459,7 @@ def _change_evaluation(ctx: OperatorContext, cases: list[Case], field_limit: int
         str(task)
         for change in manifest["changes"]
         if isinstance(change, dict)
-        for task in change.get("predicted_effects", [])
+        for task in change.get("predicted_fixes", [])
     }
     risks = {
         str(task)

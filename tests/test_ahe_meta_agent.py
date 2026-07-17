@@ -69,25 +69,22 @@ def _case(tmp_path: Path, *, genid: str = "1", parent: str = "0"):
 
 
 def _manifest(genid: str = "1", parent: str = "0") -> dict:
+    del parent
     return {
-        "schema_version": 1,
-        "generation": genid,
-        "parent": parent,
-        "decision": "revise",
+        "iteration": int(genid),
         "changes": [
             {
-                "id": "change-1",
+                "id": "chg-1",
                 "type": "improvement",
+                "description": "Retry transient tool failures",
                 "files": ["target/src/minisweagent/agents/default.py"],
-                "evidence_tasks": ["task-a"],
-                "root_cause": "tool errors terminate the attempt",
-                "targeted_fix": "retry transient tool failures",
-                "predicted_effects": ["task-a"],
+                "failure_pattern": "tool errors terminate the attempt",
+                "predicted_fixes": ["task-a"],
                 "risk_tasks": [],
-                "component": "control_flow",
+                "constraint_level": "middleware",
+                "why_this_component": "the retry belongs in execution control flow",
             }
         ],
-        "validation": {"commands": ["python -m compileall target"], "result": "passed"},
     }
 
 
@@ -98,26 +95,17 @@ def _output(manifest: dict) -> str:
 def test_ahe_manifest_extraction_and_validation(tmp_path: Path) -> None:
     module = _module()
     manifest = _manifest()
-    assert module.extract_manifest(_output(manifest)) == manifest
-    assert module.validate_manifest(
-        manifest,
-        genid="1",
-        parent="0",
-        changed_paths=["target/src/minisweagent/agents/default.py"],
-        evidence_tasks={"task-a"},
-    ) == manifest
+    assert module._extract_manifest(_output(manifest), "1") == manifest
     with pytest.raises(ValueError, match="exactly one"):
-        module.extract_manifest("no manifest")
+        module._extract_manifest("no manifest", "1")
     stale = _manifest()
-    stale["generation"] = "9"
-    with pytest.raises(ValueError, match="identity"):
-        module.validate_manifest(
-            stale,
-            genid="1",
-            parent="0",
-            changed_paths=["target/src/minisweagent/agents/default.py"],
-            evidence_tasks={"task-a"},
-        )
+    stale["iteration"] = 9
+    with pytest.raises(ValueError, match="iteration"):
+        module._extract_manifest(_output(stale), "1")
+    empty = _manifest()
+    empty["changes"] = []
+    with pytest.raises(ValueError, match="changes"):
+        module._extract_manifest(_output(empty), "1")
 
 
 def test_ahe_prompt_uses_official_decisions_and_required_manifest(tmp_path: Path) -> None:
@@ -151,7 +139,7 @@ def test_ahe_meta_agent_requires_valid_manifest(tmp_path: Path, monkeypatch: pyt
     result = module.AheMetaAgent().run(checkout, "fallback", ctx)
 
     assert result.changed == ["target/src/minisweagent/agents/default.py"]
-    assert "change-manifest: validated" in result.notes
+    assert "change-manifest: parsed" in result.notes
     assert json.loads((run_dir / "meta_agent/change_manifest.json").read_text()) == _manifest()
 
 

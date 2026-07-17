@@ -183,7 +183,7 @@ def test_ahe_analyzer_attributes_prior_manifest(tmp_path: Path, monkeypatch: pyt
         json.dumps(
             {
                 "changes": [
-                    {"predicted_effects": ["task-a"], "risk_tasks": ["task-b"]},
+                    {"predicted_fixes": ["task-a"], "risk_tasks": ["task-b"]},
                 ]
             }
         )

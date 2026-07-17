@@ -23,9 +23,9 @@ class AheArtifactValidGate(GateOperator):
             return GateResult(decision="reject", reason="required AHE manifest is missing or malformed")
         identity_ok = (
             isinstance(manifest, dict)
-            and manifest.get("schema_version") == 1
-            and str(manifest.get("generation")) == ctx.genid
-            and str(manifest.get("parent")) == str(ctx.parent)
+            and str(manifest.get("iteration")) == ctx.genid
+            and isinstance(manifest.get("changes"), list)
+            and bool(manifest["changes"])
         )
         return GateResult(
             decision="accept" if identity_ok else "reject",

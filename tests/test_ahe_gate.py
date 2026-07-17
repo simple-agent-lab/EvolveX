@@ -22,7 +22,7 @@ def test_ahe_gate_accepts_lower_score_with_valid_manifest(tmp_path: Path) -> Non
     ctx = OperatorContext(tmp_path, tmp_path, tmp_path / "run", "2", "1", None, 1, {}, random.Random(0))
     path = ctx.run_dir / "meta_agent" / "change_manifest.json"
     path.parent.mkdir(parents=True)
-    path.write_text(json.dumps({"schema_version": 1, "generation": "2", "parent": "1"}))
+    path.write_text(json.dumps({"iteration": 2, "changes": [{"id": "chg-1"}]}))
     child = {"outcome": "benchmark_complete", "selection_eligible": True, "score": 0.1}
     assert _module().AheArtifactValidGate().decide(child, {"score": 0.9}, ctx).decision == "accept"
 
@@ -34,5 +34,5 @@ def test_ahe_gate_rejects_missing_or_stale_manifest(tmp_path: Path) -> None:
     assert gate.decide(child, None, ctx).decision == "reject"
     path = ctx.run_dir / "meta_agent" / "change_manifest.json"
     path.parent.mkdir(parents=True)
-    path.write_text(json.dumps({"schema_version": 1, "generation": "9", "parent": "1"}))
+    path.write_text(json.dumps({"iteration": 9, "changes": [{"id": "chg-1"}]}))
     assert gate.decide(child, None, ctx).decision == "reject"
