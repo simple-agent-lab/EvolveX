@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 
 from conftest import git, git_show, rows_by_genid, run_evolve
