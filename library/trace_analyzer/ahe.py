@@ -1,19 +1,35 @@
-"""Select bounded current-generation evidence for Agentic Harness Engineering."""
+"""Run official-style per-task debugger analysis for Agentic Harness Engineering."""
+
+# ruff: noqa: E402
 
 from __future__ import annotations
 
+import concurrent.futures
+import hashlib
 import json
+import os
 import re
+import sys
 from collections import Counter
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
+sys.path = [p for p in sys.path if os.path.abspath(p or os.getcwd()) != os.path.dirname(os.path.abspath(__file__))]
+if os.getcwd() not in sys.path:
+    sys.path.insert(0, os.getcwd())
+
+from evolve.agent import AgentCommandError
+from evolve.config import operator_blocks
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import OperatorContext, TraceAnalyzerOperator, TraceAnalyzerResult
+from library.meta_agent.runners import run_readonly_agent
 
 Case = dict[str, Any]
 ARTIFACTS = [
     "trace_analyzer/feedback.md",
+    "trace_analyzer/analysis/overview.md",
+    "trace_analyzer/analysis/change_evaluation.json",
     "trace_analyzer/evidence/selected.md",
     "trace_analyzer/evidence/overview.json",
     "trace_analyzer/evidence/cases.jsonl",
@@ -193,10 +209,170 @@ def _normalize(case: Case, field_limit: int) -> Case:
     }
 
 
-def _select(cases: list[Case], maximum: int) -> list[Case]:
-    failures = [case for case in cases if case.get("outcome") != "passed"]
-    successes = [case for case in cases if case.get("outcome") == "passed"]
-    return (failures + successes)[:maximum]
+@dataclass(frozen=True)
+class TaskAnalysisJob:
+    task_name: str
+    cases: tuple[Case, ...]
+    n_pass: int
+    n_fail: int
+    n_timeout: int
+    mode: str
+
+
+@dataclass(frozen=True)
+class DebuggerResult:
+    job: TaskAnalysisJob
+    response: str
+    usage: dict[str, Any]
+
+
+def _build_jobs(cases: list[Case], max_tasks: int) -> list[TaskAnalysisJob]:
+    grouped: dict[str, list[Case]] = {}
+    for case in cases:
+        task_name = str(case.get("task_name") or case.get("trial_name") or "unknown")
+        grouped.setdefault(task_name, []).append(case)
+    jobs = []
+    for task_name, task_cases in grouped.items():
+        n_pass = sum(case.get("outcome") == "passed" for case in task_cases)
+        n_timeout = sum(case.get("outcome") in {"timeout", "incomplete"} for case in task_cases)
+        n_fail = len(task_cases) - n_pass - n_timeout
+        jobs.append(
+            TaskAnalysisJob(
+                task_name=task_name,
+                cases=tuple(task_cases),
+                n_pass=n_pass,
+                n_fail=n_fail,
+                n_timeout=n_timeout,
+                mode="debug" if n_fail or n_timeout else "summary",
+            )
+        )
+    jobs.sort(key=lambda job: (job.mode == "summary", -(job.n_fail + job.n_timeout), job.task_name))
+    return jobs[:max_tasks]
+
+
+_DEBUG_K1 = """You are the AHE LLM debugger. Analyze this failed or timed-out rollout for {task_name}.
+Return under 300 words using exactly these headings:
+FAILURE POINT:
+ROOT CAUSE:
+WHAT SHOULD HAVE BEEN DONE:
+GENERAL LESSON:
+Ground every claim in the trace and identify a harness-level mechanism."""
+
+_DEBUG_KN = """You are the AHE LLM debugger. Compare all {n_total} rollouts for {task_name} ({trace_labels}).
+Return under 300 words using exactly these headings:
+PASS vs FAIL:
+FAILURE POINT:
+ROOT CAUSE:
+WHAT SHOULD HAVE BEEN DONE:
+GENERAL LESSON:
+Explain which harness behavior separates passing and failing traces."""
+
+_SUMMARY_K1 = """You are the AHE LLM debugger. Summarize this successful rollout for {task_name}.
+Return under 150 words using exactly these headings:
+KEY STRATEGY:
+SUCCESS FACTORS:
+REUSABLE PATTERN:
+FRAGILITY RISK:"""
+
+_SUMMARY_KN = """You are the AHE LLM debugger. Compare all {n_total} successful rollouts for {task_name}.
+Return under 150 words using exactly these headings:
+KEY STRATEGY:
+SUCCESS FACTORS:
+REUSABLE PATTERN:
+FRAGILITY RISK:
+Identify the common harness behavior across traces."""
+
+
+def _debugger_prompt(job: TaskAnalysisJob) -> str:
+    trace_labels = ", ".join(
+        f"trace{index:02d}="
+        + (
+            "PASS"
+            if case.get("outcome") == "passed"
+            else "TIMEOUT"
+            if case.get("outcome") in {"timeout", "incomplete"}
+            else "FAIL"
+        )
+        for index, case in enumerate(job.cases, start=1)
+    )
+    if job.mode == "debug":
+        template = _DEBUG_K1 if len(job.cases) == 1 else _DEBUG_KN
+    else:
+        template = _SUMMARY_K1 if len(job.cases) == 1 else _SUMMARY_KN
+    evidence = "\n\n".join(
+        f"## trace{index:02d}\n```json\n{json.dumps(case, indent=2, sort_keys=True)}\n```"
+        for index, case in enumerate(job.cases, start=1)
+    )
+    return template.format(
+        task_name=job.task_name,
+        n_total=len(job.cases),
+        trace_labels=trace_labels,
+    ) + "\n\n# Bounded trace evidence\n\n" + evidence
+
+
+_DEBUGGER_RUNNER_KEYS = (
+    "agent",
+    "model",
+    "environment",
+    "image",
+    "agent_kwargs",
+    "agent_env",
+    "agent_pythonpath",
+)
+
+
+def _debugger_runner_config(checkout: Path) -> dict[str, Any]:
+    meta = operator_blocks(checkout).get("meta_agent")
+    if not isinstance(meta, dict):
+        raise RuntimeError("AHE debugger requires operators.meta_agent configuration")
+    config = {key: meta[key] for key in _DEBUGGER_RUNNER_KEYS if key in meta}
+    config["max_retries"] = 0
+    if not config.get("agent") or not config.get("model"):
+        raise RuntimeError("AHE debugger requires meta-agent agent and model")
+    return config
+
+
+def _safe_task_name(task_name: str) -> str:
+    if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,199}", task_name):
+        return task_name
+    return "task-" + hashlib.sha256(task_name.encode()).hexdigest()
+
+
+def _run_debugger_job(checkout: Path, ctx: OperatorContext, job: TaskAnalysisJob) -> DebuggerResult:
+    attempts = _positive_int(ctx.config.get("retry_attempts"), 3)
+    timeout_s = float(ctx.config.get("timeout_per_task") or 600)
+    runner_ctx = replace(ctx, config=_debugger_runner_config(checkout))
+    slug = _safe_task_name(job.task_name)
+    last_error: AgentCommandError | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            result = run_readonly_agent(
+                checkout,
+                _debugger_prompt(job),
+                runner_ctx,
+                output_dir=ctx.run_dir / "trace_analyzer" / "debugger" / slug / f"attempt-{attempt}",
+                job_name=f"ahe-debug-{slug}-attempt-{attempt}",
+                timeout_s=timeout_s,
+            )
+            return DebuggerResult(job, result.output.strip(), dict(result.usage))
+        except AgentCommandError as exc:
+            last_error = exc
+    assert last_error is not None
+    raise last_error
+
+
+def _run_debugger_jobs(
+    checkout: Path, ctx: OperatorContext, jobs: list[TaskAnalysisJob]
+) -> list[DebuggerResult]:
+    if not jobs:
+        raise RuntimeError("AHE debugger found no rollout tasks")
+    completed = [_run_debugger_job(checkout, ctx, jobs[0])]
+    workers = _positive_int(ctx.config.get("max_concurrent"), 16)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = [pool.submit(_run_debugger_job, checkout, ctx, job) for job in jobs[1:]]
+        completed.extend(future.result() for future in concurrent.futures.as_completed(futures))
+    by_task = {result.job.task_name: result for result in completed}
+    return [by_task[job.task_name] for job in jobs]
 
 
 def _outcome_counts(cases: list[Case]) -> dict[str, int]:
@@ -209,7 +385,7 @@ def _outcome_counts(cases: list[Case]) -> dict[str, int]:
     return kept
 
 
-def _overview(cases: list[Case], selected: list[Case], error: str | None) -> Case:
+def _overview(cases: list[Case], jobs: list[TaskAnalysisJob], error: str | None) -> Case:
     rewards = [
         float(case["reward"])
         for case in cases
@@ -219,7 +395,8 @@ def _overview(cases: list[Case], selected: list[Case], error: str | None) -> Cas
         "status": "error" if error else "ok",
         "error": error,
         "observed": len(cases),
-        "selected": len(selected),
+        "selected": sum(len(job.cases) for job in jobs),
+        "tasks": len(jobs),
         "outcomes": _outcome_counts(cases),
         "mean_reward": round(sum(rewards) / len(rewards), 6) if rewards else None,
         "cases": [
@@ -229,59 +406,156 @@ def _overview(cases: list[Case], selected: list[Case], error: str | None) -> Cas
                 "outcome": case.get("outcome"),
                 "reward": case.get("reward"),
             }
-            for case in selected
+            for job in jobs
+            for case in job.cases
         ],
     }
 
 
-def _markdown(overview: Case, selected: list[Case]) -> str:
-    lines = [
-        "# AHE Trace Evidence",
-        "",
-        f"- Status: {overview['status']}",
-        f"- Observed cases: {overview['observed']}",
-        f"- Selected cases: {overview['selected']}",
-        f"- Outcomes: {json.dumps(overview['outcomes'], sort_keys=True)}",
-    ]
-    if overview.get("error"):
-        lines.append(f"- Evidence error: {overview['error']}")
-    for index, case in enumerate(selected, start=1):
-        lines.extend(
-            [
-                "",
-                f"## {index}. {case.get('task_name') or case.get('trial_name') or 'unknown task'}",
-                "",
-                f"- Outcome: {case.get('outcome')}",
-                f"- Reward: {case.get('reward')}",
-                f"- Instruction: {case.get('instruction') or '(missing)'}",
-                f"- Final response: {case.get('final_response') or '(missing)'}",
-                f"- Verifier evidence: {case.get('verifier_output') or '(missing)'}",
-                f"- Exception: {json.dumps(case.get('exception') or {}, sort_keys=True)}",
-                f"- Tool calls: {json.dumps(case.get('tool_calls') or [], sort_keys=True)}",
-                f"- Observations: {json.dumps(case.get('observations') or [], sort_keys=True)}",
-            ]
+def _task_outcomes(cases: list[Case]) -> dict[str, str]:
+    jobs = _build_jobs(cases, max(1, len(cases)))
+    return {
+        job.task_name: "fail" if job.n_fail or job.n_timeout else "pass" if job.n_pass else "unknown"
+        for job in jobs
+    }
+
+
+def _transition(before: str | None, after: str | None) -> str:
+    if before == "fail" and after == "pass":
+        return "fail_to_pass"
+    if before == "pass" and after == "fail":
+        return "pass_to_fail"
+    if before == after == "pass":
+        return "unchanged_pass"
+    if before == after == "fail":
+        return "unchanged_fail"
+    return "unknown"
+
+
+def _change_evaluation(ctx: OperatorContext, cases: list[Case], field_limit: int) -> Case:
+    if ctx.parent in (None, "0"):
+        return {
+            "status": "baseline",
+            "manifest": None,
+            "transitions": {},
+            "prediction_results": {},
+            "risk_results": {},
+        }
+    prior_run = ctx.workspace / "runs" / f"gen-{ctx.parent}"
+    prior_raw, error = _load_cases(prior_run / "rollout" / "cases.json")
+    if error:
+        raise RuntimeError(error)
+    manifest_path = prior_run / "meta_agent" / "change_manifest.json"
+    try:
+        manifest = json.loads(manifest_path.read_text())
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"missing or invalid prior AHE manifest: {manifest_path}") from exc
+    if not isinstance(manifest, dict) or not isinstance(manifest.get("changes"), list):
+        raise RuntimeError(f"invalid prior AHE manifest: {manifest_path}")
+    before = _task_outcomes([_normalize(case, field_limit) for case in prior_raw])
+    after = _task_outcomes(cases)
+    transitions = {task: _transition(before.get(task), after.get(task)) for task in sorted(before.keys() | after.keys())}
+    predicted = {
+        str(task)
+        for change in manifest["changes"]
+        if isinstance(change, dict)
+        for task in change.get("predicted_effects", [])
+    }
+    risks = {
+        str(task)
+        for change in manifest["changes"]
+        if isinstance(change, dict)
+        for task in change.get("risk_tasks", [])
+    }
+    return {
+        "status": "evaluated",
+        "manifest": str(manifest_path),
+        "transitions": transitions,
+        "prediction_results": {
+            task: "confirmed" if transitions.get(task) == "fail_to_pass" else "not_confirmed"
+            for task in sorted(predicted)
+        },
+        "risk_results": {
+            task: "realized" if transitions.get(task) == "pass_to_fail" else "not_realized"
+            for task in sorted(risks)
+        },
+    }
+
+
+def _diagnosis_line(response: str) -> str:
+    lines = [line.strip() for line in response.splitlines() if line.strip()]
+    for heading in ("ROOT CAUSE:", "FAILURE POINT:"):
+        for line in lines:
+            if line.upper().startswith(heading) and line[len(heading) :].strip():
+                return line
+    return lines[0] if lines else "(empty debugger response)"
+
+
+def _reports(root: Path, results: list[DebuggerResult]) -> tuple[str, list[str]]:
+    detail_dir = root / "analysis" / "detail"
+    detail_dir.mkdir(parents=True, exist_ok=True)
+    details: list[str] = []
+    artifacts: list[str] = []
+    for result in results:
+        job = result.job
+        labels = [
+            "PASS" if case.get("outcome") == "passed" else "TIMEOUT" if case.get("outcome") in {"timeout", "incomplete"} else "FAIL"
+            for case in job.cases
+        ]
+        failing_verifier = [
+            str(case.get("verifier_output") or "") for case in job.cases if case.get("outcome") != "passed"
+        ]
+        detail = (
+            f"# AHE Debugger Detail: {job.task_name}\n\n"
+            f"- Pass: {job.n_pass}\n- Fail: {job.n_fail}\n- Timeout: {job.n_timeout}\n"
+            f"- Traces: {', '.join(labels)}\n\n"
+            f"## LLM debugger response\n\n{result.response}\n\n"
+            f"## Failing verifier evidence\n\n{json.dumps(failing_verifier, indent=2)}\n\n"
+            f"## Bounded cases\n\n```json\n{json.dumps(job.cases, indent=2, sort_keys=True)}\n```\n"
         )
-    return "\n".join(lines) + "\n"
+        relative = f"trace_analyzer/analysis/detail/{_safe_task_name(job.task_name)}.md"
+        (root.parent / relative).write_text(detail)
+        details.append(f"# Detail: {job.task_name}\n\n{detail}")
+        artifacts.append(relative)
+    lines = ["# AHE Debugger Overview", ""]
+    for mode, title in (("debug", "Failures and timeouts"), ("summary", "All-pass summaries")):
+        lines.extend([f"## {title}", ""])
+        matches = [result for result in results if result.job.mode == mode]
+        lines.extend(
+            [f"- **{result.job.task_name}**: {_diagnosis_line(result.response)}" for result in matches]
+            or ["- None"]
+        )
+        lines.append("")
+    overview = "\n".join(lines).rstrip() + "\n"
+    (root / "analysis" / "overview.md").write_text(overview)
+    return overview + "\n" + "\n\n".join(details), artifacts
 
 
 class AheTraceAnalyzer(TraceAnalyzerOperator):
     def analyze(self, checkout: Path, ctx: OperatorContext) -> TraceAnalyzerResult:
         raw_cases, error = _load_cases(ctx.run_dir / "rollout" / "cases.json")
+        if error:
+            raise RuntimeError(error)
         field_limit = _positive_int(ctx.config.get("field_limit"), 2000)
         cases = [_normalize(case, field_limit) for case in raw_cases]
-        selected = _select(cases, _positive_int(ctx.config.get("max_cases"), 8))
-        overview = _overview(cases, selected, error)
+        jobs = _build_jobs(cases, _positive_int(ctx.config.get("max_tasks"), 90))
+        results = _run_debugger_jobs(checkout, ctx, jobs)
+        overview = _overview(cases, jobs, None)
         root = ctx.run_dir / "trace_analyzer"
         evidence = root / "evidence"
-        rendered = _markdown(overview, selected)
         root.mkdir(parents=True, exist_ok=True)
-        (root / "feedback.md").write_text(rendered)
         evidence.mkdir(parents=True, exist_ok=True)
+        rendered, detail_artifacts = _reports(root, results)
+        (root / "feedback.md").write_text(rendered)
         (evidence / "selected.md").write_text(rendered)
         _write_json(evidence / "overview.json", overview)
+        selected = [case for job in jobs for case in job.cases]
         _write_jsonl(evidence / "cases.jsonl", selected)
+        change_evaluation = _change_evaluation(ctx, cases, field_limit)
+        _write_json(root / "analysis" / "change_evaluation.json", change_evaluation)
         summary = {key: value for key, value in overview.items() if key != "cases"}
-        return TraceAnalyzerResult(summary=summary, artifacts=ARTIFACTS)
+        summary["debugger_usd"] = round(sum(float(result.usage.get("usd") or 0) for result in results), 6)
+        return TraceAnalyzerResult(summary=summary, artifacts=[*ARTIFACTS, *detail_artifacts])
 
 
 if __name__ == "__main__":

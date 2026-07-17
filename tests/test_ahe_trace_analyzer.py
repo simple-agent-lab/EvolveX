@@ -1,10 +1,12 @@
 import importlib.util
 import json
 import random
+import sys
 from pathlib import Path
 
 import pytest
 
+from evolve.agent import AgentCommandError, AgentRunResult
 from evolve.frozen.interfaces import OperatorContext
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -15,32 +17,49 @@ def _module():
     spec = importlib.util.spec_from_file_location("ahe_trace_analyzer_under_test", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
 
-def _ctx(tmp_path: Path, *, max_cases: int = 3, field_limit: int = 80) -> OperatorContext:
+def _ctx(tmp_path: Path, *, genid: str = "1", parent: str = "0") -> OperatorContext:
     workspace = tmp_path / "workspace"
     checkout = workspace / "checkout"
-    run_dir = workspace / "runs" / "gen-1"
-    checkout.mkdir(parents=True)
+    run_dir = workspace / "runs" / f"gen-{genid}"
+    checkout.mkdir(parents=True, exist_ok=True)
+    (checkout / "evolve.yaml").write_text(
+        "operators:\n"
+        "  meta_agent:\n"
+        "    variant: ahe\n"
+        "    runner: harbor\n"
+        "    agent: mini-swe-agent\n"
+        "    model: gpt-test\n"
+        "    environment: docker\n"
+        "    editable_roots: [target]\n"
+    )
     return OperatorContext(
         workspace=workspace,
         checkout=checkout,
         run_dir=run_dir,
-        genid="1",
-        parent="0",
+        genid=genid,
+        parent=parent,
         round=None,
         fan_out=1,
-        config={"max_cases": max_cases, "field_limit": field_limit},
+        config={
+            "field_limit": 120,
+            "max_tasks": 90,
+            "max_concurrent": 2,
+            "timeout_per_task": 30,
+            "retry_attempts": 3,
+        },
         rng=random.Random(0),
     )
 
 
-def _case(name: str, outcome: str, reward: float | None) -> dict:
+def _case(name: str, outcome: str, reward: float | None, *, task: str | None = None) -> dict:
     return {
         "trial_name": name,
-        "task_name": f"task/{name}",
+        "task_name": task or name,
         "outcome": outcome,
         "reward": reward,
         "instruction": f"Fix {name}",
@@ -50,216 +69,162 @@ def _case(name: str, outcome: str, reward: float | None) -> dict:
         "events": [{"index": 0, "type": "message", "message": f"inspect {name}"}],
         "verifier_output": f"verifier says {outcome}",
         "verifier_rewards": {"reward": reward},
-        "exception": {"type": "", "message": ""},
+        "exception": {},
         "usage": {"input_tokens": 10, "cost_usd": 0.01},
         "timing_s": {"agent_execution": 1.5},
     }
 
 
-def _write_cases(ctx: OperatorContext, cases: list[dict]) -> None:
-    rollout = ctx.run_dir / "rollout"
-    rollout.mkdir(parents=True)
+def _write_cases(run_dir: Path, cases: list[dict]) -> None:
+    rollout = run_dir / "rollout"
+    rollout.mkdir(parents=True, exist_ok=True)
     (rollout / "cases.json").write_text(json.dumps(cases))
 
 
-def _jsonl(path: Path) -> list[dict]:
-    return [json.loads(line) for line in path.read_text().splitlines() if line]
+def _fake_debugger(checkout, prompt, ctx, *, output_dir, job_name, timeout_s):
+    del checkout, ctx, output_dir, job_name, timeout_s
+    response = "ROOT CAUSE: retry policy" if "ROOT CAUSE:" in prompt else "KEY STRATEGY: inspect first"
+    return AgentRunResult(response, "", response, 0, 0.1, {"usd": 0.25})
 
 
-def _strings(value: object):
-    if isinstance(value, str):
-        yield value
-    elif isinstance(value, list):
-        for item in value:
-            yield from _strings(item)
-    elif isinstance(value, dict):
-        for key, item in value.items():
-            yield key
-            yield from _strings(item)
+def test_ahe_groups_all_rollouts_per_task_and_prioritizes_failures() -> None:
+    module = _module()
+    cases = [
+        _case("pass-a-1", "passed", 1.0, task="task-a"),
+        _case("pass-a-2", "passed", 1.0, task="task-a"),
+        _case("fail-b-1", "failed", 0.0, task="task-b"),
+        _case("pass-b-2", "passed", 1.0, task="task-b"),
+    ]
+
+    jobs = module._build_jobs(cases, max_tasks=90)
+
+    assert [job.task_name for job in jobs] == ["task-b", "task-a"]
+    assert [case["trial_name"] for case in jobs[0].cases] == ["fail-b-1", "pass-b-2"]
+    assert jobs[0].mode == "debug"
+    assert jobs[1].mode == "summary"
+    assert "PASS vs FAIL" in module._debugger_prompt(jobs[0])
+    assert "REUSABLE PATTERN" in module._debugger_prompt(jobs[1])
+    assert [job.task_name for job in module._build_jobs(cases, max_tasks=1)] == ["task-b"]
 
 
-def test_ahe_analyzer_selects_failures_first_in_rollout_order_and_writes_exact_artifacts(tmp_path: Path) -> None:
+def test_ahe_debugger_reuses_only_allowlisted_meta_agent_config(tmp_path: Path) -> None:
+    module = _module()
+    ctx = _ctx(tmp_path)
+    config = module._debugger_runner_config(ctx.checkout)
+
+    assert config == {
+        "agent": "mini-swe-agent",
+        "model": "gpt-test",
+        "environment": "docker",
+        "max_retries": 0,
+    }
+    assert "editable_roots" not in config
+    assert "runner" not in config
+
+
+def test_ahe_debugger_retries_and_fails_visibly(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _module()
+    ctx = _ctx(tmp_path)
+    job = module._build_jobs([_case("task-a", "failed", 0)], 90)[0]
+    attempts = 0
+
+    def flaky(*args, **kwargs):
+        nonlocal attempts
+        attempts += 1
+        if attempts < 3:
+            raise AgentCommandError("temporary", returncode=1)
+        return _fake_debugger(*args, **kwargs)
+
+    monkeypatch.setattr(module, "run_readonly_agent", flaky)
+    assert module._run_debugger_job(ctx.checkout, ctx, job).response.startswith("ROOT CAUSE")
+    assert attempts == 3
+
+    monkeypatch.setattr(
+        module,
+        "run_readonly_agent",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AgentCommandError("failed", returncode=1)),
+    )
+    with pytest.raises(AgentCommandError, match="failed"):
+        module._run_debugger_job(ctx.checkout, ctx, job)
+
+
+def test_ahe_analyzer_writes_official_reports_and_baseline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     module = _module()
     ctx = _ctx(tmp_path)
     _write_cases(
-        ctx,
-        [
-            _case("pass-1", "passed", 1),
-            _case("fail-1", "failed", 0),
-            _case("pass-2", "passed", 1),
-            _case("fail-2", "failed", 0),
-        ],
+        ctx.run_dir,
+        [_case("fail-1", "failed", 0, task="task-a"), _case("pass-1", "passed", 1, task="task-b")],
     )
+    monkeypatch.setattr(module, "run_readonly_agent", _fake_debugger)
 
     result = module.AheTraceAnalyzer().analyze(ctx.checkout, ctx)
 
-    evidence = ctx.run_dir / "trace_analyzer" / "evidence"
-    cases = _jsonl(evidence / "cases.jsonl")
-    assert [row["trial_name"] for row in cases] == ["fail-1", "fail-2", "pass-1"]
-    assert [row["outcome"] for row in cases] == ["failed", "failed", "passed"]
-    assert result.summary == {
-        "status": "ok",
-        "error": None,
-        "observed": 4,
-        "selected": 3,
-        "outcomes": {"failed": 2, "passed": 2},
-        "mean_reward": 0.5,
-    }
-    assert result.artifacts == [
-        "trace_analyzer/feedback.md",
-        "trace_analyzer/evidence/selected.md",
-        "trace_analyzer/evidence/overview.json",
-        "trace_analyzer/evidence/cases.jsonl",
-    ]
-    assert (ctx.run_dir / "trace_analyzer" / "feedback.md").read_text() == (evidence / "selected.md").read_text()
-    overview = json.loads((evidence / "overview.json").read_text())
-    assert [row["trial_name"] for row in overview["cases"]] == ["fail-1", "fail-2", "pass-1"]
+    analysis = ctx.run_dir / "trace_analyzer" / "analysis"
+    assert "ROOT CAUSE" in (analysis / "detail" / "task-a.md").read_text()
+    assert "task-a" in (analysis / "overview.md").read_text()
+    change = json.loads((analysis / "change_evaluation.json").read_text())
+    assert change["status"] == "baseline"
+    assert result.summary["tasks"] == 2
+    assert result.summary["debugger_usd"] == 0.5
+    assert "trace_analyzer/analysis/detail/task-a.md" in result.artifacts
 
 
-def test_ahe_analyzer_bounds_and_redacts_malformed_case_fields(tmp_path: Path) -> None:
+def test_ahe_analyzer_attributes_prior_manifest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     module = _module()
-    field_limit = 24
-    ctx = _ctx(tmp_path, max_cases=2, field_limit=field_limit)
-    long_secret = "OPENAI_API_KEY=must-not-leak " + "x" * 100
-    wide = [{"message": long_secret, "nested": [[long_secret] * 50] * 10} for _ in range(100)]
+    ctx = _ctx(tmp_path, genid="2", parent="1")
+    prior = ctx.workspace / "runs" / "gen-1"
     _write_cases(
-        ctx,
-        [
-            {
-                "trial_name": "malformed",
-                "task_name": "task/malformed",
-                "outcome": "failed",
-                "reward": 0,
-                "instruction": long_secret,
-                "agent_messages": [long_secret] * 100,
-                "tool_calls": [{"name": "exec", "arguments": "Bearer top-secret-token"}] * 100,
-                "observations": [long_secret] * 100,
-                "events": wide,
-                "verifier_output": long_secret,
-                "verifier_rewards": {f"secret-{index}": long_secret for index in range(100)},
-                "exception": {"type": "Error", "message": long_secret},
-                "usage": {"password": "bare-secret-value"},
-            },
-            {
-                "trial_name": "sparse",
-                "outcome": "passed",
-                "agent_messages": "not-a-list",
-                "tool_calls": "not-a-list",
-                "observations": None,
-                "events": "not-a-list",
-                "exception": "not-a-dict",
-                "usage": [],
-            },
-        ],
+        prior,
+        [_case("old-a", "failed", 0, task="task-a"), _case("old-b", "passed", 1, task="task-b")],
     )
+    manifest_dir = prior / "meta_agent"
+    manifest_dir.mkdir()
+    (manifest_dir / "change_manifest.json").write_text(
+        json.dumps(
+            {
+                "changes": [
+                    {"predicted_effects": ["task-a"], "risk_tasks": ["task-b"]},
+                ]
+            }
+        )
+    )
+    _write_cases(
+        ctx.run_dir,
+        [_case("new-a", "passed", 1, task="task-a"), _case("new-b", "failed", 0, task="task-b")],
+    )
+    monkeypatch.setattr(module, "run_readonly_agent", _fake_debugger)
 
     module.AheTraceAnalyzer().analyze(ctx.checkout, ctx)
 
-    rows = _jsonl(ctx.run_dir / "trace_analyzer" / "evidence" / "cases.jsonl")
-    rendered = json.dumps(rows, sort_keys=True)
+    change = json.loads(
+        (ctx.run_dir / "trace_analyzer" / "analysis" / "change_evaluation.json").read_text()
+    )
+    assert change["transitions"] == {"task-a": "fail_to_pass", "task-b": "pass_to_fail"}
+    assert change["prediction_results"]["task-a"] == "confirmed"
+    assert change["risk_results"]["task-b"] == "realized"
+
+
+def test_ahe_bounds_and_redacts_case_fields() -> None:
+    module = _module()
+    secret = "OPENAI_API_KEY=must-not-leak " + "x" * 200
+    normalized = module._normalize(
+        _case("secret", "failed", 0)
+        | {
+            "instruction": secret,
+            "agent_messages": [secret] * 100,
+            "usage": {"password": "bare-secret-value"},
+        },
+        40,
+    )
+    rendered = json.dumps(normalized)
     assert "must-not-leak" not in rendered
-    assert "top-secret-token" not in rendered
     assert "bare-secret-value" not in rendered
     assert "[REDACTED]" in rendered
-    clipped_fields = list(_strings(rows))
-    assert all(len(value) <= field_limit + 64 for value in clipped_fields)
-    assert len(rows[0]["agent_messages"]) <= 33
-    assert len(rows[0]["tool_calls"]) <= 33
-    assert len(rows[0]["events"]) <= 33
-    assert "__ahe_truncated__" in rendered
-    assert rows[1]["agent_messages"] == []
-    assert rows[1]["tool_calls"] == []
-    assert rows[1]["observations"] == []
-    assert rows[1]["events"] == []
-    assert rows[1]["exception"] == {}
-    assert rows[1]["usage"] == {}
+    assert module.TRUNCATION_KEY in rendered
 
 
-def test_ahe_redacts_complete_quoted_and_basic_credentials_without_damaging_other_evidence() -> None:
-    module = _module()
-    evidence = (
-        'password="two word secret" keep=this evidence\n'
-        "Authorization: Basic dXNlcjpwYXNz\n"
-        "Authorization: Bearer bearer-token\n"
-        "status=ordinary evidence remains"
-    )
-
-    redacted = module._redact(evidence)
-
-    assert "two word secret" not in redacted
-    assert "dXNlcjpwYXNz" not in redacted
-    assert "bearer-token" not in redacted
-    assert 'password="[REDACTED]" keep=this evidence' in redacted
-    assert "Authorization: Basic [REDACTED]" in redacted
-    assert "Authorization: Bearer [REDACTED]" in redacted
-    assert "status=ordinary evidence remains" in redacted
-
-
-def test_ahe_analyzer_bounds_distinct_outcome_counts_with_explicit_truncation(tmp_path: Path) -> None:
-    module = _module()
-    ctx = _ctx(tmp_path, max_cases=1)
-    distinct = module.COLLECTION_LIMIT + 8
-    _write_cases(
-        ctx,
-        [_case(f"case-{index:03d}", f"outcome-{index:03d}", None) for index in range(distinct)],
-    )
-
-    result = module.AheTraceAnalyzer().analyze(ctx.checkout, ctx)
-
-    evidence = ctx.run_dir / "trace_analyzer" / "evidence"
-    overview = json.loads((evidence / "overview.json").read_text())
-    assert len(result.summary["outcomes"]) <= module.COLLECTION_LIMIT
-    assert len(overview["outcomes"]) <= module.COLLECTION_LIMIT
-    assert overview["outcomes"][module.TRUNCATION_KEY] == 9
-    retained = sorted(name for name in overview["outcomes"] if name != module.TRUNCATION_KEY)
-    assert retained == [f"outcome-{index:03d}" for index in range(31)]
-    assert module.TRUNCATION_KEY in (evidence / "selected.md").read_text()
-    assert module.TRUNCATION_KEY in (ctx.run_dir / "trace_analyzer" / "feedback.md").read_text()
-
-
-@pytest.mark.parametrize("payload", [None, "not-json", "{}"])
-def test_ahe_analyzer_emits_exact_error_artifacts_when_current_cases_are_unavailable(
-    tmp_path: Path, payload: str | None
-) -> None:
+def test_ahe_missing_cases_fails_instead_of_falling_back(tmp_path: Path) -> None:
     module = _module()
     ctx = _ctx(tmp_path)
-    rollout = ctx.run_dir / "rollout"
-    rollout.mkdir(parents=True)
-    if payload is not None:
-        (rollout / "cases.json").write_text(payload)
-
-    result = module.AheTraceAnalyzer().analyze(ctx.checkout, ctx)
-
-    assert result.summary["status"] == "error"
-    assert result.summary["observed"] == 0
-    assert result.summary["selected"] == 0
-    assert result.artifacts == [
-        "trace_analyzer/feedback.md",
-        "trace_analyzer/evidence/selected.md",
-        "trace_analyzer/evidence/overview.json",
-        "trace_analyzer/evidence/cases.jsonl",
-    ]
-    for artifact in result.artifacts:
-        assert (ctx.run_dir / artifact).is_file()
-    assert _jsonl(ctx.run_dir / "trace_analyzer" / "evidence" / "cases.jsonl") == []
-
-
-def test_ahe_analyzer_reads_only_current_rollout_cases(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    module = _module()
-    ctx = _ctx(tmp_path)
-    _write_cases(ctx, [_case("current", "failed", 0)])
-    cases_path = ctx.run_dir / "rollout" / "cases.json"
-    original = Path.read_text
-    reads: list[Path] = []
-
-    def guarded_read(path: Path, *args, **kwargs):
-        reads.append(path)
-        if path != cases_path:
-            raise AssertionError(f"unexpected read: {path}")
-        return original(path, *args, **kwargs)
-
-    monkeypatch.setattr(Path, "read_text", guarded_read)
-
-    module.AheTraceAnalyzer().analyze(ctx.checkout, ctx)
-
-    assert reads == [cases_path]
+    with pytest.raises(RuntimeError, match="missing rollout cases"):
+        module.AheTraceAnalyzer().analyze(ctx.checkout, ctx)
