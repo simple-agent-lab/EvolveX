@@ -47,6 +47,11 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "rollout: {variant: harbor" in config
             assert "trace_analyzer: {variant: ahe" in config
             assert "meta_agent: {variant: ahe, runner: harbor" in config
+            assert "select: {variant: ahe_latest" in config
+            assert "gate: {variant: ahe_artifact_valid" in config
+            assert "max_tasks: 90" in config
+            assert "max_cases" not in config
+            assert "budget_usd" not in config
             assert "agent: mini-swe-agent" in config
             assert "editable_roots: [target]" in config
             assert "agent: target.harbor_agent:MiniSweSourceAgent" in config
