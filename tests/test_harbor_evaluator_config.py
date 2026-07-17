@@ -28,11 +28,7 @@ def test_agent_env_renders_frozen_miniswe_limits_deterministically() -> None:
             "MINISWE_ENV_TIMEOUT": 30,
             "MINISWE_COST_LIMIT": 3.0,
         }
-    ) == (
-        "MINISWE_COST_LIMIT=3.0\n"
-        "MINISWE_ENV_TIMEOUT=30\n"
-        "MINISWE_STEP_LIMIT=100\n"
-    )
+    ) == ("MINISWE_COST_LIMIT=3.0\nMINISWE_ENV_TIMEOUT=30\nMINISWE_STEP_LIMIT=100\n")
 
 
 @pytest.mark.parametrize(

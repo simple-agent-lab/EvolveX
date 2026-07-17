@@ -88,9 +88,7 @@ def test_sdk_main_runs_meta_agent_operator_and_writes_meta_agent_artifacts(
     assert (meta_agent_dir / "rationale.md").read_text() == "edited target\n"
 
 
-def test_sdk_main_runs_validate_operator_and_writes_result(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_sdk_main_runs_validate_operator_and_writes_result(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     run_dir = tmp_path / "run"
     _set_sdk_env(monkeypatch, tmp_path)
 

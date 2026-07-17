@@ -38,9 +38,7 @@ def _write_newest_select(workspace: Path) -> None:
     )
 
 
-def test_hyperagents_meta_agent_change_affects_later_generation_not_current_one(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_hyperagents_meta_agent_change_affects_later_generation_not_current_one(tmp_path: Path, monkeypatch) -> None:
     workspace, evolve_home = _init_hyperagents_smoke(tmp_path)
     monkeypatch.setenv("EVAL_STUB", "1")
     monkeypatch.setenv("EVOLVE_HOME", str(evolve_home))
@@ -108,7 +106,7 @@ def test_hyperagents_broad_surface_accepts_target_and_operator_edit(tmp_path: Pa
     monkeypatch.setenv("EVOLVE_HOME", str(evolve_home))
     command = (
         f"{sys.executable} -c "
-        "\"from pathlib import Path; "
+        '"from pathlib import Path; '
         "agent=Path('target/agent.py'); "
         "agent.write_text(agent.read_text() + '\\n# target edit\\n'); "
         "gate=Path('operators/gate.py'); "

@@ -31,8 +31,20 @@ from .config import (
 )
 from .splits import build_manifest
 
-_SEED_IGNORE_PATTERNS = (".git", ".venv", ".env", ".env.*", "__pycache__", "*.pyc", ".pytest_cache", ".mypy_cache", ".ruff_cache", "node_modules")
+_SEED_IGNORE_PATTERNS = (
+    ".git",
+    ".venv",
+    ".env",
+    ".env.*",
+    "__pycache__",
+    "*.pyc",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    "node_modules",
+)
 _ENV_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
 
 @dataclass(frozen=True)
 class InitOptions:
@@ -124,7 +136,9 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
         raise ValueError("evaluator.agent is required for harbor recipes")
     runtime_digest = os.environ.get("EVOLVE_RUNTIME_DIGEST", "").strip()
     if evaluator_engine == "harbor" and not runtime_digest:
-        raise ValueError("EVOLVE_RUNTIME_DIGEST must identify the evaluator capsule (normally an immutable image digest)")
+        raise ValueError(
+            "EVOLVE_RUNTIME_DIGEST must identify the evaluator capsule (normally an immutable image digest)"
+        )
     evaluator_trials = int(evaluator.get("k", 1))
     tasks_per_round = int(evaluator.get("tasks_per_round", evaluator_trials))
     evaluator_n = int(evaluator.get("n_concurrent", evaluator_trials))
@@ -159,7 +173,9 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
         "PROTOCOL.md": (library_root() / "PROTOCOL.md").read_text(),
         "evaluator/eval.sh": _eval_sh(evaluator_engine, evaluator_dataset),
         "evaluator/eval.env": _eval_env(
-            workspace.name, evaluator_dataset, evaluator_n,
+            workspace.name,
+            evaluator_dataset,
+            evaluator_n,
             tasks_per_round,
             evaluator_trials,
             partial_floor,
@@ -281,7 +297,9 @@ def _operator_assets(recipe: str) -> dict[str, str]:
 
 def _recipe_evaluator_assets(recipe: str) -> dict[str, str]:
     root = recipe_root() / recipe / "evaluator"
-    return {} if not root.is_dir() else {f"evaluator/{relative.as_posix()}": text for relative, text in _text_files(root)}
+    return (
+        {} if not root.is_dir() else {f"evaluator/{relative.as_posix()}": text for relative, text in _text_files(root)}
+    )
 
 
 def _operator_index(bindings: list[_OperatorBinding], recipe: str) -> str:
@@ -532,12 +550,18 @@ def _agent_env(value: object) -> str:
 
 
 def _eval_env(
-    _workspace_name: str, dataset: str, n_concurrent: int,
+    _workspace_name: str,
+    dataset: str,
+    n_concurrent: int,
     tasks_per_round: int,
     trials: int,
     partial_floor: float,
-    agent: str, *, dataset_mode: str = "path", task_file: str | None = None,
-    setup_timeout_multiplier: float = 1, max_retries: int = 0,
+    agent: str,
+    *,
+    dataset_mode: str = "path",
+    task_file: str | None = None,
+    setup_timeout_multiplier: float = 1,
+    max_retries: int = 0,
 ) -> str:
     expected_trials = tasks_per_round * max(trials, 1)
     text = (

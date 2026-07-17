@@ -49,7 +49,8 @@ RECORD_STRIPPED_FIELDS = STAMPED_FIELDS | {
     "surface_violations",
     "evals",
     "kind",
-    "round", "pending_gate_record",
+    "round",
+    "pending_gate_record",
     MECHANISM_EVAL_FIELD,
 }
 

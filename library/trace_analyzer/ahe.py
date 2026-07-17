@@ -23,15 +23,9 @@ MAX_NESTING = 6
 EXPANSION_FACTOR = 8
 TRUNCATION_KEY = "__ahe_truncated__"
 _SECRET_NAME = r"[a-z0-9_-]*(?:api[_-]?key|access[_-]?token|auth(?:orization)?|secret|password)"
-_SECRET_DOUBLE_QUOTED = re.compile(
-    rf'(?i)\b({_SECRET_NAME})\b(["\']?)(\s*[:=]\s*)"(?:\\.|[^"\\\r\n])*"'
-)
-_SECRET_SINGLE_QUOTED = re.compile(
-    rf"(?i)\b({_SECRET_NAME})\b([\"']?)(\s*[:=]\s*)'(?:\\.|[^'\\\r\n])*'"
-)
-_BASIC_AUTHORIZATION = re.compile(
-    rf"(?i)\b({_SECRET_NAME})\b([\"']?)(\s*[:=]\s*)(Basic)(\s+)([^\s,;}}]+)"
-)
+_SECRET_DOUBLE_QUOTED = re.compile(rf'(?i)\b({_SECRET_NAME})\b(["\']?)(\s*[:=]\s*)"(?:\\.|[^"\\\r\n])*"')
+_SECRET_SINGLE_QUOTED = re.compile(rf"(?i)\b({_SECRET_NAME})\b([\"']?)(\s*[:=]\s*)'(?:\\.|[^'\\\r\n])*'")
+_BASIC_AUTHORIZATION = re.compile(rf"(?i)\b({_SECRET_NAME})\b([\"']?)(\s*[:=]\s*)(Basic)(\s+)([^\s,;}}]+)")
 _SECRET_ASSIGNMENT = re.compile(
     rf"(?i)\b({_SECRET_NAME})\b([\"']?)(\s*[:=]\s*)"
     r"(?![\"'])(?!(?:Basic|Bearer)(?:\s|$))(?!\[REDACTED\])([^\s,;}]+)"

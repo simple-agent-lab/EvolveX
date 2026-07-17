@@ -84,6 +84,7 @@ class RunOptions:
 class EvaluationPaused(RuntimeError):
     """The same committed candidate exhausted its one infrastructure retry."""
 
+
 @dataclass(frozen=True)
 class OperatorOutputError:
     path: Path
@@ -411,11 +412,7 @@ def _maybe_quarantine(workspace: Path, genid: str) -> None:
     view = ArchiveView(workspace)
     child = view.row(genid) or {}
     score = child.get("score")
-    prior = [
-        float(r["score"])
-        for r in view.valid_parents()
-        if str(r.get("genid")) != genid
-    ]
+    prior = [float(r["score"]) for r in view.valid_parents() if str(r.get("genid")) != genid]
     if isinstance(score, (int, float)) and prior and float(score) - max(prior) > float(margin):
         record_fields(workspace, genid, {"audit": "pending"})
 
@@ -542,7 +539,9 @@ def _run_terminal_record(
         operator_checkout = Path(tempdir) / "operator"
         add_worktree(workspace, operator_checkout, ref)
         try:
-            context_checkout = candidate_checkout if candidate_checkout and candidate_checkout.exists() else operator_checkout
+            context_checkout = (
+                candidate_checkout if candidate_checkout and candidate_checkout.exists() else operator_checkout
+            )
             run_dir = _run_dir(workspace, genid)
             result = _run_operator_guarded(
                 name="record",
@@ -655,6 +654,7 @@ def commit_child(workspace: Path, child_worktree: Path, parent: str, genid: str)
         },
     )
 
+
 def record_fields(workspace: Path, genid: str, fields: dict[str, object]) -> None:
     workspace = workspace.resolve()
     genid = _validate_genid(genid)
@@ -667,9 +667,14 @@ def record_fields(workspace: Path, genid: str, fields: dict[str, object]) -> Non
         raise RuntimeError(f"unknown generation: {genid}")
     append_event(workspace, exp_id, {"genid": genid, **fields})
 
+
 def eval_child(
-    workspace: Path, genid: str, *, round_number: int | None = None,
-    kind: str = "eval", force: bool = False,
+    workspace: Path,
+    genid: str,
+    *,
+    round_number: int | None = None,
+    kind: str = "eval",
+    force: bool = False,
 ) -> EvaluationRecord | None:
     workspace = workspace.resolve()
     genid = _validate_genid(genid)
@@ -708,6 +713,7 @@ def eval_child(
             resume_infrastructure=not force,
         )
     return _finalize_child(workspace, exp_id, genid, parent, tag, round_number=round_number, kind=kind)
+
 
 def _finalize_child(
     workspace: Path,
@@ -755,6 +761,7 @@ def _finalize_child(
         kind=kind,
     )
 
+
 def _stamp_evaluation(
     workspace: Path,
     genid: str,
@@ -783,6 +790,7 @@ def _stamp_evaluation(
         pending_gate_on_complete=genid != "0",
         resume_infrastructure=resume_infrastructure,
     )
+
 
 def _ensure_genesis_evaluated(workspace: Path) -> None:
     row = rows_by_genid(workspace).get("0", {})
@@ -814,8 +822,14 @@ def _ensure_genesis_evaluated(workspace: Path) -> None:
 
 
 def _evaluate_with_one_infra_retry(
-    workspace: Path, tag: str, genid: str, *, purpose: str, metadata: dict[str, Any],
-    round_number: int | None = None, pending_gate_on_complete: bool = False,
+    workspace: Path,
+    tag: str,
+    genid: str,
+    *,
+    purpose: str,
+    metadata: dict[str, Any],
+    round_number: int | None = None,
+    pending_gate_on_complete: bool = False,
     resume_infrastructure: bool = True,
 ) -> EvaluationRecord:
     def run_attempt(**kwargs: Any) -> EvaluationRecord:
@@ -858,23 +872,33 @@ def _append_lifecycle_evaluation(
     pending_gate_on_complete: bool,
 ) -> None:
     complete = record.outcome is Outcome.BENCHMARK_COMPLETE
-    gate_metadata = {
-        "pending_gate_record": complete,
-        "note": PENDING_GATE_RECORD_NOTE if complete else f"candidate evaluation {record.status}",
-    } if pending_gate_on_complete else {}
+    gate_metadata = (
+        {
+            "pending_gate_record": complete,
+            "note": PENDING_GATE_RECORD_NOTE if complete else f"candidate evaluation {record.status}",
+        }
+        if pending_gate_on_complete
+        else {}
+    )
     append_evaluation_record(workspace, record, metadata={**metadata, **gate_metadata})
 
 
 def _last_evaluation_event(
-    workspace: Path, genid: str, purpose: str, round_number: int | None,
+    workspace: Path,
+    genid: str,
+    purpose: str,
+    round_number: int | None,
 ) -> dict[str, Any] | None:
     for event in reversed(read_events(archive_path(workspace))):
         if (
-            event.get("event_type") == "evaluation" and str(event.get("genid")) == genid
-            and event.get("purpose") == purpose and event.get("round") == round_number
+            event.get("event_type") == "evaluation"
+            and str(event.get("genid")) == genid
+            and event.get("purpose") == purpose
+            and event.get("round") == round_number
         ):
             return event
     return None
+
 
 def _select_generation_parents(
     workspace: Path,
@@ -1258,8 +1282,7 @@ def _operator_present(operators_config: dict[str, Any], name: str) -> bool:
 
 def _record_attempted(workspace: Path, genid: str) -> bool:
     return any(
-        str(event.get("genid")) == genid
-        and (event.get(RECORD_ATTEMPT_FIELD) is True or "record_error" in event)
+        str(event.get("genid")) == genid and (event.get(RECORD_ATTEMPT_FIELD) is True or "record_error" in event)
         for event in read_events(archive_path(workspace))
     )
 

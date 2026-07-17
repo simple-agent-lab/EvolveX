@@ -94,7 +94,7 @@ def test_miniswe_wrapper_subclasses_harbor_miniswe_and_installs_candidate_source
     assert "apk add" not in joined
     assert 'cp /tmp/evolve-uv "$HOME/.local/bin/uv"' in joined
     assert '"$HOME/.local/bin/uv" --version' in joined
-    assert "rm -f \"$HOME/.local/bin/uv\"" in joined
+    assert 'rm -f "$HOME/.local/bin/uv"' in joined
     assert "uv tool install" not in joined
     assert "mini-swe-agent --" not in joined
     assert "curl -LsSf https://astral.sh/uv/0.7.13/install.sh" in joined

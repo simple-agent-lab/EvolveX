@@ -11,10 +11,27 @@ from typing import Any
 from .evaluation import CANONICAL_OUTCOMES, EvaluationRecord, evaluation_status
 
 STAMPED_FIELDS = {
-    "experiment_id", "generation", "candidate_commit", "purpose", "attempt", "retry_of",
-    "evaluator_fingerprint", "task_set_hash", "runtime_fingerprint", "expected_trials",
-    "outcome", "trials", "score", "cost_usd", "wall_s", "artifacts",
-    "status", "selection_eligible", "task_set_members", "task_vector", "cost",
+    "experiment_id",
+    "generation",
+    "candidate_commit",
+    "purpose",
+    "attempt",
+    "retry_of",
+    "evaluator_fingerprint",
+    "task_set_hash",
+    "runtime_fingerprint",
+    "expected_trials",
+    "outcome",
+    "trials",
+    "score",
+    "cost_usd",
+    "wall_s",
+    "artifacts",
+    "status",
+    "selection_eligible",
+    "task_set_members",
+    "task_vector",
+    "cost",
 }
 MECHANISM_EVAL_FIELD = "_evolve_mechanism_eval"
 RECEIPT_CERTIFIED_FIELD = "_evolve_receipt_certified"
@@ -32,7 +49,8 @@ EVALUATION_FIELDS = STAMPED_FIELDS | {
     "surface_violations",
     "note",
     "kind",
-    "round", "pending_gate_record",
+    "round",
+    "pending_gate_record",
     RECEIPT_CERTIFIED_FIELD,
 }
 AUXILIARY_BLOCKED_FIELDS = (EVALUATION_FIELDS - {"note"}) | {"evals", MECHANISM_EVAL_FIELD}
@@ -82,7 +100,10 @@ def append_event(workspace: Path, experiment_id: str, event: dict[str, Any]) -> 
         for target in targets:
             _append_eval_receipt(target, event)
 
-def append_evaluation_record(workspace: Path, record: EvaluationRecord, *, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+
+def append_evaluation_record(
+    workspace: Path, record: EvaluationRecord, *, metadata: dict[str, Any] | None = None
+) -> dict[str, Any]:
     pending_gate = (metadata or {}).get("pending_gate_record") is True
     valid_parent = record.selection_eligible and not pending_gate
     tasks: dict[str, dict[str, list[dict[str, object]]]] = {}
@@ -294,7 +315,12 @@ def _merge_event_fields(row: dict[str, Any], current: dict[str, Any], event: dic
     replace_stamped = _can_replace_stamped(current, event)
     terminal_override = current.get("pending_gate_record") is True and event.get("status") == "operator_failed"
     for key, value in event.items():
-        if key == "valid_parent" and value is True and "selection_eligible" in row and row.get("selection_eligible") is not True:
+        if (
+            key == "valid_parent"
+            and value is True
+            and "selection_eligible" in row
+            and row.get("selection_eligible") is not True
+        ):
             continue
         protected = key in STAMPED_FIELDS and key in row and not replace_stamped
         if terminal_override and key in {"status", "score", "cost"}:

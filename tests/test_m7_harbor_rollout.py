@@ -176,12 +176,7 @@ def test_harbor_rollout_bounds_trajectory_events_to_the_latest_trace_window(tmp_
     module = _harbor_rollout_module()
     jobs = tmp_path / "jobs"
     trial = _write_trial(jobs, name="long-trajectory", reward=0)
-    trajectory = {
-        "steps": [
-            {"source": "agent", "message": f"message-{index}"}
-            for index in range(100)
-        ]
-    }
+    trajectory = {"steps": [{"source": "agent", "message": f"message-{index}"} for index in range(100)]}
     (trial / "agent" / "trajectory.json").write_text(json.dumps(trajectory))
 
     case = module._collect_cases(jobs)[0]
