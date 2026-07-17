@@ -78,7 +78,9 @@ def test_run_meta_agent_applies_caller_owned_environment_overrides(tmp_path: Pat
     assert "ROLE=debugger" in result.stdout
 
 
-def test_run_meta_agent_uses_env_command_and_reports_missing_command(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_meta_agent_uses_env_command_and_reports_missing_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     script = tmp_path / "agent.py"

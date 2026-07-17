@@ -79,7 +79,6 @@ Useful optional keys are:
 - `model`: model identifier expected by that Harbor adapter;
 - `agent_kwargs`: mapping converted to repeated Harbor `--agent-kwarg key=value` flags;
 - `agent_env`: mapping converted to repeated Harbor `--agent-env KEY=VALUE` flags;
-- `agent_pythonpath`: path or list of paths added to the Harbor host process for custom adapters;
 - `environment`, `image`, `jobs_dir`, `max_retries`, and `timeout_s`.
 
 Harbor 0.18 includes agents such as `codex`, `claude-code`, `aider`,
@@ -87,21 +86,30 @@ Harbor 0.18 includes agents such as `codex`, `claude-code`, `aider`,
 others. Availability, required credentials, model naming, and adapter kwargs
 belong to the installed Harbor version.
 
-For a custom agent folder, expose a Harbor `BaseAgent` implementation and make
-it importable by the Harbor host process:
+For a custom adapter, expose a Harbor `BaseAgent` implementation as an
+installable Python package. Add it to the generated workspace's locked runtime
+and reference its module directly:
+
+```bash
+cd /path/to/workspace
+uv add /absolute/path/to/my-agent-package
+git add pyproject.toml uv.lock
+```
 
 ```yaml
 meta_agent:
   variant: hyperagents
   runner: harbor
   agent: my_agent.harbor_adapter:MyAgent
-  agent_pythonpath: /absolute/path/to/folder
   model: my-model
   timeout_s: 3600
 ```
 
-A folder containing only an arbitrary executable is not a Harbor agent adapter;
-use `local` for that executable, or add a Harbor adapter class.
+Harbor and the framework are always launched with `uv run --project
+<workspace> --frozen`. `agent_pythonpath`, `PYTHONPATH`, and runtime
+`sys.path` edits are no longer supported. A folder containing only an
+arbitrary executable is not a Harbor agent adapter; use `local` for that
+executable, or package a Harbor adapter class.
 
 Keep credentials in the environment rather than recipe YAML. Harbor's Codex
 adapter accepts `OPENAI_API_KEY`, or host `auth.json` when

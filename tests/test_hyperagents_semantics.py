@@ -24,8 +24,6 @@ def _init_hyperagents_smoke(tmp_path: Path) -> tuple[Path, Path]:
 
 def _write_newest_select(workspace: Path) -> None:
     (workspace / "operators" / "select.py").write_text(
-        "import os, sys\n"
-        "sys.path = [p for p in sys.path if os.path.abspath(p or os.getcwd()) != os.path.dirname(os.path.abspath(__file__))]\n"
         "from evolve.frozen import sdk\n"
         "from evolve.frozen.interfaces import SelectOperator, SelectResult\n"
         "class S(SelectOperator):\n"
@@ -44,8 +42,6 @@ def test_hyperagents_meta_agent_change_affects_later_generation_not_current_one(
     monkeypatch.setenv("EVOLVE_HOME", str(evolve_home))
     _write_newest_select(workspace)
     (workspace / "operators" / "select.py").write_text(
-        "import os, sys\n"
-        "sys.path = [p for p in sys.path if os.path.abspath(p or os.getcwd()) != os.path.dirname(os.path.abspath(__file__))]\n"
         "from evolve.frozen import sdk\n"
         "from evolve.frozen.interfaces import SelectOperator, SelectResult\n"
         "class S(SelectOperator):\n"
@@ -57,8 +53,6 @@ def test_hyperagents_meta_agent_change_affects_later_generation_not_current_one(
         "    sdk.main(S)\n"
     )
     (workspace / "operators" / "meta_agent.py").write_text(
-        "import os, sys\n"
-        "sys.path = [p for p in sys.path if os.path.abspath(p or os.getcwd()) != os.path.dirname(os.path.abspath(__file__))]\n"
         "from evolve.frozen import sdk\n"
         "from evolve.frozen.interfaces import MetaAgentOperator, MetaAgentResult\n"
         "class M(MetaAgentOperator):\n"

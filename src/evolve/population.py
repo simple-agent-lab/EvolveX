@@ -46,9 +46,7 @@ def looks_mechanism_written(workspace: Path, row: dict[str, Any]) -> bool:
     if isinstance(row.get("evals"), list):
         evaluations.extend(row["evals"])
     return tag_exists(workspace, f"gen/{genid}") and any(
-        isinstance(entry, dict)
-        and entry.get(RECEIPT_CERTIFIED_FIELD) is True
-        and entry.get("tag") == f"gen/{genid}"
+        isinstance(entry, dict) and entry.get(RECEIPT_CERTIFIED_FIELD) is True and entry.get("tag") == f"gen/{genid}"
         for entry in evaluations
     )
 
@@ -102,7 +100,9 @@ def fixed_evaluation_identity(workspace: Path) -> dict[str, str] | None:
     payload = {"dataset": str(evaluator.get("dataset", "")), "attempts": attempts, "tasks": list(members)}
     return {
         "evaluator_fingerprint": evaluator_tree,
-        "task_set_hash": hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
+        "task_set_hash": hashlib.sha256(
+            json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest(),
         "runtime_fingerprint": hashlib.sha256(runtime_pin.encode()).hexdigest(),
     }
 
@@ -120,7 +120,9 @@ def _fixed_task_members(workspace: Path, evaluator: dict[str, Any]) -> tuple[str
     contents = _git_text(workspace, "show", f"gen/0:{path.as_posix()}", strip=False)
     if contents is None:
         raise OSError("evaluator task_file is unavailable from gen/0")
-    return tuple(sorted({line.strip() for line in contents.splitlines() if line.strip() and not line.lstrip().startswith("#")}))
+    return tuple(
+        sorted({line.strip() for line in contents.splitlines() if line.strip() and not line.lstrip().startswith("#")})
+    )
 
 
 def _git_text(workspace: Path, *args: str, strip: bool = True) -> str | None:

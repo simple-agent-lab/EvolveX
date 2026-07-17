@@ -8,16 +8,11 @@ prior diff is below `threshold` similarity (default `EVOLVE_NOVELTY_THRESHOLD`,
 0.98). An empty diff (no-op candidate edit) is treated as a duplicate.
 """
 
-# ruff: noqa: E402
-
 import difflib
 import json
 import os
 import subprocess
-import sys
 from pathlib import Path
-
-sys.path = [p for p in sys.path if os.path.abspath(p or os.getcwd()) != os.path.dirname(os.path.abspath(__file__))]
 
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import NoveltyOperator, NoveltyResult, OperatorContext

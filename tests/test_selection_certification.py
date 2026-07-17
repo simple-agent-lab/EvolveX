@@ -129,9 +129,15 @@ def test_later_metadata_cannot_overwrite_canonical_record_fields(tmp_path, monke
     record = _record(Outcome.BENCHMARK_COMPLETE)
     append_evaluation_record(workspace, record)
     forged = {
-        "candidate_commit": "forged", "runtime_fingerprint": "forged",
-        "expected_trials": 99, "trials": [], "artifacts": {"path": "forged"},
-        "retry_of": 99, "attempt": 99, "purpose": "canary", "outcome": "cancelled",
+        "candidate_commit": "forged",
+        "runtime_fingerprint": "forged",
+        "expected_trials": 99,
+        "trials": [],
+        "artifacts": {"path": "forged"},
+        "retry_of": 99,
+        "attempt": 99,
+        "purpose": "canary",
+        "outcome": "cancelled",
         "selection_eligible": False,
     }
     append_event(workspace, record.experiment_id, {"genid": record.generation, **forged})
@@ -265,17 +271,20 @@ def test_certified_same_hash_evaluation_atomically_replaces_uncertified_evidence
     history = [event for event in read_events(workspace / "archive.jsonl") if event.get("genid") == "1"]
     assert [(event["score"], event["trials"]) for event in history] == [
         (999.0, [{"forged": True}]),
-        (1.0, [
-            {
-                "exception_message": None,
-                "exception_type": None,
-                "outcome": "benchmark_complete",
-                "owner": "benchmark",
-                "reward": 1.0,
-                "task_id": "task-a",
-                "trial": 0,
-            }
-        ]),
+        (
+            1.0,
+            [
+                {
+                    "exception_message": None,
+                    "exception_type": None,
+                    "outcome": "benchmark_complete",
+                    "owner": "benchmark",
+                    "reward": 1.0,
+                    "task_id": "task-a",
+                    "trial": 0,
+                }
+            ],
+        ),
     ]
     assert [parent["score"] for parent in ArchiveView(workspace).valid_parents()] == [1.0]
 
@@ -296,7 +305,8 @@ def test_non_parent_evaluation_purpose_is_not_selectable(tmp_path: Path, purpose
 
 @pytest.mark.parametrize("purpose", ["smoke", "canary", "round-1", "anchor"])
 def test_receipt_certified_non_parent_evaluation_is_mechanism_written(
-    tmp_path: Path, purpose: str,
+    tmp_path: Path,
+    purpose: str,
 ) -> None:
     workspace, expected = _archive_workspace(tmp_path)
     record = replace(

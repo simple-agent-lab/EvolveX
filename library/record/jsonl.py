@@ -3,15 +3,9 @@
 It is the default append-only archive recipe for JSON Lines experiment records.
 """
 
-# ruff: noqa: E402
-
 import json
-import os
-import sys
 from pathlib import Path
 from typing import Any
-
-sys.path = [p for p in sys.path if os.path.abspath(p or os.getcwd()) != os.path.dirname(os.path.abspath(__file__))]
 
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import ArchiveView, OperatorContext, RecordOperator, RecordResult, Row

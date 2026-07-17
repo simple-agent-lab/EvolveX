@@ -150,7 +150,9 @@ def test_invalid_task_vector_rejects_boolean_trial_ids() -> None:
         ("cancelled", 0.0, "non-score-eligible trial.*null reward"),
     ],
 )
-def test_invalid_task_vector_rejects_inconsistent_status_reward(status: str, reward: float | None, message: str) -> None:
+def test_invalid_task_vector_rejects_inconsistent_status_reward(
+    status: str, reward: float | None, message: str
+) -> None:
     with pytest.raises(TaskVectorError, match=message):
         normalize_task_vector(
             {
@@ -170,11 +172,19 @@ def test_invalid_task_vector_rejects_inconsistent_status_reward(status: str, rew
 def test_structured_failure_may_retain_diagnostic_reward(status: str) -> None:
     vector = {
         "schema_version": 1,
-        "tasks": {"task-a": {"trials": [{
-            "trial": 0, "status": status, "reward": 0.0,
-            "owner": "candidate" if status == "candidate_invalid" else "infrastructure",
-            "exception_type": "RuntimeError",
-        }]}},
+        "tasks": {
+            "task-a": {
+                "trials": [
+                    {
+                        "trial": 0,
+                        "status": status,
+                        "reward": 0.0,
+                        "owner": "candidate" if status == "candidate_invalid" else "infrastructure",
+                        "exception_type": "RuntimeError",
+                    }
+                ]
+            }
+        },
     }
 
     assert trial_results(vector)[0].reward == 0.0

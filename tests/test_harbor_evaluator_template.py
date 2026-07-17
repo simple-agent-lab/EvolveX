@@ -19,6 +19,28 @@ def _write_evaluator_helpers(evaluator: Path) -> None:
         (evaluator / name).write_text((resource_root("templates") / "evaluator" / name).read_text())
 
 
+def _write_fake_uv(bin_dir: Path) -> None:
+    _write_executable(
+        bin_dir / "uv",
+        "#!/bin/sh\n"
+        '[ "$1" = run ] || exit 90\n'
+        "shift\n"
+        '[ "$1" = --project ] || exit 91\n'
+        "shift 2\n"
+        '[ "$1" = --frozen ] || exit 92\n'
+        "shift\n"
+        'exec "$@"\n',
+    )
+
+
+def test_harbor_evaluator_uses_locked_workspace_runtime() -> None:
+    text = _eval_sh("harbor", "fixture")
+
+    assert "PYTHONPATH" not in text
+    assert 'run --project "$EVOLVE_WORKSPACE" --frozen harbor' in text
+    assert '"$PWD/.evolve/launch_splits.py"' in text
+
+
 def test_harbor_stage_limit_and_anchor_task_file_override(tmp_path: Path) -> None:
     evaluator = tmp_path / "evaluator"
     (evaluator / "tasks").mkdir(parents=True)
@@ -43,21 +65,22 @@ def test_harbor_stage_limit_and_anchor_task_file_override(tmp_path: Path) -> Non
 
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
+    _write_fake_uv(fake_bin)
     _write_executable(
         fake_bin / "harbor",
         "#!/bin/sh\n"
-        "printf '%s\\n' \"$@\" > \"$HARBOR_ARGS_CAPTURE\"\n"
+        'printf \'%s\\n\' "$@" > "$HARBOR_ARGS_CAPTURE"\n'
         "jobs_dir=\n"
-        "while [ \"$#\" -gt 0 ]; do\n"
-        "  if [ \"$1\" = \"--jobs-dir\" ]; then\n"
+        'while [ "$#" -gt 0 ]; do\n'
+        '  if [ "$1" = "--jobs-dir" ]; then\n'
         "    shift\n"
         "    jobs_dir=$1\n"
         "  fi\n"
         "  shift || true\n"
         "done\n"
-        "mkdir -p \"$jobs_dir/trial-a\" \"$jobs_dir/trial-b\"\n"
-        "printf '%s\\n' '{\"task_name\":\"sealed-a\",\"trial_name\":\"trial-a\",\"verifier_result\":{\"rewards\":{\"reward\":1}}}' > \"$jobs_dir/trial-a/result.json\"\n"
-        "printf '%s\\n' '{\"task_name\":\"sealed-b\",\"trial_name\":\"trial-b\",\"verifier_result\":{\"rewards\":{\"reward\":1}}}' > \"$jobs_dir/trial-b/result.json\"\n",
+        'mkdir -p "$jobs_dir/trial-a" "$jobs_dir/trial-b"\n'
+        'printf \'%s\\n\' \'{"task_name":"sealed-a","trial_name":"trial-a","verifier_result":{"rewards":{"reward":1}}}\' > "$jobs_dir/trial-a/result.json"\n'
+        'printf \'%s\\n\' \'{"task_name":"sealed-b","trial_name":"trial-b","verifier_result":{"rewards":{"reward":1}}}\' > "$jobs_dir/trial-b/result.json"\n',
     )
 
     args_capture = tmp_path / "harbor-args.txt"
@@ -95,12 +118,13 @@ def test_harbor_smoke_is_install_only_and_exposes_raw_diagnostics(tmp_path: Path
             tasks_per_round=8,
             trials=2,
             partial_floor=0.8,
-            agent="target.harbor_agent:MiniSweSourceAgent",
+            agent="evolve_harbor_adapter:MiniSweSourceAgent",
         )
     )
     _write_evaluator_helpers(evaluator)
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
+    _write_fake_uv(fake_bin)
     _write_executable(
         fake_bin / "harbor",
         "#!/bin/sh\n"
@@ -110,7 +134,7 @@ def test_harbor_smoke_is_install_only_and_exposes_raw_diagnostics(tmp_path: Path
         '  if [ "$1" = "--jobs-dir" ]; then shift; jobs_dir=$1; fi\n'
         "  shift || true\n"
         "done\n"
-        'printf \'%s\\n\' "ModuleNotFoundError: No module named \'fastapi\'" >&2\n'
+        "printf '%s\\n' \"ModuleNotFoundError: No module named 'fastapi'\" >&2\n"
         "exit 7\n",
     )
     run_dir = tmp_path / "run"
@@ -134,7 +158,8 @@ def test_harbor_smoke_is_install_only_and_exposes_raw_diagnostics(tmp_path: Path
     assert "ModuleNotFoundError: No module named 'fastapi'" in result.stderr
     args = args_capture.read_text().splitlines()
     assert "--install-only" in args
-    assert args[args.index("--ae") + 1] == "EVOLVE_CANDIDATE_SMOKE_MODE=full"
+    assert "EVOLVE_CANDIDATE_SMOKE_MODE=full" in args
+    assert f"EVOLVE_CANDIDATE_SOURCE={tmp_path / 'target'}" in args
     assert args[args.index("--n-tasks") + 1] == "1"
     assert args[args.index("--n-attempts") + 1] == "1"
     assert args[args.index("-n") + 1] == "1"

@@ -23,6 +23,10 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
 
     assert result.returncode == 0, result.stderr
     expected_paths = [
+        "pyproject.toml",
+        "uv.lock",
+        ".python-version",
+        "evolve_harbor_adapter/__init__.py",
         "evolve.yaml",
         ".evolve-protocol-version",
         "AGENTS.md",
@@ -60,6 +64,13 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
     assert not (workspace / "operators" / "meta_agent.md").exists()
     assert not (workspace / "operators" / "meta_agent_brief.md").exists()
     assert not (workspace / "evaluator" / "checkout_agent.py").exists()
+    assert not (workspace / "target" / "harbor_agent.py").exists()
+    assert (workspace / ".python-version").read_text() == "3.12\n"
+    assert "harbor==0.18.0" in (workspace / "pyproject.toml").read_text()
+    assert (
+        'packages = [".evolve/evolve", "evolve_harbor_adapter", "library"]'
+        in (workspace / "pyproject.toml").read_text()
+    )
 
     config = (workspace / "evolve.yaml").read_text()
     assert "children_per_gen: 1" in config
@@ -77,6 +88,7 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
     gitignore = (workspace / ".gitignore").read_text()
     assert "runs/" in gitignore
     assert "archive.jsonl" in gitignore
+    assert ".venv/" in gitignore
 
     splits = json.loads((workspace / "evaluator" / "splits.json").read_text())
     assert splits["version"] == 1

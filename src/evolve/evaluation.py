@@ -35,9 +35,10 @@ class TrialResult:
     exception_message: str | None = None
 
     def score_eligible(self, *, benchmark_timeout_is_zero: bool) -> bool:
-        return self.reward is not None and (self.outcome is Outcome.BENCHMARK_COMPLETE or (
-            self.outcome is Outcome.TIMEOUT and self.owner == "benchmark_agent" and benchmark_timeout_is_zero
-        ))
+        return self.reward is not None and (
+            self.outcome is Outcome.BENCHMARK_COMPLETE
+            or (self.outcome is Outcome.TIMEOUT and self.owner == "benchmark_agent" and benchmark_timeout_is_zero)
+        )
 
 
 @dataclass(frozen=True)
@@ -69,8 +70,11 @@ class EvaluationRecord:
         return self.outcome is Outcome.BENCHMARK_COMPLETE and self.purpose in {"candidate", "genesis"}
 
     def to_dict(self) -> dict[str, object]:
-        return {**asdict(self), "outcome": self.outcome.value,
-                "trials": [{**asdict(trial), "outcome": trial.outcome.value} for trial in self.trials]}
+        return {
+            **asdict(self),
+            "outcome": self.outcome.value,
+            "trials": [{**asdict(trial), "outcome": trial.outcome.value} for trial in self.trials],
+        }
 
 
 class EvaluationInterrupted(BaseException):
@@ -86,18 +90,31 @@ def _effective_outcome(trial: TrialResult) -> Outcome:
 
 
 def classify_evaluation(
-    *, trials: tuple[TrialResult, ...], expected_trials: int, benchmark_timeout_is_zero: bool = False,
-    setup_outcome: Outcome | None = None, setup_reason: str | None = None, **values: Any,
+    *,
+    trials: tuple[TrialResult, ...],
+    expected_trials: int,
+    benchmark_timeout_is_zero: bool = False,
+    setup_outcome: Outcome | None = None,
+    setup_reason: str | None = None,
+    **values: Any,
 ) -> EvaluationRecord:
     outcomes = tuple(_effective_outcome(trial) for trial in trials)
     if setup_outcome is not None:
         outcomes = (setup_outcome, *outcomes)
     if Outcome.INFRASTRUCTURE_FAILED in outcomes:
         outcome = Outcome.INFRASTRUCTURE_FAILED
-        reason = setup_reason if setup_outcome is Outcome.INFRASTRUCTURE_FAILED and setup_reason else "infrastructure-owned trial failure"
+        reason = (
+            setup_reason
+            if setup_outcome is Outcome.INFRASTRUCTURE_FAILED and setup_reason
+            else "infrastructure-owned trial failure"
+        )
     elif Outcome.CANDIDATE_INVALID in outcomes:
         outcome = Outcome.CANDIDATE_INVALID
-        reason = setup_reason if setup_outcome is Outcome.CANDIDATE_INVALID and setup_reason else "candidate-owned trial failure"
+        reason = (
+            setup_reason
+            if setup_outcome is Outcome.CANDIDATE_INVALID and setup_reason
+            else "candidate-owned trial failure"
+        )
     elif Outcome.CANCELLED in outcomes:
         outcome, reason = Outcome.CANCELLED, setup_reason or "evaluation cancelled"
     elif not trials or len(trials) != expected_trials:
@@ -106,5 +123,11 @@ def classify_evaluation(
         outcome, reason = Outcome.BENCHMARK_COMPLETE, "all required trials are scoreable"
     else:
         outcome, reason = Outcome.TIMEOUT, "non-scoreable timeout"
-    score = sum(float(trial.reward) for trial in trials if trial.reward is not None) / len(trials) if outcome is Outcome.BENCHMARK_COMPLETE else None
-    return EvaluationRecord(**values, expected_trials=expected_trials, trials=trials, outcome=outcome, reason=reason, score=score)
+    score = (
+        sum(float(trial.reward) for trial in trials if trial.reward is not None) / len(trials)
+        if outcome is Outcome.BENCHMARK_COMPLETE
+        else None
+    )
+    return EvaluationRecord(
+        **values, expected_trials=expected_trials, trials=trials, outcome=outcome, reason=reason, score=score
+    )

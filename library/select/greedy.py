@@ -3,13 +3,6 @@
 It is the default exploitative baseline recipe for score-driven evolution.
 """
 
-# ruff: noqa: E402
-
-import os
-import sys
-
-sys.path = [p for p in sys.path if os.path.abspath(p or os.getcwd()) != os.path.dirname(os.path.abspath(__file__))]
-
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import ArchiveView, OperatorContext, SelectOperator, SelectResult
 

@@ -45,7 +45,9 @@ def _clear_proxy_env() -> None:
 
 
 def _mirror_openai_base() -> None:
-    api_base = os.environ.get("OPENAI_BASE_URL") or os.environ.get("OPENAI_API_BASE") or os.environ.get("EVOLVE_LLM_BASE_URL")
+    api_base = (
+        os.environ.get("OPENAI_BASE_URL") or os.environ.get("OPENAI_API_BASE") or os.environ.get("EVOLVE_LLM_BASE_URL")
+    )
     if api_base:
         os.environ["OPENAI_BASE_URL"] = api_base
         os.environ["OPENAI_API_BASE"] = api_base
@@ -94,7 +96,9 @@ def _build_agent(output_path: Path, role: str):
     model_kwargs = _filtered(dict(config.get("model") or {}), LitellmModelConfig.model_fields)
 
     agent_kwargs["step_limit"] = _int_env("EVOLVE_META_AGENT_STEP_LIMIT", int(agent_kwargs.get("step_limit") or 12))
-    agent_kwargs["cost_limit"] = _float_env("EVOLVE_META_AGENT_COST_LIMIT", float(agent_kwargs.get("cost_limit") or 3.0))
+    agent_kwargs["cost_limit"] = _float_env(
+        "EVOLVE_META_AGENT_COST_LIMIT", float(agent_kwargs.get("cost_limit") or 3.0)
+    )
     agent_kwargs["wall_time_limit_seconds"] = _int_env("EVOLVE_META_AGENT_WALL_TIME_LIMIT", 900)
     agent_kwargs["output_path"] = str(output_path)
     if role in _ANALYSIS_ROLES:
@@ -120,9 +124,7 @@ def _sanitized_submission(result: object) -> str:
         return ""
     text = result["submission"]
     secret_values = {
-        value
-        for name, value in os.environ.items()
-        if value and (_SECRET_NAME.search(name) or name in PROXY_ENV)
+        value for name, value in os.environ.items() if value and (_SECRET_NAME.search(name) or name in PROXY_ENV)
     }
     for value in sorted(secret_values, key=len, reverse=True):
         text = text.replace(value, "[REDACTED]")

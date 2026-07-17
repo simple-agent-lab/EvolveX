@@ -22,7 +22,20 @@ evolve.yaml      experiment config: recipe, operator selection, the mutable surf
 program.md       loop orchestration prose (agent mode)
 PROTOCOL.md      the operator contract in prose (authority: the framework)
 archive.jsonl    append-only event ledger (gitignored; the source of truth)
+pyproject.toml   declared Python runtime for the mechanism and Harbor adapters
+uv.lock          exact cross-platform dependency lock used by every entry point
 ```
+
+## Python runtime
+
+This workspace is a Python 3.12 `uv` project. Run it through `./evolve`; the
+console uses `uv run --project <workspace> --frozen`, and the operator and
+evaluator subprocesses inherit that same locked environment.
+
+Add packaged Python dependencies with `uv add`, then commit both
+`pyproject.toml` and `uv.lock`. Do not modify `sys.path` or set `PYTHONPATH`;
+undeclared imports should fail clearly instead of depending on the caller's
+machine or working directory.
 
 ## Run visibility
 

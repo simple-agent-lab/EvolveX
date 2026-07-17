@@ -107,13 +107,16 @@ def test_harbor_rollout_uses_only_frozen_train_task_names(tmp_path: Path, monkey
     )
     captured: list[str] = []
 
-    def fake_run(command, _checkout, log_path):
+    def fake_run(command, _checkout, log_path, env):
         captured.extend(command)
+        assert env == {"LOCKED_RUNTIME": "1"}
         log_path.parent.mkdir(parents=True, exist_ok=True)
         log_path.write_text("ok\n")
         return 0
 
-    monkeypatch.setattr(module.shutil, "which", lambda _name: "/usr/bin/harbor")
+    monkeypatch.setattr(
+        module, "uv_run", lambda _workspace, *_command: (["uv", "run", "harbor"], {"LOCKED_RUNTIME": "1"})
+    )
     monkeypatch.setattr(module, "_run_harbor", fake_run)
     monkeypatch.setattr(module, "_collect_cases", lambda *_args, **_kwargs: [{"reward": 1.0, "outcome": "passed"}])
     context = OperatorContext(

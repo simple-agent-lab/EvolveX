@@ -1,6 +1,8 @@
 # harbor evaluator template
 . evaluator/eval.env
-command -v harbor >/dev/null 2>&1 || { printf 'infra_failed\n' > "$EVOLVE_RUN_DIR/status"; exit 3; }
+: "${EVOLVE_WORKSPACE:=$PWD}"
+if [ -n "${EVOLVE_UV_BINARY:-}" ]; then UV=$EVOLVE_UV_BINARY; else UV=$(command -v uv || true); fi
+[ -n "$UV" ] && [ -x "$UV" ] || { printf 'uv is required; install uv or set EVOLVE_UV_BINARY\n' >&2; printf 'infra_failed\n' > "$EVOLVE_RUN_DIR/status"; exit 3; }
 if [ -z "${DOCKER_HOST:-}" ] && [ -S "$HOME/.colima/default/docker.sock" ]; then
   DOCKER_HOST="unix://$HOME/.colima/default/docker.sock"
   export DOCKER_HOST
@@ -13,10 +15,9 @@ export EVOLVE_GENID
 : "${EVOLVE_ATTEMPT_ID:=manual-$EVOLVE_GENID}"
 : "${EVOLVE_FRAMEWORK_PYTHON:=$(command -v python3)}"
 export EVOLVE_ATTEMPT_ID EVOLVE_FRAMEWORK_PYTHON
-export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
 split_name=${EVOLVE_EVAL_SPLIT:-gate}
 if python3 -c 'import json,sys; raise SystemExit(0 if json.load(open(sys.argv[1])).get("resolved") else 1)' evaluator/splits.json; then
-  if ! PYTHONPATH="$PWD/.evolve${PYTHONPATH:+:$PYTHONPATH}" python3 -m evolve.splits \
+  if ! "$UV" run --project "$EVOLVE_WORKSPACE" --frozen python "$PWD/.evolve/launch_splits.py" \
     select evaluator/splits.json "$EVOLVE_HARBOR_TASKS" "$split_name" "$EVOLVE_RUN_DIR"; then
     printf 'infra_failed\n' > "$EVOLVE_RUN_DIR/status"
     exit 3
@@ -91,6 +92,7 @@ if [ -n "${EVOLVE_TASK_LIMIT:-}" ]; then
   export EVOLVE_HARBOR_EXPECTED_TRIALS=$((EVOLVE_TASK_LIMIT * EVOLVE_HARBOR_ATTEMPTS))
 fi
 set -- "$@" --agent "$EVOLVE_HARBOR_AGENT"
+set -- "$@" --ae "EVOLVE_CANDIDATE_SOURCE=$PWD/target"
 set -- "$@" --mounts "$uv_mount"
 if [ -f evaluator/agent.env ]; then
   while IFS= read -r agent_entry || [ -n "$agent_entry" ]; do
@@ -122,13 +124,13 @@ for proxy_entry in \
 done
 set -- "$@" --job-name "$EVOLVE_ATTEMPT_ID" --jobs-dir "$jobs_dir" --n-attempts "${EVOLVE_HARBOR_ATTEMPTS:-1}" -n "${EVOLVE_HARBOR_N_CONCURRENT:-$EVOLVE_HARBOR_N}" -y -q
 if [ -n "${EVOLVE_CANDIDATE_SMOKE_MODE:-}" ]; then
-  harbor "$@"
+  "$UV" run --project "$EVOLVE_WORKSPACE" --frozen harbor "$@"
   exit $?
 fi
 if [ "${EVOLVE_LIVE_OUTPUT:-0}" = "1" ]; then
-  harbor "$@" 2>&1 | tee "$EVOLVE_RUN_DIR/harbor.log" || harbor_rc=$?
+  "$UV" run --project "$EVOLVE_WORKSPACE" --frozen harbor "$@" 2>&1 | tee "$EVOLVE_RUN_DIR/harbor.log" || harbor_rc=$?
 else
-  harbor "$@" > "$EVOLVE_RUN_DIR/harbor.log" 2>&1 || harbor_rc=$?
+  "$UV" run --project "$EVOLVE_WORKSPACE" --frozen harbor "$@" > "$EVOLVE_RUN_DIR/harbor.log" 2>&1 || harbor_rc=$?
 fi
 python3 evaluator/parse_score.py "$jobs_dir" "$EVOLVE_RUN_DIR" "$harbor_rc"
 parser_rc=$?

@@ -2,7 +2,6 @@ experiment:
   id: ahe
   max_generations: 8
   target_score: null
-  budget_usd: 150
   children_per_gen: 1
   mode: driver
   seed: 0
@@ -14,17 +13,17 @@ surface:
     - target/**
   exclude: []
 operators:
-  select: {variant: greedy, timeout_s: 600}
+  select: {variant: ahe_latest, timeout_s: 600}
   rollout: {variant: harbor, budget_tasks: 8, n_concurrent: 4, agent_setup_timeout_multiplier: 3, max_retries: 1, timeout_s: 3600}
-  trace_analyzer: {variant: ahe, max_cases: 8, field_limit: 2000, timeout_s: 600}
+  trace_analyzer: {variant: ahe, max_tasks: 90, max_concurrent: 16, timeout_per_task: 600, retry_attempts: 3, field_limit: 2000, timeout_s: 3600}
   meta_agent: {variant: ahe, runner: harbor, agent: mini-swe-agent, model: openai/gpt-5.4, environment: docker, editable_roots: [target], max_retries: 0, timeout_s: 3600}
-  gate: {variant: hillclimb, strict: true, timeout_s: 600}
+  gate: {variant: ahe_artifact_valid, timeout_s: 600}
   record: {variant: jsonl, timeout_s: 600}
   timeout_s: 600
 evaluator:
   engine: harbor
   dataset: swe-bench-lite
-  agent: target.harbor_agent:MiniSweSourceAgent
+  agent: evolve_harbor_adapter:MiniSweSourceAgent
   split: {train: 0.5, gate: 0.4, sealed: 0.1, seed: 0}
   sampling: static
   tasks_per_round: 8

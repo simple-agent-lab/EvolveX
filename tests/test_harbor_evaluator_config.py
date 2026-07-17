@@ -14,10 +14,10 @@ def test_eval_env_uses_configured_harbor_agent() -> None:
         tasks_per_round=3,
         trials=1,
         partial_floor=0.8,
-        agent="target.harbor_agent:MiniSweSourceAgent",
+        agent="evolve_harbor_adapter:MiniSweSourceAgent",
     )
 
-    assert "EVOLVE_HARBOR_AGENT=target.harbor_agent:MiniSweSourceAgent\n" in env
+    assert "EVOLVE_HARBOR_AGENT=evolve_harbor_adapter:MiniSweSourceAgent\n" in env
     assert "CheckoutTargetAgent" not in env
 
 
@@ -77,7 +77,7 @@ def test_init_writes_recipe_harbor_agent_to_eval_env(tmp_path: Path) -> None:
     init_workspace(InitOptions(workspace=workspace, recipe="hill_climb-smoke"))
 
     env = (workspace / "evaluator" / "eval.env").read_text()
-    assert "EVOLVE_HARBOR_AGENT=target.harbor_agent:MiniSweSourceAgent\n" in env
+    assert "EVOLVE_HARBOR_AGENT=evolve_harbor_adapter:MiniSweSourceAgent\n" in env
     assert "CheckoutTargetAgent" not in env
     assert (workspace / "evaluator" / "agent.env").read_text() == ""
     assert not (workspace / "evaluator" / "checkout_agent.py").exists()
