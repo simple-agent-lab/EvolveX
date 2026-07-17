@@ -40,9 +40,7 @@ def _commit_and_retag_gen0(workspace: Path, *paths: str) -> None:
 def _rewrite_baseline_task_failure(workspace: Path, evolve_home: Path) -> None:
     local = workspace / "archive.jsonl"
     parent = next(
-        event
-        for event in read_events(local)
-        if event.get("genid") == "0" and event.get(MECHANISM_EVAL_FIELD) is True
+        event for event in read_events(local) if event.get("genid") == "0" and event.get(MECHANISM_EVAL_FIELD) is True
     )
     parent["task_vector"]["tasks"]["task-0"]["trials"][0]["reward"] = 0.0
     parent["note"] = "baseline evaluated"

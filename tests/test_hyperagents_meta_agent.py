@@ -64,7 +64,7 @@ def _ctx(workspace: Path, checkout: Path, run_dir: Path) -> OperatorContext:
         parent="0",
         round=None,
         fan_out=1,
-        config={"timeout_s": 30},
+        config={"runner": "local", "timeout_s": 30},
         rng=random.Random(0),
     )
 
@@ -73,13 +73,23 @@ def test_hyperagents_prompt_points_to_evolvable_codebase_and_prior_artifacts(tmp
     module = _load_hyperagents_meta_agent()
     checkout, run_dir = _checkout(tmp_path)
     ctx = _ctx(run_dir.parents[1], checkout, run_dir)
+    evidence = run_dir / "feedback" / "evidence"
+    evidence.mkdir(parents=True)
+    (evidence / "selected.md").write_text("SELECTED TRACE EVIDENCE\n")
+    (run_dir / "feedback" / "index.md").write_text(
+        "# Feedback Bundle\n\n- [selected trace evidence](evidence/selected.md)\n"
+    )
 
-    prompt = module.build_prompt(checkout, ctx)
+    prompt = module.build_prompt(checkout, "fallback observation", ctx)
 
     assert module.PROMPT.startswith("# HyperAgents")
     assert f"Repository: {checkout}" in prompt
     assert f"Archive: {ctx.workspace / 'archive.jsonl'}" in prompt
     assert f"Prior generation artifacts: {ctx.workspace / 'runs'}" in prompt
+    assert f"Feedback bundle: {run_dir / 'feedback'}" in prompt
+    assert f"Raw trace evidence: {run_dir / 'trace_analyzer' / 'evidence'}" in prompt
+    assert "SELECTED TRACE EVIDENCE" in prompt
+    assert "fallback observation" not in prompt
     assert "Iterations remaining after this proposal: 3" in prompt
     assert "Modify any part of the allowed codebase" in prompt
     assert "You are editing the MiniSWE source checkout under target/." not in prompt
@@ -92,14 +102,16 @@ def test_hyperagents_meta_agent_records_complete_patch_for_target_and_workflow_e
     checkout, run_dir = _checkout(tmp_path)
     ctx = _ctx(run_dir.parents[1], checkout, run_dir)
 
-    def fake_run_meta_agent(*, workspace: Path, prompt: str, config: dict):
+    def fake_run_agent(workspace: Path, prompt: str, ctx: OperatorContext):
         assert workspace == checkout
+        assert ctx.config["runner"] == "local"
         assert "Modify any part of the allowed codebase" in prompt
+        assert "observation" in prompt
         (workspace / "target" / "agent.py").write_text("print('child')\n")
         (workspace / "operators" / "meta_agent.py").write_text("# improved mutation operator\n")
         return SimpleNamespace(output="edited target and workflow", usage={"usd": 0.02})
 
-    monkeypatch.setattr(module, "run_meta_agent", fake_run_meta_agent)
+    monkeypatch.setattr(module, "run_agent", fake_run_agent)
 
     result = module.HyperAgentsMetaAgent().run(checkout, "observation", ctx)
 
@@ -109,3 +121,4 @@ def test_hyperagents_meta_agent_records_complete_patch_for_target_and_workflow_e
     assert "diff --git a/operators/meta_agent.py b/operators/meta_agent.py" in diff
     assert (run_dir / "meta_agent" / "patch.diff").read_text() == diff
     assert json.loads((run_dir / "meta_agent" / "usage.json").read_text()) == {"usd": 0.02}
+    assert "runner: local" in (run_dir / "meta_agent" / "rationale.md").read_text()

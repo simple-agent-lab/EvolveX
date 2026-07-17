@@ -83,7 +83,9 @@ def test_ahe_recipe_runs_train_rollout_trace_analysis_meta_agent_and_gate(tmp_pa
         "source=library/trace_analyzer/failure_patterns.py"
         in (workspace / "operators" / "trace_analyzer.py").read_text()
     )
-    assert "source=library/meta_agent/agent_command.py" in (workspace / "operators" / "meta_agent.py").read_text()
+    assert "source=library/meta_agent/hyperagents.py" in (workspace / "operators" / "meta_agent.py").read_text()
+    assert (workspace / "library" / "meta_agent" / "runners" / "local.py").is_file()
+    assert (workspace / "library" / "meta_agent" / "runners" / "harbor.py").is_file()
     assert "source=library/gate/hillclimb.py" in (workspace / "operators" / "gate.py").read_text()
     eval_env = (workspace / "evaluator" / "eval.env").read_text()
     assert "EVOLVE_HARBOR_N_CONCURRENT=4" in eval_env
@@ -129,9 +131,7 @@ def test_ahe_recipe_runs_train_rollout_trace_analysis_meta_agent_and_gate(tmp_pa
     assert not (generation_run / "rollout" / "evidence").exists()
     assert (generation_run / "rollout" / "cases.json").is_file()
     assert (generation_run / "trace_analyzer" / "evidence" / "selected.md").is_file()
-    trace_manifest = json.loads(
-        (generation_run / "trace_analyzer" / "evidence" / "manifest.json").read_text()
-    )
+    trace_manifest = json.loads((generation_run / "trace_analyzer" / "evidence" / "manifest.json").read_text())
     assert trace_manifest["selected_variant"] == "failure_patterns"
     expected_agent_env = {
         "http_proxy=http://proxy.example:8118",

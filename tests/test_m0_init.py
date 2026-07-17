@@ -67,7 +67,7 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
     assert "seed: builtin-dummy" in config
     assert "variant:" not in config
     assert "script:" not in config
-    assert "meta_agent:\n    timeout_s: 3600" in config
+    assert "meta_agent:\n    runner: local\n    timeout_s: 3600" in config
     assert "mutate:" not in config
     assert "- target/**" in config
     assert (workspace / ".evolve-protocol-version").read_text() == "1\n"
@@ -146,6 +146,8 @@ def test_init_binds_real_hyperagents_method_surface_and_operators(tmp_path: Path
 
     assert result.returncode == 0, result.stderr
     assert "score_child_prop" in (workspace / "operators/select.py").read_text()
+    assert "HarborRollout" in (workspace / "operators/rollout.py").read_text()
+    assert "class TraceBrowser" in (workspace / "operators/trace_analyzer.py").read_text()
     assert "variant: hyperagents" in (workspace / "operators/meta_agent.py").read_text()
     assert "HyperAgents Self-Improvement" in (workspace / "operators/meta_agent.py").read_text()
     assert "HyperAgentsValidate" in (workspace / "operators/validate.py").read_text()

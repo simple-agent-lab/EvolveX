@@ -23,7 +23,9 @@ library/
 ├─ select/   greedy · newest · random · score_weighted
 ├─ rollout/  failure_focused · harbor · noop
 ├─ trace_analyzer/ failure_patterns · failed_traces · trace_browser · execution_records · utility_metrics
-├─ meta_agent/ agent_command · hyperagents
+├─ meta_agent/ hyperagents
+│  ├─ support/  shared evidence loading
+│  └─ runners/ local · harbor
 ├─ validate/ hyperagents
 ├─ gate/     hillclimb · parent_eligible
 ├─ record/   jsonl · hyperagents
@@ -60,3 +62,26 @@ The rollout path is intentionally not inherited from `EVOLVE_HARBOR_TASKS`:
 verifier output is meta-agent feedback and may reveal tests. Set `path` or
 `EVOLVE_HARBOR_ROLLOUT_TASKS` to a train-only task set, never the gate or sealed
 set used for final evaluation.
+
+## Meta-agent execution
+
+Meta-agent variants define the improvement strategy. `hyperagents.py` consumes
+normalized rollout feedback and implements self-referential editing. Its
+`runner` selects how the editing agent is executed.
+
+`runners/local.py` executes a trusted host command. `runners/harbor.py` instead compiles
+`target/` into one isolated Harbor Exec task and returns the validated artifact:
+
+```yaml
+operators:
+  meta_agent:
+    variant: hyperagents
+    runner: harbor
+    agent: codex
+    model: gpt-5.4
+    environment: docker
+    timeout_s: 3600
+```
+
+See [`META_AGENTS.md`](../META_AGENTS.md) for command examples, supported Harbor
+agent identifiers, custom adapter configuration, and the artifact boundary.

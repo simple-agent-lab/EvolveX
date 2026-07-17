@@ -16,7 +16,7 @@ operators:
   select: {variant: greedy, timeout_s: 600}
   rollout: {variant: harbor, budget_tasks: 1, n_concurrent: 4, agent_setup_timeout_multiplier: 3, max_retries: 1, timeout_s: 3600}
   trace_analyzer: {variant: failure_patterns, max_chars: 30000, timeout_s: 600}
-  meta_agent: {variant: agent_command, command: codex exec --full-auto - < "$EVOLVE_PROMPT_FILE", timeout_s: 3600}
+  meta_agent: {variant: hyperagents, runner: local, command: codex exec --full-auto - < "$EVOLVE_PROMPT_FILE", timeout_s: 3600}
   gate: {variant: hillclimb, timeout_s: 600}
   record: {variant: jsonl, timeout_s: 600}
   timeout_s: 600

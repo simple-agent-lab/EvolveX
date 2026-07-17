@@ -11,11 +11,15 @@ from pathlib import Path
 from typing import Any
 
 sys.path = [p for p in sys.path if os.path.abspath(p or os.getcwd()) != os.path.dirname(os.path.abspath(__file__))]
+if os.getcwd() not in sys.path:
+    sys.path.insert(0, os.getcwd())
 
-from evolve.agent import AgentCommandError, run_meta_agent
+from evolve.agent import AgentCommandError
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import MetaAgentOperator, MetaAgentResult
 from evolve.patching import create_candidate_patch, load_surface_policy, patch_parent_ref
+from library.meta_agent.runners import run_agent, runner_name
+from library.meta_agent.support.evidence import load_feedback
 
 PROMPT = """# HyperAgents Self-Improvement
 
@@ -53,10 +57,14 @@ def _remaining_iterations(ctx) -> str:
     return str(max(maximum - current, 0))
 
 
-def build_prompt(checkout: Path, ctx) -> str:
+def build_prompt(checkout: Path, observation: str, ctx) -> str:
+    feedback = load_feedback(ctx.run_dir, observation)
     return (
         f"{PROMPT.rstrip()}\n\n"
+        f"# Current rollout evidence\n\n{feedback}\n\n"
         f"Repository: {checkout}\n"
+        f"Feedback bundle: {ctx.run_dir / 'feedback'}\n"
+        f"Raw trace evidence: {ctx.run_dir / 'trace_analyzer' / 'evidence'}\n"
         f"Archive: {ctx.workspace / 'archive.jsonl'}\n"
         f"Prior generation artifacts: {ctx.workspace / 'runs'}\n"
         f"Current generation artifacts: {ctx.run_dir}\n"
@@ -68,12 +76,12 @@ def build_prompt(checkout: Path, ctx) -> str:
 class HyperAgentsMetaAgent(MetaAgentOperator):
     def run(self, checkout: Path, observation: str, ctx) -> MetaAgentResult:
         parent_ref = patch_parent_ref(checkout, ctx)
-        prompt = build_prompt(checkout, ctx)
+        prompt = build_prompt(checkout, observation, ctx)
         out = ctx.run_dir / "meta_agent"
         out.mkdir(parents=True, exist_ok=True)
         (out / "prompt.md").write_text(prompt)
         try:
-            agent_run = run_meta_agent(workspace=checkout, prompt=prompt, config=ctx.config)
+            agent_run = run_agent(checkout, prompt, ctx)
         except AgentCommandError as exc:
             (out / "output.txt").write_text(exc.output)
             _write_json(out / "usage.json", _safe_usage(exc.usage))
@@ -86,7 +94,12 @@ class HyperAgentsMetaAgent(MetaAgentOperator):
             repair=False,
         )
         usage = _safe_usage(agent_run.usage)
-        notes = ["written-by: operators/meta_agent.py", "variant: hyperagents", *patch.notes]
+        notes = [
+            "variant: hyperagents",
+            f"runner: {runner_name(ctx)}",
+            "written-by: operators/meta_agent.py",
+            *patch.notes,
+        ]
 
         (out / "model_patch.diff").write_text(patch.diff)
         (out / "patch.diff").write_text(patch.diff)
