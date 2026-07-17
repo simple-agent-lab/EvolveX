@@ -39,10 +39,11 @@ Inside that generated workspace, the six core concepts are:
 | archive | `archive.jsonl` plus `gen/<id>` git tags. |
 | mutable surface | The paths proposals are allowed to change. |
 
-`evolve init` also vendors the (stdlib-only) mechanism into the workspace
-under `.evolve/`, with a root `evolve` console, so a generated workspace
-drives its own loop without an installed CLI — hand an agent a workspace and
-it is self-contained:
+`evolve init` also creates a locked `uv` project and vendors the mechanism
+under the protected `.evolve/` directory. The root `evolve` console always
+runs that project with `uv run --frozen`, so every operator, evaluator, and
+Harbor process sees the same declared environment without `sys.path` or
+`PYTHONPATH` changes:
 
 ```bash
 cd /path/to/experiment && ./evolve run . --max-generations 5
@@ -100,6 +101,11 @@ Requirements:
 - Python 3.11+
 - `uv`
 - `git`
+
+Generated workspaces are pinned to Python 3.12 and include both
+`pyproject.toml` and `uv.lock`. Keep those files together when copying a
+workspace. The root `./evolve` command requires `uv` and refuses to run if the
+locked environment cannot be reproduced.
 
 Clone the repository and run the test suite:
 
@@ -240,6 +246,11 @@ and their checkout/snapshot root (`EVOLVE_CHECKOUT`). Direct operator
 archive writes are restored after subprocess exit; `record.py` may only
 copy back public non-stamped fields, and auxiliary per-round evals need a
 mechanism-written receipt sidecar before they are trusted.
+
+Workspace Python dependencies belong in the root `pyproject.toml` and
+`uv.lock`. Add a packaged custom operator or Harbor adapter with `uv add
+/absolute/path/to/package` (or a registry/git requirement), then commit both
+files. Direct import-path manipulation is intentionally unsupported.
 
 ## Source Map
 

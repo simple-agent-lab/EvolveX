@@ -21,9 +21,7 @@ _COMMON_SECRET_VALUES = (
     re.compile(r"\bsk-[A-Za-z0-9_-]{8,}\b"),
     re.compile(r"\b(?:gh[opusr]|github_pat)_[A-Za-z0-9_]{16,}\b"),
 )
-_COMMON_SECRET_ASSIGNMENT = re.compile(
-    r"(?i)(\b(?:api[_-]?key|token|password|secret)\s*[:=]\s*)[^\s,;]+"
-)
+_COMMON_SECRET_ASSIGNMENT = re.compile(r"(?i)(\b(?:api[_-]?key|token|password|secret)\s*[:=]\s*)[^\s,;]+")
 
 
 @dataclass(frozen=True)
@@ -74,11 +72,7 @@ def _next_attempt(root: Path) -> Path:
 
 def _redact(text: str, environment: Mapping[str, str]) -> str:
     redacted = _URL_USERINFO.sub(r"\1[REDACTED]@", text)
-    values = {
-        value
-        for name, value in environment.items()
-        if len(value) >= 4 and _SECRET_NAME.search(name)
-    }
+    values = {value for name, value in environment.items() if len(value) >= 4 and _SECRET_NAME.search(name)}
     for value in sorted(values, key=len, reverse=True):
         redacted = redacted.replace(value, "[REDACTED]")
     for pattern in _COMMON_SECRET_VALUES:

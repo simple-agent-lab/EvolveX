@@ -23,11 +23,21 @@ class OwnedResult:
 
 
 def run_owned(
-    command: list[str], *, cwd: Path, env: dict[str, str], timeout_s: float | None = None,
+    command: list[str],
+    *,
+    cwd: Path,
+    env: dict[str, str],
+    timeout_s: float | None = None,
 ) -> OwnedResult:
     started = time.monotonic()
     process = subprocess.Popen(
-        command, cwd=cwd, env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True,
+        command,
+        cwd=cwd,
+        env=env,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
     )
     timed_out = False
     try:
@@ -76,5 +86,7 @@ def attempt_dir(workspace: Path, *, purpose: str, generation: str, candidate_com
 
 def next_attempt(workspace: Path, *, purpose: str, generation: str, candidate_commit: str) -> int:
     parent = _attempt_parent(workspace, purpose, generation, candidate_commit)
-    attempts = [int(path.name[8:]) for path in parent.glob("attempt-*") if path.name[8:].isdigit()] if parent.exists() else []
+    attempts = (
+        [int(path.name[8:]) for path in parent.glob("attempt-*") if path.name[8:].isdigit()] if parent.exists() else []
+    )
     return max(attempts, default=0) + 1

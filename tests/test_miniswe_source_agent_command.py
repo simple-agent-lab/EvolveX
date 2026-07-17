@@ -32,7 +32,9 @@ def _install_fake_miniswe(monkeypatch, run_result=None):
         def __init__(self, **kwargs) -> None:
             captured["model_kwargs"] = kwargs
             captured["proxies_before_model"] = {
-                name for name in ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY", "all_proxy", "ALL_PROXY") if name in os.environ
+                name
+                for name in ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY", "all_proxy", "ALL_PROXY")
+                if name in os.environ
             }
 
     class LocalEnvironment:
@@ -45,7 +47,11 @@ def _install_fake_miniswe(monkeypatch, run_result=None):
 
         def run(self, prompt: str):
             captured["prompt"] = prompt
-            return {"exit_status": "submitted", "submission": "useful source-agent report"} if run_result is None else run_result
+            return (
+                {"exit_status": "submitted", "submission": "useful source-agent report"}
+                if run_result is None
+                else run_result
+            )
 
     def get_config_from_spec(spec: str):
         captured["config_spec"] = spec

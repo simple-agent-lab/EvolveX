@@ -1,7 +1,5 @@
 """Run the current checkout through Harbor and distill meta-agent feedback."""
 
-# ruff: noqa: E402
-
 from __future__ import annotations
 
 import json
@@ -11,17 +9,15 @@ import shlex
 import shutil
 import signal
 import subprocess
-import sys
 import threading
 import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-sys.path = [p for p in sys.path if os.path.abspath(p or os.getcwd()) != os.path.dirname(os.path.abspath(__file__))]
-
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import OperatorContext, RolloutOperator, RolloutResult
+from evolve.host_runtime import uv_run
 from evolve.splits import harbor_task_pattern, load_manifest, select_dataset_tasks
 
 _INFRA_EXCEPTION_MARKERS = (
@@ -428,11 +424,7 @@ def _append_proxy_env(command: list[str]) -> None:
                 command.extend(["--ae", f"{key}={value}", "--ve", f"{key}={value}"])
 
 
-def _run_harbor(command: list[str], checkout: Path, log_path: Path) -> int:
-    env = {
-        **os.environ,
-        "PYTHONPATH": str(checkout) + (f":{os.environ['PYTHONPATH']}" if os.environ.get("PYTHONPATH") else ""),
-    }
+def _run_harbor(command: list[str], checkout: Path, log_path: Path, env: dict[str, str]) -> int:
     start = time.monotonic()
     process = subprocess.Popen(
         command,
@@ -473,9 +465,7 @@ def _run_harbor(command: list[str], checkout: Path, log_path: Path) -> int:
 
 class HarborRollout(RolloutOperator):
     def rollout(self, checkout: Path, ctx: OperatorContext) -> RolloutResult:
-        harbor = shutil.which("harbor")
-        if harbor is None:
-            raise SystemExit("harbor rollout requires the harbor CLI on PATH")
+        harbor, harbor_env = uv_run(ctx.workspace, "harbor")
         eval_env = _load_eval_env(checkout)
         dedicated_tasks = ctx.config.get("path") or os.environ.get("EVOLVE_HARBOR_ROLLOUT_TASKS")
         manifest_path = checkout / "evaluator" / "splits.json"
@@ -537,7 +527,7 @@ class HarborRollout(RolloutOperator):
         jobs_dir.mkdir(parents=True, exist_ok=True)
 
         command = [
-            harbor,
+            *harbor,
             "run",
             "-p",
             tasks,
@@ -571,7 +561,7 @@ class HarborRollout(RolloutOperator):
             command.extend(["--include-task-name", str(include_task)])
 
         rollout_dir = ctx.run_dir / "rollout"
-        returncode = _run_harbor(command, checkout, rollout_dir / "harbor.log")
+        returncode = _run_harbor(command, checkout, rollout_dir / "harbor.log", harbor_env)
         cases = _collect_cases(jobs_dir, field_limit=field_limit, pass_threshold=pass_threshold)
         _write_json(rollout_dir / "cases.json", cases)
         if not cases:

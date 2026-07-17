@@ -214,16 +214,17 @@ def test_cleanup_removes_only_exact_trial_compose_project(tmp_path: Path) -> Non
     ]
 
 
-def test_console_has_no_accidental_python_fallback(tmp_path: Path) -> None:
+def test_console_uses_locked_workspace_project(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     init_workspace(InitOptions(workspace=workspace, recipe="hill_climb-smoke"))
 
     text = (workspace / "evolve").read_text()
 
-    assert "EVOLVE_FRAMEWORK_PYTHON" in text
-    assert sys.executable in text
-    assert "python3.13 python3.12 python3.11 python3" not in text
-    assert "uv run --quiet --with" not in text
+    assert "EVOLVE_UV_BINARY" in text
+    assert 'run --project "$HERE" --frozen python' in text
+    assert '"$HERE/.evolve/launch_evolve.py"' in text
+    assert "PYTHONPATH" not in text
+    assert (workspace / ".evolve" / "launch_evolve.py").is_file()
     assert (workspace / "evaluator" / "cleanup_harbor.py").is_file()
 
 
@@ -241,19 +242,18 @@ def test_init_and_feedback_do_not_create_prediction_contracts(tmp_path: Path) ->
     assert "feedback/falsification.md" not in manifest
 
 
-def test_console_shell_quotes_unusual_pinned_interpreter_path(
+def test_console_shell_quotes_unusual_uv_path(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    capture = tmp_path / "python-args"
-    fake_python = tmp_path / "python-$(touch PWNED)-`touch BACKTICK`-'quoted-\\path"
-    fake_python.write_text('#!/bin/sh\nprintf \'%s\\n\' "$@" > "$CAPTURE"\n')
-    fake_python.chmod(fake_python.stat().st_mode | stat.S_IXUSR)
-    monkeypatch.setattr(workspace_module.sys, "executable", str(fake_python))
+    capture = tmp_path / "uv-args"
+    fake_uv = tmp_path / "uv-$(touch PWNED)-`touch BACKTICK`-'quoted-\\path"
+    fake_uv.write_text('#!/bin/sh\nprintf \'%s\\n\' "$@" > "$CAPTURE"\n')
+    fake_uv.chmod(fake_uv.stat().st_mode | stat.S_IXUSR)
     workspace = tmp_path / "workspace"
     init_workspace(InitOptions(workspace=workspace, recipe="hill_climb-smoke"))
     env = os.environ.copy()
-    env.pop("EVOLVE_FRAMEWORK_PYTHON", None)
+    env["EVOLVE_UV_BINARY"] = str(fake_uv)
     env["CAPTURE"] = str(capture)
 
     result = subprocess.run(
@@ -266,7 +266,15 @@ def test_console_shell_quotes_unusual_pinned_interpreter_path(
     )
 
     assert result.returncode == 0, result.stderr
-    assert capture.read_text().splitlines() == ["-m", "evolve", "probe"]
+    assert capture.read_text().splitlines() == [
+        "run",
+        "--project",
+        str(workspace),
+        "--frozen",
+        "python",
+        str(workspace / ".evolve" / "launch_evolve.py"),
+        "probe",
+    ]
     assert not (workspace / "PWNED").exists()
     assert not (workspace / "BACKTICK").exists()
 

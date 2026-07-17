@@ -39,13 +39,15 @@ def configure_outcome_evaluator(workspace: Path, *, timeout_rule: str | None = N
         '  timeout) reward="0.0"; owner="benchmark_agent" ;;\n'
         '  cancelled) reward="null"; owner="evaluator" ;;\n'
         "esac\n"
-        "printf '{\"schema_version\":1,\"tasks\":{\"case-a\":{\"trials\":[{\"trial\":0,\"status\":\"%s\",\"reward\":%s,\"owner\":\"%s\"}]}}}\\n' "
+        'printf \'{"schema_version":1,"tasks":{"case-a":{"trials":[{"trial":0,"status":"%s","reward":%s,"owner":"%s"}]}}}\\n\' '
         '"$outcome" "$reward" "$owner" > "$EVOLVE_RUN_DIR/task_vector.json"\n',
     )
     config = workspace / "evolve.yaml"
     text = config.read_text().replace("tasks_per_round: 16", "tasks_per_round: 1")
     if timeout_rule is not None:
-        text = text.replace("  tasks_per_round: 1\n", f"  tasks_per_round: 1\n  benchmark_timeout_is_zero: {timeout_rule}\n")
+        text = text.replace(
+            "  tasks_per_round: 1\n", f"  tasks_per_round: 1\n  benchmark_timeout_is_zero: {timeout_rule}\n"
+        )
     config.write_text(text)
     git(workspace, "add", "evaluator/eval.sh", "evolve.yaml")
     git(workspace, "commit", "-m", "configure canonical outcome evaluator")
@@ -56,10 +58,17 @@ def prepare_lifecycle_generation(workspace: Path) -> None:
     configure_outcome_evaluator(workspace)
     driver_run(RunOptions(workspace, max_generations=0))
     git(workspace, "tag", "gen/1", "gen/0")
-    append_event(workspace, workspace.name, {
-        "genid": "1", "parent": "0", "tag": "gen/1",
-        "mutated": [], "surface_violations": [],
-    })
+    append_event(
+        workspace,
+        workspace.name,
+        {
+            "genid": "1",
+            "parent": "0",
+            "tag": "gen/1",
+            "mutated": [],
+            "surface_violations": [],
+        },
+    )
 
 
 def test_archive_view_reads_markerless_legacy_evaluation_without_rewrite(tmp_path: Path) -> None:
@@ -123,7 +132,8 @@ def test_eval_script_receives_persistent_workspace_uv_cache(tmp_path: Path) -> N
 
 
 def test_timeout_zero_rejects_non_boolean_config(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     workspace, _evolve_home = init_workspace(tmp_path)
     configure_outcome_evaluator(workspace, timeout_rule='"false"')

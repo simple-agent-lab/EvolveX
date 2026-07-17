@@ -69,9 +69,7 @@ def _candidate_diff(root: Path, parent_ref: str, changed: list[str]) -> str:
     if not changed:
         return ""
     untracked = {
-        path
-        for path in changed
-        if git(root, "status", "--porcelain", "--", path, check=False).stdout.startswith("??")
+        path for path in changed if git(root, "status", "--porcelain", "--", path, check=False).stdout.startswith("??")
     }
     tracked = [path for path in changed if path not in untracked]
     parts: list[str] = []

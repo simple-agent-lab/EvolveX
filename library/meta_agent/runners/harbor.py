@@ -1,7 +1,5 @@
 """Run an isolated Harbor editing agent and return its target artifact."""
 
-# ruff: noqa: E402
-
 from __future__ import annotations
 
 import json
@@ -11,20 +9,16 @@ import shutil
 import signal
 import stat
 import subprocess
-import sys
 import tempfile
 import threading
 import time
 from pathlib import Path
 from typing import Any
 
-sys.path = [p for p in sys.path if os.path.abspath(p or os.getcwd()) != os.path.dirname(os.path.abspath(__file__))]
-if os.getcwd() not in sys.path:
-    sys.path.insert(0, os.getcwd())
-
 from evolve.agent import AgentCommandError, AgentRunResult
 from evolve.frozen.interfaces import OperatorContext
 from evolve.git import git, working_tree_changed_paths
+from evolve.host_runtime import uv_run
 from evolve.patching import SurfacePolicy, load_surface_policy, patch_parent_ref
 from evolve.surface import check_paths
 
@@ -199,7 +193,7 @@ def _append_agent_env(command: list[str], config: dict[str, Any]) -> None:
 
 
 def _build_command(
-    harbor: str,
+    harbor: list[str],
     bundle: _EditableBundle,
     prompt_path: Path,
     jobs_root: Path,
@@ -209,7 +203,7 @@ def _build_command(
 ) -> list[str]:
     agent = str(config.get("agent") or "codex")
     command = [
-        harbor,
+        *harbor,
         "exec",
         "--path",
         str(bundle.task_root.resolve()),
@@ -262,22 +256,12 @@ def _run_timeout() -> float | None:
     return max(0.1, outer - min(5.0, max(0.5, outer * 0.05)))
 
 
-def _harbor_env(config: dict[str, Any]) -> dict[str, str]:
-    env = dict(os.environ)
-    pythonpath = config.get("agent_pythonpath")
-    roots = [pythonpath] if isinstance(pythonpath, str) else pythonpath
-    if isinstance(roots, list) and roots:
-        prefix = os.pathsep.join(str(Path(str(root)).expanduser().resolve()) for root in roots)
-        env["PYTHONPATH"] = prefix + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
-    return env
-
-
-def _run_harbor(command: list[str], checkout: Path, log_path: Path, config: dict[str, Any]) -> tuple[int, float]:
+def _run_harbor(command: list[str], checkout: Path, log_path: Path, env: dict[str, str]) -> tuple[int, float]:
     start = time.monotonic()
     process = subprocess.Popen(
         command,
         cwd=checkout,
-        env=_harbor_env(config),
+        env=env,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -384,12 +368,14 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
     returncode = 1
     bundle: _EditableBundle | None = None
     try:
+        if "agent_pythonpath" in ctx.config:
+            raise ValueError(
+                "agent_pythonpath was removed; add the adapter to the workspace pyproject.toml and uv.lock"
+            )
         bundle = _prepare_bundle(checkout, ctx.config.get("editable_roots", ["target"]), surface)
         if (jobs_root / job_name).exists():
             raise RuntimeError(f"Harbor meta-agent job already exists: {jobs_root / job_name}")
-        harbor = shutil.which("harbor")
-        if harbor is None:
-            raise RuntimeError("Harbor meta-agent runner requires the harbor CLI on PATH")
+        harbor, harbor_env = uv_run(ctx.workspace, "harbor")
         prompt_path.parent.mkdir(parents=True, exist_ok=True)
         prompt_path.write_text(
             prompt.rstrip() + "\n\n# Harbor Runner Contract\n\n"
@@ -398,7 +384,7 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
         )
         command = _build_command(harbor, bundle, prompt_path, jobs_root, tasks_dir, job_name, ctx.config)
         _write_json(harbor_root / "command.json", [_redact(arg) for arg in command])
-        returncode, wall_s = _run_harbor(command, checkout, harbor_root / "harbor.log", ctx.config)
+        returncode, wall_s = _run_harbor(command, checkout, harbor_root / "harbor.log", harbor_env)
         usage["wall_s"] = wall_s
         trial_dir, trial = _trial_result(jobs_root / job_name)
         usage = _usage(trial, wall_s)

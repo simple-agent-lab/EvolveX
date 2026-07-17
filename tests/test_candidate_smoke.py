@@ -68,7 +68,11 @@ def test_smoke_runs_through_owned_process_helper(tmp_path: Path, monkeypatch) ->
     monkeypatch.setattr(candidate_runtime_module.time, "monotonic", lambda: next(ticks))
 
     def fake_run_owned(
-        command: list[str], *, cwd: Path, env: dict[str, str], timeout_s: float | None = None,
+        command: list[str],
+        *,
+        cwd: Path,
+        env: dict[str, str],
+        timeout_s: float | None = None,
     ) -> SimpleNamespace:
         calls.append((command, env))
         return SimpleNamespace(returncode=0, stdout="owned\n", stderr="", wall_s=0.01, timed_out=False)
@@ -82,7 +86,8 @@ def test_smoke_runs_through_owned_process_helper(tmp_path: Path, monkeypatch) ->
     assert json.loads((result.attempt_dir / "result.json").read_text())["duration_s"] == 2.0
     assert len(calls) == 1
     assert calls[0][1]["EVOLVE_ATTEMPT_ID"] == candidate_runtime_module.owned_attempt_id(
-        checkout, result.attempt_dir,
+        checkout,
+        result.attempt_dir,
     )
 
 
@@ -121,9 +126,7 @@ def test_smoke_executes_uncommitted_snapshot_in_detached_checkout(tmp_path: Path
     assert result.snapshot_tree == git(checkout, "rev-parse", f"{result.snapshot_tree}^{{tree}}")
 
 
-def test_smoke_redacts_secret_environment_values_but_preserves_traceback(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_smoke_redacts_secret_environment_values_but_preserves_traceback(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "sk-sensitive-value")
     checkout = smoke_checkout(
         tmp_path,

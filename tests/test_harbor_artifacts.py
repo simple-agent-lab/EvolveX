@@ -1,15 +1,15 @@
 import hashlib
-import importlib
+import importlib.util
 import json
-import sys
 from pathlib import Path
 
 TEMPLATE_EVALUATOR = Path(__file__).resolve().parents[1] / "templates" / "evaluator"
-sys.path.insert(0, str(TEMPLATE_EVALUATOR))
-
-from harbor_artifacts import collect_harbor_artifacts, write_harbor_artifacts
-
-harbor_artifacts = importlib.import_module("harbor_artifacts")
+spec = importlib.util.spec_from_file_location("harbor_artifacts", TEMPLATE_EVALUATOR / "harbor_artifacts.py")
+assert spec is not None and spec.loader is not None
+harbor_artifacts = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(harbor_artifacts)
+collect_harbor_artifacts = harbor_artifacts.collect_harbor_artifacts
+write_harbor_artifacts = harbor_artifacts.write_harbor_artifacts
 
 
 def write_trial(

@@ -29,6 +29,7 @@ APPROVED_MODULES = {
     "evaluator.py",
     "feedback.py",
     "git.py",
+    "host_runtime.py",
     "operators.py",
     "patching.py",
     "population.py",

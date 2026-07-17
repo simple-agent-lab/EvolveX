@@ -1,12 +1,6 @@
 """HyperAgents score-proportional, child-penalized parent selection."""
 
-# ruff: noqa: E402
-
 import math
-import os
-import sys
-
-sys.path = [p for p in sys.path if os.path.abspath(p or os.getcwd()) != os.path.dirname(os.path.abspath(__file__))]
 
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import SelectOperator, SelectResult

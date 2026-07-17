@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import sys
 import tempfile
 import time
@@ -12,6 +11,7 @@ from typing import Any
 from .config import evaluator_boolean, evaluator_sampling, experiment_id, load_config
 from .evaluation import EvaluationInterrupted, EvaluationRecord, Outcome, classify_evaluation
 from .git import evaluator_tree, git, git_stdout
+from .host_runtime import clean_python_env
 from .runtime import OwnedResult, attempt_dir, next_attempt, owned_attempt_id, run_owned
 from .task_sets import effective_task_set_identity
 from .task_vectors import trial_results, validate_task_vector
@@ -45,18 +45,29 @@ def evaluate(
             expected = _expected_trials(evaluator, task_limit)
             if attempt is None:
                 attempt = next_attempt(
-                    workspace, purpose=purpose, generation=genid,
+                    workspace,
+                    purpose=purpose,
+                    generation=genid,
                     candidate_commit=candidate_commit,
                 )
             run_dir = attempt_dir(
-                workspace, purpose=purpose, generation=genid, candidate_commit=candidate_commit, attempt=attempt,
+                workspace,
+                purpose=purpose,
+                generation=genid,
+                candidate_commit=candidate_commit,
+                attempt=attempt,
             )
             run_dir.mkdir(parents=True)
             base: dict[str, Any] = {
-                "experiment_id": experiment_id(workspace), "generation": genid,
-                "candidate_commit": candidate_commit, "purpose": purpose, "attempt": attempt,
-                "evaluator_fingerprint": evaluator_fingerprint, "task_set_hash": task_set.digest,
-                "runtime_fingerprint": runtime_fingerprint, "expected_trials": expected,
+                "experiment_id": experiment_id(workspace),
+                "generation": genid,
+                "candidate_commit": candidate_commit,
+                "purpose": purpose,
+                "attempt": attempt,
+                "evaluator_fingerprint": evaluator_fingerprint,
+                "task_set_hash": task_set.digest,
+                "runtime_fingerprint": runtime_fingerprint,
+                "expected_trials": expected,
                 "retry_of": retry_of,
             }
             try:
@@ -71,7 +82,11 @@ def evaluate(
                         setup_outcome, setup_reason = Outcome.INFRASTRUCTURE_FAILED, str(error)
                     candidate_owned = setup_outcome is Outcome.CANDIDATE_INVALID or any(
                         trial.owner == "candidate"
-                        and (trial.outcome is Outcome.CANDIDATE_INVALID or trial.exception_type or trial.exception_message)
+                        and (
+                            trial.outcome is Outcome.CANDIDATE_INVALID
+                            or trial.exception_type
+                            or trial.exception_message
+                        )
                         for trial in trials
                     )
                     if result.returncode not in {0, 2} and not candidate_owned:
@@ -79,9 +94,12 @@ def evaluate(
                         setup_reason = f"evaluator exited with code {result.returncode}"
                     return classify_evaluation(
                         **base,
-                        trials=trials, setup_outcome=setup_outcome, setup_reason=setup_reason,
+                        trials=trials,
+                        setup_outcome=setup_outcome,
+                        setup_reason=setup_reason,
                         benchmark_timeout_is_zero=timeout_zero,
-                        cost_usd=_read_cost(run_dir), wall_s=time.monotonic() - start,
+                        cost_usd=_read_cost(run_dir),
+                        wall_s=time.monotonic() - start,
                         artifacts=_evaluation_artifact_reference(workspace, run_dir),
                     )
                 finally:
@@ -89,18 +107,30 @@ def evaluate(
                     git(workspace, "worktree", "remove", "--force", str(checkout), check=False)
             except Exception as error:
                 return EvaluationRecord(
-                    **base, outcome=Outcome.INFRASTRUCTURE_FAILED, reason=str(error), trials=(), score=None,
-                    cost_usd=0.0, wall_s=time.monotonic() - start,
+                    **base,
+                    outcome=Outcome.INFRASTRUCTURE_FAILED,
+                    reason=str(error),
+                    trials=(),
+                    score=None,
+                    cost_usd=0.0,
+                    wall_s=time.monotonic() - start,
                 )
             except BaseException as error:
                 record = EvaluationRecord(
-                    **base, outcome=Outcome.CANCELLED, reason=str(error) or "evaluation cancelled",
-                    trials=(), score=None, cost_usd=0.0, wall_s=time.monotonic() - start,
+                    **base,
+                    outcome=Outcome.CANCELLED,
+                    reason=str(error) or "evaluation cancelled",
+                    trials=(),
+                    score=None,
+                    cost_usd=0.0,
+                    wall_s=time.monotonic() - start,
                 )
                 raise EvaluationInterrupted(record, error) from error
         finally:
             if cleanup_needed:
                 git(workspace, "worktree", "remove", "--force", str(checkout), check=False)
+
+
 def _read_task_vector(run_dir: Path) -> dict | None:
     path = run_dir / "task_vector.json"
     return validate_task_vector(json.loads(path.read_text())) if path.exists() else None
@@ -108,7 +138,11 @@ def _read_task_vector(run_dir: Path) -> dict | None:
 
 def _evaluation_artifact_reference(workspace: Path, run_dir: Path) -> dict[str, str] | None:
     path = run_dir / "evaluation_artifacts.json"
-    return {"path": path.relative_to(workspace).as_posix(), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()} if path.exists() else None
+    return (
+        {"path": path.relative_to(workspace).as_posix(), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+        if path.exists()
+        else None
+    )
 
 
 def _setup_evidence(run_dir: Path) -> tuple[Outcome | None, str | None]:
@@ -139,8 +173,12 @@ def _expected_trials(evaluator: dict[str, Any], task_limit: int | None) -> int:
 def _run_eval_script(checkout: Path, run_dir: Path, genid: str, task_limit: int | None, purpose: str) -> OwnedResult:
     runs_dir = next(parent for parent in run_dir.parents if parent.name == "runs")
     env: dict[str, str] = {
-        **os.environ, "EVOLVE_RUN_DIR": str(run_dir), "EVOLVE_GENID": genid,
-        "EVOLVE_EVAL_KIND": purpose, "EVOLVE_ATTEMPT_ID": owned_attempt_id(runs_dir.parent, run_dir),
+        **clean_python_env(),
+        "EVOLVE_RUN_DIR": str(run_dir),
+        "EVOLVE_GENID": genid,
+        "EVOLVE_EVAL_KIND": purpose,
+        "EVOLVE_ATTEMPT_ID": owned_attempt_id(runs_dir.parent, run_dir),
+        "EVOLVE_WORKSPACE": str(runs_dir.parent.resolve()),
     }
     env["EVOLVE_EVAL_SPLIT"] = "sealed" if purpose == "anchor" else "gate"
     env.setdefault("EVOLVE_FRAMEWORK_PYTHON", sys.executable)

@@ -72,10 +72,7 @@ def main() -> int:
         for trial in range(attempts):
             trace = artifacts / f"{task_id}-trial-{trial}.trace"
             trace.write_text(
-                "stub evaluation trace\n"
-                f"task={task_id}\n"
-                f"trial={trial}\n"
-                f"outcome={'pass' if passed_task else 'fail'}\n"
+                f"stub evaluation trace\ntask={task_id}\ntrial={trial}\noutcome={'pass' if passed_task else 'fail'}\n"
             )
             artifact_trials.append(
                 {

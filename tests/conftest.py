@@ -64,11 +64,7 @@ def smoke_env(evolve_home: Path) -> dict[str, str]:
 def write_locked_miniswe_seed(path: Path) -> Path:
     path.mkdir(parents=True, exist_ok=True)
     (path / "pyproject.toml").write_text(
-        "[project]\n"
-        "name = 'mini-swe-agent'\n"
-        "version = '0.0.0'\n"
-        "requires-python = '>=3.11'\n"
-        "dependencies = []\n"
+        "[project]\nname = 'mini-swe-agent'\nversion = '0.0.0'\nrequires-python = '>=3.11'\ndependencies = []\n"
     )
     package = path / "src" / "minisweagent"
     package.mkdir(parents=True)
