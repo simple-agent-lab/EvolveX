@@ -90,7 +90,16 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
 
 def test_meta_agent_image_provides_harbor_workspace_parent() -> None:
     dockerfile = ROOT / "containers" / "meta-agent" / "Dockerfile"
-    assert dockerfile.read_text() == "FROM ubuntu:latest\nWORKDIR /app/workspace\n"
+    contents = dockerfile.read_text()
+    assert "WORKDIR /app" in contents
+    assert "python3 python-is-python3" in contents
+    assert "uv tool install --python 3.13 --with fastapi --with orjson mini-swe-agent" in contents
+    assert "COPY uv-wrapper /root/.local/bin/uv" in contents
+
+    wrapper = (dockerfile.parent / "uv-wrapper").read_text()
+    assert '"$1" = "tool"' in wrapper
+    assert '"$2" = "install"' in wrapper
+    assert 'uv-real tool install --python 3.13 --with fastapi --with orjson "$@"' in wrapper
 
 
 def test_smoke_recipes_are_explicitly_named_and_deterministic() -> None:

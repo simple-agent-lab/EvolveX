@@ -84,11 +84,11 @@ def test_hyperagents_prompt_points_to_evolvable_codebase_and_prior_artifacts(tmp
     prompt = module.build_prompt(checkout, "fallback observation", ctx)
 
     assert module.PROMPT.startswith("# HyperAgents")
-    assert "Repository: /app/workspace" in prompt
-    assert "Archive: /app/workspace/archive.jsonl" in prompt
-    assert "Prior generation artifacts: /app/workspace/runs" in prompt
-    assert "Feedback bundle: /app/workspace/runs/gen-1/feedback" in prompt
-    assert "Raw trace evidence: /app/workspace/runs/gen-1/trace_analyzer/evidence" in prompt
+    assert "Repository: /app/task/workspace" in prompt
+    assert "Archive: /app/task/workspace/archive.jsonl" in prompt
+    assert "Prior generation artifacts: /app/task/workspace/runs" in prompt
+    assert "Feedback bundle: /app/task/workspace/runs/gen-1/feedback" in prompt
+    assert "Raw trace evidence: /app/task/workspace/runs/gen-1/trace_analyzer/evidence" in prompt
     assert "SELECTED TRACE EVIDENCE" in prompt
     assert "fallback observation" not in prompt
     assert "Iterations remaining after this proposal: 3" in prompt

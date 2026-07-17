@@ -124,7 +124,7 @@ def build_prompt(checkout: Path, observation: str, ctx: OperatorContext) -> str:
     template = dict(MANIFEST_TEMPLATE)
     template["iteration"] = int(ctx.genid)
     if runner_name(ctx) == "harbor":
-        repository = Path("/app/workspace")
+        repository = Path("/app/task/workspace")
         current_run = repository / "runs" / f"gen-{ctx.genid}"
         experiment = repository
     else:

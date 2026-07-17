@@ -117,9 +117,9 @@ readonly = os.environ.get("FAKE_HARBOR_MODE") == "readonly"
 if readonly:
     if "--artifact" in sys.argv:
         raise SystemExit("readonly execution must not request an artifact")
-elif option("--artifact") != "/app/workspace":
-    raise SystemExit("expected /app/workspace artifact")
-if option("--workdir") != ("/app" if readonly else "/app/workspace"):
+elif option("--artifact") != "/app/task/workspace":
+    raise SystemExit("expected /app/task/workspace artifact")
+if option("--workdir") != "/app":
     raise SystemExit("unexpected workdir")
 if option("--agent") != "mini-swe-agent":
     raise SystemExit("expected mini-swe-agent")
@@ -132,7 +132,7 @@ job_name = option("--job-name")
 job_dir = jobs_dir / job_name
 trial_dir = job_dir / "task-0001__fake"
 trial_dir.mkdir(parents=True, exist_ok=True)
-artifact = trial_dir / "artifacts" / "app" / "workspace"
+artifact = trial_dir / "artifacts" / "app" / "task" / "workspace"
 if not readonly:
     artifact.parent.mkdir(parents=True, exist_ok=True)
     workspace = source / "workspace"
@@ -163,8 +163,8 @@ manifest = [
         "service": None,
     },
     {
-        "source": "/app/workspace",
-        "destination": "artifacts/app/workspace",
+        "source": "/app/task/workspace",
+        "destination": "artifacts/app/task/workspace",
         "type": "directory",
         "status": "ok",
         "service": None,
@@ -261,11 +261,12 @@ def test_harbor_meta_agent_round_trips_target_and_writes_artifacts(
     assert 'predicted_fixes: ["task-1"]' in result.output
     prompt = (meta_dir / "harbor" / "prompt.md").read_text()
     assert "failure evidence" in prompt
-    assert "/app/workspace" in prompt
+    assert "/app/task/workspace" in prompt
+    assert "remove generated virtual environments" in prompt
     assert "/app/candidate" not in prompt
     command = json.loads((meta_dir / "harbor" / "command.json").read_text())
-    assert command[command.index("--artifact") + 1] == "/app/workspace"
-    assert command[command.index("--workdir") + 1] == "/app/workspace"
+    assert command[command.index("--artifact") + 1] == "/app/task/workspace"
+    assert command[command.index("--workdir") + 1] == "/app"
     assert list((meta_dir / "harbor" / "jobs").glob("*/*/result.json"))
     assert marker.read_text() == "called"
 

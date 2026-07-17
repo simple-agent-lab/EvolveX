@@ -58,7 +58,7 @@ def _remaining_iterations(ctx) -> str:
 def build_prompt(checkout: Path, observation: str, ctx) -> str:
     feedback = load_feedback(ctx.run_dir, observation)
     if runner_name(ctx) == "harbor":
-        repository = Path("/app/workspace")
+        repository = Path("/app/task/workspace")
         current_run = repository / "runs" / f"gen-{ctx.genid}"
         experiment = repository
     else:

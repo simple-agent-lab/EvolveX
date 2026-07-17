@@ -23,7 +23,8 @@ from evolve.host_runtime import uv_run
 from evolve.patching import SurfacePolicy, load_surface_policy, patch_parent_ref
 from evolve.surface import check_paths
 
-_ARTIFACT_SOURCE = "/app/workspace"
+_HARBOR_WORKDIR = "/app"
+_ARTIFACT_SOURCE = "/app/task/workspace"
 _EVAL_RECEIPT = ".evolve-eval-receipts.jsonl"
 _SECRET_ASSIGNMENT = re.compile(
     r"(?i)\b([a-z0-9_-]*(?:api[_-]?key|access[_-]?token|auth(?:orization)?|secret|password))\b"
@@ -369,7 +370,7 @@ def _build_command(
 ) -> list[str]:
     command = _base_command(harbor, bundle.task_root, prompt_path, jobs_root, tasks_dir, job_name, config)
     workdir_index = command.index("--workdir")
-    command[workdir_index + 1] = _ARTIFACT_SOURCE
+    command[workdir_index + 1] = _HARBOR_WORKDIR
     tasks_index = command.index("--tasks-dir")
     command[tasks_index:tasks_index] = ["--artifact", _ARTIFACT_SOURCE]
     return command
@@ -575,10 +576,12 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
         prompt_path.parent.mkdir(parents=True, exist_ok=True)
         prompt_path.write_text(
             prompt.rstrip() + "\n\n# Harbor Runner Contract\n\n"
-            "The disposable experiment workspace is at `/app/workspace`. It contains the selected parent, "
+            f"The disposable experiment workspace is at `{_ARTIFACT_SOURCE}`. It contains the selected parent, "
             "Git history, configuration, archive, and run evidence. Work in that directory normally. Edit "
             "only paths allowed by the supplied surface rules. Runtime evidence edits are discarded; only "
-            "configured editable roots are imported after the complete workspace artifact passes the surface gate.\n"
+            "configured editable roots are imported after the complete workspace artifact passes the surface gate. "
+            "Before finishing, remove generated virtual environments and caches inside editable roots (for example "
+            "target/.venv, __pycache__, and .pytest_cache); returned editable roots must contain no symlinks.\n"
         )
         command = _build_command(harbor, bundle, prompt_path, jobs_root, tasks_dir, job_name, ctx.config)
         _write_json(harbor_root / "command.json", [_redact(arg) for arg in command])
