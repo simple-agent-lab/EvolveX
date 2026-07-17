@@ -41,6 +41,8 @@ def _checkout(tmp_path: Path) -> tuple[Path, Path]:
     (checkout / "target").mkdir(parents=True)
     (checkout / "operators").mkdir()
     (checkout / "target" / "agent.py").write_text("print('parent')\n")
+    (checkout / "pyproject.toml").write_text("[project]\nname='test'\nversion='0'\n")
+    (checkout / "uv.lock").write_text("version = 1\n")
     (checkout / "target" / "obsolete.txt").write_text("remove me\n")
     (checkout / "operators" / "meta_agent.md").write_text(
         "# Meta-Agent\n\nImprove the target from the supplied failure evidence.\n"
@@ -196,6 +198,16 @@ print(f"Map job written to {job_dir}")
 """
     )
     harbor.chmod(0o755)
+    uv = bin_dir / "uv"
+    uv.write_text(
+        "#!/bin/sh\n"
+        '[ -z "${UV_MARKER:-}" ] || printf called > "$UV_MARKER"\n'
+        '[ "$1" = run ] || exit 90\nshift\n'
+        '[ "$1" = --project ] || exit 91\nshift 2\n'
+        '[ "$1" = --frozen ] || exit 92\nshift\n'
+        'exec "$@"\n'
+    )
+    uv.chmod(0o755)
     return harbor
 
 
@@ -206,6 +218,8 @@ def test_harbor_meta_agent_round_trips_target_and_writes_artifacts(
     bin_dir = tmp_path / "bin"
     _install_fake_harbor(bin_dir)
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    marker = tmp_path / "uv-called"
+    monkeypatch.setenv("UV_MARKER", str(marker))
 
     runner = _harbor_runner_module()
     result = runner.run_agent(checkout, "failure evidence", _ctx(checkout, run_dir))
@@ -223,6 +237,16 @@ def test_harbor_meta_agent_round_trips_target_and_writes_artifacts(
     assert "failure evidence" in (meta_dir / "harbor" / "prompt.md").read_text()
     assert "/app/candidate" in (meta_dir / "harbor" / "prompt.md").read_text()
     assert list((meta_dir / "harbor" / "jobs").glob("*/*/result.json"))
+    assert marker.read_text() == "called"
+
+
+def test_harbor_meta_agent_rejects_legacy_pythonpath(tmp_path: Path) -> None:
+    checkout, run_dir = _checkout(tmp_path)
+    ctx = _ctx(checkout, run_dir)
+    ctx.config["agent_pythonpath"] = "/legacy"
+
+    with pytest.raises(AgentCommandError, match="agent_pythonpath was removed"):
+        _harbor_runner_module().run_agent(checkout, "failure evidence", ctx)
 
 
 def test_harbor_meta_agent_round_trips_target_and_operators(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
