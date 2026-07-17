@@ -9,9 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _module():
-    spec = importlib.util.spec_from_file_location(
-        "ahe_gate_test", ROOT / "library/gate/ahe_artifact_valid.py"
-    )
+    spec = importlib.util.spec_from_file_location("ahe_gate_test", ROOT / "library/gate/ahe_artifact_valid.py")
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

@@ -295,11 +295,15 @@ def _debugger_prompt(job: TaskAnalysisJob) -> str:
         f"## trace{index:02d}\n```json\n{json.dumps(case, indent=2, sort_keys=True)}\n```"
         for index, case in enumerate(job.cases, start=1)
     )
-    return template.format(
-        task_name=job.task_name,
-        n_total=len(job.cases),
-        trace_labels=trace_labels,
-    ) + "\n\n# Bounded trace evidence\n\n" + evidence
+    return (
+        template.format(
+            task_name=job.task_name,
+            n_total=len(job.cases),
+            trace_labels=trace_labels,
+        )
+        + "\n\n# Bounded trace evidence\n\n"
+        + evidence
+    )
 
 
 _DEBUGGER_RUNNER_KEYS = (
@@ -353,9 +357,7 @@ def _run_debugger_job(checkout: Path, ctx: OperatorContext, job: TaskAnalysisJob
     raise last_error
 
 
-def _run_debugger_jobs(
-    checkout: Path, ctx: OperatorContext, jobs: list[TaskAnalysisJob]
-) -> list[DebuggerResult]:
+def _run_debugger_jobs(checkout: Path, ctx: OperatorContext, jobs: list[TaskAnalysisJob]) -> list[DebuggerResult]:
     if not jobs:
         raise RuntimeError("AHE debugger found no rollout tasks")
     completed = [_run_debugger_job(checkout, ctx, jobs[0])]
@@ -407,8 +409,7 @@ def _overview(cases: list[Case], jobs: list[TaskAnalysisJob], error: str | None)
 def _task_outcomes(cases: list[Case]) -> dict[str, str]:
     jobs = _build_jobs(cases, max(1, len(cases)))
     return {
-        job.task_name: "fail" if job.n_fail or job.n_timeout else "pass" if job.n_pass else "unknown"
-        for job in jobs
+        job.task_name: "fail" if job.n_fail or job.n_timeout else "pass" if job.n_pass else "unknown" for job in jobs
     }
 
 
@@ -446,7 +447,9 @@ def _change_evaluation(ctx: OperatorContext, cases: list[Case], field_limit: int
         raise RuntimeError(f"invalid prior AHE manifest: {manifest_path}")
     before = _task_outcomes([_normalize(case, field_limit) for case in prior_raw])
     after = _task_outcomes(cases)
-    transitions = {task: _transition(before.get(task), after.get(task)) for task in sorted(before.keys() | after.keys())}
+    transitions = {
+        task: _transition(before.get(task), after.get(task)) for task in sorted(before.keys() | after.keys())
+    }
     predicted = {
         str(task)
         for change in manifest["changes"]
@@ -454,10 +457,7 @@ def _change_evaluation(ctx: OperatorContext, cases: list[Case], field_limit: int
         for task in change.get("predicted_fixes", [])
     }
     risks = {
-        str(task)
-        for change in manifest["changes"]
-        if isinstance(change, dict)
-        for task in change.get("risk_tasks", [])
+        str(task) for change in manifest["changes"] if isinstance(change, dict) for task in change.get("risk_tasks", [])
     }
     return {
         "status": "evaluated",
@@ -468,8 +468,7 @@ def _change_evaluation(ctx: OperatorContext, cases: list[Case], field_limit: int
             for task in sorted(predicted)
         },
         "risk_results": {
-            task: "realized" if transitions.get(task) == "pass_to_fail" else "not_realized"
-            for task in sorted(risks)
+            task: "realized" if transitions.get(task) == "pass_to_fail" else "not_realized" for task in sorted(risks)
         },
     }
 
@@ -491,7 +490,11 @@ def _reports(root: Path, results: list[DebuggerResult]) -> tuple[str, list[str]]
     for result in results:
         job = result.job
         labels = [
-            "PASS" if case.get("outcome") == "passed" else "TIMEOUT" if case.get("outcome") in {"timeout", "incomplete"} else "FAIL"
+            "PASS"
+            if case.get("outcome") == "passed"
+            else "TIMEOUT"
+            if case.get("outcome") in {"timeout", "incomplete"}
+            else "FAIL"
             for case in job.cases
         ]
         failing_verifier = [
@@ -514,8 +517,7 @@ def _reports(root: Path, results: list[DebuggerResult]) -> tuple[str, list[str]]
         lines.extend([f"## {title}", ""])
         matches = [result for result in results if result.job.mode == mode]
         lines.extend(
-            [f"- **{result.job.task_name}**: {_diagnosis_line(result.response)}" for result in matches]
-            or ["- None"]
+            [f"- **{result.job.task_name}**: {_diagnosis_line(result.response)}" for result in matches] or ["- None"]
         )
         lines.append("")
     overview = "\n".join(lines).rstrip() + "\n"

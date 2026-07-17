@@ -24,9 +24,7 @@ class AheArtifactValidGate(GateOperator):
         return GateResult(
             decision="accept" if identity_ok else "reject",
             reason=(
-                "validated AHE manifest and canonical evaluation"
-                if identity_ok
-                else "AHE manifest identity mismatch"
+                "validated AHE manifest and canonical evaluation" if identity_ok else "AHE manifest identity mismatch"
             ),
         )
 

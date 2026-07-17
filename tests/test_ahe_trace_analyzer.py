@@ -196,9 +196,7 @@ def test_ahe_analyzer_attributes_prior_manifest(tmp_path: Path, monkeypatch: pyt
 
     module.AheTraceAnalyzer().analyze(ctx.checkout, ctx)
 
-    change = json.loads(
-        (ctx.run_dir / "trace_analyzer" / "analysis" / "change_evaluation.json").read_text()
-    )
+    change = json.loads((ctx.run_dir / "trace_analyzer" / "analysis" / "change_evaluation.json").read_text())
     assert change["transitions"] == {"task-a": "fail_to_pass", "task-b": "pass_to_fail"}
     assert change["prediction_results"]["task-a"] == "confirmed"
     assert change["risk_results"]["task-b"] == "realized"

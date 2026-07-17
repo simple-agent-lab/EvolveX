@@ -255,9 +255,7 @@ def _build_command(
     job_name: str,
     config: dict[str, Any],
 ) -> list[str]:
-    command = _base_command(
-        harbor, bundle.task_root, prompt_path, jobs_root, tasks_dir, job_name, config
-    )
+    command = _base_command(harbor, bundle.task_root, prompt_path, jobs_root, tasks_dir, job_name, config)
     tasks_index = command.index("--tasks-dir")
     command[tasks_index:tasks_index] = ["--artifact", _ARTIFACT_SOURCE]
     return command
@@ -401,9 +399,7 @@ def run_readonly_agent(
         tasks_dir = output_dir / "tasks"
         task_root.mkdir(parents=True, exist_ok=False)
         prompt_path.write_text(prompt.rstrip() + "\n")
-        command = _base_command(
-            harbor, task_root, prompt_path, jobs_root, tasks_dir, job_name, ctx.config
-        )
+        command = _base_command(harbor, task_root, prompt_path, jobs_root, tasks_dir, job_name, ctx.config)
         _write_json(output_dir / "command.json", [_redact(arg) for arg in command])
         returncode, wall_s = _run_harbor(
             command,
