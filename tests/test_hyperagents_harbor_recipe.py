@@ -25,6 +25,7 @@ def test_hyperagents_recipe_initializes_broad_harbor_bundle(tmp_path: Path) -> N
     assert "editable_roots:" in config
     assert "- target" in config and "- operators" in config
     prompt = (workspace / "operators/meta_agent.py").read_text()
-    assert "substantive `target/**` change" in prompt
+    assert "Strongly prefer a substantive `target/**`" in prompt
+    assert "operator-only proposal is allowed" in prompt
     assert "`operators/**` remains editable" in prompt
     assert "def _install_bundle(" in (workspace / "library/meta_agent/runners/harbor.py").read_text()
