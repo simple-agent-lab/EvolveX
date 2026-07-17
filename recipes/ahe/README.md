@@ -20,4 +20,10 @@ cd /path/to/ahe-run
 ```
 
 Live runs need Docker, Harbor, model credentials, and an immutable evaluator
-runtime. The recipe never requires a local Codex command.
+runtime. Build the small workspace image once before running:
+
+```bash
+docker build -t evolve-meta-agent-app:ubuntu-latest containers/meta-agent
+```
+
+The recipe never requires a local Codex command.

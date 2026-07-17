@@ -16,6 +16,12 @@ instead of always following the current best score.
 `evaluator.engine: harbor` runs the canonical black-box benchmark.
 `sampling: static` keeps Phase E comparisons fixed when this recipe is run live.
 
+Build the workspace image once before running:
+
+```bash
+docker build -t evolve-meta-agent-app:ubuntu-latest containers/meta-agent
+```
+
 ## Operator Routing
 
 `select: {variant: score_child_prop}` resolves to [`library/select/score_child_prop.py`](../../library/select/score_child_prop.py).

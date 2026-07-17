@@ -55,6 +55,8 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "agent: mini-swe-agent" in config
             assert "editable_roots: [target]" in config
             assert "agent: evolve_harbor_adapter:MiniSweSourceAgent" in config
+            assert "rollout: {variant: harbor, model: openai/gpt-5.4" in config
+            assert "image: evolve-meta-agent-app:ubuntu-latest" in config
         elif name == "hyperagents":
             assert "dataset: swe-bench-lite" in config
             assert "seed: https://github.com/SWE-agent/mini-swe-agent.git" in config
@@ -70,6 +72,8 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "validate: {variant: hyperagents" in config
             assert "gate: {variant: parent_eligible}" in config
             assert "record: {variant: hyperagents}" in config
+            assert "rollout: {variant: harbor, model: openai/gpt-5.4" in config
+            assert "image: evolve-meta-agent-app:ubuntu-latest" in config
         else:
             assert "dataset: swe-bench-lite" in config
             assert "seed: https://github.com/SWE-agent/mini-swe-agent.git" in config
@@ -82,6 +86,11 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
         assert "agent: evolve_harbor_adapter:MiniSweSourceAgent" in config
         assert "harbor_agent: miniswe-source" in config
         assert "variant: fixed" not in config
+
+
+def test_meta_agent_image_provides_harbor_workspace_parent() -> None:
+    dockerfile = ROOT / "containers" / "meta-agent" / "Dockerfile"
+    assert dockerfile.read_text() == "FROM ubuntu:latest\nWORKDIR /app/workspace\n"
 
 
 def test_smoke_recipes_are_explicitly_named_and_deterministic() -> None:
