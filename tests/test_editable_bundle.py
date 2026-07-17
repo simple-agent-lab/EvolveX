@@ -52,6 +52,7 @@ def test_prepare_editable_bundle_preserves_repository_paths(tmp_path: Path, root
     checkout = _checkout(tmp_path)
     bundle = prepare_editable_bundle(checkout, roots, _surface("target", "operators"))
     try:
+        assert bundle.staging.parent == checkout.resolve()
         assert [path.as_posix() for path in bundle.roots] == roots
         for root in roots:
             assert (bundle.task_root / "candidate" / root / "value.txt").exists()

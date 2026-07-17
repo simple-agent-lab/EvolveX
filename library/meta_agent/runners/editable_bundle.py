@@ -61,7 +61,9 @@ def prepare_editable_bundle(checkout: Path, raw_roots: object, surface: SurfaceP
     """Copy the selected clean repository roots into a Harbor task directory."""
     checkout = checkout.resolve()
     roots = _roots(raw_roots, surface)
-    staging = Path(tempfile.mkdtemp(prefix="evolve-editable-bundle-"))
+    # Installation and rollback use atomic rename, so staging must live on the
+    # same filesystem as the checkout even when the checkout is a mount point.
+    staging = Path(tempfile.mkdtemp(prefix=".evolve-editable-bundle-", dir=checkout))
     task_root = staging / "task"
     candidate_root = task_root / "candidate"
     try:
@@ -138,7 +140,11 @@ def install_returned_bundle(
             replacement.rename(live)
             installed.append(root)
 
-        changed = working_tree_changed_paths(checkout, parent_ref)
+        changed = [
+            path
+            for path in working_tree_changed_paths(checkout, parent_ref)
+            if any(path == root.as_posix() or path.startswith(root.as_posix() + "/") for root in bundle.roots)
+        ]
         violations = check_paths(changed, surface.include, surface.exclude)
         if violations:
             raise RuntimeError("returned candidate mutated paths outside surface: " + ", ".join(violations))
