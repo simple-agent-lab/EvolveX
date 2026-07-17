@@ -533,11 +533,10 @@ def _eval_env(
     return text + (f"EVOLVE_HARBOR_TASK_FILE={shlex.quote(task_file)}\n" if task_file else "")
 
 
-def _eval_sh(engine: str, dataset: str) -> str:
-    names = {"harbor": "harbor", "docker-report": "docker-report", "train-bpb": "train-bpb", "reflection": "reflection"}
-    body = _template(f"evaluator/engines/{names[engine]}.sh") if engine in names else _template("evaluator/engines/unknown.sh")
-    body = body.replace("@ENGINE@", engine).replace("@DATASET@", dataset)
-    return _template("evaluator/eval-prefix.sh") + body
+def _eval_sh(engine: str, _dataset: str) -> str:
+    if engine != "harbor":
+        raise ValueError(f"unsupported evaluator.engine: {engine}")
+    return _template("evaluator/eval-prefix.sh") + _template("evaluator/engines/harbor.sh")
 
 
 def _shell_script(label: str) -> str:
