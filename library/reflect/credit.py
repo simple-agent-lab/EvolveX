@@ -7,13 +7,7 @@ accumulates across the lineage — the memory a future meta-agent can consult an
 report as `used_insights`. Never rewrites the playbook.
 """
 
-# ruff: noqa: E402
-
 import hashlib
-import os
-import sys
-
-sys.path = [p for p in sys.path if os.path.abspath(p or os.getcwd()) != os.path.dirname(os.path.abspath(__file__))]
 
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import OperatorContext, ReflectOperator, ReflectResult

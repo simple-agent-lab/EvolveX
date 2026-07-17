@@ -9,9 +9,6 @@ from evolve.archive import MECHANISM_EVAL_FIELD, append_event, eval_receipt_path
 from evolve.frozen.interfaces import OperatorContext
 
 _REJECTING_VALIDATE = """
-import os
-import sys
-sys.path = [p for p in sys.path if os.path.abspath(p or os.getcwd()) != os.path.dirname(os.path.abspath(__file__))]
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import ValidateOperator, ValidateResult
 

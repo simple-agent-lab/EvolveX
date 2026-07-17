@@ -1,18 +1,10 @@
 """HyperAgents-style self-referential meta-agent operator."""
 
-# ruff: noqa: E402
-
 from __future__ import annotations
 
 import json
-import os
-import sys
 from pathlib import Path
 from typing import Any
-
-sys.path = [p for p in sys.path if os.path.abspath(p or os.getcwd()) != os.path.dirname(os.path.abspath(__file__))]
-if os.getcwd() not in sys.path:
-    sys.path.insert(0, os.getcwd())
 
 from evolve.agent import AgentCommandError
 from evolve.frozen import sdk

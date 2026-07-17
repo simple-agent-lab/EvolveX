@@ -12,10 +12,6 @@ from evolve.driver import run as driver_run
 from evolve.frozen.interfaces import ArchiveView
 
 _NO_PATCH_META_AGENT = """
-import os
-import sys
-sys.path = [p for p in sys.path if os.path.abspath(p or os.getcwd()) != os.path.dirname(os.path.abspath(__file__))]
-
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import MetaAgentOperator, MetaAgentResult
 
@@ -31,10 +27,6 @@ if __name__ == "__main__":
 
 
 _PATCH_META_AGENT = """
-import os
-import sys
-sys.path = [p for p in sys.path if os.path.abspath(p or os.getcwd()) != os.path.dirname(os.path.abspath(__file__))]
-
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import MetaAgentOperator, MetaAgentResult
 
@@ -69,10 +61,6 @@ raise SystemExit("record exploded")
 
 def _gate(decision: str) -> str:
     return f"""
-import os
-import sys
-sys.path = [p for p in sys.path if os.path.abspath(p or os.getcwd()) != os.path.dirname(os.path.abspath(__file__))]
-
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import GateOperator, GateResult
 
@@ -107,10 +95,6 @@ run_dir = Path(os.environ["EVOLVE_RUN_DIR"])
 
 
 _REJECTING_VALIDATE = """
-import os
-import sys
-sys.path = [p for p in sys.path if os.path.abspath(p or os.getcwd()) != os.path.dirname(os.path.abspath(__file__))]
-
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import ValidateOperator, ValidateResult
 
