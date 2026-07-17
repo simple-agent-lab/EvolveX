@@ -1,13 +1,17 @@
 # AHE on MiniSWE
 
-This recipe keeps the AHE strategy independent from the target agent. Bounded
-current-generation Harbor evidence is converted into one falsifiable harness
-hypothesis, and Harbor's installed `mini-swe-agent` CLI edits only `target/**`.
+This recipe keeps the AHE strategy independent from the target agent. Each task's
+bounded Harbor traces receive one required LLM debugger analysis using the same
+model configuration as the meta-agent. Failures stop the generation after three
+attempts; there is no silent deterministic fallback.
 
 Canonical evaluation is deliberately different: the frozen
 `MiniSweSourceAgent` adapter installs the returned candidate source and invokes
-its Python API with evaluator-owned model and resource limits. The strict
-hill-climb gate retains only score improvements.
+its Python API with evaluator-owned model and resource limits. A required change
+manifest links every target edit to debugger evidence and predicted effects. The
+newest valid generation remains the next parent even after a score regression,
+allowing the following generation to attribute it and choose KEEP, REVISE, or
+ROLLBACK + PIVOT.
 
 ```bash
 evolve init /path/to/ahe-run --recipe ahe --dataset /absolute/path/to/harbor/tasks

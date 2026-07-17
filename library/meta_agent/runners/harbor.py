@@ -192,9 +192,9 @@ def _append_agent_env(command: list[str], config: dict[str, Any]) -> None:
         command.extend(["--ae", f"{key}={value}"])
 
 
-def _build_command(
+def _base_command(
     harbor: list[str],
-    bundle: _EditableBundle,
+    task_root: Path,
     prompt_path: Path,
     jobs_root: Path,
     tasks_dir: Path,
@@ -206,14 +206,12 @@ def _build_command(
         *harbor,
         "exec",
         "--path",
-        str(bundle.task_root.resolve()),
+        str(task_root.resolve()),
         "--no-scan",
         "--instruction-path",
         str(prompt_path.resolve()),
         "--workdir",
         "/app",
-        "--artifact",
-        _ARTIFACT_SOURCE,
         "--tasks-dir",
         str(tasks_dir.resolve()),
         "--agent",
@@ -248,6 +246,23 @@ def _build_command(
     return command
 
 
+def _build_command(
+    harbor: list[str],
+    bundle: _EditableBundle,
+    prompt_path: Path,
+    jobs_root: Path,
+    tasks_dir: Path,
+    job_name: str,
+    config: dict[str, Any],
+) -> list[str]:
+    command = _base_command(
+        harbor, bundle.task_root, prompt_path, jobs_root, tasks_dir, job_name, config
+    )
+    tasks_index = command.index("--tasks-dir")
+    command[tasks_index:tasks_index] = ["--artifact", _ARTIFACT_SOURCE]
+    return command
+
+
 def _run_timeout() -> float | None:
     try:
         outer = float(os.environ.get("EVOLVE_OPERATOR_TIMEOUT_S", ""))
@@ -256,7 +271,14 @@ def _run_timeout() -> float | None:
     return max(0.1, outer - min(5.0, max(0.5, outer * 0.05)))
 
 
-def _run_harbor(command: list[str], checkout: Path, log_path: Path, env: dict[str, str]) -> tuple[int, float]:
+def _run_harbor(
+    command: list[str],
+    checkout: Path,
+    log_path: Path,
+    env: dict[str, str],
+    *,
+    timeout_s: float | None = None,
+) -> tuple[int, float]:
     start = time.monotonic()
     process = subprocess.Popen(
         command,
@@ -280,7 +302,7 @@ def _run_harbor(command: list[str], checkout: Path, log_path: Path, env: dict[st
     reader = threading.Thread(target=consume_output, daemon=True)
     reader.start()
     try:
-        process.wait(timeout=_run_timeout())
+        process.wait(timeout=timeout_s if timeout_s is not None else _run_timeout())
     except subprocess.TimeoutExpired:
         try:
             os.killpg(process.pid, signal.SIGTERM)
@@ -352,6 +374,70 @@ def _usage(payload: dict[str, Any], wall_s: float) -> dict[str, Any]:
         "cache_tokens": result.get("n_cache_tokens"),
         "output_tokens": result.get("n_output_tokens"),
     }
+
+
+def run_readonly_agent(
+    checkout: Path,
+    prompt: str,
+    ctx: OperatorContext,
+    *,
+    output_dir: Path,
+    job_name: str,
+    timeout_s: float,
+) -> AgentRunResult:
+    """Run one evidence-only Harbor agent and return its final response."""
+    usage: dict[str, Any] = {"usd": 0, "wall_s": 0}
+    output = ""
+    returncode = 1
+    try:
+        if "agent_pythonpath" in ctx.config:
+            raise ValueError(
+                "agent_pythonpath was removed; add the adapter to the workspace pyproject.toml and uv.lock"
+            )
+        harbor, harbor_env = uv_run(ctx.workspace, "harbor")
+        task_root = output_dir / "task"
+        prompt_path = output_dir / "prompt.md"
+        jobs_root = output_dir / "jobs"
+        tasks_dir = output_dir / "tasks"
+        task_root.mkdir(parents=True, exist_ok=False)
+        prompt_path.write_text(prompt.rstrip() + "\n")
+        command = _base_command(
+            harbor, task_root, prompt_path, jobs_root, tasks_dir, job_name, ctx.config
+        )
+        _write_json(output_dir / "command.json", [_redact(arg) for arg in command])
+        returncode, wall_s = _run_harbor(
+            command,
+            checkout,
+            output_dir / "harbor.log",
+            harbor_env,
+            timeout_s=timeout_s,
+        )
+        usage["wall_s"] = wall_s
+        trial_dir, trial = _trial_result(jobs_root / job_name)
+        usage = _usage(trial, wall_s)
+        _write_json(output_dir / "trial.json", trial)
+        output = _agent_output(trial_dir).strip()
+        if returncode != 0:
+            raise RuntimeError(f"harbor exec exited {returncode}")
+        if trial.get("exception_info") not in (None, {}):
+            raise RuntimeError(f"Harbor read-only trial failed: {_redact(str(trial.get('exception_info')))}")
+        if not output:
+            raise RuntimeError("Harbor read-only trial returned no agent response")
+        return AgentRunResult(
+            stdout=output,
+            stderr="",
+            output=output,
+            returncode=0,
+            wall_s=wall_s,
+            usage=usage,
+        )
+    except Exception as exc:
+        raise AgentCommandError(
+            f"{exc.__class__.__name__}: {_redact(str(exc))}",
+            output=output,
+            usage=usage,
+            returncode=returncode,
+        ) from exc
 
 
 def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResult:

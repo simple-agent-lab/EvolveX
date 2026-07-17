@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -13,37 +14,45 @@ from evolve.patching import create_candidate_patch, load_surface_policy, patch_p
 from library.meta_agent.runners import run_agent, runner_name
 from library.meta_agent.support.evidence import load_feedback
 
+MANIFEST_START = "<AHE_CHANGE_MANIFEST>"
+MANIFEST_END = "</AHE_CHANGE_MANIFEST>"
+
 AHE_PROMPT = """# Agentic Harness Engineering
 
 Improve the MiniSWE harness under `target/`; do not solve a benchmark task
-directly. Treat current trace evidence as observations, not a causal verdict.
+directly. Optimize pass@1. Treat debugger reports as evidence, not proof.
 
 For this generation:
-1. cite concrete current evidence for a failure or inefficiency;
-2. map it to an existing or missing harness component;
-3. state a falsifiable hypothesis;
-4. inspect relevant MiniSWE source before editing;
-5. make one coherent harness change;
-6. preserve observed passing behavior where possible;
-7. run proportionate local checks and `./evolve surface-check`;
-8. record expected effects, risks, and the next-result decision rule.
+1. Read the debugger overview and relevant task details first.
+2. Read change_evaluation.json and the previous change manifest.
+3. Decide KEEP, REVISE, or ROLLBACK + PIVOT before editing.
+4. Cite specific debugger tasks and distinguish evidence from causal inference.
+5. Choose the harness component matching the root cause.
+6. If the same failure survived repeated changes at one component, pivot levels.
+7. Make one coherent target/** change and run proportionate checks.
+8. End with one delimited official-style change manifest describing the changes.
 
-Review prior accepted and rejected outcomes when useful, but do not claim that
-trace similarity proves causality. Do not edit the Harbor adapter, evaluator,
-mechanism, archive, workspace configuration, task partitions, model selection,
-credentials, endpoints, or resource limits. The optional report below never
-replaces the required source edit and ordinary meta-agent result.
+Current debugger reports evaluate the selected parent. The new edit will be
+evaluated by the next loop. Do not edit the Harbor adapter, evaluator, mechanism,
+archive, workspace configuration, task partitions, model selection, credentials,
+endpoints, or resource limits.
 """
 
-REPORT_TEMPLATE = {
-    "evidence": [],
-    "diagnosis": "",
-    "component": "",
-    "hypothesis": "",
-    "changes": [],
-    "expected_effects": [],
-    "risks": [],
-    "decision_rule": "",
+MANIFEST_TEMPLATE = {
+    "iteration": 1,
+    "changes": [
+        {
+            "id": "chg-1",
+            "type": "new|improvement|rollback",
+            "description": "what changed and why",
+            "files": ["target/path.py"],
+            "failure_pattern": "failure class addressed",
+            "predicted_fixes": ["task-name"],
+            "risk_tasks": [],
+            "constraint_level": "middleware|tool_impl|tool_desc|skill|prompt",
+            "why_this_component": "why this component level fits the root cause",
+        }
+    ],
 }
 
 
@@ -66,31 +75,64 @@ def _surface_rules(checkout: Path) -> str:
     return f"- Surface include: {surface.include}\n- Surface exclude: {surface.exclude}"
 
 
+def _required_text(path: Path, label: str) -> str:
+    try:
+        text = path.read_text().strip()
+    except OSError as exc:
+        raise RuntimeError(f"missing {label}: {path}") from exc
+    if not text:
+        raise RuntimeError(f"empty {label}: {path}")
+    return text
+
+
+def _prior_manifest(ctx: OperatorContext) -> str:
+    if ctx.parent in (None, "0"):
+        return "No prior change manifest (baseline generation)."
+    path = ctx.workspace / "runs" / f"gen-{ctx.parent}" / "meta_agent" / "change_manifest.json"
+    return _required_text(path, "prior AHE change manifest")
+
+
+def _recent_archive(ctx: OperatorContext) -> str:
+    path = ctx.workspace / "archive.jsonl"
+    if not path.is_file():
+        return "(archive not created yet)"
+    return "\n".join(path.read_text().splitlines()[-20:])
+
+
+def _extract_manifest(output: str, genid: str) -> dict[str, Any]:
+    starts = [match.start() for match in re.finditer(re.escape(MANIFEST_START), output)]
+    ends = [match.start() for match in re.finditer(re.escape(MANIFEST_END), output)]
+    if len(starts) != 1 or len(ends) != 1 or ends[0] <= starts[0]:
+        raise ValueError("meta-agent output must contain exactly one AHE manifest block")
+    raw = output[starts[0] + len(MANIFEST_START) : ends[0]].strip()
+    payload = json.loads(raw)
+    if not isinstance(payload, dict):
+        raise ValueError("AHE manifest must be a JSON object")
+    if str(payload.get("iteration")) != genid:
+        raise ValueError("AHE manifest iteration does not match operator context")
+    if not isinstance(payload.get("changes"), list) or not payload["changes"]:
+        raise ValueError("AHE manifest changes must be a nonempty list")
+    return payload
+
+
 def build_prompt(checkout: Path, observation: str, ctx: OperatorContext) -> str:
     feedback = load_feedback(ctx.run_dir, observation)
-    report_path = ctx.run_dir / "meta_agent" / "ahe-report.json"
+    attribution = _required_text(
+        ctx.run_dir / "trace_analyzer" / "analysis" / "change_evaluation.json",
+        "AHE change evaluation",
+    )
+    template = dict(MANIFEST_TEMPLATE)
+    template["iteration"] = int(ctx.genid)
     return (
         f"{AHE_PROMPT.rstrip()}\n\n"
-        f"# Current Evidence\n\n{feedback}\n\n"
-        f"# Experiment History\n\n- Archive: {ctx.workspace / 'archive.jsonl'}\n"
-        f"- Prior generation artifacts: {ctx.workspace / 'runs'}\n\n"
+        f"# Current Debugger Reports\n\n{feedback}\n\n"
+        f"# Change Attribution\n\n```json\n{attribution}\n```\n\n"
+        f"# Previous Change Manifest\n\n```json\n{_prior_manifest(ctx)}\n```\n\n"
+        f"# Recent Archive Outcomes\n\n```jsonl\n{_recent_archive(ctx)}\n```\n\n"
         f"# Surface Rules\n\n{_surface_rules(checkout)}\n\n"
-        f"# Optional AHE Analysis Report\n\nWrite a JSON object to `{report_path}` when possible:\n\n"
-        f"```json\n{json.dumps(REPORT_TEMPLATE, indent=2)}\n```\n\n"
-        "A missing or malformed report is noted but does not invalidate an otherwise valid edit.\n\n"
-        "# Output Contract\n\nEdit the checkout directly. Do not output a patch instead of editing files. "
-        "Make one coherent harness change and return a concise summary of checks.\n"
+        "# Required Final Output\n\nEdit the candidate directly. After the concise summary, emit exactly one block:\n\n"
+        f"{MANIFEST_START}\n{json.dumps(template, indent=2)}\n{MANIFEST_END}\n"
     )
-
-
-def _report_note(path: Path) -> str:
-    if not path.exists():
-        return "ahe-report: missing"
-    try:
-        payload = json.loads(path.read_text())
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return "ahe-report: malformed"
-    return "ahe-report: preserved" if isinstance(payload, dict) else "ahe-report: malformed"
 
 
 class AheMetaAgent(MetaAgentOperator):
@@ -114,20 +156,22 @@ class AheMetaAgent(MetaAgentOperator):
             repair=False,
         )
         usage = _safe_usage(agent_run.usage)
-        notes = [
-            "variant: ahe",
-            f"runner: {runner_name(ctx)}",
-            _report_note(out / "ahe-report.json"),
-            "written-by: operators/meta_agent.py",
-            *patch.notes,
-        ]
         (out / "model_patch.diff").write_text(patch.diff)
         (out / "patch.diff").write_text(patch.diff)
         (out / "output.txt").write_text(agent_run.output)
-        (out / "rationale.md").write_text("\n".join(notes) + "\n")
         _write_json(out / "changed.json", patch.changed_paths)
         _write_json(out / "surface-check.json", patch.surface_report)
         _write_json(out / "usage.json", usage)
+        manifest = _extract_manifest(agent_run.output, ctx.genid)
+        _write_json(out / "change_manifest.json", manifest)
+        notes = [
+            "variant: ahe",
+            f"runner: {runner_name(ctx)}",
+            "change-manifest: parsed",
+            "written-by: operators/meta_agent.py",
+            *patch.notes,
+        ]
+        (out / "rationale.md").write_text("\n".join(notes) + "\n")
         return MetaAgentResult(changed=patch.changed_paths, notes=notes, usage=usage)
 
 

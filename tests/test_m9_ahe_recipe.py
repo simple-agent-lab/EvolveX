@@ -36,7 +36,8 @@ def test_ahe_recipe_initializes_harbor_miniswe_composition(tmp_path: Path) -> No
     assert "source=library/rollout/harbor.py" in (workspace / "operators/rollout.py").read_text()
     assert "source=library/trace_analyzer/ahe.py" in (workspace / "operators/trace_analyzer.py").read_text()
     assert "source=library/meta_agent/ahe.py" in (workspace / "operators/meta_agent.py").read_text()
-    assert "source=library/gate/hillclimb.py" in (workspace / "operators/gate.py").read_text()
+    assert "source=library/select/ahe_latest.py" in (workspace / "operators/select.py").read_text()
+    assert "source=library/gate/ahe_artifact_valid.py" in (workspace / "operators/gate.py").read_text()
     for relative in (
         "library/meta_agent/runners/__init__.py",
         "library/meta_agent/runners/local.py",
@@ -46,6 +47,7 @@ def test_ahe_recipe_initializes_harbor_miniswe_composition(tmp_path: Path) -> No
         assert (workspace / relative).is_file(), relative
     assert (workspace / "evolve_harbor_adapter/__init__.py").is_file()
     assert not (workspace / "target/harbor_agent.py").exists()
+    assert not (workspace / "library/meta_agent/support/ahe_manifest.py").exists()
     assert (workspace / "evaluator/agent.env").read_text() == (
         "MINISWE_COST_LIMIT=3.0\nMINISWE_ENV_TIMEOUT=30\nMINISWE_STEP_LIMIT=100\n"
     )
@@ -57,6 +59,18 @@ def test_ahe_recipe_initializes_harbor_miniswe_composition(tmp_path: Path) -> No
     operators = operator_blocks(workspace)
     assert {name: operator_timeout(operators, name) for name in ("rollout", "trace_analyzer", "meta_agent")} == {
         "rollout": 3600,
-        "trace_analyzer": 600,
+        "trace_analyzer": 3600,
         "meta_agent": 3600,
     }
+    assert operators["trace_analyzer"] == {
+        "variant": "ahe",
+        "max_tasks": 90,
+        "max_concurrent": 16,
+        "timeout_per_task": 600,
+        "retry_attempts": 3,
+        "field_limit": 2000,
+        "timeout_s": 3600,
+    }
+    config = (workspace / "evolve.yaml").read_text()
+    assert "budget_usd" not in config
+    assert "max_cases" not in config
