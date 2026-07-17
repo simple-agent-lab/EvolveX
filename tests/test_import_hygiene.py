@@ -31,3 +31,10 @@ def test_shell_entry_points_do_not_set_pythonpath() -> None:
                 violations.append(f"{path.relative_to(ROOT)}:{lineno}")
 
     assert violations == []
+
+
+def test_ci_verifies_linux_and_macos() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "test.yml").read_text()
+
+    assert "os: [ubuntu-latest, macos-latest]" in workflow
+    assert "runs-on: ${{ matrix.os }}" in workflow
