@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import sys
 import tempfile
 import time
@@ -12,6 +11,7 @@ from typing import Any
 from .config import evaluator_boolean, evaluator_sampling, experiment_id, load_config
 from .evaluation import EvaluationInterrupted, EvaluationRecord, Outcome, classify_evaluation
 from .git import evaluator_tree, git, git_stdout
+from .host_runtime import clean_python_env
 from .runtime import OwnedResult, attempt_dir, next_attempt, owned_attempt_id, run_owned
 from .task_sets import effective_task_set_identity
 from .task_vectors import trial_results, validate_task_vector
@@ -139,8 +139,9 @@ def _expected_trials(evaluator: dict[str, Any], task_limit: int | None) -> int:
 def _run_eval_script(checkout: Path, run_dir: Path, genid: str, task_limit: int | None, purpose: str) -> OwnedResult:
     runs_dir = next(parent for parent in run_dir.parents if parent.name == "runs")
     env: dict[str, str] = {
-        **os.environ, "EVOLVE_RUN_DIR": str(run_dir), "EVOLVE_GENID": genid,
+        **clean_python_env(), "EVOLVE_RUN_DIR": str(run_dir), "EVOLVE_GENID": genid,
         "EVOLVE_EVAL_KIND": purpose, "EVOLVE_ATTEMPT_ID": owned_attempt_id(runs_dir.parent, run_dir),
+        "EVOLVE_WORKSPACE": str(runs_dir.parent.resolve()),
     }
     env["EVOLVE_EVAL_SPLIT"] = "sealed" if purpose == "anchor" else "gate"
     env.setdefault("EVOLVE_FRAMEWORK_PYTHON", sys.executable)

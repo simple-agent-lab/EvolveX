@@ -9,7 +9,6 @@ import shlex
 import shutil
 import stat
 import subprocess
-import sys
 import tempfile
 from dataclasses import dataclass
 from importlib.resources.abc import Traversable
@@ -101,17 +100,16 @@ _CONSOLE = """#!/usr/bin/env bash
 # Self-contained console for the mechanism vendored under .evolve/.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-export PYTHONPATH="$HERE/.evolve${PYTHONPATH:+:$PYTHONPATH}"
-if [ -n "${EVOLVE_FRAMEWORK_PYTHON:-}" ]; then
-  PYTHON="$EVOLVE_FRAMEWORK_PYTHON"
+if [ -n "${EVOLVE_UV_BINARY:-}" ]; then
+  UV="$EVOLVE_UV_BINARY"
 else
-  PYTHON=@FRAMEWORK_PYTHON@
+  UV=$(command -v uv || true)
 fi
-if [ ! -x "$PYTHON" ]; then
-  echo "evolve: pinned framework Python is unavailable; set EVOLVE_FRAMEWORK_PYTHON" >&2
+if [ -z "$UV" ] || [ ! -x "$UV" ]; then
+  echo "evolve: uv is required; install uv or set EVOLVE_UV_BINARY" >&2
   exit 1
 fi
-exec "$PYTHON" -m evolve "$@"
+exec "$UV" run --project "$HERE" --frozen python "$HERE/.evolve/launch_evolve.py" "$@"
 """
 
 
@@ -123,7 +121,9 @@ def _vendor_mechanism(workspace: Path) -> None:
         workspace / ".evolve" / "evolve",
         ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
     )
-    (workspace / "evolve").write_text(_CONSOLE.replace("@FRAMEWORK_PYTHON@", shlex.quote(sys.executable)))
+    (workspace / ".evolve" / "launch_evolve.py").write_text(_template("workspace/launch_evolve.py"))
+    (workspace / ".evolve" / "launch_splits.py").write_text(_template("workspace/launch_splits.py"))
+    (workspace / "evolve").write_text(_CONSOLE)
 
 
 def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, init_cwd: Path) -> None:
