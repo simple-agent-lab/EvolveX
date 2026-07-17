@@ -27,4 +27,4 @@ def test_hyperagents_recipe_initializes_broad_harbor_bundle(tmp_path: Path) -> N
     prompt = (workspace / "operators/meta_agent.py").read_text()
     assert "substantive `target/**` change" in prompt
     assert "`operators/**` remains editable" in prompt
-    assert (workspace / "library/meta_agent/runners/editable_bundle.py").is_file()
+    assert "def _install_bundle(" in (workspace / "library/meta_agent/runners/harbor.py").read_text()

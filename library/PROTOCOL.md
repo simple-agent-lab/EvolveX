@@ -120,6 +120,18 @@ uncommitted mutation diff, and an `accept: false` discards the generation before
 eval — a near-duplicate is never committed. `NoveltyOperator` implementations
 should read the ledger for prior accepted diffs, not reach for policy helpers.
 
+### Reflect (optional)
+
+ABC signature:
+
+```python
+def reflect(self, archive, ctx) -> ReflectResult:
+```
+
+Implement `reflect`. Return `ReflectResult` with field `ops`. A configured
+credit-reflection variant may consume optional `verified_fixes` annotations;
+strategies such as AHE that do not emit predictions simply produce no credit.
+
 ### Gate
 
 ABC signature:

@@ -41,7 +41,6 @@ def test_ahe_recipe_initializes_harbor_miniswe_composition(tmp_path: Path) -> No
         "library/meta_agent/runners/__init__.py",
         "library/meta_agent/runners/local.py",
         "library/meta_agent/runners/harbor.py",
-        "library/meta_agent/runners/editable_bundle.py",
         "library/meta_agent/support/evidence.py",
     ):
         assert (workspace / relative).is_file(), relative

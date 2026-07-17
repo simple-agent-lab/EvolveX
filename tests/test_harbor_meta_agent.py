@@ -1,6 +1,7 @@
 import importlib.util
 import os
 import random
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -236,6 +237,47 @@ def test_harbor_meta_agent_round_trips_target_and_operators(tmp_path: Path, monk
 
     assert (checkout / "target" / "agent.py").read_text() == "print('child')\n"
     assert (checkout / "operators" / "meta_agent.md").read_text() == "# Changed by Harbor\n"
+
+
+def test_harbor_meta_agent_rejects_non_top_level_editable_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    checkout, run_dir = _checkout(tmp_path)
+    ctx = _ctx(checkout, run_dir)
+    ctx.config["editable_roots"] = ["target/src"]
+    runner = _harbor_runner_module()
+
+    with pytest.raises(AgentCommandError, match="top-level relative directory"):
+        runner.run_agent(checkout, "failure evidence", ctx)
+
+
+def test_multi_root_install_rolls_back_when_second_replacement_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    checkout, _run_dir = _checkout(tmp_path)
+    runner = _harbor_runner_module()
+    surface = runner.load_surface_policy(checkout)
+    bundle = runner._prepare_bundle(checkout, ["target", "operators"], surface)
+    returned = tmp_path / "returned"
+    shutil.copytree(checkout / "target", returned / "target")
+    shutil.copytree(checkout / "operators", returned / "operators")
+    (returned / "target" / "agent.py").write_text("print('child')\n")
+    (returned / "operators" / "meta_agent.md").write_text("# child\n")
+    before_target = (checkout / "target" / "agent.py").read_text()
+    before_operator = (checkout / "operators" / "meta_agent.md").read_text()
+    rename = Path.rename
+
+    def fail_operators(path: Path, target: Path) -> Path:
+        if path.as_posix().endswith("replacements/operators"):
+            raise OSError("simulated second-root failure")
+        return rename(path, target)
+
+    monkeypatch.setattr(Path, "rename", fail_operators)
+    try:
+        with pytest.raises(OSError, match="second-root"):
+            runner._install_bundle(checkout, returned, bundle, "gen/0", surface)
+        assert (checkout / "target" / "agent.py").read_text() == before_target
+        assert (checkout / "operators" / "meta_agent.md").read_text() == before_operator
+    finally:
+        shutil.rmtree(bundle.staging, ignore_errors=True)
 
 
 def test_harbor_trial_exception_does_not_modify_target(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

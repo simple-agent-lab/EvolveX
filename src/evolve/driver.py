@@ -71,7 +71,7 @@ TERMINAL_STATUSES = {
 }
 UNRETRYABLE_STATUSES = TERMINAL_STATUSES - {"complete", "partial"}
 RECORD_FORBIDDEN_FIELDS = EVALUATION_FIELDS | RESERVED_AUXILIARY_FIELDS | LEGACY_WRITE_BLOCKED_FIELDS
-RECORD_ANNOTATION_FIELDS = frozenset({"note"})
+RECORD_ANNOTATION_FIELDS = frozenset({"note", "predicted_fixes", "verified_fixes"})
 
 
 @dataclass(frozen=True)

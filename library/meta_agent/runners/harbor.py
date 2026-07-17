@@ -9,8 +9,10 @@ import os
 import re
 import shutil
 import signal
+import stat
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -22,13 +24,9 @@ if os.getcwd() not in sys.path:
 
 from evolve.agent import AgentCommandError, AgentRunResult
 from evolve.frozen.interfaces import OperatorContext
-from evolve.patching import load_surface_policy, patch_parent_ref
-from library.meta_agent.runners.editable_bundle import (
-    EditableBundle,
-    cleanup_editable_bundle,
-    install_returned_bundle,
-    prepare_editable_bundle,
-)
+from evolve.git import git, working_tree_changed_paths
+from evolve.patching import SurfacePolicy, load_surface_policy, patch_parent_ref
+from evolve.surface import check_paths
 
 _ARTIFACT_SOURCE = "/app/candidate"
 _SECRET_ASSIGNMENT = re.compile(
@@ -41,6 +39,122 @@ _PROXY_ENV = (
     ("EVOLVE_HARBOR_HTTPS_PROXY", "https_proxy", "HTTPS_PROXY"),
     ("EVOLVE_HARBOR_NO_PROXY", "no_proxy", "NO_PROXY"),
 )
+
+
+class _EditableBundle:
+    __slots__ = ("staging", "task_root", "roots")
+
+    def __init__(self, staging: Path, task_root: Path, roots: tuple[str, ...]) -> None:
+        self.staging = staging
+        self.task_root = task_root
+        self.roots = roots
+
+
+def _validate_tree(root: Path) -> None:
+    if not root.is_dir() or root.is_symlink():
+        raise RuntimeError(f"editable root must be a real directory: {root}")
+    for path in [root, *root.rglob("*")]:
+        mode = path.lstat().st_mode
+        if stat.S_ISLNK(mode):
+            raise RuntimeError(f"Harbor meta-agent does not accept symlinks: {path}")
+        if not (stat.S_ISDIR(mode) or stat.S_ISREG(mode)):
+            raise RuntimeError(f"Harbor meta-agent does not accept special files: {path}")
+
+
+def _editable_roots(value: object, surface: SurfacePolicy) -> tuple[str, ...]:
+    if not isinstance(value, list) or not value:
+        raise ValueError("editable_roots must contain at least one root")
+    roots: list[str] = []
+    for raw in value:
+        if not isinstance(raw, str) or not raw or Path(raw).name != raw or raw in (".", ".."):
+            raise ValueError(f"editable root must be one top-level relative directory: {raw!r}")
+        if raw in roots:
+            raise ValueError(f"duplicate editable root: {raw}")
+        if check_paths([raw], surface.include, surface.exclude):
+            raise ValueError(f"editable root is not covered by mutable surface: {raw}")
+        roots.append(raw)
+    return tuple(roots)
+
+
+def _prepare_bundle(checkout: Path, value: object, surface: SurfacePolicy) -> _EditableBundle:
+    roots = _editable_roots(value, surface)
+    staging = Path(tempfile.mkdtemp(prefix=".evolve-harbor-", dir=checkout))
+    task_root = staging / "task"
+    candidate = task_root / "candidate"
+    try:
+        candidate.mkdir(parents=True)
+        for root in roots:
+            source = checkout / root
+            _validate_tree(source)
+            shutil.copytree(source, candidate / root)
+        return _EditableBundle(staging, task_root, roots)
+    except Exception:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
+
+
+def _remove(path: Path) -> None:
+    if path.is_dir() and not path.is_symlink():
+        shutil.rmtree(path)
+    elif path.exists() or path.is_symlink():
+        path.unlink()
+
+
+def _install_bundle(
+    checkout: Path,
+    returned: Path,
+    bundle: _EditableBundle,
+    parent_ref: str,
+    surface: SurfacePolicy,
+) -> list[str]:
+    if not returned.is_dir() or returned.is_symlink():
+        raise RuntimeError("returned candidate must be a real directory")
+    actual = {path.name for path in returned.iterdir()}
+    expected = set(bundle.roots)
+    if actual != expected:
+        raise RuntimeError(
+            "returned candidate roots differ: "
+            f"missing={sorted(expected - actual)}, unexpected={sorted(actual - expected)}"
+        )
+
+    transaction = bundle.staging / "install"
+    replacements = transaction / "replacements"
+    backups = transaction / "backups"
+    replacements.mkdir(parents=True)
+    backups.mkdir()
+    moved: list[str] = []
+    installed: list[str] = []
+    try:
+        for root in bundle.roots:
+            _validate_tree(returned / root)
+            shutil.copytree(returned / root, replacements / root)
+        for root in bundle.roots:
+            (checkout / root).rename(backups / root)
+            moved.append(root)
+            (replacements / root).rename(checkout / root)
+            installed.append(root)
+
+        changed = [
+            path
+            for path in working_tree_changed_paths(checkout, parent_ref)
+            if any(path == root or path.startswith(root + "/") for root in bundle.roots)
+        ]
+        violations = check_paths(changed, surface.include, surface.exclude)
+        if violations:
+            raise RuntimeError("returned candidate mutated paths outside surface: " + ", ".join(violations))
+        diff = git(checkout, "diff", "--check", parent_ref, "--", *bundle.roots, check=False)
+        if diff.returncode:
+            raise RuntimeError(f"returned candidate failed git diff --check: {(diff.stderr or diff.stdout).strip()}")
+        shutil.rmtree(transaction)
+        return changed
+    except Exception:
+        for root in reversed(installed):
+            _remove(checkout / root)
+        for root in reversed(moved):
+            _remove(checkout / root)
+            (backups / root).rename(checkout / root)
+        shutil.rmtree(transaction, ignore_errors=True)
+        raise
 
 
 def _write_json(path: Path, payload: object) -> None:
@@ -86,7 +200,7 @@ def _append_agent_env(command: list[str], config: dict[str, Any]) -> None:
 
 def _build_command(
     harbor: str,
-    bundle: EditableBundle,
+    bundle: _EditableBundle,
     prompt_path: Path,
     jobs_root: Path,
     tasks_dir: Path,
@@ -268,9 +382,9 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
     usage: dict[str, Any] = {"usd": 0, "wall_s": 0}
     output = ""
     returncode = 1
-    bundle: EditableBundle | None = None
+    bundle: _EditableBundle | None = None
     try:
-        bundle = prepare_editable_bundle(checkout, ctx.config.get("editable_roots", ["target"]), surface)
+        bundle = _prepare_bundle(checkout, ctx.config.get("editable_roots", ["target"]), surface)
         if (jobs_root / job_name).exists():
             raise RuntimeError(f"Harbor meta-agent job already exists: {jobs_root / job_name}")
         harbor = shutil.which("harbor")
@@ -306,7 +420,7 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
         artifact, manifest = _artifact_candidate(trial_dir)
         _write_json(harbor_root / "artifact-manifest.json", manifest)
         output = _agent_output(trial_dir)
-        install_returned_bundle(checkout, artifact, bundle, parent_ref, surface)
+        _install_bundle(checkout, artifact, bundle, parent_ref, surface)
         return AgentRunResult(
             stdout=output,
             stderr="",
@@ -324,4 +438,4 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
         ) from exc
     finally:
         if bundle is not None:
-            cleanup_editable_bundle(bundle)
+            shutil.rmtree(bundle.staging, ignore_errors=True)

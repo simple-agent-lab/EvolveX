@@ -79,4 +79,32 @@ def test_jsonl_record_omits_verified_fixes_when_prediction_artifact_is_missing(t
 
     fields = module["JsonlRecord"]().annotate(child, ctx).fields
 
+    assert "predicted_fixes" not in fields
+    assert "verified_fixes" not in fields
+
+
+def test_jsonl_record_preserves_explicit_optional_predictions(tmp_path: Path) -> None:
+    workspace, _evolve_home = init_workspace(tmp_path)
+    run_dir = workspace / "runs" / "record-with-predictions"
+    (run_dir / "meta_agent").mkdir(parents=True)
+    (run_dir / "gate.json").write_text(
+        json.dumps({"valid_parent": True, "verdict": "keep", "reason": "explicit predictions"}) + "\n"
+    )
+    (run_dir / "meta_agent" / "predicted_fixes.json").write_text('["task-0"]\n')
+    ctx = OperatorContext(
+        workspace=workspace,
+        checkout=workspace,
+        run_dir=run_dir,
+        genid="1",
+        parent="0",
+        round=None,
+        fan_out=1,
+        config={},
+        rng=random.Random(0),
+    )
+    module = runpy.run_path(str(Path(__file__).resolve().parents[1] / "library" / "record" / "jsonl.py"))
+
+    fields = module["JsonlRecord"]().annotate({"genid": "1", "parent": "0"}, ctx).fields
+
+    assert fields["predicted_fixes"] == ["task-0"]
     assert "verified_fixes" not in fields
