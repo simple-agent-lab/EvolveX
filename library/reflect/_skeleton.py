@@ -1,7 +1,5 @@
 """Skeleton reflect operator template for custom playbook policies."""
 
-
-
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import ReflectOperator, ReflectResult
 

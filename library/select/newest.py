@@ -3,8 +3,6 @@
 It is a small proof variant written from PROTOCOL.md and the select skeleton.
 """
 
-
-
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import ArchiveView, OperatorContext, SelectOperator, SelectResult
 

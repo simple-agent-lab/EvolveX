@@ -94,10 +94,7 @@ def _claim_evaluations(
     ]
     for row in rows:
         for entry in row.get("evals", []) or []:
-            if (
-                isinstance(entry, dict)
-                and _reportable_anchor(workspace, row, entry, expected)
-            ):
+            if isinstance(entry, dict) and _reportable_anchor(workspace, row, entry, expected):
                 evaluations.append(
                     {
                         "genid": row.get("genid"),

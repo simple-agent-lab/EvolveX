@@ -3,8 +3,6 @@
 It is the classic local-search hill-climbing recipe for monotonic score improvement.
 """
 
-
-
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import GateOperator, GateResult, OperatorContext, Row
 

@@ -18,11 +18,17 @@ def normalize_task_vector(payload: object) -> dict[str, Any]:
     if "schema_version" not in data:
         if not all(isinstance(key, str) and isinstance(value, bool) for key, value in data.items()):
             raise TaskVectorError("legacy task vector must map strings to booleans")
-        return {"schema_version": 1, "tasks": {
-            key: {"trials": [{"trial": 0, "status": Outcome.BENCHMARK_COMPLETE.value,
-                               "reward": 1.0 if value else 0.0}]}
-            for key, value in sorted(data.items())
-        }}
+        return {
+            "schema_version": 1,
+            "tasks": {
+                key: {
+                    "trials": [
+                        {"trial": 0, "status": Outcome.BENCHMARK_COMPLETE.value, "reward": 1.0 if value else 0.0}
+                    ]
+                }
+                for key, value in sorted(data.items())
+            },
+        }
     if data.get("schema_version") != 1 or not isinstance(data.get("tasks"), dict):
         raise TaskVectorError("unsupported task vector schema")
     for task_id in data["tasks"]:
@@ -47,11 +53,16 @@ def normalize_task_vector(payload: object) -> dict[str, Any]:
                 raise TaskVectorError(f"invalid status {status!r} for {task_id}")
             if reward is not None and (isinstance(reward, bool) or not isinstance(reward, (int, float))):
                 raise TaskVectorError(f"invalid reward for {task_id} trial {trial}")
-            score_eligible = status == Outcome.BENCHMARK_COMPLETE or status == Outcome.TIMEOUT and raw.get("owner") == "benchmark_agent"
+            score_eligible = (
+                status == Outcome.BENCHMARK_COMPLETE
+                or status == Outcome.TIMEOUT
+                and raw.get("owner") == "benchmark_agent"
+            )
             if score_eligible and reward is None:
                 raise TaskVectorError(f"{status} trial for {task_id} must have a numeric reward")
             diagnostic_failure = status in {
-                Outcome.CANDIDATE_INVALID.value, Outcome.INFRASTRUCTURE_FAILED.value,
+                Outcome.CANDIDATE_INVALID.value,
+                Outcome.INFRASTRUCTURE_FAILED.value,
             } or bool(raw.get("exception_type") or raw.get("exception_message"))
             if not score_eligible and reward is not None and not diagnostic_failure:
                 raise TaskVectorError(f"non-score-eligible trial for {task_id} must have a null reward")
@@ -67,11 +78,15 @@ def validate_task_vector(payload: object) -> dict[str, Any]:
 def trial_results(payload: object) -> tuple[TrialResult, ...]:
     vector = normalize_task_vector(payload)
     return tuple(
-        TrialResult(task_id=task_id, trial=int(raw["trial"]), outcome=Outcome(str(raw["status"])),
-                    reward=float(raw["reward"]) if raw.get("reward") is not None else None,
-                    owner=str(raw.get("owner") or "benchmark"),
-                    exception_type=str(raw["exception_type"]) if raw.get("exception_type") else None,
-                    exception_message=str(raw["exception_message"]) if raw.get("exception_message") else None)
+        TrialResult(
+            task_id=task_id,
+            trial=int(raw["trial"]),
+            outcome=Outcome(str(raw["status"])),
+            reward=float(raw["reward"]) if raw.get("reward") is not None else None,
+            owner=str(raw.get("owner") or "benchmark"),
+            exception_type=str(raw["exception_type"]) if raw.get("exception_type") else None,
+            exception_message=str(raw["exception_message"]) if raw.get("exception_message") else None,
+        )
         for task_id, task in vector["tasks"].items()
         for raw in task["trials"]
     )

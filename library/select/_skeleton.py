@@ -1,7 +1,5 @@
 """Skeleton select operator template for custom parent-selection recipes."""
 
-
-
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import SelectOperator, SelectResult
 

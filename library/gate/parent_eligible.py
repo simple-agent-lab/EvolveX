@@ -1,7 +1,5 @@
 """Parent-eligible gate may only reject canonical eligible evaluations."""
 
-
-
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import GateOperator, GateResult, OperatorContext, Row
 

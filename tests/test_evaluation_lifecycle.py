@@ -48,7 +48,8 @@ def _evaluation_events(workspace: Path, genid: str) -> list[dict[str, object]]:
 
 
 def test_later_candidate_infrastructure_retries_same_commit_once(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     workspace = _lifecycle_workspace(
         tmp_path,

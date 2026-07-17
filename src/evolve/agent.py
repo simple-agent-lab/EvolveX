@@ -105,7 +105,9 @@ def run_meta_agent(
             usage=usage,
             returncode=proc.returncode,
         )
-    return AgentRunResult(stdout=stdout, stderr=stderr, output=output, returncode=0, wall_s=usage["wall_s"], usage=usage)
+    return AgentRunResult(
+        stdout=stdout, stderr=stderr, output=output, returncode=0, wall_s=usage["wall_s"], usage=usage
+    )
 
 
 def _resolve_command(config: dict[str, Any]) -> str:

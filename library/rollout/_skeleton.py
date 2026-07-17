@@ -1,7 +1,5 @@
 """Skeleton rollout operator template for custom task-rollout recipes."""
 
-
-
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import RolloutOperator, RolloutResult
 

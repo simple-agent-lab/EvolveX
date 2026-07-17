@@ -67,6 +67,10 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
     assert not (workspace / "target" / "harbor_agent.py").exists()
     assert (workspace / ".python-version").read_text() == "3.12\n"
     assert "harbor==0.18.0" in (workspace / "pyproject.toml").read_text()
+    assert (
+        'packages = [".evolve/evolve", "evolve_harbor_adapter", "library"]'
+        in (workspace / "pyproject.toml").read_text()
+    )
 
     config = (workspace / "evolve.yaml").read_text()
     assert "children_per_gen: 1" in config

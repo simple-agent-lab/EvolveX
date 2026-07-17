@@ -69,18 +69,18 @@ def test_harbor_stage_limit_and_anchor_task_file_override(tmp_path: Path) -> Non
     _write_executable(
         fake_bin / "harbor",
         "#!/bin/sh\n"
-        "printf '%s\\n' \"$@\" > \"$HARBOR_ARGS_CAPTURE\"\n"
+        'printf \'%s\\n\' "$@" > "$HARBOR_ARGS_CAPTURE"\n'
         "jobs_dir=\n"
-        "while [ \"$#\" -gt 0 ]; do\n"
-        "  if [ \"$1\" = \"--jobs-dir\" ]; then\n"
+        'while [ "$#" -gt 0 ]; do\n'
+        '  if [ "$1" = "--jobs-dir" ]; then\n'
         "    shift\n"
         "    jobs_dir=$1\n"
         "  fi\n"
         "  shift || true\n"
         "done\n"
-        "mkdir -p \"$jobs_dir/trial-a\" \"$jobs_dir/trial-b\"\n"
-        "printf '%s\\n' '{\"task_name\":\"sealed-a\",\"trial_name\":\"trial-a\",\"verifier_result\":{\"rewards\":{\"reward\":1}}}' > \"$jobs_dir/trial-a/result.json\"\n"
-        "printf '%s\\n' '{\"task_name\":\"sealed-b\",\"trial_name\":\"trial-b\",\"verifier_result\":{\"rewards\":{\"reward\":1}}}' > \"$jobs_dir/trial-b/result.json\"\n",
+        'mkdir -p "$jobs_dir/trial-a" "$jobs_dir/trial-b"\n'
+        'printf \'%s\\n\' \'{"task_name":"sealed-a","trial_name":"trial-a","verifier_result":{"rewards":{"reward":1}}}\' > "$jobs_dir/trial-a/result.json"\n'
+        'printf \'%s\\n\' \'{"task_name":"sealed-b","trial_name":"trial-b","verifier_result":{"rewards":{"reward":1}}}\' > "$jobs_dir/trial-b/result.json"\n',
     )
 
     args_capture = tmp_path / "harbor-args.txt"
@@ -134,7 +134,7 @@ def test_harbor_smoke_is_install_only_and_exposes_raw_diagnostics(tmp_path: Path
         '  if [ "$1" = "--jobs-dir" ]; then shift; jobs_dir=$1; fi\n'
         "  shift || true\n"
         "done\n"
-        'printf \'%s\\n\' "ModuleNotFoundError: No module named \'fastapi\'" >&2\n'
+        "printf '%s\\n' \"ModuleNotFoundError: No module named 'fastapi'\" >&2\n"
         "exit 7\n",
     )
     run_dir = tmp_path / "run"

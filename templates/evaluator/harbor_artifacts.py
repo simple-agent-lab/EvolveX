@@ -41,8 +41,7 @@ def write_harbor_artifacts(jobs_dir: Path, run_dir: Path) -> list[float]:
     (run_dir / "task_vector.json").write_text(json.dumps(task_vector, indent=2, sort_keys=True) + "\n")
     (run_dir / "evaluation_artifacts.json").write_text(json.dumps(artifact_index, indent=2, sort_keys=True) + "\n")
     (run_dir / "cost.json").write_text(
-        json.dumps({"usd": sum(float(trial["cost_usd"]) for trial in artifact_index["trials"])}, sort_keys=True)
-        + "\n"
+        json.dumps({"usd": sum(float(trial["cost_usd"]) for trial in artifact_index["trials"])}, sort_keys=True) + "\n"
     )
     return rewards
 

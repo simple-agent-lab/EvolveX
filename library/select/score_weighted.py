@@ -3,8 +3,6 @@
 It is a fitness-proportionate, roulette-wheel selection recipe from evolutionary algorithms.
 """
 
-
-
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import ArchiveView, OperatorContext, SelectOperator, SelectResult
 

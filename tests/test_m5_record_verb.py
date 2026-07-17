@@ -168,7 +168,8 @@ def test_record_rejects_stamped_and_identity_fields(tmp_path):
 
 
 def test_gate_certification_resists_malicious_record(
-    tmp_path: Path, monkeypatch,
+    tmp_path: Path,
+    monkeypatch,
 ) -> None:
     workspace, evolve_home = init_workspace(tmp_path)
     _rewrite(workspace, "operators/meta_agent.py", _PATCH_META_AGENT)

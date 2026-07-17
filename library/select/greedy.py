@@ -3,8 +3,6 @@
 It is the default exploitative baseline recipe for score-driven evolution.
 """
 
-
-
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import ArchiveView, OperatorContext, SelectOperator, SelectResult
 

@@ -1,7 +1,5 @@
 """Skeleton gate operator template for custom child-acceptance recipes."""
 
-
-
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import GateOperator, GateResult
 

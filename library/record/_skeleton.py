@@ -1,7 +1,5 @@
 """Skeleton record operator template for custom archive-annotation recipes."""
 
-
-
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import RecordOperator, RecordResult
 

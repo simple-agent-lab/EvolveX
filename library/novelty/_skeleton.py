@@ -1,7 +1,5 @@
 """Skeleton novelty operator template for custom candidate-dedup recipes."""
 
-
-
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import NoveltyOperator, NoveltyResult
 

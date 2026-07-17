@@ -3,8 +3,6 @@
 It is the exploration baseline recipe for population search.
 """
 
-
-
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import ArchiveView, OperatorContext, SelectOperator, SelectResult
 

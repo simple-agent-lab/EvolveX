@@ -1,7 +1,5 @@
 """Skeleton meta-agent variant showing artifact-writing operator shape."""
 
-
-
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import MetaAgentOperator, MetaAgentResult
 
