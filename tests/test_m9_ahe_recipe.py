@@ -74,3 +74,4 @@ def test_ahe_recipe_initializes_harbor_miniswe_composition(tmp_path: Path) -> No
     config = (workspace / "evolve.yaml").read_text()
     assert "budget_usd" not in config
     assert "max_cases" not in config
+    assert "  k: 2" in config

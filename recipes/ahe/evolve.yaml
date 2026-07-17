@@ -28,7 +28,7 @@ evaluator:
   sampling: static
   tasks_per_round: 8
   anchor: {final: true, every_rounds: 0}
-  k: 1
+  k: 2
   n_concurrent: 4
   agent_setup_timeout_multiplier: 3
   max_retries: 1
