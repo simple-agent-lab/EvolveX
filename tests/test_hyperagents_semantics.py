@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 
 from conftest import git, git_show, rows_by_genid, run_evolve
@@ -37,9 +38,7 @@ def _write_newest_select(workspace: Path) -> None:
     )
 
 
-def test_hyperagents_meta_agent_change_affects_later_generation_not_current_one(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_hyperagents_meta_agent_change_affects_later_generation_not_current_one(tmp_path: Path, monkeypatch) -> None:
     workspace, evolve_home = _init_hyperagents_smoke(tmp_path)
     monkeypatch.setenv("EVAL_STUB", "1")
     monkeypatch.setenv("EVOLVE_HOME", str(evolve_home))
@@ -99,3 +98,30 @@ def test_hyperagents_meta_agent_change_affects_later_generation_not_current_one(
         assert git_show(workspace, f"gen/1:operators/{operator}.py") == git_show(
             workspace, f"gen/2:operators/{operator}.py"
         )
+
+
+def test_hyperagents_broad_surface_accepts_target_and_operator_edit(tmp_path: Path, monkeypatch) -> None:
+    workspace, evolve_home = _init_hyperagents_smoke(tmp_path)
+    monkeypatch.setenv("EVAL_STUB", "1")
+    monkeypatch.setenv("EVOLVE_HOME", str(evolve_home))
+    command = (
+        f"{sys.executable} -c "
+        '"from pathlib import Path; '
+        "agent=Path('target/agent.py'); "
+        "agent.write_text(agent.read_text() + '\\n# target edit\\n'); "
+        "gate=Path('operators/gate.py'); "
+        "gate.write_text(gate.read_text() + '\\n# broad operator edit\\n')\""
+    )
+    monkeypatch.setenv("EVOLVE_AGENT_COMMAND", command)
+    git(workspace, "commit", "--allow-empty", "-qm", "use broad hyperagents edit command")
+    git(workspace, "tag", "-f", "gen/0")
+
+    driver_run(RunOptions(workspace=workspace, max_generations=1, children_per_gen=1))
+
+    child = rows_by_genid(workspace)["1"]
+    assert child["status"] == "complete"
+    assert child["valid_parent"] is True
+    assert child["surface_violations"] == []
+    assert git(workspace, "tag", "--list", "gen/1") == "gen/1"
+    assert "# target edit" in git(workspace, "show", "gen/1:target/agent.py")
+    assert "# broad operator edit" in git(workspace, "show", "gen/1:operators/gate.py")

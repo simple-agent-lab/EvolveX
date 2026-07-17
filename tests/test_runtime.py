@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import signal
@@ -13,6 +14,7 @@ from evolve import runtime as runtime_module
 from evolve import workspace as workspace_module
 from evolve.evaluation import Outcome
 from evolve.evaluator import evaluate
+from evolve.feedback import write_feedback_bundle
 from evolve.runtime import attempt_dir
 from evolve.workspace import InitOptions, init_workspace
 
@@ -55,7 +57,8 @@ def test_owned_process_kills_child_group_on_timeout(tmp_path: Path) -> None:
 
 
 def test_owned_process_cleans_group_before_propagating_cancellation(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     cancellation = KeyboardInterrupt("cancel")
 
@@ -85,7 +88,8 @@ def test_owned_process_cleans_group_before_propagating_cancellation(
 
 
 def test_owned_process_escalates_cleanup_timeout_before_propagating_cancellation(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     cancellation = KeyboardInterrupt("cancel")
 
@@ -120,16 +124,32 @@ def test_attempt_ids_include_full_attempt_and_workspace_identity(tmp_path: Path)
     first_workspace = tmp_path / "one" / "same-name"
     second_workspace = tmp_path / "two" / "same-name"
     candidate = attempt_dir(
-        first_workspace, purpose="candidate", generation="7", candidate_commit="abc", attempt=1,
+        first_workspace,
+        purpose="candidate",
+        generation="7",
+        candidate_commit="abc",
+        attempt=1,
     )
     anchor = attempt_dir(
-        first_workspace, purpose="anchor", generation="7", candidate_commit="abc", attempt=1,
+        first_workspace,
+        purpose="anchor",
+        generation="7",
+        candidate_commit="abc",
+        attempt=1,
     )
     other_candidate = attempt_dir(
-        first_workspace, purpose="candidate", generation="7", candidate_commit="def", attempt=1,
+        first_workspace,
+        purpose="candidate",
+        generation="7",
+        candidate_commit="def",
+        attempt=1,
     )
     other_workspace = attempt_dir(
-        second_workspace, purpose="candidate", generation="7", candidate_commit="abc", attempt=1,
+        second_workspace,
+        purpose="candidate",
+        generation="7",
+        candidate_commit="abc",
+        attempt=1,
     )
 
     identifiers = [
@@ -166,7 +186,7 @@ def test_cleanup_removes_only_exact_trial_compose_project(tmp_path: Path) -> Non
     docker.write_text(
         "#!/bin/sh\n"
         "printf 'CALL\\n' >> \"$DOCKER_CALLS\"\n"
-        "printf '<%s>\\n' \"$@\" >> \"$DOCKER_CALLS\"\n"
+        'printf \'<%s>\\n\' "$@" >> "$DOCKER_CALLS"\n'
         "if [ \"$1\" = ps ]; then printf 'owned-container\\n'; fi\n"
     )
     docker.chmod(docker.stat().st_mode | stat.S_IXUSR)
@@ -207,12 +227,27 @@ def test_console_has_no_accidental_python_fallback(tmp_path: Path) -> None:
     assert (workspace / "evaluator" / "cleanup_harbor.py").is_file()
 
 
+def test_init_and_feedback_do_not_create_prediction_contracts(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_workspace(InitOptions(workspace=workspace, recipe="hill_climb-smoke"))
+    archive_row = json.loads((workspace / "archive.jsonl").read_text())
+    run_dir = workspace / "runs" / "contract-check"
+
+    manifest = write_feedback_bundle(workspace=workspace, run_dir=run_dir)
+
+    assert "predicted_fixes" not in archive_row
+    assert "verified_fixes" not in archive_row
+    assert not (run_dir / "feedback" / "falsification.md").exists()
+    assert "feedback/falsification.md" not in manifest
+
+
 def test_console_shell_quotes_unusual_pinned_interpreter_path(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     capture = tmp_path / "python-args"
     fake_python = tmp_path / "python-$(touch PWNED)-`touch BACKTICK`-'quoted-\\path"
-    fake_python.write_text("#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$CAPTURE\"\n")
+    fake_python.write_text('#!/bin/sh\nprintf \'%s\\n\' "$@" > "$CAPTURE"\n')
     fake_python.chmod(fake_python.stat().st_mode | stat.S_IXUSR)
     monkeypatch.setattr(workspace_module.sys, "executable", str(fake_python))
     workspace = tmp_path / "workspace"
@@ -222,8 +257,12 @@ def test_console_shell_quotes_unusual_pinned_interpreter_path(
     env["CAPTURE"] = str(capture)
 
     result = subprocess.run(
-        [str(workspace / "evolve"), "probe"], cwd=workspace, env=env,
-        text=True, capture_output=True, check=False,
+        [str(workspace / "evolve"), "probe"],
+        cwd=workspace,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
     )
 
     assert result.returncode == 0, result.stderr
@@ -294,7 +333,8 @@ def test_init_commits_evaluator_owned_runtime_pin(tmp_path: Path, monkeypatch: p
 
 
 def test_default_expected_trials_match_generated_evaluator_environment(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = workspace_module.default_config("hill_climb-smoke", "workspace")
     config["evaluator"].pop("tasks_per_round")

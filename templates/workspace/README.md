@@ -9,9 +9,8 @@ the lineage. `evolve run` drives the loop; `evolve status` shows where it is.
 ```
 target/          the thing being evolved (the candidate). Only paths matched by
                  the mutable surface (see evolve.yaml) may change.
-operators/       the ACTIVE evolution logic — one script per verb (`<verb>.py`)
-                 plus that verb's strategy prose (`<verb>.md`). Yours to evolve;
-                 the mechanism never overwrites them.
+operators/       the ACTIVE evolution logic — one executable script per verb
+                 (`<verb>.py`). Generated run artifacts record prompts and output.
   README.md      generated table of the active set + swap-in alternatives
 library/         the operator catalog: variants per verb. Copy one over an
                  operators/<verb>.py to change strategy.

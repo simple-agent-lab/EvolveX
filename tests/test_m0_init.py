@@ -36,10 +36,8 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
         "operators/preflight.sh",
         "operators/select.md",
         "operators/rollout.md",
-        "operators/meta_agent.md",
         "operators/gate.md",
         "operators/record.md",
-        "operators/meta_agent_brief.md",
         "skills/evolve-workspace/SKILL.md",
         "target/agent.py",
         "target/README.md",
@@ -59,6 +57,8 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
     assert not (workspace / "operators" / "mutate.py").exists()
     assert not (workspace / "operators" / "mutate.md").exists()
     assert not (workspace / "operators" / "mutation_brief.md").exists()
+    assert not (workspace / "operators" / "meta_agent.md").exists()
+    assert not (workspace / "operators" / "meta_agent_brief.md").exists()
     assert not (workspace / "evaluator" / "checkout_agent.py").exists()
 
     config = (workspace / "evolve.yaml").read_text()
@@ -71,13 +71,6 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
     assert "mutate:" not in config
     assert "- target/**" in config
     assert (workspace / ".evolve-protocol-version").read_text() == "1\n"
-    meta_agent_prompt = (workspace / "operators" / "meta_agent.md").read_text()
-    assert "MiniSWE source" in meta_agent_prompt
-    assert "Failure evidence" in meta_agent_prompt
-    assert "Root cause" in meta_agent_prompt
-    assert "predicted_fixes" in meta_agent_prompt
-    assert "risk_tasks" in meta_agent_prompt
-
     upstream = json.loads((workspace / "target" / "UPSTREAM.json").read_text())
     assert upstream == {"kind": "builtin", "seed": "builtin-dummy"}
 
@@ -152,7 +145,4 @@ def test_init_binds_real_hyperagents_method_surface_and_operators(tmp_path: Path
     assert "HyperAgents Self-Improvement" in (workspace / "operators/meta_agent.py").read_text()
     assert "HyperAgentsValidate" in (workspace / "operators/validate.py").read_text()
     assert "HyperAgentsRecord" in (workspace / "operators/record.py").read_text()
-    assert surface_lists(workspace) == (
-        ["target/**", "operators/meta_agent.py", "operators/meta_agent.md"],
-        [],
-    )
+    assert surface_lists(workspace) == (["target/**", "operators/**"], [])

@@ -37,7 +37,7 @@ def _checkout(tmp_path: Path) -> tuple[Path, Path]:
     (workspace / "evolve.yaml").write_text(
         "experiment:\n  id: test\n  max_generations: 4\n"
         "target:\n  seed: builtin-dummy\n"
-        "surface:\n  include:\n    - target/**\n    - operators/meta_agent.py\n  exclude: []\n"
+        "surface:\n  include:\n    - target/**\n    - operators/**\n  exclude: []\n"
         "operators:\n  meta_agent: {timeout_s: 30}\n"
         "evaluator:\n  engine: harbor\n  dataset: pass@k\n  agent: target.harbor_agent:MiniSweSourceAgent\n"
     )
@@ -92,6 +92,9 @@ def test_hyperagents_prompt_points_to_evolvable_codebase_and_prior_artifacts(tmp
     assert "fallback observation" not in prompt
     assert "Iterations remaining after this proposal: 3" in prompt
     assert "Modify any part of the allowed codebase" in prompt
+    assert "substantive `target/**` change" in prompt
+    assert "`operators/**` remains editable" in prompt
+    assert "accompany, not replace" in prompt
     assert "You are editing the MiniSWE source checkout under target/." not in prompt
 
 
@@ -122,3 +125,4 @@ def test_hyperagents_meta_agent_records_complete_patch_for_target_and_workflow_e
     assert (run_dir / "meta_agent" / "patch.diff").read_text() == diff
     assert json.loads((run_dir / "meta_agent" / "usage.json").read_text()) == {"usd": 0.02}
     assert "runner: local" in (run_dir / "meta_agent" / "rationale.md").read_text()
+    assert not (run_dir / "meta_agent" / "predicted_fixes.json").exists()

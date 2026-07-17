@@ -4,6 +4,7 @@ import copy
 import hashlib
 import json
 import os
+import re
 import shlex
 import shutil
 import stat
@@ -30,7 +31,20 @@ from .config import (
 )
 from .splits import build_manifest
 
-_SEED_IGNORE_PATTERNS = (".git", ".venv", ".env", ".env.*", "__pycache__", "*.pyc", ".pytest_cache", ".mypy_cache", ".ruff_cache", "node_modules")
+_SEED_IGNORE_PATTERNS = (
+    ".git",
+    ".venv",
+    ".env",
+    ".env.*",
+    "__pycache__",
+    "*.pyc",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    "node_modules",
+)
+_ENV_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
 
 @dataclass(frozen=True)
 class InitOptions:
@@ -122,7 +136,9 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
         raise ValueError("evaluator.agent is required for harbor recipes")
     runtime_digest = os.environ.get("EVOLVE_RUNTIME_DIGEST", "").strip()
     if evaluator_engine == "harbor" and not runtime_digest:
-        raise ValueError("EVOLVE_RUNTIME_DIGEST must identify the evaluator capsule (normally an immutable image digest)")
+        raise ValueError(
+            "EVOLVE_RUNTIME_DIGEST must identify the evaluator capsule (normally an immutable image digest)"
+        )
     evaluator_trials = int(evaluator.get("k", 1))
     tasks_per_round = int(evaluator.get("tasks_per_round", evaluator_trials))
     evaluator_n = int(evaluator.get("n_concurrent", evaluator_trials))
@@ -151,15 +167,15 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
         "operators/preflight.sh": _shell_script("operator preflight"),
         "operators/select.md": _template("workspace/operators/select.md"),
         "operators/rollout.md": _template("workspace/operators/rollout.md"),
-        "operators/meta_agent.md": _template("workspace/operators/meta_agent.md"),
         "operators/gate.md": _template("workspace/operators/gate.md"),
         "operators/record.md": _template("workspace/operators/record.md"),
-        "operators/meta_agent_brief.md": _template("workspace/operators/meta_agent_brief.md"),
         "skills/evolve-workspace/SKILL.md": _skill("evolve-workspace/SKILL.md"),
         "PROTOCOL.md": (library_root() / "PROTOCOL.md").read_text(),
         "evaluator/eval.sh": _eval_sh(evaluator_engine, evaluator_dataset),
         "evaluator/eval.env": _eval_env(
-            workspace.name, evaluator_dataset, evaluator_n,
+            workspace.name,
+            evaluator_dataset,
+            evaluator_n,
             tasks_per_round,
             evaluator_trials,
             partial_floor,
@@ -169,6 +185,7 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
             setup_timeout_multiplier=setup_timeout_multiplier,
             max_retries=max_retries,
         ),
+        "evaluator/agent.env": _agent_env(evaluator.get("agent_env")),
         "evaluator/splits.json": json.dumps(split_manifest, indent=2, sort_keys=True) + "\n",
         "evaluator/dataset.pin": f"dataset={evaluator_dataset}\nchecksum=sha256:stub\n",
         "evaluator/runtime.pin": f"{runtime_digest}\n",
@@ -280,7 +297,9 @@ def _operator_assets(recipe: str) -> dict[str, str]:
 
 def _recipe_evaluator_assets(recipe: str) -> dict[str, str]:
     root = recipe_root() / recipe / "evaluator"
-    return {} if not root.is_dir() else {f"evaluator/{relative.as_posix()}": text for relative, text in _text_files(root)}
+    return (
+        {} if not root.is_dir() else {f"evaluator/{relative.as_posix()}": text for relative, text in _text_files(root)}
+    )
 
 
 def _operator_index(bindings: list[_OperatorBinding], recipe: str) -> str:
@@ -473,7 +492,6 @@ def _write_gen0_archive(workspace: Path) -> None:
             "reason": "generation zero requires real evaluation",
             "mutated": [],
             "surface_violations": [],
-            "predicted_fixes": [],
             "note": "initial scaffold",
             "cost": {"usd": 0, "wall_s": 0},
         },
@@ -506,13 +524,44 @@ def _make_executable(*paths: Path) -> None:
         path.chmod(path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
 
+def _agent_env(value: object) -> str:
+    if value is None:
+        return ""
+    if not isinstance(value, dict):
+        raise ValueError("evaluator.agent_env must be a mapping")
+    for name in value:
+        if not isinstance(name, str) or _ENV_NAME.fullmatch(name) is None:
+            raise ValueError(f"invalid evaluator.agent_env name: {name!r}")
+    lines: list[str] = []
+    for name in sorted(value):
+        raw = value[name]
+        if isinstance(raw, bool):
+            rendered = "true" if raw else "false"
+        elif isinstance(raw, (str, int, float)):
+            rendered = str(raw)
+        else:
+            raise ValueError(f"evaluator.agent_env value for {name} must be scalar")
+        if "\0" in rendered:
+            raise ValueError(f"evaluator.agent_env value for {name} must not contain NUL")
+        if "\n" in rendered or "\r" in rendered:
+            raise ValueError(f"evaluator.agent_env value for {name} must be single-line")
+        lines.append(f"{name}={rendered}\n")
+    return "".join(lines)
+
+
 def _eval_env(
-    _workspace_name: str, dataset: str, n_concurrent: int,
+    _workspace_name: str,
+    dataset: str,
+    n_concurrent: int,
     tasks_per_round: int,
     trials: int,
     partial_floor: float,
-    agent: str, *, dataset_mode: str = "path", task_file: str | None = None,
-    setup_timeout_multiplier: float = 1, max_retries: int = 0,
+    agent: str,
+    *,
+    dataset_mode: str = "path",
+    task_file: str | None = None,
+    setup_timeout_multiplier: float = 1,
+    max_retries: int = 0,
 ) -> str:
     expected_trials = tasks_per_round * max(trials, 1)
     text = (

@@ -42,23 +42,26 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
         assert "target/**" in config
         assert "target/agent.py" not in config
         if name == "ahe":
-            assert "dataset: pass@k" in config
-            assert "seed: builtin-codex" in config
+            assert "dataset: swe-bench-lite" in config
+            assert "seed: https://github.com/SWE-agent/mini-swe-agent.git" in config
             assert "rollout: {variant: harbor" in config
-            assert "trace_analyzer: {variant: failure_patterns" in config
-            assert "meta_agent: {variant: hyperagents, runner: local" in config
-            assert "agent: target.agent:HarborAgent" in config
+            assert "trace_analyzer: {variant: ahe" in config
+            assert "meta_agent: {variant: ahe, runner: harbor" in config
+            assert "agent: mini-swe-agent" in config
+            assert "editable_roots: [target]" in config
+            assert "agent: target.harbor_agent:MiniSweSourceAgent" in config
         elif name == "hyperagents":
             assert "dataset: swe-bench-lite" in config
             assert "seed: https://github.com/SWE-agent/mini-swe-agent.git" in config
-            assert "    - operators/meta_agent.py" in config
-            assert "    - operators/meta_agent.md" in config
-            assert "    - operators/**" not in config
+            assert "    - operators/**" in config
+            assert "    - operators/meta_agent.py" not in config
             assert "select: {variant: score_child_prop" in config
             assert "rollout: {variant: harbor" in config
             assert "trace_analyzer: {variant: trace_browser" in config
             assert "meta_agent: {variant: hyperagents" in config
-            assert "runner: local" in config
+            assert "runner: harbor" in config
+            assert "agent: mini-swe-agent" in config
+            assert "editable_roots: [target, operators]" in config
             assert "validate: {variant: hyperagents" in config
             assert "gate: {variant: parent_eligible}" in config
             assert "record: {variant: hyperagents}" in config
@@ -71,9 +74,8 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "agent: codex" in config
             assert "variant: noop" not in config
         assert "mutate:" not in config
-        if name != "ahe":
-            assert "agent: target.harbor_agent:MiniSweSourceAgent" in config
-            assert "harbor_agent: miniswe-source" in config
+        assert "agent: target.harbor_agent:MiniSweSourceAgent" in config
+        assert "harbor_agent: miniswe-source" in config
         assert "variant: fixed" not in config
 
 
@@ -86,14 +88,14 @@ def test_smoke_recipes_are_explicitly_named_and_deterministic() -> None:
         assert "agent: target.harbor_agent:MiniSweSourceAgent" in config
         assert "mutate:" not in config
         if name == "hyperagents-smoke":
-            assert "    - operators/meta_agent.py" in config
-            assert "    - operators/meta_agent.md" in config
-            assert "    - operators/**" not in config
+            assert "    - operators/**" in config
+            assert "    - operators/meta_agent.py" not in config
             assert "select: {variant: score_child_prop" in config
             assert "rollout: {variant: noop}" in config
             assert "trace_analyzer:" not in config
             assert "meta_agent: {variant: hyperagents" in config
             assert "runner: local" in config
+            assert "editable_roots: [target, operators]" in config
             assert "validate: {variant: hyperagents" in config
             assert "record: {variant: hyperagents}" in config
             assert "budget_usd: 1" in config

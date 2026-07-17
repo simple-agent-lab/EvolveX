@@ -92,6 +92,11 @@ if [ -n "${EVOLVE_TASK_LIMIT:-}" ]; then
 fi
 set -- "$@" --agent "$EVOLVE_HARBOR_AGENT"
 set -- "$@" --mounts "$uv_mount"
+if [ -f evaluator/agent.env ]; then
+  while IFS= read -r agent_entry || [ -n "$agent_entry" ]; do
+    [ -n "$agent_entry" ] && set -- "$@" --ae "$agent_entry"
+  done < evaluator/agent.env
+fi
 if [ -n "${EVOLVE_CANDIDATE_SMOKE_MODE:-}" ]; then
   set -- "$@" --install-only --ae "EVOLVE_CANDIDATE_SMOKE_MODE=$EVOLVE_CANDIDATE_SMOKE_MODE"
 fi

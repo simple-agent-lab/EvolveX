@@ -34,7 +34,7 @@ def test_meta_agent_runners_are_not_operator_variants(tmp_path: Path) -> None:
     from evolve import workspace as workspace_module
 
     variants = workspace_module._available_operator_variants("hill_climb", "meta_agent")
-    assert variants == ["hyperagents"]
+    assert variants == ["ahe", "hyperagents"]
     assert "local" not in variants
     assert "harbor" not in variants
 

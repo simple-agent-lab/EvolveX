@@ -69,17 +69,19 @@ Meta-agent variants define the improvement strategy. `hyperagents.py` consumes
 normalized rollout feedback and implements self-referential editing. Its
 `runner` selects how the editing agent is executed.
 
-`runners/local.py` executes a trusted host command. `runners/harbor.py` instead compiles
-`target/` into one isolated Harbor Exec task and returns the validated artifact:
+`runners/local.py` executes a trusted host command. `runners/harbor.py` instead
+transports configured repository trees as `/app/candidate` and transactionally
+installs the validated artifact:
 
 ```yaml
 operators:
   meta_agent:
     variant: hyperagents
     runner: harbor
-    agent: codex
-    model: gpt-5.4
+    agent: mini-swe-agent
+    model: openai/gpt-5.4
     environment: docker
+    editable_roots: [target, operators]
     timeout_s: 3600
 ```
 

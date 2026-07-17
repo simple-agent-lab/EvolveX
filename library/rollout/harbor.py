@@ -38,6 +38,7 @@ _SECRET_ASSIGNMENT = re.compile(
     r"([\"']?)(\s*[:=]\s*)([^\s,;}]+)"
 )
 _BEARER = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+")
+_TRACE_EVENT_LIMIT = 32
 _PROXY_ENV = (
     ("EVOLVE_HARBOR_HTTP_PROXY", "http_proxy", "HTTP_PROXY"),
     ("EVOLVE_HARBOR_HTTPS_PROXY", "https_proxy", "HTTPS_PROXY"),
@@ -231,7 +232,7 @@ def _codex_session_details(trial_dir: Path, field_limit: int) -> dict[str, Any]:
         "agent_messages": messages[-4:],
         "tool_calls": tool_calls[-8:],
         "observations": observations[-8:],
-        "events": events,
+        "events": events[-_TRACE_EVENT_LIMIT:],
         "raw_agent_output": "",
     }
 
@@ -303,7 +304,7 @@ def _trajectory_details(trial_dir: Path, field_limit: int) -> dict[str, Any]:
         "agent_messages": messages[-4:],
         "tool_calls": tool_calls[-8:],
         "observations": observations[-8:],
-        "events": events,
+        "events": events[-_TRACE_EVENT_LIMIT:],
         "raw_agent_output": raw_agent_output,
     }
 

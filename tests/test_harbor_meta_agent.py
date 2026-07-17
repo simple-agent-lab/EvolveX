@@ -1,6 +1,7 @@
 import importlib.util
 import os
 import random
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -47,7 +48,7 @@ def _checkout(tmp_path: Path) -> tuple[Path, Path]:
     (checkout / "evolve.yaml").write_text(
         "experiment:\n  id: test\n"
         "target:\n  seed: builtin-dummy\n"
-        "surface:\n  include:\n    - target/**\n  exclude: []\n"
+        "surface:\n  include:\n    - target/**\n    - operators/**\n  exclude: []\n"
         "operators:\n  meta_agent: {variant: hyperagents, runner: harbor, timeout_s: 30}\n"
         "evaluator:\n  engine: harbor\n  dataset: pass@k\n"
         "  agent: target.harbor_agent:MiniSweSourceAgent\n"
@@ -73,7 +74,7 @@ def _ctx(checkout: Path, run_dir: Path) -> OperatorContext:
         config={
             "variant": "hyperagents",
             "runner": "harbor",
-            "agent": "codex",
+            "agent": "mini-swe-agent",
             "model": "gpt-test",
             "environment": "docker",
             "timeout_s": 30,
@@ -105,12 +106,12 @@ if len(sys.argv) < 2 or sys.argv[1] != "exec":
     raise SystemExit("expected harbor exec")
 if "--no-scan" not in sys.argv:
     raise SystemExit("expected --no-scan")
-if option("--artifact") != "/app/target":
-    raise SystemExit("expected /app/target artifact")
+if option("--artifact") != "/app/candidate":
+    raise SystemExit("expected /app/candidate artifact")
 if option("--workdir") != "/app":
     raise SystemExit("expected /app workdir")
-if option("--agent") != "codex":
-    raise SystemExit("expected codex agent")
+if option("--agent") != "mini-swe-agent":
+    raise SystemExit("expected mini-swe-agent")
 if option("--model") != "gpt-test":
     raise SystemExit("expected gpt-test model")
 
@@ -119,15 +120,17 @@ jobs_dir = Path(option("--jobs-dir"))
 job_name = option("--job-name")
 job_dir = jobs_dir / job_name
 trial_dir = job_dir / "task-0001__fake"
-artifact = trial_dir / "artifacts" / "app" / "target"
+artifact = trial_dir / "artifacts" / "app" / "candidate"
 artifact.parent.mkdir(parents=True, exist_ok=True)
-shutil.copytree(source, artifact, symlinks=True)
+shutil.copytree(source / "candidate", artifact, symlinks=True)
 
-(artifact / "agent.py").write_text("print('child')\\n")
-(artifact / "added.txt").write_text("created in Harbor\\n")
-(artifact / "obsolete.txt").unlink()
+(artifact / "target" / "agent.py").write_text("print('child')\\n")
+(artifact / "target" / "added.txt").write_text("created in Harbor\\n")
+(artifact / "target" / "obsolete.txt").unlink()
+if (artifact / "operators").exists():
+    (artifact / "operators" / "meta_agent.md").write_text("# Changed by Harbor\\n")
 if os.environ.get("FAKE_HARBOR_MODE") == "artifact-symlink":
-    (artifact / "link.txt").symlink_to("agent.py")
+    (artifact / "target" / "link.txt").symlink_to("agent.py")
 
 manifest = [
     {
@@ -138,8 +141,8 @@ manifest = [
         "service": None,
     },
     {
-        "source": "/app/target",
-        "destination": "artifacts/app/target",
+        "source": "/app/candidate",
+        "destination": "artifacts/app/candidate",
         "type": "directory",
         "status": "ok",
         "service": None,
@@ -159,7 +162,7 @@ if os.environ.get("FAKE_HARBOR_MODE") == "agent-error":
 result = {
     "trial_name": "task-0001__fake",
     "agent_info": {
-        "name": "codex",
+        "name": "mini-swe-agent",
         "version": "fake",
         "model_info": {"name": "gpt-test", "provider": None},
     },
@@ -218,8 +221,63 @@ def test_harbor_meta_agent_round_trips_target_and_writes_artifacts(
     assert usage["output_tokens"] == 10
     assert 'predicted_fixes: ["task-1"]' in result.output
     assert "failure evidence" in (meta_dir / "harbor" / "prompt.md").read_text()
-    assert "/app/target" in (meta_dir / "harbor" / "prompt.md").read_text()
+    assert "/app/candidate" in (meta_dir / "harbor" / "prompt.md").read_text()
     assert list((meta_dir / "harbor" / "jobs").glob("*/*/result.json"))
+
+
+def test_harbor_meta_agent_round_trips_target_and_operators(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    checkout, run_dir = _checkout(tmp_path)
+    bin_dir = tmp_path / "bin"
+    _install_fake_harbor(bin_dir)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    ctx = _ctx(checkout, run_dir)
+    ctx.config["editable_roots"] = ["target", "operators"]
+    runner = _harbor_runner_module()
+    runner.run_agent(checkout, "failure evidence", ctx)
+
+    assert (checkout / "target" / "agent.py").read_text() == "print('child')\n"
+    assert (checkout / "operators" / "meta_agent.md").read_text() == "# Changed by Harbor\n"
+
+
+def test_harbor_meta_agent_rejects_non_top_level_editable_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    checkout, run_dir = _checkout(tmp_path)
+    ctx = _ctx(checkout, run_dir)
+    ctx.config["editable_roots"] = ["target/src"]
+    runner = _harbor_runner_module()
+
+    with pytest.raises(AgentCommandError, match="top-level relative directory"):
+        runner.run_agent(checkout, "failure evidence", ctx)
+
+
+def test_multi_root_install_rolls_back_when_second_replacement_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    checkout, _run_dir = _checkout(tmp_path)
+    runner = _harbor_runner_module()
+    surface = runner.load_surface_policy(checkout)
+    bundle = runner._prepare_bundle(checkout, ["target", "operators"], surface)
+    returned = tmp_path / "returned"
+    shutil.copytree(checkout / "target", returned / "target")
+    shutil.copytree(checkout / "operators", returned / "operators")
+    (returned / "target" / "agent.py").write_text("print('child')\n")
+    (returned / "operators" / "meta_agent.md").write_text("# child\n")
+    before_target = (checkout / "target" / "agent.py").read_text()
+    before_operator = (checkout / "operators" / "meta_agent.md").read_text()
+    rename = Path.rename
+
+    def fail_operators(path: Path, target: Path) -> Path:
+        if path.as_posix().endswith("replacements/operators"):
+            raise OSError("simulated second-root failure")
+        return rename(path, target)
+
+    monkeypatch.setattr(Path, "rename", fail_operators)
+    try:
+        with pytest.raises(OSError, match="second-root"):
+            runner._install_bundle(checkout, returned, bundle, "gen/0", surface)
+        assert (checkout / "target" / "agent.py").read_text() == before_target
+        assert (checkout / "operators" / "meta_agent.md").read_text() == before_operator
+    finally:
+        shutil.rmtree(bundle.staging, ignore_errors=True)
 
 
 def test_harbor_trial_exception_does_not_modify_target(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
