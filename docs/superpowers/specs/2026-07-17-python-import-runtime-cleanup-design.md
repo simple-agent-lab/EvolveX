@@ -20,6 +20,10 @@ The supported host platforms are macOS and Linux. Existing POSIX shell,
 process-group, and signal behavior remains supported on both hosts. Native
 Windows is explicitly unsupported.
 
+The framework continues to support Python 3.11 and newer. Generated workspace
+host projects select Python 3.12 because Harbor 0.18.0 requires Python 3.12 or
+newer; candidate projects retain their own Python requirements.
+
 ## Core Rule
 
 Each generated Evolve workspace is one `uv` project:
