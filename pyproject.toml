@@ -16,6 +16,7 @@ evolve = "evolve.cli:main"
 [dependency-groups]
 dev = [
     "pytest>=8.0",
+    "pytest-xdist>=3.8",
     "ruff>=0.8",
     "ty>=0.0.1a1",
 ]
@@ -63,3 +64,4 @@ packages = ["src/evolve"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = ["-n", "8", "--dist", "worksteal"]

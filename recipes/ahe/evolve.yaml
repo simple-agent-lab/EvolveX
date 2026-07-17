@@ -7,29 +7,34 @@ experiment:
   mode: driver
   seed: 0
 target:
-  seed: builtin-codex
+  seed: https://github.com/SWE-agent/mini-swe-agent.git
+  harbor_agent: miniswe-source
 surface:
   include:
     - target/**
   exclude: []
 operators:
   select: {variant: greedy, timeout_s: 600}
-  rollout: {variant: harbor, budget_tasks: 1, n_concurrent: 4, agent_setup_timeout_multiplier: 3, max_retries: 1, timeout_s: 3600}
-  trace_analyzer: {variant: failure_patterns, max_chars: 30000, timeout_s: 600}
-  meta_agent: {variant: agent_command, command: codex exec --full-auto - < "$EVOLVE_PROMPT_FILE", timeout_s: 3600}
-  gate: {variant: hillclimb, timeout_s: 600}
+  rollout: {variant: harbor, budget_tasks: 8, n_concurrent: 4, agent_setup_timeout_multiplier: 3, max_retries: 1, timeout_s: 3600}
+  trace_analyzer: {variant: ahe, max_cases: 8, field_limit: 2000, timeout_s: 600}
+  meta_agent: {variant: ahe, runner: harbor, agent: mini-swe-agent, model: openai/gpt-5.4, environment: docker, editable_roots: [target], max_retries: 0, timeout_s: 3600}
+  gate: {variant: hillclimb, strict: true, timeout_s: 600}
   record: {variant: jsonl, timeout_s: 600}
   timeout_s: 600
 evaluator:
   engine: harbor
-  dataset: pass@k
-  agent: target.agent:HarborAgent
+  dataset: swe-bench-lite
+  agent: target.harbor_agent:MiniSweSourceAgent
   split: {train: 0.5, gate: 0.4, sealed: 0.1, seed: 0}
   sampling: static
-  tasks_per_round: 1
+  tasks_per_round: 8
   anchor: {final: true, every_rounds: 0}
   k: 1
   n_concurrent: 4
   agent_setup_timeout_multiplier: 3
   max_retries: 1
   partial_floor: 0.8
+  agent_env:
+    MINISWE_STEP_LIMIT: "100"
+    MINISWE_COST_LIMIT: "3.0"
+    MINISWE_ENV_TIMEOUT: "30"

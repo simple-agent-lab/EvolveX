@@ -94,7 +94,7 @@ def test_miniswe_wrapper_subclasses_harbor_miniswe_and_installs_candidate_source
     assert "apk add" not in joined
     assert 'cp /tmp/evolve-uv "$HOME/.local/bin/uv"' in joined
     assert '"$HOME/.local/bin/uv" --version' in joined
-    assert "rm -f \"$HOME/.local/bin/uv\"" in joined
+    assert 'rm -f "$HOME/.local/bin/uv"' in joined
     assert "uv tool install" not in joined
     assert "mini-swe-agent --" not in joined
     assert "curl -LsSf https://astral.sh/uv/0.7.13/install.sh" in joined
@@ -126,6 +126,9 @@ def test_miniswe_wrapper_subclasses_harbor_miniswe_and_installs_candidate_source
 
 def test_miniswe_wrapper_runs_candidate_source_api_not_cli(tmp_path: Path, monkeypatch) -> None:
     _install_fake_harbor(monkeypatch)
+    monkeypatch.setenv("MINISWE_STEP_LIMIT", "100")
+    monkeypatch.setenv("MINISWE_COST_LIMIT", "3.0")
+    monkeypatch.setenv("MINISWE_ENV_TIMEOUT", "30")
     target = tmp_path / "target"
     target.mkdir()
     wrapper = target / "harbor_agent.py"
@@ -154,6 +157,12 @@ def test_miniswe_wrapper_runs_candidate_source_api_not_cli(tmp_path: Path, monke
     assert env["OPENAI_API_KEY"] == "test-key"
     assert env["OPENAI_BASE_URL"] == "https://llm.example/v1"
     assert env["OPENAI_API_BASE"] == "https://llm.example/v1"
+    assert env["MINISWE_STEP_LIMIT"] == "100"
+    assert env["MINISWE_COST_LIMIT"] == "3.0"
+    assert env["MINISWE_ENV_TIMEOUT"] == "30"
+    assert 'agent_kwargs["step_limit"] = int(os.environ.get("MINISWE_STEP_LIMIT"' in module.RUNNER
+    assert 'agent_kwargs["cost_limit"] = float(os.environ.get("MINISWE_COST_LIMIT"' in module.RUNNER
+    assert 'env_kwargs["timeout"] = int(os.environ.get("MINISWE_ENV_TIMEOUT"' in module.RUNNER
 
 
 def test_miniswe_runtime_unsets_inherited_proxies_but_install_keeps_proxy(tmp_path: Path, monkeypatch) -> None:

@@ -26,13 +26,19 @@ Precise meanings for the domain terms this project uses.
   not part of the agent being evolved. (`observe` is retired — the mechanism
   writes the feedback bundle itself; see `src/evolve/feedback.py`.)
 
-- **Meta-agent** — the operator that changes the candidate. The
-  `agent_command` variant spawns a coding agent that edits the folder in
-  place; agent-agnostic via a configured command. Out-of-surface edits are
-  auto-repaired before the mechanism sees them.
+- **Meta-agent strategy / variant** — the improvement policy that turns evidence
+  into an edit request, such as independent AHE or self-referential HyperAgents.
+
+- **Runner** — the execution and isolation backend. `local` runs a trusted host
+  command; `harbor` transports `editable_roots` to `/app/candidate` and installs
+  the validated returned trees transactionally.
+
+- **Agent** — in runner configuration, the concrete Harbor or local editing
+  agent. Production AHE and HyperAgents use Harbor's installed `mini-swe-agent`;
+  canonical evaluation separately uses the frozen source-backed adapter.
 
 - **Evaluator / ruler** — the frozen scorer, wired to **Harbor**. Runs a
-  candidate through a standard entry (`checkout_agent.py`) and returns a score.
+  candidate via `target.harbor_agent` / `HarborAgent` and returns a score.
   Frozen: its tree must match `gen/0` on every eval.
 
 - **Split** — `train / gate / sealed` (`evaluator/splits.json`): train feeds

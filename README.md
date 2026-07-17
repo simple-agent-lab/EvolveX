@@ -80,7 +80,7 @@ Milestones M0-M6 are implemented and tested in the mechanism suite:
 | M3 | Population fan-out and early widened-surface self-reference tests; real child-gate self-reference landed later in M5. |
 | M4 | Six recipes, agent bootstrapping instructions, `status`, and `report`. |
 | M5 | Real subprocess operator runtime, `evolve record`, `evolve.sdk`, operator config variants, and child-owned gate/record self-reference. |
-| M6 | Harbor-first evaluator templates, generic `llm`/`agent_command` mutator adapters, target seed vendoring, and per-round same-hash evaluation. |
+| M6 | Harbor-first evaluator templates, a generic local-command mutator runner, target seed vendoring, and per-round same-hash evaluation. |
 
 Harbor now has a verified MacBook development smoke path through Colima,
 and generated evaluator templates use the checkout's own `target/` via a
@@ -90,6 +90,8 @@ pending; real long-running experiments should run on a Linux machine.
 Trace retention is a separate operator from rollout. See
 [`TRACE_ANALYZER.md`](TRACE_ANALYZER.md) for the descriptive analyzer variants
 and the migration from the former research-method profile names.
+Meta-agents can run as trusted host commands or isolated Harbor agents; see
+[`META_AGENTS.md`](META_AGENTS.md) for both configuration contracts.
 
 ## Install For Development
 
@@ -125,7 +127,7 @@ evolve --help
 Create a new generated workspace:
 
 ```bash
-evolve init /tmp/evolve-demo --recipe hill_climb
+evolve init /tmp/evolve-demo --recipe hill_climb-smoke
 cd /tmp/evolve-demo
 ```
 
@@ -327,7 +329,7 @@ thermal pressure, and get more predictable long-running Docker behavior.
 - The live Harbor pytest smoke is pending environment/test-path cleanup:
   Harbor runs from `/private/tmp/harbor-evolve-m1`, while the current
   live pytest resolves `examples/tasks/hello-world` from this repo.
-- `agent_command` is the general meta-agent adapter; HyperAgents uses its
+- `local` is the general meta-agent runner; HyperAgents uses its
   dedicated `meta_agent` implementation and validation stage.
 - Deterministic split discovery currently requires a local Harbor task
   directory; remote registry datasets must first be materialized locally.

@@ -11,13 +11,12 @@ target:
 surface:
   include:
     - target/**
-    - operators/meta_agent.py
-    - operators/meta_agent.md
+    - operators/**
   exclude: []
 operators:
   select: {variant: score_child_prop, seed: 0}
   rollout: {variant: noop}
-  meta_agent: {variant: hyperagents, timeout_s: 3600}
+  meta_agent: {variant: hyperagents, runner: local, editable_roots: [target, operators], timeout_s: 3600}
   validate: {variant: hyperagents, timeout_s: 300}
   gate: {variant: parent_eligible}
   record: {variant: hyperagents}

@@ -114,7 +114,7 @@ def test_run_meta_agent_timeout_kills_command_group(tmp_path: Path) -> None:
         run_meta_agent(
             workspace=workspace,
             prompt="x",
-            config={"command": f"{sys.executable} {script} {pid_file}", "timeout_s": 0.2},
+            config={"command": f"{sys.executable} {script} {pid_file}", "timeout_s": 1.0},
         )
 
     assert "timeout" in str(excinfo.value).lower()

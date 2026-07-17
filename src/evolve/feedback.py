@@ -119,8 +119,6 @@ def _rollout_history(workspace: Path, rows: list[Row], history_k: int) -> list[R
                 "verdict": row.get("verdict"),
                 "reason": row.get("reason"),
                 "mutated": row.get("mutated"),
-                "predicted_fixes": row.get("predicted_fixes"),
-                "verified_fixes": row.get("verified_fixes"),
                 "trace_analyzer_variant": manifest.get("selected_variant"),
                 "rollout_metrics": metrics,
                 "raw_evidence_dir": str(evidence_root) if evidence_root.is_dir() else None,
@@ -159,17 +157,6 @@ def write_feedback_bundle(*, workspace: Path, run_dir: Path, history_k: int = 8)
     evidence_files.append("feedback/evidence/history.json")
     (feedback / "last_accepted.diff").write_text(_latest_accepted_diff(workspace, rows))
 
-    prior = [row for row in rows if row.get("predicted_fixes")]
-    lines = ["# Falsification", ""]
-    lines.extend(
-        "- gen %s predicted %s before score %s" % (row.get("genid"), row.get("predicted_fixes"), row.get("score"))
-        for row in prior
-    )
-    if len(lines) == 2:
-        lines.append("- No prior predicted fixes recorded.")
-    lines.append("")
-    (feedback / "falsification.md").write_text("\n".join(lines))
-
     include, exclude = _surface_rule_lists(workspace)
     (feedback / "rules.md").write_text(
         "# Rules\n\n- Surface include: %s\n- Surface exclude: %s\n- Self-check: `evolve surface-check`\n"
@@ -192,7 +179,6 @@ def write_feedback_bundle(*, workspace: Path, run_dir: Path, history_k: int = 8)
         f"{evidence_link}"
         f"{history_link}"
         "- [last accepted diff](last_accepted.diff)\n"
-        "- [falsification](falsification.md)\n"
         "- [rules](rules.md)\n"
     )
     manifest = [
@@ -201,7 +187,6 @@ def write_feedback_bundle(*, workspace: Path, run_dir: Path, history_k: int = 8)
         "feedback/attempts.md",
         "feedback/failures/README.md",
         "feedback/last_accepted.diff",
-        "feedback/falsification.md",
         "feedback/rules.md",
     ]
     if trace_feedback:

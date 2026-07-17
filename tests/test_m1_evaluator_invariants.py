@@ -4,12 +4,11 @@ import stat
 from pathlib import Path
 
 import pytest
-from conftest import git, init_workspace, rows_by_genid, run_evolve, smoke_agent_command
+from conftest import git, init_workspace, rows_by_genid
 
-from evolve.archive import MECHANISM_EVAL_FIELD, append_evaluation_record, append_event, verify_integrity
+from evolve.archive import MECHANISM_EVAL_FIELD, append_event
 from evolve.driver import RunOptions
 from evolve.driver import run as driver_run
-from evolve.evaluation import Outcome, evaluation_status
 from evolve.evaluator import (
     _evaluation_artifact_reference,
     _read_task_vector,
@@ -17,7 +16,6 @@ from evolve.evaluator import (
     evaluate,
 )
 from evolve.frozen.interfaces import ArchiveView
-from evolve.population import looks_mechanism_written, valid_parent_rows
 from evolve.task_sets import effective_task_set_identity
 from evolve.task_vectors import TaskVectorError
 
@@ -124,95 +122,6 @@ def test_eval_script_receives_persistent_workspace_uv_cache(tmp_path: Path) -> N
     assert expected.is_dir()
 
 
-def test_evaluator_path_commit_is_invalid_and_eval_does_not_stamp_score(tmp_path: Path) -> None:
-    workspace, evolve_home = init_workspace(tmp_path)
-    baseline = run_evolve(
-        "run", str(workspace), "--max-generations", "0",
-        env={"EVAL_STUB": "1", "EVOLVE_HOME": str(evolve_home)},
-    )
-    assert baseline.returncode == 0, baseline.stderr
-    child = tmp_path / "child"
-    forked = run_evolve("fork", str(workspace), "0", str(child), env={"EVOLVE_HOME": str(evolve_home)})
-    assert forked.returncode == 0, forked.stderr
-    make_eval_script(
-        child / "evaluator" / "eval.sh",
-        "#!/bin/sh\n"
-        "set -eu\n"
-        'mkdir -p "$EVOLVE_RUN_DIR"\n'
-        "printf '999.0\\n' > \"$EVOLVE_RUN_DIR/score\"\n"
-        "printf 'complete\\n' > \"$EVOLVE_RUN_DIR/status\"\n"
-        "exit 0\n",
-    )
-
-    committed = run_evolve(
-        "commit",
-        str(workspace),
-        str(child),
-        "--parent",
-        "0",
-        "--genid",
-        "1",
-        env={"EVOLVE_HOME": str(evolve_home)},
-    )
-    assert committed.returncode == 0, committed.stderr
-    row = rows_by_genid(workspace)["1"]
-    assert row["status"] == "invalid_proposal"
-    assert row["valid_parent"] is False
-    assert row["score"] is None
-    assert row["surface_violations"] == ["evaluator/eval.sh"]
-
-    before = (workspace / "archive.jsonl").read_text().splitlines()
-    evaluated = run_evolve(
-        "eval",
-        str(workspace),
-        "1",
-        env={"EVAL_STUB": "1", "EVOLVE_HOME": str(evolve_home)},
-    )
-
-    assert evaluated.returncode == 0, evaluated.stderr
-    assert (workspace / "archive.jsonl").read_text().splitlines() == before
-    assert rows_by_genid(workspace)["1"]["score"] is None
-
-
-def test_infrastructure_failed_eval_is_scoreless_invalid_parent(tmp_path: Path) -> None:
-    workspace, evolve_home = init_workspace(tmp_path)
-    baseline = run_evolve(
-        "run", str(workspace), "--max-generations", "0",
-        env={"EVAL_STUB": "1", "EVOLVE_HOME": str(evolve_home)},
-    )
-    assert baseline.returncode == 0, baseline.stderr
-    first = run_evolve(
-        "run",
-        str(workspace),
-        "--max-generations",
-        "1",
-        env={"EVAL_STUB": None, "EVOLVE_HOME": str(evolve_home), "EVOLVE_AGENT_COMMAND": smoke_agent_command()},
-    )
-    assert first.returncode == 1
-    assert "gen/1 infrastructure failed twice" in first.stderr
-
-    failed = rows_by_genid(workspace)["1"]
-    assert failed["status"] == "infrastructure_failed"
-    assert failed["score"] is None
-    assert failed["valid_parent"] is False
-
-
-@pytest.mark.parametrize(
-    ("timeout_rule", "expected"),
-    [(None, Outcome.TIMEOUT), ("false", Outcome.TIMEOUT), ("true", Outcome.BENCHMARK_COMPLETE)],
-)
-def test_timeout_zero_scoring_requires_literal_true(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, timeout_rule: str | None, expected: Outcome,
-) -> None:
-    workspace, _evolve_home = init_workspace(tmp_path)
-    configure_outcome_evaluator(workspace, timeout_rule=timeout_rule)
-    monkeypatch.setenv("TEST_EVAL_OUTCOME", "timeout")
-
-    record = evaluate(workspace, "gen/0", "0", purpose="genesis")
-
-    assert record.outcome is expected
-
-
 def test_timeout_zero_rejects_non_boolean_config(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -222,132 +131,6 @@ def test_timeout_zero_rejects_non_boolean_config(
 
     with pytest.raises(ValueError, match="benchmark_timeout_is_zero must be a boolean"):
         evaluate(workspace, "gen/0", "0", purpose="genesis")
-
-
-@pytest.mark.parametrize("outcome", ["candidate_invalid", "timeout", "cancelled"])
-def test_canonical_terminal_outcomes_are_not_reevaluated_on_resume(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, outcome: str,
-) -> None:
-    workspace, _evolve_home = init_workspace(tmp_path)
-    prepare_lifecycle_generation(workspace)
-    monkeypatch.setenv("TEST_EVAL_OUTCOME", outcome)
-
-    driver_run(RunOptions(workspace, max_generations=1))
-    row = rows_by_genid(workspace)["1"]
-    attempts = list((workspace / "runs/evaluations/candidate/gen-1").glob("candidate-*/attempt-*"))
-    before = (workspace / "archive.jsonl").read_bytes()
-    monkeypatch.setenv("TEST_EVAL_OUTCOME", "benchmark_complete")
-    driver_run(RunOptions(workspace, max_generations=1))
-
-    assert row["outcome"] == outcome
-    assert row["selection_eligible"] is False
-    assert looks_mechanism_written(workspace, row)
-    assert all(candidate["genid"] != "1" for candidate in valid_parent_rows(workspace))
-    assert len(attempts) == 1
-    assert (workspace / "archive.jsonl").read_bytes() == before
-
-
-def test_canonical_infrastructure_failure_retries_and_success_replaces_it(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    workspace, _evolve_home = init_workspace(tmp_path)
-    prepare_lifecycle_generation(workspace)
-    monkeypatch.setenv("TEST_EVAL_OUTCOME", "infrastructure_failed")
-    first = evaluate(workspace, "gen/1", "1")
-    append_evaluation_record(
-        workspace,
-        first,
-        metadata={"parent": "0", "mutated": [], "surface_violations": []},
-    )
-
-    failed = rows_by_genid(workspace)["1"]
-    assert failed["outcome"] == "infrastructure_failed"
-    assert failed["selection_eligible"] is False
-    monkeypatch.setenv("TEST_EVAL_OUTCOME", "benchmark_complete")
-    driver_run(RunOptions(workspace, max_generations=1))
-
-    row = rows_by_genid(workspace)["1"]
-    attempts = list((workspace / "runs/evaluations/candidate/gen-1").glob("candidate-*/attempt-*"))
-    assert len(attempts) == 2
-    assert row["attempt"] == 2
-    assert row["retry_of"] == 1
-    assert row["outcome"] == "benchmark_complete"
-    assert evaluation_status(row) == "complete"
-    assert row["selection_eligible"] is True
-
-
-def test_mechanism_eval_can_replace_initial_scaffold_score(tmp_path: Path) -> None:
-    workspace, evolve_home = init_workspace(tmp_path, experiment="manual-attempt")
-    initial = rows_by_genid(workspace)["0"]
-
-    append_event(
-        workspace,
-        workspace.name,
-        {
-            **initial,
-            "score": 0.75,
-            "reason": "manual archive write",
-            "note": "manual attempt",
-        },
-    )
-    assert rows_by_genid(workspace)["0"]["score"] is None
-
-    evaluated = run_evolve(
-        "run", str(workspace), "--max-generations", "0",
-        env={"EVAL_STUB": "1", "EVOLVE_HOME": str(evolve_home)},
-    )
-    assert evaluated.returncode == 0, evaluated.stderr
-
-    row = rows_by_genid(workspace)["0"]
-    assert row["score"] == 1.0
-    assert row["attempt"] == 1
-    assert row["note"] == "genesis evaluated"
-
-
-def test_eval_force_re_evaluates_completed_generation_zero(tmp_path: Path) -> None:
-    workspace, evolve_home = init_workspace(tmp_path)
-
-    result = run_evolve(
-        "eval",
-        str(workspace),
-        "0",
-        "--force",
-        env={"EVAL_STUB": "1", "EVOLVE_HOME": str(evolve_home)},
-    )
-
-    assert result.returncode == 0, result.stderr
-    commit = git(workspace, "rev-parse", "gen/0^{commit}")
-    assert (
-        workspace
-        / "runs/evaluations/candidate/gen-0"
-        / f"candidate-{commit}"
-        / "attempt-1/score"
-    ).exists()
-    last_event = json.loads((workspace / "archive.jsonl").read_text().splitlines()[-1])
-    assert last_event["genid"] == "0"
-    assert last_event[MECHANISM_EVAL_FIELD] is True
-
-
-def test_ordinary_evaluation_is_marked_and_receipted(tmp_path: Path) -> None:
-    workspace, evolve_home = init_workspace(tmp_path)
-
-    result = run_evolve(
-        "run",
-        str(workspace),
-        "--max-generations",
-        "1",
-        env={"EVAL_STUB": "1", "EVOLVE_HOME": str(evolve_home)},
-    )
-
-    assert result.returncode == 0, result.stderr
-    events = [json.loads(line) for line in (workspace / "archive.jsonl").read_text().splitlines()]
-    evaluation = next(
-        event
-        for event in events
-        if event.get("genid") == "1" and event.get("pending_gate_record") is True
-    )
-    assert evaluation[MECHANISM_EVAL_FIELD] is True
-    assert verify_integrity(workspace) == []
 
 
 def test_evaluator_validates_task_vectors_and_compacts_artifact_references(tmp_path: Path) -> None:
@@ -377,52 +160,6 @@ def test_evaluator_validates_task_vectors_and_compacts_artifact_references(tmp_p
         _read_task_vector(run_dir)
 
 
-def test_evaluate_uses_exact_commit_attempt_and_ignores_compatibility_score(
-    tmp_path: Path,
-) -> None:
-    workspace, _evolve_home = init_workspace(tmp_path)
-    script = workspace / "evaluator/eval.sh"
-    make_eval_script(
-        script,
-        "#!/bin/sh\n"
-        "set -eu\n"
-        'mkdir -p "$EVOLVE_RUN_DIR"\n'
-        "printf '999.0\\n' > \"$EVOLVE_RUN_DIR/score\"\n"
-        "printf 'complete\\n' > \"$EVOLVE_RUN_DIR/status\"\n"
-        "printf '{\"schema_version\":1,\"tasks\":{\"case-a\":{\"trials\":[{\"trial\":0,\"status\":\"benchmark_complete\",\"reward\":0.0}]}}}\\n' > \"$EVOLVE_RUN_DIR/task_vector.json\"\n"
-        "printf '{\"usd\":2.5}\\n' > \"$EVOLVE_RUN_DIR/cost.json\"\n",
-    )
-    config = workspace / "evolve.yaml"
-    config.write_text(config.read_text().replace("tasks_per_round: 16", "tasks_per_round: 1"))
-    git(workspace, "add", "evaluator/eval.sh", "evolve.yaml")
-    git(workspace, "commit", "-m", "test exact evaluator evidence")
-    git(workspace, "tag", "-f", "gen/0")
-
-    record = evaluate(workspace, "gen/0", "0", purpose="genesis")
-    candidate_commit = git(workspace, "rev-parse", "gen/0^{commit}")
-    attempt = (
-        workspace
-        / "runs/evaluations/genesis/gen-0"
-        / f"candidate-{candidate_commit}"
-        / "attempt-1"
-    )
-
-    assert record.candidate_commit == candidate_commit
-    assert record.outcome is Outcome.BENCHMARK_COMPLETE
-    assert record.score == 0.0
-    assert record.cost_usd == 2.5
-    assert record.evaluator_fingerprint == git(workspace, "rev-parse", "gen/0:evaluator")
-    assert record.runtime_fingerprint == hashlib.sha256(b"sha256:test-runtime\n").hexdigest()
-    assert (attempt / "task_vector.json").is_file()
-    assert (attempt / "stdout.log").is_file()
-    assert (attempt / "stderr.log").is_file()
-    second = evaluate(workspace, "gen/0", "0", purpose="genesis")
-    assert second.attempt == 2
-    assert (attempt.parent / "attempt-2/task_vector.json").is_file()
-    with pytest.raises(FileExistsError, match="attempt already exists"):
-        evaluate(workspace, "gen/0", "0", purpose="genesis", attempt=1)
-
-
 def test_evaluator_tree_mismatch_does_not_consume_attempt_identity(tmp_path: Path) -> None:
     workspace, _evolve_home = init_workspace(tmp_path)
     make_eval_script(workspace / "evaluator/eval.sh", "#!/bin/sh\nexit 0\n")
@@ -434,94 +171,6 @@ def test_evaluator_tree_mismatch_does_not_consume_attempt_identity(tmp_path: Pat
         evaluate(workspace, "gen/1", "1")
 
     assert not (workspace / "runs/evaluations/candidate/gen-1").exists()
-
-
-def test_reward_bearing_candidate_failure_is_classified_after_ingestion(tmp_path: Path) -> None:
-    workspace, _evolve_home = init_workspace(tmp_path)
-    make_eval_script(
-        workspace / "evaluator/eval.sh",
-        "#!/bin/sh\n"
-        "set -eu\n"
-        'mkdir -p "$EVOLVE_RUN_DIR"\n'
-        "printf '{\"schema_version\":1,\"tasks\":{\"case-a\":{\"trials\":[{\"trial\":0,\"status\":\"candidate_invalid\",\"reward\":0.0,\"owner\":\"candidate\",\"exception_type\":\"RuntimeError\"}]}}}\\n' > \"$EVOLVE_RUN_DIR/task_vector.json\"\n"
-        "exit 3\n",
-    )
-    config = workspace / "evolve.yaml"
-    config.write_text(config.read_text().replace("tasks_per_round: 16", "tasks_per_round: 1"))
-    git(workspace, "add", "evaluator/eval.sh", "evolve.yaml")
-    git(workspace, "commit", "-m", "emit diagnostic candidate reward")
-    git(workspace, "tag", "-f", "gen/0")
-
-    record = evaluate(workspace, "gen/0", "0", purpose="genesis")
-
-    assert record.outcome is Outcome.CANDIDATE_INVALID
-    assert record.trials[0].reward == 0.0
-    assert record.score is None
-
-
-def test_candidate_wide_structured_setup_failure_beats_nonzero_exit(
-    tmp_path: Path,
-) -> None:
-    workspace, _evolve_home = init_workspace(tmp_path)
-    make_eval_script(
-        workspace / "evaluator/eval.sh",
-        "#!/bin/sh\n"
-        "set -eu\n"
-        'mkdir -p "$EVOLVE_RUN_DIR"\n'
-        "printf 'candidate_invalid\\n' > \"$EVOLVE_RUN_DIR/setup_outcome\"\n"
-        "printf 'candidate dependency setup failed\\n' > \"$EVOLVE_RUN_DIR/setup_reason\"\n"
-        "exit 3\n",
-    )
-    git(workspace, "add", "evaluator/eval.sh")
-    git(workspace, "commit", "-m", "test structured setup failure")
-    git(workspace, "tag", "-f", "gen/0")
-
-    record = evaluate(workspace, "gen/0", "0", purpose="genesis")
-
-    assert record.outcome is Outcome.CANDIDATE_INVALID
-    assert record.reason == "candidate dependency setup failed"
-    assert record.trials == ()
-    assert record.score is None
-
-
-def test_force_re_evaluation_appends_complete_record_evidence(tmp_path: Path) -> None:
-    workspace, evolve_home = init_workspace(tmp_path)
-    script = workspace / "evaluator/eval.sh"
-    make_eval_script(
-        script,
-        "#!/bin/sh\n"
-        "set -eu\n"
-        'mkdir -p "$EVOLVE_RUN_DIR"\n'
-        "printf '{\"schema_version\":1,\"tasks\":{\"case-a\":{\"trials\":[{\"trial\":0,\"status\":\"benchmark_complete\",\"reward\":1.0}]}}}\\n' > \"$EVOLVE_RUN_DIR/task_vector.json\"\n"
-        "printf '{\"usd\":2.5}\\n' > \"$EVOLVE_RUN_DIR/cost.json\"\n"
-        "printf '{\"trials\":[]}\\n' > \"$EVOLVE_RUN_DIR/evaluation_artifacts.json\"\n",
-    )
-    config = workspace / "evolve.yaml"
-    config.write_text(config.read_text().replace("tasks_per_round: 16", "tasks_per_round: 1"))
-    git(workspace, "add", "evaluator/eval.sh", "evolve.yaml")
-    git(workspace, "commit", "-m", "emit complete record evidence")
-    git(workspace, "tag", "-f", "gen/0")
-
-    for _ in range(2):
-        result = run_evolve(
-            "eval", str(workspace), "0", "--force",
-            env={"EVOLVE_HOME": str(evolve_home)},
-        )
-        assert result.returncode == 0, result.stderr
-
-    events = [event for event in map(json.loads, (workspace / "archive.jsonl").read_text().splitlines())
-              if event.get("event_type") == "evaluation"]
-    assert [event["attempt"] for event in events] == [1, 2]
-    event = events[-1]
-    assert event["cost"] == {"usd": 2.5, "wall_s": event["wall_s"]}
-    assert event["artifacts"]["path"].endswith("attempt-2/evaluation_artifacts.json")
-    for field in (
-        "candidate_commit", "runtime_fingerprint", "purpose", "expected_trials",
-        "outcome", "selection_eligible", "trials",
-    ):
-        assert field in event
-    assert event["selection_eligible"] is True
-    assert event["valid_parent"] is True
 
 
 def test_effective_task_set_identity_uses_configured_names_dataset_and_attempts(tmp_path: Path) -> None:

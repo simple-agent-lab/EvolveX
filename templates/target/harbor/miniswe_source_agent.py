@@ -18,7 +18,7 @@ HOST_UV_PATH = "/tmp/evolve-uv"
 PROXY_NAMES = ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy")
 
 
-RUNNER = r'''
+RUNNER = r"""
 import json
 import os
 from pathlib import Path
@@ -47,20 +47,20 @@ agent_kwargs["cost_limit"] = float(os.environ.get("MINISWE_COST_LIMIT", agent_kw
 agent_kwargs["output_path"] = os.environ.get("MINISWE_OUTPUT_PATH")
 agent = DefaultAgent(LitellmModel(**model_kwargs), LocalEnvironment(**env_kwargs), **agent_kwargs)
 print(json.dumps(agent.run(task), default=str))
-'''.strip()
+""".strip()
 
 
-MINISWE_PREFLIGHT = r'''
+MINISWE_PREFLIGHT = r"""
 from minisweagent.agents.default import DefaultAgent
 from minisweagent.config import get_config_from_spec
 from minisweagent.environments.local import LocalEnvironment
 
 assert DefaultAgent and LocalEnvironment and get_config_from_spec
 print("EVOLVE_PREFLIGHT: miniswe_import_ok")
-'''.strip()
+""".strip()
 
 
-MODEL_PREFLIGHT = r'''
+MODEL_PREFLIGHT = r"""
 import os
 
 from minisweagent.config import get_config_from_spec
@@ -76,7 +76,7 @@ model_kwargs["model_name"] = os.environ["MSWEA_MODEL_NAME"]
 model_kwargs["cost_tracking"] = "ignore_errors"
 LitellmModel(**model_kwargs)
 print("EVOLVE_PREFLIGHT: model_path_init_ok")
-'''.strip()
+""".strip()
 
 
 class MiniSweSourceAgent(MiniSweAgent):
@@ -97,17 +97,17 @@ class MiniSweSourceAgent(MiniSweAgent):
             environment,
             command=(
                 "set -euo pipefail; "
-                "mkdir -p \"$HOME/.local/bin\"; export PATH=\"$HOME/.local/bin:$PATH\"; "
+                'mkdir -p "$HOME/.local/bin"; export PATH="$HOME/.local/bin:$PATH"; '
                 f"if [ -f {HOST_UV_PATH} ]; then "
-                f"cp {HOST_UV_PATH} \"$HOME/.local/bin/uv\"; chmod 755 \"$HOME/.local/bin/uv\"; "
-                "if ! \"$HOME/.local/bin/uv\" --version >/dev/null 2>&1; then rm -f \"$HOME/.local/bin/uv\"; fi; "
+                f'cp {HOST_UV_PATH} "$HOME/.local/bin/uv"; chmod 755 "$HOME/.local/bin/uv"; '
+                'if ! "$HOME/.local/bin/uv" --version >/dev/null 2>&1; then rm -f "$HOME/.local/bin/uv"; fi; '
                 "fi; "
                 "if ! command -v uv >/dev/null 2>&1 || ! uv --version >/dev/null 2>&1; then "
-                "rm -f \"$HOME/.local/bin/uv\"; "
+                'rm -f "$HOME/.local/bin/uv"; '
                 "curl -LsSf https://astral.sh/uv/0.7.13/install.sh | sh; "
                 "fi; "
-                "if [ -f \"$HOME/.local/bin/env\" ]; then . \"$HOME/.local/bin/env\"; "
-                "else export PATH=\"$HOME/.local/bin:$PATH\"; fi; "
+                'if [ -f "$HOME/.local/bin/env" ]; then . "$HOME/.local/bin/env"; '
+                'else export PATH="$HOME/.local/bin:$PATH"; fi; '
                 "uv --version >/dev/null"
             ),
             env=install_env,
@@ -115,8 +115,8 @@ class MiniSweSourceAgent(MiniSweAgent):
         await self._candidate_phase(
             environment,
             "set -euo pipefail; "
-            "if [ -f \"$HOME/.local/bin/env\" ]; then . \"$HOME/.local/bin/env\"; "
-            "else export PATH=\"$HOME/.local/bin:$PATH\"; fi; "
+            'if [ -f "$HOME/.local/bin/env" ]; then . "$HOME/.local/bin/env"; '
+            'else export PATH="$HOME/.local/bin:$PATH"; fi; '
             f"uv sync --project {SOURCE_DIR} --frozen",
             "frozen_sync_failed",
             env=install_env,
@@ -156,16 +156,19 @@ class MiniSweSourceAgent(MiniSweAgent):
 
     def _runtime_evidence_command(self) -> str:
         mode = self._get_env("EVOLVE_CANDIDATE_SMOKE_MODE") or "normal"
-        payload = json.dumps(
-            {
-                "schema_version": 1,
-                "mode": mode,
-                "frozen_sync": True,
-                "miniswe_import": True,
-                "model_path_init": mode != "container",
-            },
-            sort_keys=True,
-        ) + "\n"
+        payload = (
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "mode": mode,
+                    "frozen_sync": True,
+                    "miniswe_import": True,
+                    "model_path_init": mode != "container",
+                },
+                sort_keys=True,
+            )
+            + "\n"
+        )
         script = f"from pathlib import Path; Path({RUNTIME_EVIDENCE_PATH!r}).write_text({payload!r})"
         return f"mkdir -p /logs/agent; {VENV_PYTHON} -c {shlex.quote(script)}"
 
@@ -213,8 +216,8 @@ class MiniSweSourceAgent(MiniSweAgent):
         task_literal = repr(task)
         return (
             "set -euo pipefail\n"
-            "if [ -f \"$HOME/.local/bin/env\" ]; then . \"$HOME/.local/bin/env\"; "
-            "else export PATH=\"$HOME/.local/bin:$PATH\"; fi\n"
+            'if [ -f "$HOME/.local/bin/env" ]; then . "$HOME/.local/bin/env"; '
+            'else export PATH="$HOME/.local/bin:$PATH"; fi\n'
             "unset HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy\n"
             f"cat > {shlex.quote(RUNNER_PATH)} <<'PY'\n{RUNNER}\nPY\n"
             f"{VENV_PYTHON} - <<'PY'\n"
@@ -241,6 +244,10 @@ class MiniSweSourceAgent(MiniSweAgent):
         if api_base is not None:
             env["OPENAI_BASE_URL"] = api_base
             env["OPENAI_API_BASE"] = api_base
+        for name in ("MINISWE_STEP_LIMIT", "MINISWE_COST_LIMIT", "MINISWE_ENV_TIMEOUT"):
+            value = self._get_env(name)
+            if value is not None:
+                env[name] = value
         smoke_mode = self._get_env("EVOLVE_CANDIDATE_SMOKE_MODE")
         if smoke_mode is not None:
             env["EVOLVE_CANDIDATE_SMOKE_MODE"] = smoke_mode

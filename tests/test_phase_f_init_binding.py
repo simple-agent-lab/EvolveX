@@ -3,23 +3,49 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_real_recipe_binds_meta_agent_to_agent_command_library_variant(tmp_path: Path) -> None:
+def test_real_recipe_binds_harbor_rollout_trace_analyzer_and_hyperagents_meta_agent(tmp_path: Path) -> None:
     from evolve import workspace as workspace_module
 
     config = workspace_module.default_config("hill_climb", "hill")
 
     bindings = workspace_module._operator_bindings(config, recipe="hill_climb", init_cwd=tmp_path)
+    rollout = next(binding for binding in bindings if binding.kind == "rollout")
+    trace_analyzer = next(binding for binding in bindings if binding.kind == "trace_analyzer")
     meta_agent = next(binding for binding in bindings if binding.kind == "meta_agent")
 
-    expected_source = (ROOT / "library" / "meta_agent" / "agent_command.py").read_text()
-    assert meta_agent.source == "library/meta_agent/agent_command.py"
+    assert rollout.source == "library/rollout/harbor.py"
+    assert trace_analyzer.source == "library/trace_analyzer/failure_patterns.py"
+    expected_source = (ROOT / "library" / "meta_agent" / "hyperagents.py").read_text()
+    assert meta_agent.source == "library/meta_agent/hyperagents.py"
     assert meta_agent.text == expected_source
 
     palette = workspace_module._operator_palette("hill_climb")
-    assert "library/meta_agent/agent_command.py" in palette
+    assets = workspace_module._operator_assets("hill_climb")
+    assert "library/meta_agent/runners/__init__.py" in assets
+    assert "library/meta_agent/runners/local.py" in assets
+    assert "library/meta_agent/runners/harbor.py" in assets
+    assert "library/meta_agent/support/evidence.py" in assets
     assert "library/meta_agent/fixed.py" not in palette
     assert "library/meta_agent/noop.py" not in palette
     assert "library/meta_agent/llm.py" not in palette
+
+
+def test_meta_agent_runners_are_not_operator_variants(tmp_path: Path) -> None:
+    from evolve import workspace as workspace_module
+
+    variants = workspace_module._available_operator_variants("hill_climb", "meta_agent")
+    assert variants == ["ahe", "hyperagents"]
+    assert "local" not in variants
+    assert "harbor" not in variants
+
+    config = workspace_module.default_config("hill_climb", "hill")
+    config["operators"]["meta_agent"]["variant"] = "harbor"
+    try:
+        workspace_module._operator_bindings(config, recipe="hill_climb", init_cwd=tmp_path)
+    except ValueError as exc:
+        assert "unknown meta_agent variant: harbor" in str(exc)
+    else:
+        raise AssertionError("expected runner-as-variant rejection")
 
 
 def test_variant_markdown_companion_becomes_active_operator_prompt(tmp_path: Path, monkeypatch) -> None:
@@ -57,6 +83,8 @@ def test_operator_assets_vendor_nested_prompt_files(tmp_path: Path, monkeypatch)
     library = tmp_path / "library"
     (library / "meta_agent" / "prompts").mkdir(parents=True)
     (library / "meta_agent" / "prompts" / "strategy.md").write_text("Strategy prompt\n")
+    (library / "meta_agent" / "runners").mkdir()
+    (library / "meta_agent" / "runners" / "backend.py").write_text("RUNNER = True\n")
     (library / "meta_agent" / "prompts" / "strategy.bin").write_bytes(b"\x86\x00")
     (library / "meta_agent" / "__pycache__").mkdir()
     (library / "meta_agent" / "__pycache__" / "strategy.cpython-314.pyc").write_bytes(b"\x86\x00")
@@ -64,7 +92,10 @@ def test_operator_assets_vendor_nested_prompt_files(tmp_path: Path, monkeypatch)
 
     assets = workspace_module._operator_assets("custom")
 
-    assert assets == {"library/meta_agent/prompts/strategy.md": "Strategy prompt\n"}
+    assert assets == {
+        "library/meta_agent/prompts/strategy.md": "Strategy prompt\n",
+        "library/meta_agent/runners/backend.py": "RUNNER = True\n",
+    }
 
 
 def test_operator_assets_reads_only_direct_root_python_helpers(tmp_path: Path, monkeypatch) -> None:

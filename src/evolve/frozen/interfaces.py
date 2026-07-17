@@ -249,12 +249,6 @@ def validate_rollout_artifacts_payload(payload: object) -> list[str]:
     return [str(item) for item in payload]
 
 
-def validate_meta_agent_predicted_fixes_payload(payload: object) -> list[str]:
-    if not isinstance(payload, list):
-        raise PayloadValidationError("predicted_fixes", "predicted_fixes must be a list")
-    return [str(item) for item in payload]
-
-
 def validate_meta_agent_usage_payload(payload: object) -> dict[str, Any]:
     data = _json_object(payload, "usage", "usage must be a JSON object")
     usd = data.get("usd")

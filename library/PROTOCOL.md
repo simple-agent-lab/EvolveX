@@ -101,10 +101,9 @@ def run(self, checkout: Path, observation: str, ctx) -> MetaAgentResult:
 ```
 
 Implement `run`. Return `MetaAgentResult` with fields `changed`, `notes`, and
-`usage`. The subprocess writes `meta_agent/changed.json`, ensures
-`meta_agent/predicted_fixes.json`, may write `meta_agent/rationale.md`, and
-writes `meta_agent/usage.json`. `usage` is a JSON object, commonly including
-`usd`.
+`usage`. The subprocess writes `meta_agent/changed.json`, may write
+`meta_agent/rationale.md`, and writes `meta_agent/usage.json`. `usage` is a JSON
+object, commonly including `usd`.
 
 ### Novelty (optional)
 
@@ -129,12 +128,9 @@ ABC signature:
 def reflect(self, archive, ctx) -> ReflectResult:
 ```
 
-Implement `reflect`. Return `ReflectResult` with field `ops` (a list of
-full-state playbook entries, each with an `id`). The subprocess appends the ops
-to `insights/playbook.jsonl` (append-only; folding by id gives current state).
-Runs only when a recipe configures `operators.reflect` (DESIGN §7, off by
-default). This is the credit-backfill memory: it turns `verified_fixes` into
-insights a future meta-agent can consult.
+Implement `reflect`. Return `ReflectResult` with field `ops`. A configured
+credit-reflection variant may consume optional `verified_fixes` annotations;
+strategies such as AHE that do not emit predictions simply produce no credit.
 
 ### Gate
 
@@ -193,7 +189,7 @@ may appear in recipe prose, but `variant:` values point to these files:
 - select: `greedy`, `random`, `score_weighted`, `newest`
 - rollout: `failure_focused`, `harbor`, `noop`
 - trace_analyzer: `failure_patterns`, `failed_traces`, `trace_browser`, `execution_records`, `utility_metrics`
-- meta_agent: `agent_command`, `hyperagents`
+- meta_agent: `hyperagents` (`runner`: `local` or `harbor`)
 - validate: `hyperagents`
 - gate: `hillclimb`, `parent_eligible`
 - record: `jsonl`

@@ -49,7 +49,8 @@ RECORD_STRIPPED_FIELDS = STAMPED_FIELDS | {
     "surface_violations",
     "evals",
     "kind",
-    "round", "pending_gate_record",
+    "round",
+    "pending_gate_record",
     MECHANISM_EVAL_FIELD,
 }
 
@@ -110,8 +111,6 @@ def main(operator_cls: type[object]) -> None:
         payload = validate_meta_agent_payload(operator.run(ctx.checkout, _observation(ctx.run_dir), ctx))
         meta_agent_dir = ctx.run_dir / "meta_agent"
         _write_json(meta_agent_dir / "changed.json", payload["changed"])
-        if not (meta_agent_dir / "predicted_fixes.json").exists():
-            _write_json(meta_agent_dir / "predicted_fixes.json", payload["changed"])
         if payload["notes"] and not (meta_agent_dir / "rationale.md").exists():
             (meta_agent_dir / "rationale.md").write_text("\n".join(payload["notes"]) + "\n")
         if not (meta_agent_dir / "usage.json").exists():
