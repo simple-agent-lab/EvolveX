@@ -172,6 +172,25 @@ def test_harbor_rollout_bounds_codex_session_events_to_the_latest_trace_window(t
     assert case["events"][-1]["message"] == "message-99"
 
 
+def test_harbor_rollout_bounds_trajectory_events_to_the_latest_trace_window(tmp_path: Path) -> None:
+    module = _harbor_rollout_module()
+    jobs = tmp_path / "jobs"
+    trial = _write_trial(jobs, name="long-trajectory", reward=0)
+    trajectory = {
+        "steps": [
+            {"source": "agent", "message": f"message-{index}"}
+            for index in range(100)
+        ]
+    }
+    (trial / "agent" / "trajectory.json").write_text(json.dumps(trajectory))
+
+    case = module._collect_cases(jobs)[0]
+
+    assert len(case["events"]) == 32
+    assert case["events"][0]["message"] == "message-68"
+    assert case["events"][-1]["message"] == "message-99"
+
+
 def test_feedback_bundle_exposes_current_rollout_to_mutator(tmp_path: Path) -> None:
     workspace, _ = init_workspace(tmp_path)
     run_dir = workspace / "runs" / "gen-1"

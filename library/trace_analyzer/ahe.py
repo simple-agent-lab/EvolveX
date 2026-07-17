@@ -22,9 +22,19 @@ COLLECTION_LIMIT = 32
 MAX_NESTING = 6
 EXPANSION_FACTOR = 8
 TRUNCATION_KEY = "__ahe_truncated__"
+_SECRET_NAME = r"[a-z0-9_-]*(?:api[_-]?key|access[_-]?token|auth(?:orization)?|secret|password)"
+_SECRET_DOUBLE_QUOTED = re.compile(
+    rf'(?i)\b({_SECRET_NAME})\b(["\']?)(\s*[:=]\s*)"(?:\\.|[^"\\\r\n])*"'
+)
+_SECRET_SINGLE_QUOTED = re.compile(
+    rf"(?i)\b({_SECRET_NAME})\b([\"']?)(\s*[:=]\s*)'(?:\\.|[^'\\\r\n])*'"
+)
+_BASIC_AUTHORIZATION = re.compile(
+    rf"(?i)\b({_SECRET_NAME})\b([\"']?)(\s*[:=]\s*)(Basic)(\s+)([^\s,;}}]+)"
+)
 _SECRET_ASSIGNMENT = re.compile(
-    r"(?i)\b([a-z0-9_-]*(?:api[_-]?key|access[_-]?token|auth(?:orization)?|secret|password))\b"
-    r"([\"']?)(\s*[:=]\s*)([^\s,;}]+)"
+    rf"(?i)\b({_SECRET_NAME})\b([\"']?)(\s*[:=]\s*)"
+    r"(?![\"'])(?!(?:Basic|Bearer)(?:\s|$))(?!\[REDACTED\])([^\s,;}]+)"
 )
 _BEARER = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+")
 _SECRET_KEY = re.compile(r"(?i)(?:api[_-]?key|access[_-]?token|auth(?:orization)?|secret|password)")
@@ -49,6 +59,9 @@ def _positive_int(value: object, default: int) -> int:
 
 def _redact(text: str) -> str:
     text = _BEARER.sub("Bearer [REDACTED]", text)
+    text = _SECRET_DOUBLE_QUOTED.sub(r'\1\2\3"[REDACTED]"', text)
+    text = _SECRET_SINGLE_QUOTED.sub(r"\1\2\3'[REDACTED]'", text)
+    text = _BASIC_AUTHORIZATION.sub(r"\1\2\3\4\5[REDACTED]", text)
     return _SECRET_ASSIGNMENT.sub(
         lambda match: f"{match.group(1)}{match.group(2)}{match.group(3)}[REDACTED]",
         text,
@@ -192,8 +205,17 @@ def _select(cases: list[Case], maximum: int) -> list[Case]:
     return (failures + successes)[:maximum]
 
 
+def _outcome_counts(cases: list[Case]) -> dict[str, int]:
+    counts = Counter(str(case.get("outcome") or "unknown") for case in cases)
+    items = [(name, count) for name, count in sorted(counts.items()) if name != TRUNCATION_KEY]
+    if len(counts) <= COLLECTION_LIMIT and len(items) == len(counts):
+        return dict(items)
+    kept = dict(items[: COLLECTION_LIMIT - 1])
+    kept[TRUNCATION_KEY] = len(counts) - len(kept)
+    return kept
+
+
 def _overview(cases: list[Case], selected: list[Case], error: str | None) -> Case:
-    outcomes = Counter(str(case.get("outcome") or "unknown") for case in cases)
     rewards = [
         float(case["reward"])
         for case in cases
@@ -204,7 +226,7 @@ def _overview(cases: list[Case], selected: list[Case], error: str | None) -> Cas
         "error": error,
         "observed": len(cases),
         "selected": len(selected),
-        "outcomes": dict(sorted(outcomes.items())),
+        "outcomes": _outcome_counts(cases),
         "mean_reward": round(sum(rewards) / len(rewards), 6) if rewards else None,
         "cases": [
             {

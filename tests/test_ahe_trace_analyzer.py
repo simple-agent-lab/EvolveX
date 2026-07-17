@@ -175,6 +175,48 @@ def test_ahe_analyzer_bounds_and_redacts_malformed_case_fields(tmp_path: Path) -
     assert rows[1]["usage"] == {}
 
 
+def test_ahe_redacts_complete_quoted_and_basic_credentials_without_damaging_other_evidence() -> None:
+    module = _module()
+    evidence = (
+        'password="two word secret" keep=this evidence\n'
+        "Authorization: Basic dXNlcjpwYXNz\n"
+        "Authorization: Bearer bearer-token\n"
+        "status=ordinary evidence remains"
+    )
+
+    redacted = module._redact(evidence)
+
+    assert "two word secret" not in redacted
+    assert "dXNlcjpwYXNz" not in redacted
+    assert "bearer-token" not in redacted
+    assert 'password="[REDACTED]" keep=this evidence' in redacted
+    assert "Authorization: Basic [REDACTED]" in redacted
+    assert "Authorization: Bearer [REDACTED]" in redacted
+    assert "status=ordinary evidence remains" in redacted
+
+
+def test_ahe_analyzer_bounds_distinct_outcome_counts_with_explicit_truncation(tmp_path: Path) -> None:
+    module = _module()
+    ctx = _ctx(tmp_path, max_cases=1)
+    distinct = module.COLLECTION_LIMIT + 8
+    _write_cases(
+        ctx,
+        [_case(f"case-{index:03d}", f"outcome-{index:03d}", None) for index in range(distinct)],
+    )
+
+    result = module.AheTraceAnalyzer().analyze(ctx.checkout, ctx)
+
+    evidence = ctx.run_dir / "trace_analyzer" / "evidence"
+    overview = json.loads((evidence / "overview.json").read_text())
+    assert len(result.summary["outcomes"]) <= module.COLLECTION_LIMIT
+    assert len(overview["outcomes"]) <= module.COLLECTION_LIMIT
+    assert overview["outcomes"][module.TRUNCATION_KEY] == 9
+    retained = sorted(name for name in overview["outcomes"] if name != module.TRUNCATION_KEY)
+    assert retained == [f"outcome-{index:03d}" for index in range(31)]
+    assert module.TRUNCATION_KEY in (evidence / "selected.md").read_text()
+    assert module.TRUNCATION_KEY in (ctx.run_dir / "trace_analyzer" / "feedback.md").read_text()
+
+
 @pytest.mark.parametrize("payload", [None, "not-json", "{}"])
 def test_ahe_analyzer_emits_exact_error_artifacts_when_current_cases_are_unavailable(
     tmp_path: Path, payload: str | None
