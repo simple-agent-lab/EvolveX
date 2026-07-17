@@ -533,6 +533,8 @@ class HarborRollout(RolloutOperator):
             tasks,
             "--agent",
             agent,
+            "--ae",
+            f"EVOLVE_CANDIDATE_SOURCE={(checkout / 'target').resolve()}",
             "--jobs-dir",
             str(jobs_dir),
             "--n-attempts",
