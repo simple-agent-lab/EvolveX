@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import os
 import random
 import shutil
@@ -106,7 +107,11 @@ if len(sys.argv) < 2 or sys.argv[1] != "exec":
     raise SystemExit("expected harbor exec")
 if "--no-scan" not in sys.argv:
     raise SystemExit("expected --no-scan")
-if option("--artifact") != "/app/candidate":
+readonly = os.environ.get("FAKE_HARBOR_MODE") == "readonly"
+if readonly:
+    if "--artifact" in sys.argv:
+        raise SystemExit("readonly execution must not request an artifact")
+elif option("--artifact") != "/app/candidate":
     raise SystemExit("expected /app/candidate artifact")
 if option("--workdir") != "/app":
     raise SystemExit("expected /app workdir")
@@ -120,17 +125,19 @@ jobs_dir = Path(option("--jobs-dir"))
 job_name = option("--job-name")
 job_dir = jobs_dir / job_name
 trial_dir = job_dir / "task-0001__fake"
+trial_dir.mkdir(parents=True, exist_ok=True)
 artifact = trial_dir / "artifacts" / "app" / "candidate"
-artifact.parent.mkdir(parents=True, exist_ok=True)
-shutil.copytree(source / "candidate", artifact, symlinks=True)
+if not readonly:
+    artifact.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(source / "candidate", artifact, symlinks=True)
 
-(artifact / "target" / "agent.py").write_text("print('child')\\n")
-(artifact / "target" / "added.txt").write_text("created in Harbor\\n")
-(artifact / "target" / "obsolete.txt").unlink()
-if (artifact / "operators").exists():
-    (artifact / "operators" / "meta_agent.md").write_text("# Changed by Harbor\\n")
-if os.environ.get("FAKE_HARBOR_MODE") == "artifact-symlink":
-    (artifact / "target" / "link.txt").symlink_to("agent.py")
+    (artifact / "target" / "agent.py").write_text("print('child')\\n")
+    (artifact / "target" / "added.txt").write_text("created in Harbor\\n")
+    (artifact / "target" / "obsolete.txt").unlink()
+    if (artifact / "operators").exists():
+        (artifact / "operators" / "meta_agent.md").write_text("# Changed by Harbor\\n")
+    if os.environ.get("FAKE_HARBOR_MODE") == "artifact-symlink":
+        (artifact / "target" / "link.txt").symlink_to("agent.py")
 
 manifest = [
     {
@@ -148,7 +155,8 @@ manifest = [
         "service": None,
     },
 ]
-(trial_dir / "artifacts" / "manifest.json").write_text(json.dumps(manifest))
+if not readonly:
+    (trial_dir / "artifacts" / "manifest.json").write_text(json.dumps(manifest))
 
 exception = None
 if os.environ.get("FAKE_HARBOR_MODE") == "agent-error":
@@ -186,7 +194,11 @@ agent_dir.mkdir()
             "steps": [
                 {
                     "source": "agent",
-                    "message": 'Completed the mutation.\\npredicted_fixes: ["task-1"]',
+                    "message": (
+                        "ROOT CAUSE: tool retry loop"
+                        if readonly
+                        else 'Completed the mutation.\\npredicted_fixes: ["task-1"]'
+                    ),
                 }
             ]
         }
@@ -223,6 +235,33 @@ def test_harbor_meta_agent_round_trips_target_and_writes_artifacts(
     assert "failure evidence" in (meta_dir / "harbor" / "prompt.md").read_text()
     assert "/app/candidate" in (meta_dir / "harbor" / "prompt.md").read_text()
     assert list((meta_dir / "harbor" / "jobs").glob("*/*/result.json"))
+
+
+def test_harbor_readonly_agent_returns_response_without_candidate_artifact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    checkout, run_dir = _checkout(tmp_path)
+    bin_dir = tmp_path / "bin"
+    _install_fake_harbor(bin_dir)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("FAKE_HARBOR_MODE", "readonly")
+    runner = _harbor_runner_module()
+    output_dir = run_dir / "trace_analyzer" / "debugger" / "task-a" / "attempt-1"
+
+    result = runner.run_readonly_agent(
+        checkout,
+        "Analyze this trace",
+        _ctx(checkout, run_dir),
+        output_dir=output_dir,
+        job_name="ahe-debug-task-a-attempt-1",
+        timeout_s=30,
+    )
+
+    assert result.output == "ROOT CAUSE: tool retry loop"
+    assert result.usage["usd"] == 0.25
+    command = json.loads((output_dir / "command.json").read_text())
+    assert "--artifact" not in command
+    assert not (checkout / "target" / "added.txt").exists()
 
 
 def test_harbor_meta_agent_round_trips_target_and_operators(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
