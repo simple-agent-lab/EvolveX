@@ -306,6 +306,18 @@ def _debugger_prompt(job: TaskAnalysisJob) -> str:
     )
 
 
+def _debugger_runner_prompt(job: TaskAnalysisJob, config: dict[str, Any]) -> str:
+    prompt = _debugger_prompt(job)
+    if config.get("agent") != "mini-swe-agent":
+        return prompt
+    return (
+        prompt
+        + "\n\n# MiniSWE submission protocol\n\n"
+        "Return the requested report as your response text and include a standalone Bash tool call that executes "
+        "`echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`. Do not modify files."
+    )
+
+
 _DEBUGGER_RUNNER_KEYS = (
     "agent",
     "model",
@@ -337,14 +349,15 @@ def _safe_task_name(task_name: str) -> str:
 def _run_debugger_job(checkout: Path, ctx: OperatorContext, job: TaskAnalysisJob) -> DebuggerResult:
     attempts = _positive_int(ctx.config.get("retry_attempts"), 3)
     timeout_s = float(ctx.config.get("timeout_per_task") or 600)
-    runner_ctx = replace(ctx, config=_debugger_runner_config(checkout))
+    runner_config = _debugger_runner_config(checkout)
+    runner_ctx = replace(ctx, config=runner_config)
     slug = _safe_task_name(job.task_name)
     last_error: AgentCommandError | None = None
     for attempt in range(1, attempts + 1):
         try:
             result = run_readonly_agent(
                 checkout,
-                _debugger_prompt(job),
+                _debugger_runner_prompt(job, runner_config),
                 runner_ctx,
                 output_dir=ctx.run_dir / "trace_analyzer" / "debugger" / slug / f"attempt-{attempt}",
                 job_name=f"ahe-debug-{slug}-attempt-{attempt}",

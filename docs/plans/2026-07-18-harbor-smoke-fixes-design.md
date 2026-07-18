@@ -16,7 +16,7 @@ The disposable workspace staging directory will be created beside the host check
 
 ### Anchor trial count
 
-Evaluation classification will use the number of tasks actually selected for the effective task set when that membership is known. The Harbor evaluator shell will likewise recompute `EVOLVE_HARBOR_EXPECTED_TRIALS` after split selection from the selected task file and `k`. Thus one sealed task with `k=2` expects two trials, independent of the configured gate task count.
+Evaluation classification will use the number of tasks actually selected for the effective task set when that membership is known. The existing Harbor score parser already derives its count from the selected task file and `k`, so it needs no change. Thus one sealed task with `k=2` expects two trials, independent of the configured gate task count.
 
 ## Verification
 

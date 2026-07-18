@@ -356,6 +356,7 @@ def test_multi_root_install_rolls_back_when_second_replacement_fails(
     runner = _harbor_runner_module()
     surface = runner.load_surface_policy(checkout)
     bundle = runner._prepare_bundle(checkout, _ctx(checkout, run_dir), ["target", "operators"], surface)
+    assert bundle.staging.parent == checkout.parent
     returned = tmp_path / "returned"
     shutil.copytree(bundle.workspace, returned, symlinks=True)
     (returned / "target" / "agent.py").write_text("print('child')\n")
@@ -403,6 +404,9 @@ def test_harbor_trial_exception_does_not_modify_target(tmp_path: Path, monkeypat
     }
     assert after == before
     assert "NonZeroAgentExitCodeError" in str(excinfo.value)
+    error = json.loads((run_dir / "meta_agent" / "harbor" / "error.json").read_text())
+    assert error["type"] == "RuntimeError"
+    assert "NonZeroAgentExitCodeError" in error["message"]
 
 
 def test_harbor_meta_agent_rejects_source_symlinks_before_launch(

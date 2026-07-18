@@ -122,6 +122,17 @@ def test_ahe_debugger_reuses_only_allowlisted_meta_agent_config(tmp_path: Path) 
     assert "runner" not in config
 
 
+def test_ahe_miniswe_debugger_prompt_includes_submission_protocol() -> None:
+    module = _module()
+    job = module._build_jobs([_case("task-a", "failed", 0)], 90)[0]
+
+    prompt = module._debugger_runner_prompt(job, {"agent": "mini-swe-agent"})
+
+    assert "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT" in prompt
+    assert "standalone Bash tool call" in prompt
+    assert module._debugger_runner_prompt(job, {"agent": "codex"}) == module._debugger_prompt(job)
+
+
 def test_ahe_debugger_retries_and_fails_visibly(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     module = _module()
     ctx = _ctx(tmp_path)

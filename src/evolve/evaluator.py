@@ -42,7 +42,11 @@ def evaluate(
             timeout_zero = evaluator_boolean(evaluator, "benchmark_timeout_is_zero")
             task_set = effective_task_set_identity(checkout, evaluator, purpose=purpose)
             runtime_fingerprint = hashlib.sha256((checkout / "evaluator" / "runtime.pin").read_bytes()).hexdigest()
-            expected = _expected_trials(evaluator, task_limit)
+            expected = _expected_trials(
+                evaluator,
+                task_limit,
+                selected_tasks=len(task_set.members) if task_set.members else None,
+            )
             if attempt is None:
                 attempt = next_attempt(
                     workspace,
@@ -164,9 +168,13 @@ def _read_cost(run_dir: Path) -> float:
     return float(value)
 
 
-def _expected_trials(evaluator: dict[str, Any], task_limit: int | None) -> int:
+def _expected_trials(
+    evaluator: dict[str, Any], task_limit: int | None, *, selected_tasks: int | None = None
+) -> int:
     attempts = max(1, int(evaluator.get("k", 1)))
-    tasks = task_limit if task_limit is not None else int(evaluator.get("tasks_per_round", attempts))
+    tasks = selected_tasks if selected_tasks is not None else int(evaluator.get("tasks_per_round", attempts))
+    if task_limit is not None:
+        tasks = min(tasks, task_limit) if selected_tasks is not None else task_limit
     return max(1, tasks) * attempts
 
 

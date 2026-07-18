@@ -13,7 +13,7 @@ import pytest
 from evolve import runtime as runtime_module
 from evolve import workspace as workspace_module
 from evolve.evaluation import Outcome
-from evolve.evaluator import evaluate
+from evolve.evaluator import _expected_trials, evaluate
 from evolve.feedback import write_feedback_bundle
 from evolve.runtime import attempt_dir
 from evolve.workspace import InitOptions, init_workspace
@@ -357,3 +357,7 @@ def test_default_expected_trials_match_generated_evaluator_environment(
     assert record.outcome is Outcome.BENCHMARK_COMPLETE
     assert record.expected_trials == 4
     assert len(record.trials) == 4
+
+
+def test_anchor_expected_trials_use_selected_sealed_tasks() -> None:
+    assert _expected_trials({"k": 2, "tasks_per_round": 4}, None, selected_tasks=1) == 2

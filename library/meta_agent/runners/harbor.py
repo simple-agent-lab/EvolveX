@@ -162,7 +162,7 @@ def _prepare_bundle(
     roots = _editable_roots(value, surface)
     for root in roots:
         _validate_tree(checkout / root)
-    staging = Path(tempfile.mkdtemp(prefix="evolve-harbor-"))
+    staging = Path(tempfile.mkdtemp(prefix="evolve-harbor-", dir=checkout.parent))
     task_root = staging / "task"
     workspace = task_root / "workspace"
     try:
@@ -617,6 +617,14 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
             usage=usage,
         )
     except Exception as exc:
+        _write_json(
+            harbor_root / "error.json",
+            {
+                "message": _redact(str(exc)),
+                "returncode": returncode,
+                "type": exc.__class__.__name__,
+            },
+        )
         raise AgentCommandError(
             f"{exc.__class__.__name__}: {_redact(str(exc))}",
             output=output,
