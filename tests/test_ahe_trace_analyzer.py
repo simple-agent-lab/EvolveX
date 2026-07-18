@@ -130,6 +130,7 @@ def test_ahe_miniswe_debugger_prompt_includes_submission_protocol() -> None:
 
     assert "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT" in prompt
     assert "standalone Bash tool call" in prompt
+    assert "A response containing only the Bash call is invalid" in prompt
     assert module._debugger_runner_prompt(job, {"agent": "codex"}) == module._debugger_prompt(job)
 
 

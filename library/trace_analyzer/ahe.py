@@ -313,8 +313,9 @@ def _debugger_runner_prompt(job: TaskAnalysisJob, config: dict[str, Any]) -> str
     return (
         prompt
         + "\n\n# MiniSWE submission protocol\n\n"
-        "Return the requested report as your response text and include a standalone Bash tool call that executes "
-        "`echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`. Do not modify files."
+        "In one response, first write the complete requested report as reasoning text, then include a standalone "
+        "Bash tool call that executes `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`. A response containing only the "
+        "Bash call is invalid and will be retried. Do not inspect or modify files."
     )
 
 
