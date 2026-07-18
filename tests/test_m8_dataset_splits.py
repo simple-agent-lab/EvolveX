@@ -103,7 +103,9 @@ def test_harbor_rollout_uses_only_frozen_train_task_names(tmp_path: Path, monkey
     )
     (evaluator / "splits.json").write_text(json.dumps(manifest))
     (evaluator / "eval.env").write_text(
-        f"EVOLVE_HARBOR_TASKS={dataset}\nEVOLVE_HARBOR_AGENT=target.agent:HarborAgent\n"
+        f"EVOLVE_HARBOR_TASKS={dataset}\n"
+        "EVOLVE_HARBOR_AGENT=target.agent:HarborAgent\n"
+        f"EVOLVE_UV_CACHE_DIR={tmp_path / 'uv-cache'}\n"
     )
     captured: list[str] = []
 
@@ -136,5 +138,13 @@ def test_harbor_rollout_uses_only_frozen_train_task_names(tmp_path: Path, monkey
     included = [captured[index + 1] for index, value in enumerate(captured) if value == "--include-task-name"]
     assert included == manifest["tasks"]["train"][:3]
     assert f"EVOLVE_CANDIDATE_SOURCE={checkout / 'target'}" in captured
+    mounts = json.loads(captured[captured.index("--mounts") + 1])
+    assert mounts == [
+        {
+            "type": "bind",
+            "source": str(tmp_path / "uv-cache"),
+            "target": "/installed-agent/uv-cache",
+        }
+    ]
     assert not set(included) & set(manifest["tasks"]["gate"] + manifest["tasks"]["sealed"])
     assert result.summary["split"] == "train"
