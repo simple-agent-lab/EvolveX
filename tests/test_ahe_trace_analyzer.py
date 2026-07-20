@@ -32,7 +32,7 @@ def _ctx(tmp_path: Path, *, genid: str = "1", parent: str = "0") -> OperatorCont
         "  meta_agent:\n"
         "    variant: ahe\n"
         "    runner: harbor\n"
-        "    agent: mini-swe-agent\n"
+        "    agent: evolve_harbor_agent:FileTaskMiniSweAgent\n"
         "    model: gpt-test\n"
         "    environment: docker\n"
         "    editable_roots: [target]\n"
@@ -113,7 +113,7 @@ def test_ahe_debugger_reuses_only_allowlisted_meta_agent_config(tmp_path: Path) 
     config = module._debugger_runner_config(ctx.checkout)
 
     assert config == {
-        "agent": "mini-swe-agent",
+        "agent": "evolve_harbor_agent:FileTaskMiniSweAgent",
         "model": "gpt-test",
         "environment": "docker",
         "max_retries": 0,
@@ -172,8 +172,17 @@ def test_ahe_analyzer_writes_official_reports_and_baseline(tmp_path: Path, monke
     result = module.AheTraceAnalyzer().analyze(ctx.checkout, ctx)
 
     analysis = ctx.run_dir / "trace_analyzer" / "analysis"
-    assert "ROOT CAUSE" in (analysis / "detail" / "task-a.md").read_text()
+    detail = (analysis / "detail" / "task-a.md").read_text()
+    selected = (ctx.run_dir / "trace_analyzer" / "evidence" / "selected.md").read_text()
+    cases = (ctx.run_dir / "trace_analyzer" / "evidence" / "cases.jsonl").read_text()
+    assert "ROOT CAUSE" in detail
     assert "task-a" in (analysis / "overview.md").read_text()
+    assert "ROOT CAUSE" in selected
+    assert "runs/gen-1/trace_analyzer/analysis/detail/task-a.md" in selected
+    assert "## Bounded cases" not in selected
+    assert "## Bounded cases" in detail
+    assert '"trial_name": "fail-1"' in detail
+    assert '"trial_name": "fail-1"' in cases
     change = json.loads((analysis / "change_evaluation.json").read_text())
     assert change["status"] == "baseline"
     assert result.summary["tasks"] == 2

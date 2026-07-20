@@ -12,6 +12,7 @@ from evolve.agent import AgentCommandError
 from evolve.frozen.interfaces import OperatorContext
 
 ROOT = Path(__file__).resolve().parents[1]
+FILE_TASK_AGENT = "evolve_harbor_agent:FileTaskMiniSweAgent"
 
 
 def _harbor_runner_module():
@@ -23,6 +24,27 @@ def _harbor_runner_module():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def test_harbor_rejects_oversized_instruction_with_unsafe_agent(tmp_path: Path) -> None:
+    runner = _harbor_runner_module()
+    prompt = tmp_path / "prompt.md"
+    prompt.write_text("x" * (96 * 1024 + 1))
+
+    with pytest.raises(RuntimeError, match="harbor_instruction_transport_unsafe"):
+        runner._instruction_transport("mini-swe-agent", prompt)
+
+
+def test_harbor_accepts_oversized_instruction_with_file_agent(tmp_path: Path) -> None:
+    runner = _harbor_runner_module()
+    prompt = tmp_path / "prompt.md"
+    prompt.write_text("x" * 200_000)
+
+    assert runner._instruction_transport(FILE_TASK_AGENT, prompt) == {
+        "bytes": 200_000,
+        "mode": "mounted-file",
+        "safe": True,
+    }
 
 
 def _git(root: Path, *args: str) -> str:
@@ -331,9 +353,7 @@ def test_harbor_meta_agent_rejects_non_top_level_editable_root(tmp_path: Path, m
         runner.run_agent(checkout, "failure evidence", ctx)
 
 
-def test_harbor_meta_agent_rejects_protected_workspace_edits(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_harbor_meta_agent_rejects_protected_workspace_edits(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     checkout, run_dir = _checkout(tmp_path)
     before_config = (checkout / "evolve.yaml").read_text()
     before_target = (checkout / "target" / "agent.py").read_text()

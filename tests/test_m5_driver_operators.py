@@ -105,3 +105,26 @@ def test_jsonl_record_preserves_explicit_optional_predictions(tmp_path: Path) ->
 
     assert fields["predicted_fixes"] == ["task-0"]
     assert "verified_fixes" not in fields
+
+
+def test_jsonl_record_without_gate_preserves_terminal_annotation(tmp_path: Path) -> None:
+    workspace, _evolve_home = init_workspace(tmp_path)
+    run_dir = workspace / "runs" / "operator-failed"
+    (run_dir / "meta_agent").mkdir(parents=True)
+    (run_dir / "meta_agent" / "rationale.md").write_text("meta-agent failed before gate\n")
+    ctx = OperatorContext(
+        workspace=workspace,
+        checkout=workspace,
+        run_dir=run_dir,
+        genid="1",
+        parent="0",
+        round=None,
+        fan_out=1,
+        config={},
+        rng=random.Random(0),
+    )
+    module = runpy.run_path(str(Path(__file__).resolve().parents[1] / "library" / "record" / "jsonl.py"))
+
+    fields = module["JsonlRecord"]().annotate({"genid": "1", "parent": "0"}, ctx).fields
+
+    assert fields == {"note": "meta-agent failed before gate"}

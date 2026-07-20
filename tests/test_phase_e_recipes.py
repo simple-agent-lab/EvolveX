@@ -57,7 +57,7 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "max_tasks: 90" in config
             assert "max_cases" not in config
             assert "budget_usd" not in config
-            assert "agent: mini-swe-agent" in config
+            assert "agent: evolve_harbor_agent:FileTaskMiniSweAgent" in config
             assert "editable_roots: [target]" in config
             assert "max_retries: 2" in config
             assert "agent: evolve_harbor_adapter:MiniSweSourceAgent" in config
@@ -80,7 +80,7 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "trace_analyzer: {variant: trace_browser" in config
             assert "meta_agent: {variant: hyperagents" in config
             assert "runner: harbor" in config
-            assert "agent: mini-swe-agent" in config
+            assert "agent: evolve_harbor_agent:FileTaskMiniSweAgent" in config
             assert "editable_roots: [target, operators]" in config
             assert "max_retries: 2" in config
             assert "validate: {variant: hyperagents" in config
@@ -116,6 +116,16 @@ def test_real_uv_recipes_enable_candidate_runtime_and_task_retry() -> None:
         assert evaluator["candidate_runtime"] == {"variant": "uv", "project": "target", "python": "3.12"}
         assert evaluator["max_retries"] == 1
         assert evaluator["benchmark_timeout_is_zero"] is True
+
+
+def test_miniswe_method_agents_use_the_rollout_model_version() -> None:
+    expected_model = "openai/gpt-5.4-2026-03-05"
+    for name in ("ahe", "hyperagents"):
+        operators = _parsed_config(name)["operators"]
+        assert isinstance(operators, dict)
+        meta_agent = operators["meta_agent"]
+        assert isinstance(meta_agent, dict)
+        assert meta_agent["model"] == expected_model
 
 
 def test_meta_agent_image_provides_harbor_workspace_parent() -> None:

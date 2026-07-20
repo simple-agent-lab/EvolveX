@@ -311,8 +311,7 @@ def _debugger_runner_prompt(job: TaskAnalysisJob, config: dict[str, Any]) -> str
     if config.get("agent") != "mini-swe-agent":
         return prompt
     return (
-        prompt
-        + "\n\n# MiniSWE submission protocol\n\n"
+        prompt + "\n\n# MiniSWE submission protocol\n\n"
         "In one response, first write the complete requested report as reasoning text, then include a standalone "
         "Bash tool call that executes `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`. A response containing only the "
         "Bash call is invalid and will be retried. Do not inspect or modify files."
@@ -524,7 +523,15 @@ def _reports(root: Path, results: list[DebuggerResult]) -> tuple[str, list[str]]
         )
         relative = f"trace_analyzer/analysis/detail/{_safe_task_name(job.task_name)}.md"
         (root.parent / relative).write_text(detail)
-        details.append(f"# Detail: {job.task_name}\n\n{detail}")
+        workspace_relative = f"runs/{root.parent.name}/{relative}"
+        details.append(
+            f"# Detail: {job.task_name}\n\n"
+            f"- Pass: {job.n_pass}\n- Fail: {job.n_fail}\n- Timeout: {job.n_timeout}\n"
+            f"- Traces: {', '.join(labels)}\n"
+            f"- Full bounded evidence: `{workspace_relative}`\n\n"
+            f"## LLM debugger response\n\n{result.response}\n\n"
+            f"## Failing verifier evidence\n\n{json.dumps(failing_verifier, indent=2)}\n"
+        )
         artifacts.append(relative)
     lines = ["# AHE Debugger Overview", ""]
     for mode, title in (("debug", "Failures and timeouts"), ("summary", "All-pass summaries")):

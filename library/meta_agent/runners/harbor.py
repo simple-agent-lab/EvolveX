@@ -26,6 +26,8 @@ from evolve.surface import check_paths
 _HARBOR_WORKDIR = "/app"
 _ARTIFACT_SOURCE = "/app/task/workspace"
 _EVAL_RECEIPT = ".evolve-eval-receipts.jsonl"
+_FILE_TASK_AGENT = "evolve_harbor_agent:FileTaskMiniSweAgent"
+_SAFE_INLINE_INSTRUCTION_BYTES = 96 * 1024
 _SECRET_ASSIGNMENT = re.compile(
     r"(?i)\b([a-z0-9_-]*(?:api[_-]?key|access[_-]?token|auth(?:orization)?|secret|password))\b"
     r"([\"']?)(\s*[:=]\s*)([^\s,;}]+)"
@@ -216,9 +218,7 @@ def _install_bundle(
         raise RuntimeError("returned workspace must be a real directory")
     after = _tree_manifest(returned)
     changed_workspace = sorted(
-        path
-        for path in set(bundle.before) | set(after)
-        if bundle.before.get(path) != after.get(path)
+        path for path in set(bundle.before) | set(after) if bundle.before.get(path) != after.get(path)
     )
     violations = check_paths(changed_workspace, surface.include, surface.exclude)
     if violations:
@@ -267,6 +267,17 @@ def _install_bundle(
 def _write_json(path: Path, payload: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+
+
+def _instruction_transport(agent: str, prompt_path: Path) -> dict[str, object]:
+    size = prompt_path.stat().st_size
+    safe = agent == _FILE_TASK_AGENT
+    mode = "mounted-file" if safe else "inline-argument"
+    if size > _SAFE_INLINE_INSTRUCTION_BYTES and not safe:
+        raise RuntimeError(
+            f"harbor_instruction_transport_unsafe: agent={agent} bytes={size} limit={_SAFE_INLINE_INSTRUCTION_BYTES}"
+        )
+    return {"bytes": size, "mode": mode, "safe": safe}
 
 
 def _read_json(path: Path) -> object:
@@ -514,6 +525,10 @@ def run_readonly_agent(
         tasks_dir = output_dir / "tasks"
         task_root.mkdir(parents=True, exist_ok=False)
         prompt_path.write_text(prompt.rstrip() + "\n")
+        _write_json(
+            output_dir / "instruction-transport.json",
+            _instruction_transport(str(ctx.config.get("agent") or "codex"), prompt_path),
+        )
         command = _base_command(harbor, task_root, prompt_path, jobs_root, tasks_dir, job_name, ctx.config)
         _write_json(output_dir / "command.json", [_redact(arg) for arg in command])
         returncode, wall_s = _run_harbor(
@@ -582,6 +597,10 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
             "configured editable roots are imported after the complete workspace artifact passes the surface gate. "
             "Before finishing, remove generated virtual environments and caches inside editable roots (for example "
             "target/.venv, __pycache__, and .pytest_cache); returned editable roots must contain no symlinks.\n"
+        )
+        _write_json(
+            harbor_root / "instruction-transport.json",
+            _instruction_transport(str(ctx.config.get("agent") or "codex"), prompt_path),
         )
         command = _build_command(harbor, bundle, prompt_path, jobs_root, tasks_dir, job_name, ctx.config)
         _write_json(harbor_root / "command.json", [_redact(arg) for arg in command])

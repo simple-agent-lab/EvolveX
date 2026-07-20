@@ -168,6 +168,7 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
         "uv.lock": _template("workspace/uv.lock"),
         ".python-version": _template("workspace/.python-version"),
         "evolve_harbor_adapter/__init__.py": _template("workspace/evolve_harbor_adapter/__init__.py"),
+        "evolve_harbor_agent/__init__.py": _template("workspace/evolve_harbor_agent/__init__.py"),
         "evolve.yaml": render_yaml(_runtime_config(config)),
         "README.md": _template("workspace/README.md"),
         "AGENTS.md": _template("workspace/AGENTS.md"),
