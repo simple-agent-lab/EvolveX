@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 import shutil
+import sys
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -17,6 +18,7 @@ from .runtime import run_owned
 CONTAINER_UV_CACHE = "/opt/evolve/uv/cache"
 CONTAINER_UV_PYTHON = "/opt/evolve/uv/python"
 RECEIPT_NAME = "candidate-runtime.json"
+FRAMEWORK_PYTHON = f"{sys.version_info.major}.{sys.version_info.minor}"
 
 
 @dataclass(frozen=True)
@@ -234,6 +236,7 @@ def _finish_ready_runtime(
             ("UV_CACHE_DIR", CONTAINER_UV_CACHE),
             ("UV_LINK_MODE", "copy"),
             ("UV_OFFLINE", "1"),
+            ("UV_PYTHON", FRAMEWORK_PYTHON),
             ("UV_PYTHON_INSTALL_DIR", CONTAINER_UV_PYTHON),
         ),
         mounts=(
@@ -289,6 +292,7 @@ def prepare_candidate_runtime(
     command_env = {
         **values,
         "UV_CACHE_DIR": str(cache),
+        "UV_PYTHON": FRAMEWORK_PYTHON,
         "UV_PYTHON_INSTALL_DIR": str(python_dir),
         "UV_PROJECT_ENVIRONMENT": str(temporary_environment),
     }
@@ -296,6 +300,27 @@ def prepare_candidate_runtime(
         uv = uv_executable(values)
         cache.mkdir(parents=True, exist_ok=True)
         python_dir.mkdir(parents=True, exist_ok=True)
+        installed_python = run_owned(
+            [uv, "python", "install", FRAMEWORK_PYTHON],
+            cwd=checkout,
+            env=command_env,
+        )
+        if installed_python.returncode:
+            return _finish_runtime(
+                run_dir,
+                config,
+                candidate_commit=candidate_commit,
+                dependency_digest=dependency_digest,
+                started=started,
+                outcome=Outcome.INFRASTRUCTURE_FAILED,
+                reason=installed_python.stderr
+                or installed_python.stdout
+                or "uv managed Python preparation failed",
+                attempts=0,
+                cache_warm=False,
+                uv_version=None,
+                secret_environment=command_env,
+            )
         checked = run_owned(
             [uv, "lock", "--check", "--project", str(project)],
             cwd=checkout,

@@ -31,6 +31,8 @@ args = sys.argv[1:]
 if args == ["--version"]:
     print("uv 0.test")
     raise SystemExit(0)
+if args[:2] == ["python", "install"]:
+    raise SystemExit(int(os.environ.get("UV_PYTHON_INSTALL_RC", "0")))
 if args[:2] == ["lock", "--check"]:
     raise SystemExit(int(os.environ.get("UV_LOCK_RC", "0")))
 if "sync" in args and "--offline" in args:
@@ -89,6 +91,7 @@ def test_uv_runtime_prepares_cache_and_emits_offline_contract(tmp_path: Path) ->
         "UV_CACHE_DIR": "/opt/evolve/uv/cache",
         "UV_LINK_MODE": "copy",
         "UV_OFFLINE": "1",
+        "UV_PYTHON": f"{sys.version_info.major}.{sys.version_info.minor}",
         "UV_PYTHON_INSTALL_DIR": "/opt/evolve/uv/python",
     }
     assert [mount.target for mount in result.mounts] == [
@@ -102,6 +105,14 @@ def test_uv_runtime_prepares_cache_and_emits_offline_contract(tmp_path: Path) ->
     assert receipt["outcome"] == "ready"
     assert receipt["attempts"] == 1
     assert not (run_dir / ".candidate-runtime-venv").exists()
+
+
+def test_uv_runtime_prepares_the_framework_python_for_offline_consumers(tmp_path: Path) -> None:
+    result, _, calls = _prepare(tmp_path, UV_OFFLINE_RC="0")
+
+    assert result.ready
+    invocations = [json.loads(line) for line in calls.read_text().splitlines()]
+    assert ["python", "install", f"{sys.version_info.major}.{sys.version_info.minor}"] in invocations
 
 
 def test_uv_runtime_warm_probe_avoids_online_sync(tmp_path: Path) -> None:
