@@ -25,6 +25,8 @@ from evolve.surface import check_paths
 
 _HARBOR_WORKDIR = "/app"
 _ARTIFACT_SOURCE = "/app/task/workspace"
+_READONLY_ARTIFACT_SOURCE = "/logs/artifacts"
+_READONLY_REPORT = "ahe-debugger-response.md"
 _EVAL_RECEIPT = ".evolve-eval-receipts.jsonl"
 _FILE_TASK_AGENT = "evolve_harbor_agent:FileTaskMiniSweAgent"
 _SAFE_INLINE_INSTRUCTION_BYTES = 96 * 1024
@@ -478,25 +480,41 @@ def _artifact_candidate(trial_dir: Path) -> tuple[Path, list[dict[str, Any]]]:
 def _agent_output(trial_dir: Path) -> str:
     payload = _read_json(trial_dir / "agent" / "trajectory.json")
     steps = payload.get("steps") if isinstance(payload, dict) else None
-    if isinstance(steps, list):
-        messages = [
-            str(step.get("message"))
-            for step in steps
-            if isinstance(step, dict) and step.get("source") == "agent" and step.get("message")
-        ]
-        if messages:
-            return messages[-1]
-
-    payload = _read_json(trial_dir / "agent" / "mini-swe-agent.trajectory.json")
-    messages = payload.get("messages") if isinstance(payload, dict) else None
-    if not isinstance(messages, list):
+    if not isinstance(steps, list):
         return ""
-    responses = [
-        str(message.get("content"))
-        for message in messages
-        if isinstance(message, dict) and message.get("role") == "assistant" and message.get("content")
+    messages = [
+        str(step.get("message"))
+        for step in steps
+        if isinstance(step, dict) and step.get("source") == "agent" and step.get("message")
     ]
-    return responses[-1] if responses else ""
+    return messages[-1] if messages else ""
+
+
+def _readonly_artifact_output(trial_dir: Path) -> str:
+    payload = _read_json(trial_dir / "artifacts" / "manifest.json")
+    entries = [entry for entry in payload if isinstance(entry, dict)] if isinstance(payload, list) else []
+    entry = next((item for item in entries if item.get("source") == _READONLY_ARTIFACT_SOURCE), None)
+    if entry is None or entry.get("status") != "ok":
+        raise RuntimeError("Harbor did not collect AHE debugger artifacts")
+    destination = entry.get("destination")
+    if not isinstance(destination, str) or not destination:
+        raise RuntimeError("Harbor AHE debugger artifact has no destination")
+    artifact_dir = (trial_dir / destination).resolve()
+    trial_root = trial_dir.resolve()
+    if trial_root != artifact_dir and trial_root not in artifact_dir.parents:
+        raise RuntimeError("Harbor AHE debugger artifact escaped the trial")
+    report = artifact_dir / _READONLY_REPORT
+    if not report.is_file():
+        raise RuntimeError(f"missing AHE debugger report: {_READONLY_REPORT}")
+    output = report.read_text().strip()
+    if not output:
+        raise RuntimeError(f"empty AHE debugger report: {_READONLY_REPORT}")
+    return output
+
+
+def _uses_miniswe_artifact(agent: object) -> bool:
+    name = str(agent or "")
+    return name == "mini-swe-agent" or name.endswith(":FileTaskMiniSweAgent")
 
 
 def _usage(payload: dict[str, Any], wall_s: float) -> dict[str, Any]:
@@ -553,7 +571,11 @@ def run_readonly_agent(
         trial_dir, trial = _trial_result(jobs_root / job_name)
         usage = _usage(trial, wall_s)
         _write_json(output_dir / "trial.json", trial)
-        output = _agent_output(trial_dir).strip()
+        output = (
+            _readonly_artifact_output(trial_dir)
+            if _uses_miniswe_artifact(ctx.config.get("agent"))
+            else _agent_output(trial_dir).strip()
+        )
         if returncode != 0:
             raise RuntimeError(f"harbor exec exited {returncode}")
         if trial.get("exception_info") not in (None, {}):

@@ -128,9 +128,14 @@ def test_ahe_miniswe_debugger_prompt_includes_submission_protocol() -> None:
 
     prompt = module._debugger_runner_prompt(job, {"agent": "mini-swe-agent"})
 
+    assert "/logs/artifacts/ahe-debugger-response.md" in prompt
+    assert "Every response must include a Bash tool call" in prompt
     assert "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT" in prompt
-    assert "standalone Bash tool call" in prompt
-    assert "A response containing only the Bash call is invalid" in prompt
+    assert "first write the complete requested report as reasoning text" not in prompt
+    file_agent_prompt = module._debugger_runner_prompt(
+        job, {"agent": "evolve_harbor_agent:FileTaskMiniSweAgent"}
+    )
+    assert "/logs/artifacts/ahe-debugger-response.md" in file_agent_prompt
     assert module._debugger_runner_prompt(job, {"agent": "codex"}) == module._debugger_prompt(job)
 
 

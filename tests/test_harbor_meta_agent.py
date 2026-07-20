@@ -192,8 +192,20 @@ manifest = [
         "service": None,
     },
 ]
-if not readonly:
-    (trial_dir / "artifacts" / "manifest.json").write_text(json.dumps(manifest))
+if readonly:
+    report_dir = trial_dir / "artifacts" / "logs" / "artifacts"
+    report_dir.mkdir(parents=True)
+    (report_dir / "ahe-debugger-response.md").write_text("ROOT CAUSE: collected artifact")
+    manifest = [
+        {
+            "source": "/logs/artifacts",
+            "destination": "artifacts/logs/artifacts",
+            "type": "directory",
+            "status": "ok",
+            "service": None,
+        }
+    ]
+(trial_dir / "artifacts" / "manifest.json").write_text(json.dumps(manifest))
 
 exception = None
 if os.environ.get("FAKE_HARBOR_MODE") == "agent-error":
@@ -232,7 +244,7 @@ agent_dir.mkdir()
                 {
                     "source": "agent",
                     "message": (
-                        "ROOT CAUSE: tool retry loop"
+                        "ROOT CAUSE: ignored trajectory"
                         if readonly
                         else 'Completed the mutation.\\npredicted_fixes: ["task-1"]'
                     ),
@@ -322,31 +334,66 @@ def test_harbor_readonly_agent_returns_response_without_candidate_artifact(
         timeout_s=30,
     )
 
-    assert result.output == "ROOT CAUSE: tool retry loop"
+    assert result.output == "ROOT CAUSE: collected artifact"
     assert result.usage["usd"] == 0.25
     command = json.loads((output_dir / "command.json").read_text())
     assert "--artifact" not in command
     assert not (checkout / "target" / "added.txt").exists()
 
 
-def test_agent_output_falls_back_to_miniswe_trajectory(tmp_path: Path) -> None:
+def test_readonly_artifact_output_rejects_missing_report(tmp_path: Path) -> None:
     trial_dir = tmp_path / "trial"
-    agent_dir = trial_dir / "agent"
-    agent_dir.mkdir(parents=True)
-    (agent_dir / "trajectory.json").write_text(json.dumps({"steps": []}))
-    (agent_dir / "mini-swe-agent.trajectory.json").write_text(
+    artifacts = trial_dir / "artifacts"
+    artifacts.mkdir(parents=True)
+    (artifacts / "manifest.json").write_text(
         json.dumps(
-            {
-                "messages": [
-                    {"role": "assistant", "content": "ROOT CAUSE: first draft"},
-                    {"role": "user", "content": "Tool call error"},
-                    {"role": "assistant", "content": "ROOT CAUSE: recovered report"},
-                ]
-            }
+            [
+                {
+                    "source": "/logs/artifacts",
+                    "destination": "artifacts/logs/artifacts",
+                    "status": "ok",
+                }
+            ]
         )
     )
 
-    assert _harbor_runner_module()._agent_output(trial_dir) == "ROOT CAUSE: recovered report"
+    with pytest.raises(RuntimeError, match="missing AHE debugger report"):
+        _harbor_runner_module()._readonly_artifact_output(trial_dir)
+
+
+def test_readonly_artifact_output_rejects_escape(tmp_path: Path) -> None:
+    trial_dir = tmp_path / "trial"
+    artifacts = trial_dir / "artifacts"
+    artifacts.mkdir(parents=True)
+    (artifacts / "manifest.json").write_text(
+        json.dumps(
+            [{"source": "/logs/artifacts", "destination": "../outside", "status": "ok"}]
+        )
+    )
+
+    with pytest.raises(RuntimeError, match="escaped the trial"):
+        _harbor_runner_module()._readonly_artifact_output(trial_dir)
+
+
+def test_readonly_artifact_output_rejects_empty_report(tmp_path: Path) -> None:
+    trial_dir = tmp_path / "trial"
+    report_dir = trial_dir / "artifacts" / "logs" / "artifacts"
+    report_dir.mkdir(parents=True)
+    (report_dir / "ahe-debugger-response.md").write_text("\n")
+    (trial_dir / "artifacts" / "manifest.json").write_text(
+        json.dumps(
+            [
+                {
+                    "source": "/logs/artifacts",
+                    "destination": "artifacts/logs/artifacts",
+                    "status": "ok",
+                }
+            ]
+        )
+    )
+
+    with pytest.raises(RuntimeError, match="empty AHE debugger report"):
+        _harbor_runner_module()._readonly_artifact_output(trial_dir)
 
 
 def test_harbor_meta_agent_round_trips_target_and_operators(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

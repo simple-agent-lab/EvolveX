@@ -308,13 +308,15 @@ def _debugger_prompt(job: TaskAnalysisJob) -> str:
 
 def _debugger_runner_prompt(job: TaskAnalysisJob, config: dict[str, Any]) -> str:
     prompt = _debugger_prompt(job)
-    if config.get("agent") != "mini-swe-agent":
+    agent = str(config.get("agent") or "")
+    if agent != "mini-swe-agent" and not agent.endswith(":FileTaskMiniSweAgent"):
         return prompt
     return (
         prompt + "\n\n# MiniSWE submission protocol\n\n"
-        "In one response, first write the complete requested report as reasoning text, then include a standalone "
-        "Bash tool call that executes `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`. A response containing only the "
-        "Bash call is invalid and will be retried. Do not inspect or modify files."
+        "Every response must include a Bash tool call. Use Bash to inspect the mounted evidence as needed. "
+        "Write the complete requested report to `/logs/artifacts/ahe-debugger-response.md`, then finish with a "
+        "standalone Bash tool call that executes `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`. Do not modify the "
+        "experiment workspace."
     )
 
 
