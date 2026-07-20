@@ -127,6 +127,8 @@ simple-evolve-agent/
 │   ├─ evaluation/                result types · evidence · identity · execution
 │   │   ├─ __init__.py  results.py  evidence.py
 │   │   └─ identity.py  execution.py
+│   ├─ candidate/                 exact snapshot construction · evaluator smoke
+│   │   └─ snapshot.py  smoke.py
 │   ├─ git.py  surface.py  report.py  config.py
 │   └─ frozen/                    Ring 0 — the invariant-enforcers, vendored into each workspace
 │       ├─ interfaces.py          THE single source of truth: operator ABCs + result types +

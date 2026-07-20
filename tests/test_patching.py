@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from evolve.candidate_snapshot import CandidateSnapshotError
+from evolve.candidate.snapshot import CandidateSnapshotError
 from evolve.patching import SurfacePolicy, create_candidate_patch, load_surface_policy, patch_parent_ref
 from evolve.surface import check_paths
 

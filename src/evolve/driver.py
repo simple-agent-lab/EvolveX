@@ -23,7 +23,7 @@ from .archive import (
     read_events,
     rows_by_genid,
 )
-from .candidate_snapshot import build_candidate_snapshot, commit_candidate_snapshot
+from .candidate.snapshot import build_candidate_snapshot, commit_candidate_snapshot
 from .config import evaluator_anchor, evaluator_sampling, experiment_id, operator_blocks
 from .evaluation import (
     CANONICAL_OUTCOMES,

@@ -19,8 +19,9 @@ APPROVED_MODULES = {
     "__main__.py",
     "agent.py",
     "archive.py",
-    "candidate_smoke.py",
-    "candidate_snapshot.py",
+    "candidate/__init__.py",
+    "candidate/smoke.py",
+    "candidate/snapshot.py",
     "cli.py",
     "config.py",
     "driver.py",
@@ -52,6 +53,7 @@ def _module_paths() -> list[Path]:
     """Every mechanism module — top-level plus the frozen ring."""
     return [
         *sorted(SRC.glob("*.py")),
+        *sorted((SRC / "candidate").glob("*.py")),
         *sorted((SRC / "evaluation").glob("*.py")),
         *sorted((SRC / "frozen").glob("*.py")),
     ]

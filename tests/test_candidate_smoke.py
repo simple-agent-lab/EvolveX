@@ -8,8 +8,8 @@ from types import SimpleNamespace
 import pytest
 from conftest import git, run_evolve
 
-from evolve import candidate_smoke as candidate_smoke_module
-from evolve.candidate_smoke import run_candidate_smoke
+from evolve.candidate import smoke as candidate_smoke_module
+from evolve.candidate.smoke import run_candidate_smoke
 from evolve.config import default_config
 from evolve.workspace import InitOptions, init_workspace
 
