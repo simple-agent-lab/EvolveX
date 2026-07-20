@@ -474,6 +474,7 @@ def _init_git(workspace: Path) -> None:
     _git(workspace, "config", "user.name", "Evolve Mechanism")
     _git(workspace, "config", "user.email", "evolve@example.invalid")
     _git(workspace, "add", ".")
+    _git(workspace, "add", "-f", "target")
     _git(workspace, "commit", "-m", "evolve gen 0")
     _git(workspace, "tag", "gen/0")
 

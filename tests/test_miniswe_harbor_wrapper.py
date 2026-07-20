@@ -6,7 +6,7 @@ import types
 from pathlib import Path
 
 import pytest
-from conftest import write_locked_miniswe_seed
+from conftest import git, write_locked_miniswe_seed
 
 ADAPTER_TEMPLATE = Path("templates/workspace/evolve_harbor_adapter/__init__.py")
 
@@ -280,6 +280,23 @@ def test_init_with_local_miniswe_seed_writes_protected_harbor_adapter(tmp_path: 
     assert "class MiniSweSourceAgent(MiniSweAgent):" in wrapper.read_text()
     assert not (workspace / "target" / "harbor_agent.py").exists()
     assert (workspace / "target" / "uv.lock").read_bytes() == expected_lock
+
+
+def test_init_tracks_seed_lockfile_even_when_seed_gitignore_excludes_it(tmp_path: Path, monkeypatch) -> None:
+    from evolve import workspace as workspace_module
+    from evolve.workspace import InitOptions, init_workspace
+
+    seed = write_locked_miniswe_seed(tmp_path / "miniswe")
+    (seed / ".gitignore").write_text("uv.lock\n")
+    workspace = tmp_path / "workspace"
+    config = workspace_module.default_config("hill_climb", workspace.name)
+    config["target"]["harbor_agent"] = "miniswe-source"
+    config["evaluator"]["agent"] = "evolve_harbor_adapter:MiniSweSourceAgent"
+    monkeypatch.setattr(workspace_module, "default_config", lambda recipe, experiment_id: config)
+
+    init_workspace(InitOptions(workspace=workspace, recipe="hill_climb", seed=str(seed)))
+
+    git(workspace, "cat-file", "-e", "gen/0:target/uv.lock")
 
 
 def test_init_does_not_enforce_package_manager_files(tmp_path: Path, monkeypatch) -> None:
