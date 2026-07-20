@@ -15,6 +15,7 @@ from .host_runtime import clean_python_env
 from .runtime import OwnedResult, attempt_dir, next_attempt, owned_attempt_id, run_owned
 from .task_sets import effective_task_set_identity, evaluation_split_name
 from .task_vectors import trial_results, validate_task_vector
+from .uv_runtime import CandidateRuntimeResult, prepare_candidate_runtime
 
 
 def evaluate(
@@ -76,6 +77,27 @@ def evaluate(
             }
             try:
                 try:
+                    runtime = prepare_candidate_runtime(
+                        checkout,
+                        run_dir,
+                        workspace / "runs" / "runtime",
+                        candidate_commit,
+                        evaluator,
+                    )
+                    base["candidate_runtime"] = _runtime_receipt_reference(
+                        workspace, runtime.receipt_path
+                    )
+                    if not runtime.ready:
+                        return classify_evaluation(
+                            **base,
+                            trials=(),
+                            setup_outcome=runtime.outcome,
+                            setup_reason=runtime.reason,
+                            benchmark_timeout_is_zero=timeout_zero,
+                            cost_usd=0.0,
+                            wall_s=time.monotonic() - start,
+                            artifacts=None,
+                        )
                     result = _run_eval_script(
                         checkout,
                         run_dir,
@@ -83,6 +105,7 @@ def evaluate(
                         task_limit,
                         purpose,
                         evaluation_split_name(evaluator, purpose),
+                        runtime,
                     )
                     setup_outcome, setup_reason = _setup_evidence(run_dir)
                     try:
@@ -156,6 +179,17 @@ def _evaluation_artifact_reference(workspace: Path, run_dir: Path) -> dict[str, 
     )
 
 
+def _runtime_receipt_reference(
+    workspace: Path, receipt: Path | None
+) -> dict[str, str] | None:
+    if receipt is None or not receipt.exists():
+        return None
+    return {
+        "path": receipt.resolve().relative_to(workspace.resolve()).as_posix(),
+        "sha256": hashlib.sha256(receipt.read_bytes()).hexdigest(),
+    }
+
+
 def _setup_evidence(run_dir: Path) -> tuple[Outcome | None, str | None]:
     path = run_dir / "setup_outcome"
     if not path.exists():
@@ -192,6 +226,7 @@ def _run_eval_script(
     task_limit: int | None,
     purpose: str,
     evaluation_split: str,
+    runtime: CandidateRuntimeResult,
 ) -> OwnedResult:
     runs_dir = next(parent for parent in run_dir.parents if parent.name == "runs")
     env: dict[str, str] = {
@@ -203,6 +238,8 @@ def _run_eval_script(
         "EVOLVE_WORKSPACE": str(runs_dir.parent.resolve()),
     }
     env["EVOLVE_EVAL_SPLIT"] = evaluation_split
+    env["EVOLVE_CANDIDATE_RUNTIME_ENV_JSON"] = runtime.environment_json()
+    env["EVOLVE_CANDIDATE_RUNTIME_MOUNTS_JSON"] = runtime.mounts_json()
     env.setdefault("EVOLVE_FRAMEWORK_PYTHON", sys.executable)
     uv_cache = Path(env.get("EVOLVE_UV_CACHE_DIR") or runs_dir / "runtime" / "uv-cache")
     uv_cache.mkdir(parents=True, exist_ok=True)

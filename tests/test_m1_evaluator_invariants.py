@@ -6,18 +6,23 @@ from pathlib import Path
 import pytest
 from conftest import git, init_workspace, rows_by_genid
 
+import evolve.evaluator as evaluator_module
 from evolve.archive import MECHANISM_EVAL_FIELD, append_event
 from evolve.driver import RunOptions
 from evolve.driver import run as driver_run
+from evolve.evaluation import Outcome
 from evolve.evaluator import (
     _evaluation_artifact_reference,
     _read_task_vector,
     _run_eval_script,
+    _runtime_receipt_reference,
     evaluate,
 )
 from evolve.frozen.interfaces import ArchiveView
+from evolve.runtime import OwnedResult
 from evolve.task_sets import effective_task_set_identity
 from evolve.task_vectors import TaskVectorError
+from evolve.uv_runtime import CandidateRuntimeResult, RuntimeMount
 
 
 def make_eval_script(path: Path, body: str) -> None:
@@ -123,7 +128,15 @@ def test_eval_script_receives_persistent_workspace_uv_cache(tmp_path: Path) -> N
     run_dir = workspace / "runs" / "gen-1" / "eval"
     run_dir.mkdir(parents=True)
 
-    result = _run_eval_script(checkout, run_dir, "1", None, "research", "gate")
+    result = _run_eval_script(
+        checkout,
+        run_dir,
+        "1",
+        None,
+        "research",
+        "gate",
+        CandidateRuntimeResult(None, None),
+    )
 
     assert result.returncode == 0
     expected = workspace / "runs" / "runtime" / "uv-cache"
@@ -146,11 +159,100 @@ def test_eval_script_preserves_explicit_shared_uv_cache(tmp_path: Path, monkeypa
     shared_cache = tmp_path / "shared-cache"
     monkeypatch.setenv("EVOLVE_UV_CACHE_DIR", str(shared_cache))
 
-    result = _run_eval_script(checkout, run_dir, "1", None, "research", "gate")
+    result = _run_eval_script(
+        checkout,
+        run_dir,
+        "1",
+        None,
+        "research",
+        "gate",
+        CandidateRuntimeResult(None, None),
+    )
 
     assert result.returncode == 0
     assert (checkout / "cache-path").read_text() == f"{shared_cache}\n"
     assert shared_cache.is_dir()
+
+
+def test_eval_script_receives_candidate_runtime_json(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    checkout = tmp_path / "checkout"
+    (checkout / "evaluator").mkdir(parents=True)
+    make_eval_script(
+        checkout / "evaluator" / "eval.sh",
+        "#!/bin/sh\n"
+        "set -eu\n"
+        'printf "%s\\n" "$EVOLVE_CANDIDATE_RUNTIME_ENV_JSON" > runtime-env\n'
+        'printf "%s\\n" "$EVOLVE_CANDIDATE_RUNTIME_MOUNTS_JSON" > runtime-mounts\n',
+    )
+    run_dir = workspace / "runs" / "gen-1" / "eval"
+    run_dir.mkdir(parents=True)
+    runtime = CandidateRuntimeResult(
+        "uv",
+        "target",
+        environment=(("UV_OFFLINE", "1"),),
+        mounts=(RuntimeMount(tmp_path / "cache", "/opt/evolve/uv/cache"),),
+    )
+
+    result = _run_eval_script(
+        checkout, run_dir, "1", None, "research", "gate", runtime
+    )
+
+    assert result.returncode == 0
+    assert json.loads((checkout / "runtime-env").read_text()) == {"UV_OFFLINE": "1"}
+    assert json.loads((checkout / "runtime-mounts").read_text())[0]["target"] == "/opt/evolve/uv/cache"
+
+
+@pytest.mark.parametrize(
+    "outcome", [Outcome.CANDIDATE_INVALID, Outcome.INFRASTRUCTURE_FAILED]
+)
+def test_runtime_preparation_failure_short_circuits_evaluator(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    outcome: Outcome,
+) -> None:
+    workspace, _evolve_home = init_workspace(tmp_path)
+    configure_outcome_evaluator(workspace)
+    called = False
+
+    def fake_prepare(checkout, run_dir, runtime_root, candidate_commit, evaluator):
+        receipt = run_dir / "candidate-runtime.json"
+        receipt.write_text('{"outcome":"failed"}\n')
+        return CandidateRuntimeResult(
+            "uv",
+            "target",
+            outcome=outcome,
+            reason="runtime preparation failed",
+            receipt_path=receipt,
+        )
+
+    def fake_eval(*args, **kwargs):
+        nonlocal called
+        called = True
+        return OwnedResult(0, "", "", 0.0, False)
+
+    monkeypatch.setattr(evaluator_module, "prepare_candidate_runtime", fake_prepare)
+    monkeypatch.setattr(evaluator_module, "_run_eval_script", fake_eval)
+
+    record = evaluate(workspace, "gen/0", "0", purpose="genesis")
+
+    assert record.outcome is outcome
+    assert record.score is None
+    assert not called
+    assert record.candidate_runtime is not None
+    assert record.candidate_runtime["path"].endswith("candidate-runtime.json")
+
+
+def test_runtime_receipt_reference_is_compact_and_hashed(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    receipt = workspace / "runs" / "candidate-runtime.json"
+    receipt.parent.mkdir(parents=True)
+    receipt.write_text('{"outcome":"ready"}\n')
+
+    assert _runtime_receipt_reference(workspace, receipt) == {
+        "path": "runs/candidate-runtime.json",
+        "sha256": hashlib.sha256(receipt.read_bytes()).hexdigest(),
+    }
 
 
 def test_eval_script_receives_configured_candidate_cohort(tmp_path: Path) -> None:
@@ -166,7 +268,15 @@ def test_eval_script_receives_configured_candidate_cohort(tmp_path: Path) -> Non
     run_dir = workspace / "runs" / "evaluations" / "candidate" / "gen-1" / "attempt-1"
     run_dir.mkdir(parents=True)
 
-    result = _run_eval_script(checkout, run_dir, "1", None, "candidate", "train")
+    result = _run_eval_script(
+        checkout,
+        run_dir,
+        "1",
+        None,
+        "candidate",
+        "train",
+        CandidateRuntimeResult(None, None),
+    )
 
     assert result.returncode == 0
     assert (checkout / "selected-split").read_text() == "train\n"

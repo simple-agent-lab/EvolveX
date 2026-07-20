@@ -60,6 +60,7 @@ class EvaluationRecord:
     wall_s: float
     retry_of: int | None = None
     artifacts: dict[str, str] | None = None
+    candidate_runtime: dict[str, str] | None = None
 
     @property
     def status(self) -> str:
