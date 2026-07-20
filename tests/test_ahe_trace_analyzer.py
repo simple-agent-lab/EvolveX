@@ -228,6 +228,25 @@ def test_ahe_analyzer_attributes_prior_manifest(tmp_path: Path, monkeypatch: pyt
     assert change["risk_results"]["task-b"] == "realized"
 
 
+def test_ahe_analyzer_computes_transitions_without_prior_manifest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _module()
+    ctx = _ctx(tmp_path, genid="2", parent="1")
+    prior = ctx.workspace / "runs/gen-1"
+    _write_cases(prior, [_case("old-a", "failed", 0, task="task-a")])
+    _write_cases(ctx.run_dir, [_case("new-a", "passed", 1, task="task-a")])
+    monkeypatch.setattr(module, "run_readonly_agent", _fake_debugger)
+
+    module.AheTraceAnalyzer().analyze(ctx.checkout, ctx)
+
+    change = json.loads((ctx.run_dir / "trace_analyzer/analysis/change_evaluation.json").read_text())
+    assert change["transitions"] == {"task-a": "fail_to_pass"}
+    assert change["manifest"] is None
+    assert change["prediction_results"] == {}
+    assert change["risk_results"] == {}
+
+
 def test_ahe_bounds_and_redacts_case_fields() -> None:
     module = _module()
     secret = "OPENAI_API_KEY=must-not-leak " + "x" * 200

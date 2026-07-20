@@ -146,7 +146,9 @@ def test_ahe_meta_agent_requires_valid_manifest(tmp_path: Path, monkeypatch: pyt
     assert json.loads((run_dir / "meta_agent/change_manifest.json").read_text()) == _manifest()
 
 
-def test_ahe_invalid_manifest_fails_after_preserving_artifacts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_ahe_missing_manifest_synthesizes_context_without_discarding_patch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     module = _module()
     checkout, run_dir, ctx = _case(tmp_path)
 
@@ -156,10 +158,32 @@ def test_ahe_invalid_manifest_fails_after_preserving_artifacts(tmp_path: Path, m
         return SimpleNamespace(output="edited without manifest", usage={"usd": 0.1})
 
     monkeypatch.setattr(module, "run_agent", fake_run_agent)
-    with pytest.raises(ValueError, match="exactly one"):
-        module.AheMetaAgent().run(checkout, "fallback", ctx)
+    result = module.AheMetaAgent().run(checkout, "fallback", ctx)
+
+    assert result.changed == ["target/src/minisweagent/agents/default.py"]
+    assert "change-manifest: synthesized" in result.notes
+    manifest = json.loads((run_dir / "meta_agent/change_manifest.json").read_text())
+    assert manifest["iteration"] == 1
+    assert manifest["changes"][0]["files"] == result.changed
+    assert manifest["changes"][0]["predicted_fixes"] == []
     for name in ("output.txt", "patch.diff", "changed.json", "surface-check.json", "usage.json"):
         assert (run_dir / "meta_agent" / name).is_file()
+
+
+def test_ahe_prompt_includes_prior_raw_change_context(tmp_path: Path) -> None:
+    module = _module()
+    checkout, _run_dir, ctx = _case(tmp_path, genid="2", parent="1")
+    prior = ctx.workspace / "runs/gen-1/meta_agent"
+    (prior / "output.txt").write_text("previous reasoning")
+    (prior / "changed.json").write_text('["target/previous.py"]')
+    (prior / "patch.diff").write_text("previous patch")
+
+    prompt = module.build_prompt(checkout, "fallback", ctx)
+
+    assert "Previous Change Context" in prompt
+    assert "previous reasoning" in prompt
+    assert "target/previous.py" in prompt
+    assert "previous patch" in prompt
 
 
 def test_ahe_runner_failure_preserves_evidence(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

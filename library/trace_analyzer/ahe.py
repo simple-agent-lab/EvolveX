@@ -455,11 +455,14 @@ def _change_evaluation(ctx: OperatorContext, cases: list[Case], field_limit: int
         raise RuntimeError(error)
     manifest_path = prior_run / "meta_agent" / "change_manifest.json"
     try:
-        manifest = json.loads(manifest_path.read_text())
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise RuntimeError(f"missing or invalid prior AHE manifest: {manifest_path}") from exc
-    if not isinstance(manifest, dict) or not isinstance(manifest.get("changes"), list):
-        raise RuntimeError(f"invalid prior AHE manifest: {manifest_path}")
+        candidate_manifest = json.loads(manifest_path.read_text())
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        candidate_manifest = None
+    manifest = (
+        candidate_manifest
+        if isinstance(candidate_manifest, dict) and isinstance(candidate_manifest.get("changes"), list)
+        else None
+    )
     before = _task_outcomes([_normalize(case, field_limit) for case in prior_raw])
     after = _task_outcomes(cases)
     transitions = {
@@ -467,16 +470,19 @@ def _change_evaluation(ctx: OperatorContext, cases: list[Case], field_limit: int
     }
     predicted = {
         str(task)
-        for change in manifest["changes"]
+        for change in (manifest["changes"] if manifest else [])
         if isinstance(change, dict)
         for task in change.get("predicted_fixes", [])
     }
     risks = {
-        str(task) for change in manifest["changes"] if isinstance(change, dict) for task in change.get("risk_tasks", [])
+        str(task)
+        for change in (manifest["changes"] if manifest else [])
+        if isinstance(change, dict)
+        for task in change.get("risk_tasks", [])
     }
     return {
         "status": "evaluated",
-        "manifest": str(manifest_path),
+        "manifest": str(manifest_path) if manifest else None,
         "transitions": transitions,
         "prediction_results": {
             task: "confirmed" if transitions.get(task) == "fail_to_pass" else "not_confirmed"
