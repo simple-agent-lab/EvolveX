@@ -9,12 +9,18 @@ instead of always following the current best score.
 `children_per_gen: 1` creates one candidate per round.
 `surface.include` exposes `target/**` plus `operators/**`.
 `select.variant: score_child_prop` balances score with child-proposal behavior.
-`rollout.variant: harbor` executes the parent on the frozen train split.
+`rollout.variant: evaluation_replay` exposes the selected parent's certified full-benchmark evaluation to the trace browser without launching a second task run.
 `trace_analyzer.variant: trace_browser` exposes current traces, metrics, and history through the normalized feedback bundle.
 `meta_agent.variant: hyperagents` consumes that bundle through Harbor's installed MiniSWE agent while retaining self-referential editing.
 `gate.variant: parent_eligible` admits evaluated process variants.
 `evaluator.engine: harbor` runs the canonical black-box benchmark.
-`sampling: static` keeps Phase E comparisons fixed when this recipe is run live.
+`sampling: static` freezes all 89 task identities when the workspace is initialized.
+
+The selected parent's retained evaluation is available before the child is
+produced, and every installable child is then immediately evaluated once on the
+complete benchmark. Generation 0 and generations 1 through 10 therefore form a
+full-benchmark optimization curve. It is not a held-out generalization result
+and has no final sealed anchor.
 
 Build the workspace image once before running:
 
@@ -25,7 +31,7 @@ docker build -t evolve-meta-agent-app:ubuntu-latest containers/meta-agent
 ## Operator Routing
 
 `select: {variant: score_child_prop}` resolves to [`library/select/score_child_prop.py`](../../library/select/score_child_prop.py).
-`rollout: {variant: harbor}` resolves to [`library/rollout/harbor.py`](../../library/rollout/harbor.py).
+`rollout: {variant: evaluation_replay}` resolves to [`library/rollout/evaluation_replay.py`](../../library/rollout/evaluation_replay.py) and uses the normalized collector vendored from [`library/rollout/harbor.py`](../../library/rollout/harbor.py).
 `trace_analyzer: {variant: trace_browser}` resolves to [`library/trace_analyzer/trace_browser.py`](../../library/trace_analyzer/trace_browser.py).
 `meta_agent: {variant: hyperagents}` resolves to [`library/meta_agent/hyperagents.py`](../../library/meta_agent/hyperagents.py).
 `validate: {variant: hyperagents}` resolves to [`library/validate/hyperagents.py`](../../library/validate/hyperagents.py).

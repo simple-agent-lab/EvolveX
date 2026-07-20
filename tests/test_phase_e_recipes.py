@@ -42,9 +42,10 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
         assert "target/**" in config
         assert "target/agent.py" not in config
         if name == "ahe":
-            assert "dataset: swe-bench-lite" in config
+            assert "max_generations: 10" in config
+            assert "dataset: terminal-bench@2.0" in config
             assert "seed: https://github.com/SWE-agent/mini-swe-agent.git" in config
-            assert "rollout: {variant: harbor" in config
+            assert "rollout: {variant: evaluation_replay" in config
             assert "trace_analyzer: {variant: ahe" in config
             assert "meta_agent: {variant: ahe, runner: harbor" in config
             assert "select: {variant: ahe_latest" in config
@@ -54,26 +55,42 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "budget_usd" not in config
             assert "agent: mini-swe-agent" in config
             assert "editable_roots: [target]" in config
+            assert "max_retries: 2" in config
             assert "agent: evolve_harbor_adapter:MiniSweSourceAgent" in config
-            assert "rollout: {variant: harbor, model: openai/gpt-5.4" in config
             assert "image: evolve-meta-agent-app:ubuntu-latest" in config
+            assert "task_scope: full" in config
+            assert "evaluation_split: train" in config
+            assert "tasks_per_round: 89" in config
+            assert "k: 2" in config
+            assert "n_concurrent: 4" in config
+            assert "\n  split:" not in config
+            assert "\n  anchor:" not in config
         elif name == "hyperagents":
-            assert "dataset: swe-bench-lite" in config
+            assert "max_generations: 10" in config
+            assert "dataset: terminal-bench@2.0" in config
             assert "seed: https://github.com/SWE-agent/mini-swe-agent.git" in config
             assert "    - operators/**" in config
             assert "    - operators/meta_agent.py" not in config
             assert "select: {variant: score_child_prop" in config
-            assert "rollout: {variant: harbor" in config
+            assert "rollout: {variant: evaluation_replay" in config
             assert "trace_analyzer: {variant: trace_browser" in config
             assert "meta_agent: {variant: hyperagents" in config
             assert "runner: harbor" in config
             assert "agent: mini-swe-agent" in config
             assert "editable_roots: [target, operators]" in config
+            assert "max_retries: 2" in config
             assert "validate: {variant: hyperagents" in config
             assert "gate: {variant: parent_eligible}" in config
             assert "record: {variant: hyperagents}" in config
-            assert "rollout: {variant: harbor, model: openai/gpt-5.4" in config
             assert "image: evolve-meta-agent-app:ubuntu-latest" in config
+            assert "task_scope: full" in config
+            assert "evaluation_split: train" in config
+            assert "tasks_per_round: 89" in config
+            assert "k: 1" in config
+            assert "n_concurrent: 4" in config
+            assert "\n  split:" not in config
+            assert "\n  anchor:" not in config
+            assert "budget_usd" not in config
         else:
             assert "dataset: swe-bench-lite" in config
             assert "seed: https://github.com/SWE-agent/mini-swe-agent.git" in config

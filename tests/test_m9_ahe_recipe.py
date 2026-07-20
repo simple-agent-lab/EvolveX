@@ -33,7 +33,8 @@ def test_ahe_recipe_initializes_harbor_miniswe_composition(tmp_path: Path) -> No
     assert (workspace / "target/pyproject.toml").is_file()
     assert (workspace / "target/uv.lock").is_file()
     assert surface_lists(workspace) == (["target/**"], [])
-    assert "source=library/rollout/harbor.py" in (workspace / "operators/rollout.py").read_text()
+    assert "source=library/rollout/evaluation_replay.py" in (workspace / "operators/rollout.py").read_text()
+    assert (workspace / "library/rollout/harbor.py").is_file()
     assert "source=library/trace_analyzer/ahe.py" in (workspace / "operators/trace_analyzer.py").read_text()
     assert "source=library/meta_agent/ahe.py" in (workspace / "operators/meta_agent.py").read_text()
     assert "source=library/select/ahe_latest.py" in (workspace / "operators/select.py").read_text()
@@ -58,7 +59,7 @@ def test_ahe_recipe_initializes_harbor_miniswe_composition(tmp_path: Path) -> No
     assert "editable_roots:" in config
     operators = operator_blocks(workspace)
     assert {name: operator_timeout(operators, name) for name in ("rollout", "trace_analyzer", "meta_agent")} == {
-        "rollout": 3600,
+        "rollout": 600,
         "trace_analyzer": 3600,
         "meta_agent": 3600,
     }

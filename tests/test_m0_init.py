@@ -151,7 +151,8 @@ def test_init_binds_real_hyperagents_method_surface_and_operators(tmp_path: Path
 
     assert result.returncode == 0, result.stderr
     assert "score_child_prop" in (workspace / "operators/select.py").read_text()
-    assert "HarborRollout" in (workspace / "operators/rollout.py").read_text()
+    assert "EvaluationReplayRollout" in (workspace / "operators/rollout.py").read_text()
+    assert (workspace / "library/rollout/harbor.py").is_file()
     assert "class TraceBrowser" in (workspace / "operators/trace_analyzer.py").read_text()
     assert "variant: hyperagents" in (workspace / "operators/meta_agent.py").read_text()
     assert "HyperAgents Self-Improvement" in (workspace / "operators/meta_agent.py").read_text()
