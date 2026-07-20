@@ -21,6 +21,11 @@ evaluation multiplicities, mutation surfaces, and search procedures differ.
 - Dataset source revision for the initial run:
   `laude-institute/terminal-bench-2` commit
   `2fd12b88aafdd04a52c298e3940bcb189f9766d6`.
+- DevBoxS already contains all 89 matching task images under
+  `alexgshaw/<task>:20251031`. Runs must reuse these local images rather than
+  rebuilding or repulling them. The pinned dataset definitions, tests, and
+  verifiers still need to be present on the server because images alone do not
+  define the benchmark.
 - Execution engine: Harbor with Docker environments.
 - Target agent: the same initial MiniSWE source snapshot for both experiments.
   The resolved source commit must be recorded in each experiment workspace.
@@ -223,7 +228,8 @@ but it must not present the methods as a controlled performance ranking.
 
 Before a smoke or full launch:
 
-1. verify the official dataset revision and exact task count;
+1. verify the official dataset revision, exact task count, and presence of all
+   89 expected `alexgshaw/<task>:20251031` images without pulling them;
 2. verify the MiniSWE source commit and resolved model name;
 3. commit the experiment configuration and unique experiment ID into generation
    0 so evaluation-cache identities cannot collide;
