@@ -11,11 +11,14 @@ silent deterministic fallback.
 
 Canonical evaluation is deliberately different: the frozen
 `MiniSweSourceAgent` adapter installs the returned candidate source and invokes
-its Python API with evaluator-owned model and resource limits. A required change
-manifest links every target edit to debugger evidence and predicted effects. The
-newest valid generation remains the next parent even after a score regression,
-allowing the following generation to attribute it and choose KEEP, REVISE, or
-ROLLBACK + PIVOT.
+its Python API with evaluator-owned model and resource limits. The prompt asks
+for a change manifest linking target edits to debugger evidence and predicted
+effects, but that manifest is best-effort metadata: a missing or malformed block
+does not discard an otherwise surface-valid patch. The raw response, changed
+paths, and patch are preserved and passed to the next meta-agent; predicted-fix
+and risk attribution is used only when available. The newest valid generation
+remains the next parent even after a score regression, allowing the following
+generation to attribute it and choose KEEP, REVISE, or ROLLBACK + PIVOT.
 
 Generation 0 and generations 1 through 10 are all evaluated on the same full
 benchmark. The resulting 89-task learning curve measures optimization on

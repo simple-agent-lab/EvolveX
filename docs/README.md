@@ -12,6 +12,7 @@ Live authority for the system is **not** under this folder:
 Also here:
 
 - [`glossary.md`](glossary.md) — domain terms (non-binding; DESIGN wins on conflict)
+- [`guides/2026-07-21-terminal-bench-experiment-setup.md`](guides/2026-07-21-terminal-bench-experiment-setup.md) — retained AHE and HyperAgents Terminal-Bench 2.0 setup and readiness evidence
 
 ## Where new writing goes
 
