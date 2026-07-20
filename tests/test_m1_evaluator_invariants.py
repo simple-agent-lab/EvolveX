@@ -131,6 +131,28 @@ def test_eval_script_receives_persistent_workspace_uv_cache(tmp_path: Path) -> N
     assert expected.is_dir()
 
 
+def test_eval_script_preserves_explicit_shared_uv_cache(tmp_path: Path, monkeypatch) -> None:
+    workspace = tmp_path / "workspace"
+    checkout = tmp_path / "checkout"
+    (checkout / "evaluator").mkdir(parents=True)
+    make_eval_script(
+        checkout / "evaluator" / "eval.sh",
+        "#!/bin/sh\n"
+        "set -eu\n"
+        'printf "%s\\n" "$EVOLVE_UV_CACHE_DIR" > cache-path\n',
+    )
+    run_dir = workspace / "runs" / "gen-1" / "eval"
+    run_dir.mkdir(parents=True)
+    shared_cache = tmp_path / "shared-cache"
+    monkeypatch.setenv("EVOLVE_UV_CACHE_DIR", str(shared_cache))
+
+    result = _run_eval_script(checkout, run_dir, "1", None, "research", "gate")
+
+    assert result.returncode == 0
+    assert (checkout / "cache-path").read_text() == f"{shared_cache}\n"
+    assert shared_cache.is_dir()
+
+
 def test_eval_script_receives_configured_candidate_cohort(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     checkout = tmp_path / "checkout"

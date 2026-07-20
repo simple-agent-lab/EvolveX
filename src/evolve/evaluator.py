@@ -204,7 +204,7 @@ def _run_eval_script(
     }
     env["EVOLVE_EVAL_SPLIT"] = evaluation_split
     env.setdefault("EVOLVE_FRAMEWORK_PYTHON", sys.executable)
-    uv_cache = runs_dir / "runtime" / "uv-cache"
+    uv_cache = Path(env.get("EVOLVE_UV_CACHE_DIR") or runs_dir / "runtime" / "uv-cache")
     uv_cache.mkdir(parents=True, exist_ok=True)
     env["EVOLVE_UV_CACHE_DIR"] = str(uv_cache)
     if task_limit is not None:
