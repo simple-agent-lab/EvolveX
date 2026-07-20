@@ -329,6 +329,26 @@ def test_harbor_readonly_agent_returns_response_without_candidate_artifact(
     assert not (checkout / "target" / "added.txt").exists()
 
 
+def test_agent_output_falls_back_to_miniswe_trajectory(tmp_path: Path) -> None:
+    trial_dir = tmp_path / "trial"
+    agent_dir = trial_dir / "agent"
+    agent_dir.mkdir(parents=True)
+    (agent_dir / "trajectory.json").write_text(json.dumps({"steps": []}))
+    (agent_dir / "mini-swe-agent.trajectory.json").write_text(
+        json.dumps(
+            {
+                "messages": [
+                    {"role": "assistant", "content": "ROOT CAUSE: first draft"},
+                    {"role": "user", "content": "Tool call error"},
+                    {"role": "assistant", "content": "ROOT CAUSE: recovered report"},
+                ]
+            }
+        )
+    )
+
+    assert _harbor_runner_module()._agent_output(trial_dir) == "ROOT CAUSE: recovered report"
+
+
 def test_harbor_meta_agent_round_trips_target_and_operators(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     checkout, run_dir = _checkout(tmp_path)
     bin_dir = tmp_path / "bin"

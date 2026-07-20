@@ -478,14 +478,25 @@ def _artifact_candidate(trial_dir: Path) -> tuple[Path, list[dict[str, Any]]]:
 def _agent_output(trial_dir: Path) -> str:
     payload = _read_json(trial_dir / "agent" / "trajectory.json")
     steps = payload.get("steps") if isinstance(payload, dict) else None
-    if not isinstance(steps, list):
+    if isinstance(steps, list):
+        messages = [
+            str(step.get("message"))
+            for step in steps
+            if isinstance(step, dict) and step.get("source") == "agent" and step.get("message")
+        ]
+        if messages:
+            return messages[-1]
+
+    payload = _read_json(trial_dir / "agent" / "mini-swe-agent.trajectory.json")
+    messages = payload.get("messages") if isinstance(payload, dict) else None
+    if not isinstance(messages, list):
         return ""
-    messages = [
-        str(step.get("message"))
-        for step in steps
-        if isinstance(step, dict) and step.get("source") == "agent" and step.get("message")
+    responses = [
+        str(message.get("content"))
+        for message in messages
+        if isinstance(message, dict) and message.get("role") == "assistant" and message.get("content")
     ]
-    return messages[-1] if messages else ""
+    return responses[-1] if responses else ""
 
 
 def _usage(payload: dict[str, Any], wall_s: float) -> dict[str, Any]:
