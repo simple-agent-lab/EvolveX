@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from evolve.evaluation import Outcome
-from evolve.task_vectors import TaskVectorError, normalize_task_vector, task_passed, trial_results
+from evolve.evaluation.evidence import TaskVectorError, normalize_task_vector, task_passed, trial_results
 
 
 def test_normalize_legacy_boolean_vector() -> None:

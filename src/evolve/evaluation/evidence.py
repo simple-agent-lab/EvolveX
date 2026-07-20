@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from .evaluation.results import Outcome, TrialResult
+from .results import Outcome, TrialResult
 
 TRIAL_STATUSES = {outcome.value for outcome in Outcome}
 

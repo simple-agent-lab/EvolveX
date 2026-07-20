@@ -9,6 +9,7 @@ from conftest import git, init_workspace, rows_by_genid
 from evolve.archive import MECHANISM_EVAL_FIELD, append_event
 from evolve.driver import RunOptions
 from evolve.driver import run as driver_run
+from evolve.evaluation.evidence import TaskVectorError
 from evolve.evaluation.identity import effective_task_set_identity
 from evolve.evaluation.execution import (
     _evaluation_artifact_reference,
@@ -17,7 +18,6 @@ from evolve.evaluation.execution import (
     evaluate,
 )
 from evolve.frozen.interfaces import ArchiveView
-from evolve.task_vectors import TaskVectorError
 
 
 def make_eval_script(path: Path, body: str) -> None:
