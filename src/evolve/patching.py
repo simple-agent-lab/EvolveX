@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .candidate_snapshot import build_candidate_snapshot
+from .candidate.snapshot import build_candidate_snapshot
 from .git import git, head_tag, working_tree_changed_paths
 from .surface import check_paths, surface_patterns
 

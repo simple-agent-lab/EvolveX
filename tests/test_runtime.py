@@ -13,7 +13,7 @@ import pytest
 from evolve import runtime as runtime_module
 from evolve import workspace as workspace_module
 from evolve.evaluation import Outcome
-from evolve.evaluator import evaluate
+from evolve.evaluation.execution import evaluate
 from evolve.feedback import write_feedback_bundle
 from evolve.runtime import attempt_dir
 from evolve.workspace import InitOptions, init_workspace

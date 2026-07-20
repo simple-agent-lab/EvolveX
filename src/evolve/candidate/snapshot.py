@@ -6,8 +6,8 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
-from .git import add_worktree, commit_paths, git, git_stdout, remove_worktree, working_tree_changed_paths
-from .surface import check_paths
+from ..git import add_worktree, commit_paths, git, git_stdout, remove_worktree, working_tree_changed_paths
+from ..surface import check_paths
 
 
 class CandidateSnapshotError(RuntimeError):
