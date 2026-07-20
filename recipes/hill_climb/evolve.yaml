@@ -23,7 +23,7 @@ operators:
   timeout_s: 600
 evaluator:
   engine: harbor
-  candidate_runtime: {variant: uv, project: target}
+  candidate_runtime: {variant: uv, project: target, python: "3.12"}
   dataset: swe-bench-lite
   agent: evolve_harbor_adapter:MiniSweSourceAgent
   split: {train: 0.5, gate: 0.4, sealed: 0.1, seed: 0}

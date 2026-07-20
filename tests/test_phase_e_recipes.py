@@ -113,7 +113,7 @@ def test_real_uv_recipes_enable_candidate_runtime_and_task_retry() -> None:
     for name in REAL_RECIPES:
         evaluator = _parsed_config(name)["evaluator"]
         assert isinstance(evaluator, dict)
-        assert evaluator["candidate_runtime"] == {"variant": "uv", "project": "target"}
+        assert evaluator["candidate_runtime"] == {"variant": "uv", "project": "target", "python": "3.12"}
         assert evaluator["max_retries"] == 1
         assert evaluator["benchmark_timeout_is_zero"] is True
 

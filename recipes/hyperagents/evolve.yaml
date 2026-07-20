@@ -24,7 +24,7 @@ operators:
   timeout_s: 600
 evaluator:
   engine: harbor
-  candidate_runtime: {variant: uv, project: target}
+  candidate_runtime: {variant: uv, project: target, python: "3.12"}
   dataset: terminal-bench@2.0
   agent: evolve_harbor_adapter:MiniSweSourceAgent
   task_scope: full

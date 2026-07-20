@@ -66,7 +66,7 @@ def test_render_yaml_preserves_nested_candidate_runtime(tmp_path: Path) -> None:
     config = {section: {} for section in CONFIG_SECTIONS}
     config["evaluator"] = {
         "engine": "harbor",
-        "candidate_runtime": {"variant": "uv", "project": "target"},
+        "candidate_runtime": {"variant": "uv", "project": "target", "python": "3.12"},
         "max_retries": 1,
         "benchmark_timeout_is_zero": True,
     }

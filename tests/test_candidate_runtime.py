@@ -60,7 +60,9 @@ def _runtime_fixture(tmp_path: Path) -> tuple[Path, Path, Path, dict[str, object
     run_dir = tmp_path / "run"
     runtime_root = tmp_path / "runtime"
     executable, calls = _fake_uv(tmp_path)
-    evaluator: dict[str, object] = {"candidate_runtime": {"variant": "uv", "project": "target"}}
+    evaluator: dict[str, object] = {
+        "candidate_runtime": {"variant": "uv", "project": "target", "python": "3.12"}
+    }
     env = {
         **os.environ,
         "EVOLVE_UV_BINARY": str(executable),
@@ -91,7 +93,7 @@ def test_uv_runtime_prepares_cache_and_emits_offline_contract(tmp_path: Path) ->
         "UV_CACHE_DIR": "/opt/evolve/uv/cache",
         "UV_LINK_MODE": "copy",
         "UV_OFFLINE": "1",
-        "UV_PYTHON": f"{sys.version_info.major}.{sys.version_info.minor}",
+        "UV_PYTHON": "3.12",
         "UV_PYTHON_INSTALL_DIR": "/opt/evolve/uv/python",
     }
     assert [mount.target for mount in result.mounts] == [
@@ -112,7 +114,7 @@ def test_uv_runtime_prepares_the_framework_python_for_offline_consumers(tmp_path
 
     assert result.ready
     invocations = [json.loads(line) for line in calls.read_text().splitlines()]
-    assert ["python", "install", f"{sys.version_info.major}.{sys.version_info.minor}"] in invocations
+    assert ["python", "install", "3.12"] in invocations
 
 
 def test_uv_runtime_warm_probe_avoids_online_sync(tmp_path: Path) -> None:
@@ -242,13 +244,14 @@ def test_uv_runtime_config_resolves_project_inside_checkout(tmp_path: Path) -> N
 
     config = candidate_runtime_config(
         checkout,
-        {"candidate_runtime": {"variant": "uv", "project": "target"}},
+        {"candidate_runtime": {"variant": "uv", "project": "target", "python": "3.12"}},
     )
 
     assert config is not None
     assert config.variant == "uv"
     assert config.project == (checkout / "target").resolve()
     assert config.project_relative == "target"
+    assert config.python == "3.12"
 
 
 @pytest.mark.parametrize(

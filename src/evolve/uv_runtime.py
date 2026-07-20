@@ -26,6 +26,7 @@ class UvRuntimeConfig:
     variant: str
     project: Path
     project_relative: str
+    python: str
 
 
 def _digest_project(project: Path) -> str:
@@ -125,7 +126,10 @@ def candidate_runtime_config(
         project.relative_to(root)
     except ValueError:
         raise ValueError("candidate runtime project escapes checkout") from None
-    return UvRuntimeConfig("uv", project, project.relative_to(root).as_posix())
+    python = value.get("python", FRAMEWORK_PYTHON)
+    if not isinstance(python, str) or not re.fullmatch(r"\d+\.\d+", python):
+        raise ValueError("evaluator.candidate_runtime.python must be a Python major.minor version")
+    return UvRuntimeConfig("uv", project, project.relative_to(root).as_posix(), python)
 
 
 def _uv_version(uv: str, checkout: Path, env: dict[str, str]) -> str | None:
@@ -236,7 +240,7 @@ def _finish_ready_runtime(
             ("UV_CACHE_DIR", CONTAINER_UV_CACHE),
             ("UV_LINK_MODE", "copy"),
             ("UV_OFFLINE", "1"),
-            ("UV_PYTHON", FRAMEWORK_PYTHON),
+            ("UV_PYTHON", config.python),
             ("UV_PYTHON_INSTALL_DIR", CONTAINER_UV_PYTHON),
         ),
         mounts=(
@@ -292,7 +296,7 @@ def prepare_candidate_runtime(
     command_env = {
         **values,
         "UV_CACHE_DIR": str(cache),
-        "UV_PYTHON": FRAMEWORK_PYTHON,
+        "UV_PYTHON": config.python,
         "UV_PYTHON_INSTALL_DIR": str(python_dir),
         "UV_PROJECT_ENVIRONMENT": str(temporary_environment),
     }
@@ -301,7 +305,7 @@ def prepare_candidate_runtime(
         cache.mkdir(parents=True, exist_ok=True)
         python_dir.mkdir(parents=True, exist_ok=True)
         installed_python = run_owned(
-            [uv, "python", "install", FRAMEWORK_PYTHON],
+            [uv, "python", "install", config.python],
             cwd=checkout,
             env=command_env,
         )
