@@ -24,6 +24,7 @@ operators:
   timeout_s: 600
 evaluator:
   engine: harbor
+  candidate_runtime: {variant: uv, project: target}
   dataset: terminal-bench@2.0
   agent: evolve_harbor_adapter:MiniSweSourceAgent
   task_scope: full
@@ -32,4 +33,6 @@ evaluator:
   tasks_per_round: 89
   k: 1
   n_concurrent: 4
+  max_retries: 1
+  benchmark_timeout_is_zero: true
   partial_floor: 0.8

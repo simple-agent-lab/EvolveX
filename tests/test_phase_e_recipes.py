@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from evolve.config import RECIPE_NAMES
+from evolve.config import RECIPE_NAMES, load_config
 
 ROOT = Path(__file__).resolve().parents[1]
 RECIPES = ROOT / "recipes"
@@ -10,6 +10,10 @@ SMOKE_RECIPES = {"hill_climb-smoke", "hyperagents-smoke"}
 
 def _config(name: str) -> str:
     return (RECIPES / name / "evolve.yaml").read_text()
+
+
+def _parsed_config(name: str) -> dict[str, object]:
+    return load_config(RECIPES / name / "evolve.yaml")
 
 
 def test_all_recipes_are_recipe_artifacts_only() -> None:
@@ -105,6 +109,15 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
         assert "variant: fixed" not in config
 
 
+def test_real_uv_recipes_enable_candidate_runtime_and_task_retry() -> None:
+    for name in REAL_RECIPES:
+        evaluator = _parsed_config(name)["evaluator"]
+        assert isinstance(evaluator, dict)
+        assert evaluator["candidate_runtime"] == {"variant": "uv", "project": "target"}
+        assert evaluator["max_retries"] == 1
+        assert evaluator["benchmark_timeout_is_zero"] is True
+
+
 def test_meta_agent_image_provides_harbor_workspace_parent() -> None:
     dockerfile = ROOT / "containers" / "meta-agent" / "Dockerfile"
     contents = dockerfile.read_text()
@@ -122,6 +135,9 @@ def test_meta_agent_image_provides_harbor_workspace_parent() -> None:
 def test_smoke_recipes_are_explicitly_named_and_deterministic() -> None:
     for name in SMOKE_RECIPES:
         config = _config(name)
+        evaluator = _parsed_config(name)["evaluator"]
+        assert isinstance(evaluator, dict)
+        assert "candidate_runtime" not in evaluator
         assert "engine: harbor" in config
         assert "dataset: pass@k" in config
         assert "seed: builtin-dummy" in config

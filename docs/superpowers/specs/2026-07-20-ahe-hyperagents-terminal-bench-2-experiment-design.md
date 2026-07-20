@@ -43,6 +43,11 @@ evaluation multiplicities, mutation surfaces, and search procedures differ.
 "Full benchmark" means that every evaluated candidate runs all 89 tasks. It is
 independent of the number of evolution generations.
 
+The [offline uv candidate runtime](2026-07-20-offline-candidate-dependency-preparation-design.md)
+is a launch prerequisite. It prepares uv-managed dependencies once per candidate
+before evaluation, then each isolated task installs the current local candidate
+offline from the prepared cache and Python installation.
+
 ## AHE Experiment
 
 ### Fidelity target
@@ -152,15 +157,25 @@ evidence, archive, credentials, or Git metadata are discarded and reject the
 proposal when they violate the declared surface. The host experiment workspace
 is never directly mounted as the returned mutation source.
 
-## Corrected Smoke Experiment
+## Pre-launch Smoke Gates
+
+The two smoke experiments below are one-time gates before launching the long,
+expensive experiments. They are not repeated for every generation of a full
+experiment.
+
+First, run an install-only smoke over all 89 official images with no model calls.
+It must demonstrate that every image can install and import the prepared candidate
+offline without pulling images or reaching the setup timeout.
+
+Second, run the corrected concurrent evolution smoke described below.
 
 Before either full run, execute both methods on the same small collection of
 unmodified tasks copied from the official dataset revision:
 
-- `cancel-async-tasks`
-- `largest-eigenval`
+- `cobol-modernization`
+- `fix-git`
+- `overfull-hbox`
 - `prove-plus-comm`
-- `regex-log`
 
 The task names, `task.toml`, environment definitions, instructions, tests, and
 verifiers must remain unchanged. Do not create renamed `-train` or `-gate`
@@ -237,15 +252,15 @@ Before a smoke or full launch:
    printing secret values;
 5. verify the meta-agent image and Harbor runtime;
 6. verify Docker capacity and remove only confirmed stale experiment resources;
-7. configure the shared UV cache mount;
+7. verify candidate preparation succeeds once and isolated task sync is offline;
 8. confirm four task workers for each experiment;
 9. launch under a persistent process supervisor and stop through the driver,
    rather than abruptly killing it;
 10. monitor completed-trial counts, infrastructure errors, API retry rates,
     containers, networks, disk usage, and estimated cost.
 
-The full experiments may start only after the corrected official-task smoke
-satisfies every smoke success condition.
+The full experiments may start only after both the 89-image install-only gate and
+the corrected official-task evolution gate satisfy every smoke success condition.
 
 ## Sources
 

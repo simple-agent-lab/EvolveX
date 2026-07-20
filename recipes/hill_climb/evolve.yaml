@@ -23,6 +23,7 @@ operators:
   timeout_s: 600
 evaluator:
   engine: harbor
+  candidate_runtime: {variant: uv, project: target}
   dataset: swe-bench-lite
   agent: evolve_harbor_adapter:MiniSweSourceAgent
   split: {train: 0.5, gate: 0.4, sealed: 0.1, seed: 0}
@@ -31,4 +32,6 @@ evaluator:
   anchor: {final: true, every_rounds: 0}
   k: 1
   n_concurrent: 16
+  max_retries: 1
+  benchmark_timeout_is_zero: true
   partial_floor: 0.8
