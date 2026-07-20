@@ -192,6 +192,7 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
             evaluator_trials,
             partial_floor,
             evaluator_agent,
+            model=str(evaluator["model"]) if evaluator.get("model") else None,
             dataset_mode=str(evaluator.get("dataset_mode", "path")),
             task_file=str(evaluator["task_file"]) if "task_file" in evaluator else None,
             setup_timeout_multiplier=setup_timeout_multiplier,
@@ -561,6 +562,7 @@ def _eval_env(
     partial_floor: float,
     agent: str,
     *,
+    model: str | None = None,
     dataset_mode: str = "path",
     task_file: str | None = None,
     setup_timeout_multiplier: float = 1,
@@ -582,6 +584,8 @@ def _eval_env(
         text += f"EVOLVE_HARBOR_AGENT_SETUP_TIMEOUT_MULTIPLIER={setup_timeout_multiplier}\n"
     if max_retries > 0:
         text += f"EVOLVE_HARBOR_MAX_RETRIES={max_retries}\n"
+    if model:
+        text += f"EVOLVE_HARBOR_MODEL={shlex.quote(model)}\n"
     return text + (f"EVOLVE_HARBOR_TASK_FILE={shlex.quote(task_file)}\n" if task_file else "")
 
 

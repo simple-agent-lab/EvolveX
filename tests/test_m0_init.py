@@ -27,6 +27,7 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
         "uv.lock",
         ".python-version",
         "evolve_harbor_adapter/__init__.py",
+        "evolve_harbor_agent/__init__.py",
         "evolve.yaml",
         ".evolve-protocol-version",
         "AGENTS.md",
@@ -68,7 +69,7 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
     assert (workspace / ".python-version").read_text() == "3.12\n"
     assert "harbor==0.18.0" in (workspace / "pyproject.toml").read_text()
     assert (
-        'packages = [".evolve/evolve", "evolve_harbor_adapter", "library"]'
+        'packages = [".evolve/evolve", "evolve_harbor_adapter", "evolve_harbor_agent", "library"]'
         in (workspace / "pyproject.toml").read_text()
     )
 

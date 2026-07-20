@@ -121,11 +121,15 @@ def test_real_uv_recipes_enable_candidate_runtime_and_task_retry() -> None:
 def test_miniswe_method_agents_use_the_rollout_model_version() -> None:
     expected_model = "openai/gpt-5.4-2026-03-05"
     for name in ("ahe", "hyperagents"):
-        operators = _parsed_config(name)["operators"]
+        config = _parsed_config(name)
+        operators = config["operators"]
         assert isinstance(operators, dict)
         meta_agent = operators["meta_agent"]
         assert isinstance(meta_agent, dict)
         assert meta_agent["model"] == expected_model
+        evaluator = config["evaluator"]
+        assert isinstance(evaluator, dict)
+        assert evaluator["model"] == expected_model
 
 
 def test_meta_agent_image_provides_harbor_workspace_parent() -> None:
