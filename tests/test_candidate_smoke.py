@@ -8,8 +8,8 @@ from types import SimpleNamespace
 import pytest
 from conftest import git, run_evolve
 
-from evolve import candidate_runtime as candidate_runtime_module
-from evolve.candidate_runtime import run_candidate_smoke
+from evolve import candidate_smoke as candidate_smoke_module
+from evolve.candidate_smoke import run_candidate_smoke
 from evolve.config import default_config
 from evolve.workspace import InitOptions, init_workspace
 
@@ -65,7 +65,7 @@ def test_smoke_runs_through_owned_process_helper(tmp_path: Path, monkeypatch) ->
     checkout = smoke_checkout(tmp_path)
     calls: list[tuple[list[str], dict[str, str]]] = []
     ticks = iter((10.0, 12.0))
-    monkeypatch.setattr(candidate_runtime_module.time, "monotonic", lambda: next(ticks))
+    monkeypatch.setattr(candidate_smoke_module.time, "monotonic", lambda: next(ticks))
 
     def fake_run_owned(
         command: list[str],
@@ -77,7 +77,7 @@ def test_smoke_runs_through_owned_process_helper(tmp_path: Path, monkeypatch) ->
         calls.append((command, env))
         return SimpleNamespace(returncode=0, stdout="owned\n", stderr="", wall_s=0.01, timed_out=False)
 
-    monkeypatch.setattr(candidate_runtime_module, "run_owned", fake_run_owned, raising=False)
+    monkeypatch.setattr(candidate_smoke_module, "run_owned", fake_run_owned, raising=False)
 
     result = run_candidate_smoke(checkout, workspace=checkout)
 
@@ -85,7 +85,7 @@ def test_smoke_runs_through_owned_process_helper(tmp_path: Path, monkeypatch) ->
     assert result.stdout_path.read_text() == "owned\n"
     assert json.loads((result.attempt_dir / "result.json").read_text())["duration_s"] == 2.0
     assert len(calls) == 1
-    assert calls[0][1]["EVOLVE_ATTEMPT_ID"] == candidate_runtime_module.owned_attempt_id(
+    assert calls[0][1]["EVOLVE_ATTEMPT_ID"] == candidate_smoke_module.owned_attempt_id(
         checkout,
         result.attempt_dir,
     )

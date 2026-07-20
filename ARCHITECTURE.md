@@ -28,6 +28,8 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `population.py` | 150 | genid/lineage bookkeeping for fan-out generations |
 | `archive.py` | 270 | append-only event store: merge semantics, stamped-field protection, mirroring, integrity fsck |
 | `evaluator.py` | 150 | clean-checkout canonical evaluation: tree assertion, exit-code contract, score parsing |
+| `candidate_snapshot.py` | 80 | exact candidate Git tree construction, temporary materialization, and reviewed-tree commit verification |
+| `candidate_smoke.py` | 130 | run evaluator smoke against an exact candidate snapshot and persist redacted diagnostics |
 | `git.py` | 150 | thin git subprocess helpers — nothing evolve-specific |
 | `surface.py` | 150 | mutable-surface pattern matching and violation checks |
 | `report.py` | 182 | status/report rendering, best-ever recomputation, claim checklist |
