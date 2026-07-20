@@ -72,4 +72,5 @@ def test_file_task_agent_externalizes_large_miniswe_instruction(monkeypatch) -> 
     assert module.TASK_PATH in runtime_command
     assert module.SHIM_PATH in runtime_command
     assert "--output=/logs/trajectory.json" in runtime_command
+    assert "unset HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy;" in runtime_command
     assert environment.envs[-1] == {"ROLE": "agent"}
