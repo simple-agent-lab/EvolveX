@@ -87,10 +87,6 @@ class EvaluationRecord:
         return payload
 
 
-class EvaluationInterrupted(BaseException):
-    """Carries a cancelled attempt to the driver for append-before-reraise."""
-
-
 def _trial_payload(trial: TrialResult) -> dict[str, object]:
     payload = {**asdict(trial), "outcome": trial.outcome.value}
     for field in ("source_attempt", "repaired_from_attempt", "repair_reason"):

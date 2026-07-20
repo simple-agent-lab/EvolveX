@@ -6,7 +6,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast
 
-from .evaluation import EvaluationRecord, Outcome, TrialResult, classify_evaluation, effective_trial_outcome
+from .results import EvaluationRecord, Outcome, TrialResult, classify_evaluation, effective_trial_outcome
 
 _IDENTITY_FIELDS = (
     "experiment_id",

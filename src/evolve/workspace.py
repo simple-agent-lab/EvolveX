@@ -17,7 +17,6 @@ from typing import Any, cast
 
 from . import __version__ as _EVOLVE_VERSION
 from .archive import append_event
-from .asset_discovery import root_python_helpers
 from .config import (
     OPERATOR_KINDS,
     OPTIONAL_OPERATOR_KINDS,
@@ -291,6 +290,18 @@ def _text_files(root: Path | Traversable):
             continue
 
 
+def _root_python_helpers(root: Path | Traversable):
+    for source in sorted(root.iterdir(), key=lambda entry: entry.name):
+        if source.name.startswith((".", "_")) or not source.name.endswith(".py") or not source.is_file():
+            continue
+        if isinstance(source, Path) and source.is_symlink():
+            raise ValueError(f"operator asset may not be a symlink: {source}")
+        try:
+            yield source.name, source.read_text()
+        except UnicodeDecodeError:
+            continue
+
+
 def _operator_assets(recipe: str) -> dict[str, str]:
     assets: dict[str, str] = {}
     for kind in (*OPERATOR_KINDS, *OPTIONAL_OPERATOR_KINDS):
@@ -299,7 +310,7 @@ def _operator_assets(recipe: str) -> dict[str, str]:
                 for relative, text in _text_files(directory):
                     if relative.suffix != ".py" or len(relative.parts) > 1:
                         assets.setdefault(f"library/{kind}/{relative.as_posix()}", text)
-    return assets | {f"library/{name}": text for name, text in root_python_helpers(library_root())}
+    return assets | {f"library/{name}": text for name, text in _root_python_helpers(library_root())}
 
 
 def _recipe_evaluator_assets(recipe: str) -> dict[str, str]:

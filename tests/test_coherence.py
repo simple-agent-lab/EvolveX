@@ -19,15 +19,18 @@ APPROVED_MODULES = {
     "__main__.py",
     "agent.py",
     "archive.py",
-    "asset_discovery.py",
-    "candidate_runtime.py",
-    "candidate_snapshot.py",
+    "candidate/__init__.py",
+    "candidate/smoke.py",
+    "candidate/snapshot.py",
     "cli.py",
     "config.py",
     "driver.py",
-    "evaluation.py",
-    "evaluation_repair.py",
-    "evaluator.py",
+    "evaluation/__init__.py",
+    "evaluation/evidence.py",
+    "evaluation/execution.py",
+    "evaluation/identity.py",
+    "evaluation/repair.py",
+    "evaluation/results.py",
     "feedback.py",
     "git.py",
     "host_runtime.py",
@@ -38,8 +41,6 @@ APPROVED_MODULES = {
     "runtime.py",
     "splits.py",
     "surface.py",
-    "task_sets.py",
-    "task_vectors.py",
     "trace_analysis.py",
     "workspace.py",
     # the frozen ring — the invariant-enforcers, grouped under frozen/
@@ -51,7 +52,12 @@ APPROVED_MODULES = {
 
 def _module_paths() -> list[Path]:
     """Every mechanism module — top-level plus the frozen ring."""
-    return [*sorted(SRC.glob("*.py")), *sorted((SRC / "frozen").glob("*.py"))]
+    return [
+        *sorted(SRC.glob("*.py")),
+        *sorted((SRC / "candidate").glob("*.py")),
+        *sorted((SRC / "evaluation").glob("*.py")),
+        *sorted((SRC / "frozen").glob("*.py")),
+    ]
 
 
 def _module_relpaths() -> set[str]:
@@ -65,6 +71,12 @@ def test_every_module_is_approved_and_every_approved_module_exists() -> None:
         f"approved={sorted(APPROVED_MODULES)} - "
         "adding or removing a mechanism module requires updating the pinned set"
     )
+
+
+def test_population_delegates_evaluation_identity() -> None:
+    source = (SRC / "population.py").read_text()
+    assert "hashlib" not in source
+    assert "json.dumps" not in source
 
 
 def test_no_test_hooks_in_mechanism() -> None:

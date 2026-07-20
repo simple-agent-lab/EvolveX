@@ -9,16 +9,16 @@ from conftest import git, init_workspace, rows_by_genid
 from evolve.archive import MECHANISM_EVAL_FIELD, append_event
 from evolve.driver import RunOptions
 from evolve.driver import run as driver_run
-from evolve.evaluator import (
+from evolve.evaluation.evidence import TaskVectorError
+from evolve.evaluation.execution import (
     _evaluation_artifact_reference,
     _read_task_vector,
     _repair_task_selectors,
     _run_eval_script,
     evaluate,
 )
+from evolve.evaluation.identity import effective_task_set_identity
 from evolve.frozen.interfaces import ArchiveView
-from evolve.task_sets import effective_task_set_identity
-from evolve.task_vectors import TaskVectorError
 
 
 def make_eval_script(path: Path, body: str) -> None:
@@ -245,6 +245,8 @@ def test_effective_task_set_identity_accepts_explicit_configured_task_names(tmp_
     )
 
     assert identity.members == ("task-a", "task-b")
+    expected_payload = b'{"attempts":2,"dataset":"stub","tasks":["task-a","task-b"]}'
+    assert identity.digest == hashlib.sha256(expected_payload).hexdigest()
 
 
 def test_hand_edited_artifact_hash_cannot_replace_mechanism_stamp(tmp_path: Path) -> None:

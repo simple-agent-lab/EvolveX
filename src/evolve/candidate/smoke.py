@@ -10,9 +10,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from .candidate_snapshot import build_candidate_snapshot, materialize_snapshot
-from .runtime import owned_attempt_id, run_owned
-from .surface import surface_patterns
+from ..runtime import owned_attempt_id, run_owned
+from ..surface import surface_patterns
+from .snapshot import build_candidate_snapshot, materialize_snapshot
 
 SmokeStatus = Literal["passed", "failed", "unsupported"]
 _SECRET_NAME = re.compile(r"KEY|TOKEN|SECRET|PASSWORD|PROXY", re.IGNORECASE)

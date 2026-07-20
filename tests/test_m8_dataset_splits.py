@@ -6,7 +6,7 @@ import pytest
 from conftest import run_evolve
 
 from evolve.frozen.interfaces import OperatorContext
-from evolve.splits import build_manifest, select_dataset_tasks, selected_task_names, task_set_hash
+from evolve.splits import build_manifest, select_dataset_tasks, selected_task_names, split_selection_digest
 
 
 def _dataset(root: Path, count: int = 10) -> Path:
@@ -35,7 +35,7 @@ def test_split_manifest_is_deterministic_disjoint_and_drift_checked(tmp_path: Pa
     assert set.union(*all_names) == {f"task-{index}" for index in range(10)}
     assert not (all_names[0] & all_names[1] or all_names[0] & all_names[2] or all_names[1] & all_names[2])
     assert len(selected_task_names(first, "gate")) == 2
-    assert task_set_hash("gate", selected_task_names(first, "gate")) != task_set_hash(
+    assert split_selection_digest("gate", selected_task_names(first, "gate")) != split_selection_digest(
         "sealed", selected_task_names(first, "sealed")
     )
 

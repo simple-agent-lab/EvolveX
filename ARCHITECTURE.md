@@ -27,16 +27,21 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `operators.py` | 150 | subprocess runner for workspace operator scripts (contract: env vars, --config, timeout) |
 | `population.py` | 150 | genid/lineage bookkeeping for fan-out generations |
 | `archive.py` | 380 | append-only event store: merge semantics, stamped-field protection, mirroring, integrity fsck |
-| `evaluator.py` | 270 | clean-checkout canonical evaluation: tree assertion, targeted task execution, exit-code contract, score parsing |
-| `evaluation.py` | 170 | canonical evaluation outcomes, trial evidence, records, and classification |
-| `evaluation_repair.py` | 190 | target explicit infrastructure failures, merge repaired trials, and preserve attempt provenance |
-| `task_vectors.py` | 130 | normalize and validate per-task trial evidence from evaluators |
+| `evaluation/__init__.py` | 30 | pure evaluation-result facade |
+| `evaluation/results.py` | 170 | evaluation result types, outcome classification, and persisted record shape |
+| `evaluation/evidence.py` | 130 | evaluator-output validation and conversion into canonical trial results |
+| `evaluation/identity.py` | 150 | canonical task-set identity plus checkout and frozen-baseline comparability |
+| `evaluation/execution.py` | 280 | clean-checkout canonical evaluation: tree assertion, targeted task execution, lifecycle, artifacts, and score parsing |
+| `evaluation/repair.py` | 190 | target explicit infrastructure failures, merge repaired trials, and preserve attempt provenance |
+| `candidate/__init__.py` | 10 | candidate-boundary package marker |
+| `candidate/snapshot.py` | 80 | exact candidate Git tree construction, temporary materialization, and reviewed-tree commit verification |
+| `candidate/smoke.py` | 130 | run evaluator smoke against an exact candidate snapshot and persist redacted diagnostics |
 | `git.py` | 150 | thin git subprocess helpers — nothing evolve-specific |
 | `surface.py` | 150 | mutable-surface pattern matching and violation checks |
 | `report.py` | 182 | status/report rendering, best-ever recomputation, claim checklist |
 | `trace_analysis.py` | 410 | deterministic shared transforms used by the independent trace-analyzer operator variants |
 | `splits.py` | 210 | freeze deterministic train/gate/sealed Harbor task membership and materialize exact runtime selections |
-| `workspace.py` | 620 | `evolve init` scaffolding: file copies, operator binding, deterministic dataset and Harbor runtime config, generated operator palette, protocol stamping, seed + mechanism vendoring, inner-skill copy |
+| `workspace.py` | 640 | `evolve init` scaffolding: file copies, operator binding, deterministic dataset and Harbor runtime config, generated operator palette, protocol stamping, seed + mechanism vendoring, inner-skill copy |
 
 ### The frozen ring (`src/evolve/frozen/`)
 
@@ -52,8 +57,8 @@ each workspace, immutable there because it sits outside the mutable surface
 | `frozen/sdk.py` | 420 | Python operator entrypoint and file-contract IO; no library algorithm policy |
 | `frozen/meta_eval.py` | 130 | self-modification admission gate: confound-free replay of old vs new operator surface (mechanism 1) |
 
-Total `src/evolve/` budget: **5500 lines**. The increase admits the explicit,
-redacted trace-analysis boundary between rollout and feedback assembly; if the mechanism wants to
+Total `src/evolve/` budget: **5700 lines**. The increase admits the explicit evaluation-package
+boundaries, failed-task repair, and the redacted trace-analysis boundary between rollout and feedback assembly; if the mechanism wants to
 grow past that, something belongs in a workspace operator instead —
 that is the spec's rule, not a style preference.
 

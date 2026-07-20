@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 from evolve.evaluation import EvaluationRecord, Outcome, TrialResult
-from evolve.evaluation_repair import finalize_repair, repair_task_ids
+from evolve.evaluation.repair import finalize_repair, repair_task_ids
 
 
 def _record(

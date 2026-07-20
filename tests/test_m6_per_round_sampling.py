@@ -5,7 +5,7 @@ from conftest import git, init_workspace
 
 from evolve.config import evaluator_sampling
 from evolve.driver import eval_child
-from evolve.evaluator import evaluate
+from evolve.evaluation.execution import evaluate
 
 
 def _replace(workspace: Path, relative_path: str, old: str, new: str) -> None:

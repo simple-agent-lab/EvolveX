@@ -11,9 +11,9 @@ import json
 from pathlib import Path
 from typing import Any
 
+from evolve.evaluation.evidence import TaskVectorError, normalize_task_vector
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import ArchiveView, OperatorContext, SelectOperator, SelectResult
-from evolve.task_vectors import TaskVectorError, normalize_task_vector
 
 
 def _task_scores(row: dict[str, Any]) -> dict[str, float]:
