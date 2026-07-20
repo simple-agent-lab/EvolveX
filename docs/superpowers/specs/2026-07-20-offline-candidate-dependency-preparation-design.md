@@ -1,22 +1,25 @@
-# Offline Candidate Dependency Preparation Design
+# Offline uv Candidate Runtime Design
 
 ## Purpose
 
-Make Harbor evaluation of mutable MiniSWE candidates fast and reproducible on
-Terminal-Bench 2.0 without removing dependency files from the AHE or
-HyperAgents mutation surface.
+Make evaluation of mutable uv-managed candidates fast and reproducible without
+removing dependency files from the mutation surface.
 
-The framework owns agent dependency readiness. Terminal-Bench continues to own
-task execution, task images, and verification. Benchmark task dependencies are
-not installed into the agent environment.
+The framework owns candidate runtime readiness. Evaluation backends consume a
+prepared runtime, agent adapters install the mutable local project, and
+benchmarks continue to own task execution and verification. Benchmark task
+dependencies are not installed into the candidate environment.
+
+The first integration is the MiniSWE Harbor adapter evaluated on Terminal-Bench
+2.0, but neither MiniSWE nor Terminal-Bench is part of the component contract.
 
 ## Problem
 
-The current Harbor adapter uploads every candidate into every task container and
-runs a network-capable `uv sync`. In the official four-task smoke, concurrent
-syncs repeatedly reached the 360-second agent-setup timeout. Some trials never
-called the model. A verifier timeout then caused the driver to repeat a complete
-four-task batch, including already completed model rollouts.
+The current Harbor integration uploads every candidate into every task container
+and runs a network-capable `uv sync`. In the official four-task MiniSWE smoke,
+concurrent syncs repeatedly reached the 360-second agent-setup timeout. Some
+trials never called the model. A verifier timeout then caused the driver to
+repeat a complete four-task batch, including already completed model rollouts.
 
 This behavior has three undesirable effects:
 
@@ -29,25 +32,59 @@ agent dependency lifecycle.
 
 ## Constraints
 
-- AHE and HyperAgents may modify `target/pyproject.toml`, `target/uv.lock`, the
-  agent source, and other allowed target files.
+- A candidate may modify `pyproject.toml`, `uv.lock`, its source, and any other
+  files allowed by the experiment surface.
 - A changed dependency declaration must be validated and honored.
-- Terminal-Bench task images and official verifier logic remain unchanged.
-- AHE and HyperAgents remain independent experiments with four workers each.
+- The component supports uv-managed Python projects only in this version.
+- Candidate-runtime preparation is benchmark- and agent-independent.
+- Evaluation backends must not need to understand uv resolution or cache
+  readiness.
+- The preparation host and isolated consumers must share OS, architecture, and
+  Python ABI compatibility. The first deployment is Linux x86-64 on DevBoxS;
+  cross-platform artifact preparation is out of scope.
+- Agent-specific source and import validation remains in the agent adapter.
 - The implementation must not introduce a cache service, candidate image build
   pipeline, or cross-image shared virtual environment.
 - Credentials and proxy values must never be written to experiment artifacts.
+
+## Component Contract
+
+Experiments opt in through evaluator configuration:
+
+```yaml
+evaluator:
+  candidate_runtime:
+    variant: uv
+    project: target
+```
+
+`project` is relative to the candidate checkout. The frozen framework resolves
+and validates that path; it is not supplied by a mutable operator.
+
+The component accepts a candidate checkout, evaluation run directory, and
+sanitized runtime configuration. It returns a prepared-runtime result containing:
+
+- preparation outcome and failure ownership;
+- environment variables required by a consumer;
+- read-only or writable mount declarations for the package cache and managed
+  Python directory; and
+- a receipt reference suitable for the evaluation archive.
+
+The initial consumer is the Harbor evaluator engine. The contract does not
+mention Harbor commands, MiniSWE paths, Terminal-Bench tasks, or experiment
+method names. A future evaluation backend can consume the same result without
+changing the uv preparer.
 
 ## Chosen Architecture
 
 ### Candidate preparation
 
-Immediately before Harbor evaluates a candidate, the evaluator performs one
-network-enabled dependency-preparation step on the Linux evaluation host.
+Immediately before an evaluation backend runs a candidate, the frozen evaluator
+invokes the uv candidate-runtime component once on the Linux evaluation host.
 
 The step:
 
-1. checks that `pyproject.toml`, `uv.lock`, and the MiniSWE source exist;
+1. checks that the configured project contains `pyproject.toml` and `uv.lock`;
 2. runs `uv lock --check` to reject a stale or inconsistent lockfile;
 3. creates a disposable preparation virtual environment;
 4. runs `uv sync --frozen --no-install-local` against the candidate;
@@ -56,7 +93,7 @@ The step:
 6. removes the disposable environment after preparation.
 
 `--no-install-local` prepares external dependencies without freezing or
-preinstalling the mutable MiniSWE project. The preparation runs once per
+preinstalling the mutable local project. The preparation runs once per
 candidate evaluation, not once per benchmark task or rollout replicate. uv's
 content-addressed cache supplies reuse when the candidate's dependencies have
 not changed, so the framework does not maintain a separate cache index.
@@ -64,10 +101,16 @@ not changed, so the framework does not maintain a separate cache index.
 Preparation may retry once because benchmark trials and model calls have not yet
 started. A second preparation failure stops the candidate evaluation.
 
-### Per-task installation
+### Backend consumption and local installation
 
-Every Terminal-Bench container continues to create its own virtual environment.
-The adapter uploads the current candidate source and runs:
+The prepared-runtime result supplies mounts and environment variables to the
+evaluation backend. The backend passes them to each isolated candidate runtime.
+The agent adapter remains responsible for uploading or mounting its current
+local source and invoking its normal frozen sync.
+
+For the first Harbor/MiniSWE integration, every Terminal-Bench container
+continues to create its own virtual environment. The adapter uploads the current
+candidate source and runs:
 
 ```text
 uv sync --project /installed-agent/miniswe-source --frozen
@@ -83,14 +126,15 @@ UV_PYTHON_INSTALL_DIR=/installed-agent/uv-python
 ```
 
 The package cache and managed-Python directory are mounted from the prepared
-host paths. No proxy variables are passed to this sync. Offline mode ensures a
-missing external artifact fails promptly. Copy link mode is explicit because a
-host bind-mounted cache and a container virtual environment are on different
-filesystems.
+host paths. The package-manager invocation receives no proxy variables. Model
+endpoint networking remains independently configurable by the agent adapter.
+Offline mode ensures a missing external artifact fails promptly. Copy link mode
+is explicit because a host bind-mounted cache and a container virtual
+environment are on different filesystems.
 
-The task-local sync still builds and installs the current local MiniSWE source,
-so source and build-system mutations take effect. It does not install or alter
-the benchmark task's dependencies.
+The isolated sync still builds and installs the current local project, so source
+and build-system mutations take effect. It does not install or alter benchmark
+dependencies.
 
 ### Why not mount one virtual environment
 
@@ -105,7 +149,7 @@ sync remains a measured bottleneck after this design is implemented.
 Failures are classified at the boundary where they occur:
 
 - `uv lock --check` failure: candidate invalid;
-- missing candidate project, lockfile, or MiniSWE source: candidate invalid;
+- missing configured candidate project or lockfile: candidate invalid;
 - candidate local package build or import failure: candidate invalid;
 - proxy, registry, host-cache, or managed-Python failure during preparation:
   infrastructure failure;
@@ -186,9 +230,11 @@ the normal 89-task evaluation.
 
 ## Evidence and Observability
 
-Each candidate evaluation writes `dependency-preparation.json` containing:
+Each candidate evaluation writes `candidate-runtime.json` containing:
 
 - schema version;
+- runtime variant (`uv`);
+- configured project path;
 - candidate commit;
 - SHA-256 digest over `pyproject.toml`, `uv.lock`, and `.python-version` when
   present;
@@ -203,13 +249,15 @@ cost, and wall-clock evidence.
 
 ## Verification
 
-Automated tests cover:
+Framework-level automated tests cover:
 
+- candidate-runtime configuration and path containment;
 - unchanged and changed lockfiles;
 - stale lockfile rejection;
 - preparation retry and terminal infrastructure failure;
 - proxy use only during preparation;
-- offline task sync and explicit cache/Python mounts;
+- the backend-neutral environment and mount result;
+- Harbor consumption of offline settings and cache/Python mounts;
 - missing offline artifact classification;
 - local project build/import classification;
 - removal of complete-batch infrastructure retry;
@@ -221,8 +269,9 @@ No full experiment launches until both succeed.
 
 ## Operational Simplicity
 
-This design intentionally adds only one preparation function, two shared runtime
-paths, a small evidence record, and narrower retry behavior. It does not add a
-daemon, registry mirror, candidate Dockerfile, per-lock cache directory, or
-shared virtual environment. A proxy accelerates preparation, but measured task
-execution is independent of it.
+This design intentionally adds one uv candidate-runtime component, two shared
+runtime paths, a small evidence record, one Harbor consumption path, and narrower
+retry behavior. It does not add a package-manager-neutral plugin system, daemon,
+registry mirror, candidate Dockerfile, per-lock cache directory, or shared
+virtual environment. A proxy accelerates preparation, but measured candidate
+execution is independent of package-index availability.
