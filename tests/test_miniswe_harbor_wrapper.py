@@ -33,7 +33,13 @@ def _install_fake_harbor(monkeypatch):
         async def exec_as_agent(self, environment, command: str, env=None):
             environment.commands.append(command)
             environment.envs.append(env or {})
-            if getattr(environment, "fail_on", None) and environment.fail_on in command:
+            fail_on = getattr(environment, "fail_on", None)
+            should_fail = fail_on and fail_on in command
+            if fail_on == "external uv sync":
+                should_fail = "uv sync" in command and "--no-install-local" in command
+            elif fail_on == "local uv sync":
+                should_fail = "uv sync" in command and "--no-install-local" not in command
+            if should_fail:
                 raise getattr(environment, "failure", RuntimeError("simulated command failure"))
 
         async def exec_as_root(self, environment, command: str, env=None):
@@ -105,11 +111,19 @@ def test_miniswe_wrapper_subclasses_harbor_miniswe_and_installs_candidate_source
     assert "/installed-agent/miniswe-source/.venv/bin/python" in joined
     assert "uv run --project /installed-agent/miniswe-source" not in joined
     assert "from minisweagent.agents.default import DefaultAgent" in joined
-    assert sum("uv sync" in command for command in environment.commands) == 1
-    sync_index = next(index for index, command in enumerate(environment.commands) if "uv sync" in command)
-    assert 'export PATH="$HOME/.local/bin:$PATH"' in environment.commands[sync_index]
-    assert environment.envs[sync_index]["http_proxy"] == "http://proxy.example:8118"
-    assert environment.envs[sync_index]["UV_CACHE_DIR"] == "/installed-agent/uv-cache"
+    sync_indices = [index for index, command in enumerate(environment.commands) if "uv sync" in command]
+    assert len(sync_indices) == 2
+    assert "--no-install-local" in environment.commands[sync_indices[0]]
+    assert "--no-install-local" not in environment.commands[sync_indices[1]]
+    assert 'export PATH="$HOME/.local/bin:$PATH"' in environment.commands[sync_indices[0]]
+    for sync_index in sync_indices:
+        sync_env = environment.envs[sync_index]
+        assert sync_env == {
+            "UV_CACHE_DIR": "/opt/evolve/uv/cache",
+            "UV_LINK_MODE": "copy",
+            "UV_OFFLINE": "1",
+            "UV_PYTHON_INSTALL_DIR": "/opt/evolve/uv/python",
+        }
     model_index = next(
         index for index, command in enumerate(environment.commands) if "EVOLVE_PREFLIGHT_MODEL" in command
     )
@@ -168,7 +182,7 @@ def test_miniswe_wrapper_runs_candidate_source_api_not_cli(tmp_path: Path, monke
     assert 'env_kwargs["timeout"] = int(os.environ.get("MINISWE_ENV_TIMEOUT"' in module.RUNNER
 
 
-def test_miniswe_runtime_unsets_inherited_proxies_but_install_keeps_proxy(tmp_path: Path, monkeypatch) -> None:
+def test_miniswe_runtime_and_offline_install_do_not_forward_proxies(tmp_path: Path, monkeypatch) -> None:
     _install_fake_harbor(monkeypatch)
     for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"):
         monkeypatch.setenv(name, f"http://inherited-{name.lower()}.example:8118")
@@ -196,16 +210,14 @@ def test_miniswe_runtime_unsets_inherited_proxies_but_install_keeps_proxy(tmp_pa
     assert set(proxy_names).isdisjoint(environment.envs[-1])
 
     install_env = agent._install_env()
-    assert install_env["HTTP_PROXY"] == "http://proxy.example:8118"
-    assert install_env["HTTPS_PROXY"] == "http://proxy.example:8118"
-    assert install_env["http_proxy"] == "http://proxy.example:8118"
-    assert install_env["https_proxy"] == "http://proxy.example:8118"
+    assert set(proxy_names).isdisjoint(install_env)
+    assert install_env["UV_OFFLINE"] == "1"
 
 
 @pytest.mark.parametrize(
     ("fragment", "code", "failure"),
     [
-        ("uv sync", "frozen_sync_failed", RuntimeError("failed building litellm==1.92.0")),
+        ("local uv sync", "local_project_sync_failed", RuntimeError("failed building candidate")),
         ("EVOLVE_PREFLIGHT_MINISWE", "miniswe_import_failed", ImportError("minisweagent")),
         ("EVOLVE_PREFLIGHT_MODEL", "model_path_import_failed", ModuleNotFoundError("fastapi")),
     ],
@@ -241,6 +253,36 @@ def test_miniswe_install_classifies_candidate_phase_failures(
 
     with pytest.raises(RuntimeError, match=f"EVOLVE_CANDIDATE_INVALID: {code}"):
         asyncio.run(module.MiniSweSourceAgent().install(Environment()))
+
+
+def test_miniswe_external_dependency_sync_is_infrastructure_owned(
+    tmp_path: Path, monkeypatch
+) -> None:
+    _install_fake_harbor(monkeypatch)
+    target = write_locked_miniswe_seed(tmp_path / "target")
+    wrapper = target / "harbor_agent.py"
+    wrapper.write_text(ADAPTER_TEMPLATE.read_text())
+    module = _load(wrapper)
+    monkeypatch.setenv("EVOLVE_CANDIDATE_SOURCE", str(target))
+
+    class Environment:
+        def __init__(self) -> None:
+            self.commands = []
+            self.envs = []
+            self.uploads = []
+            self.fail_on = "external uv sync"
+            self.failure = RuntimeError("offline cache miss")
+
+        async def upload_dir(self, source_dir, target_dir):
+            self.uploads.append((Path(source_dir), target_dir))
+
+        async def upload_file(self, source_path, target_path):
+            self.uploads.append((Path(source_path), target_path))
+
+    with pytest.raises(module.EvolveRuntimeInfrastructureError) as raised:
+        asyncio.run(module.MiniSweSourceAgent().install(Environment()))
+
+    assert "EVOLVE_CANDIDATE_INVALID" not in str(raised.value)
 
 
 def test_miniswe_install_rejects_missing_lock_before_upload(tmp_path: Path, monkeypatch) -> None:

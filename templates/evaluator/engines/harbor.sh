@@ -26,19 +26,26 @@ if python3 -c 'import json,sys; raise SystemExit(0 if json.load(open(sys.argv[1]
   export EVOLVE_HARBOR_TASK_FILE
 fi
 : "${EVOLVE_UV_CACHE_DIR:=$HOME/.evolve/uv-cache}"
-mkdir -p "$EVOLVE_UV_CACHE_DIR"
-uv_mount=$(python3 -c 'import json,sys; print(json.dumps([{"type":"bind","source":sys.argv[1],"target":"/installed-agent/uv-cache"}]))' "$EVOLVE_UV_CACHE_DIR")
+runtime_mounts=${EVOLVE_CANDIDATE_RUNTIME_MOUNTS_JSON:-}
+runtime_env=${EVOLVE_CANDIDATE_RUNTIME_ENV_JSON:-}
+if [ -z "$runtime_mounts" ]; then
+  mkdir -p "$EVOLVE_UV_CACHE_DIR"
+  runtime_mounts=$(python3 -c 'import json,sys; print(json.dumps([{"type":"bind","source":sys.argv[1],"target":"/installed-agent/uv-cache"}]))' "$EVOLVE_UV_CACHE_DIR")
+fi
+[ -n "$runtime_env" ] || runtime_env='{}'
 jobs_dir="$EVOLVE_RUN_DIR/jobs"
 if ! mkdir "$jobs_dir"; then
   printf 'jobs directory already exists: %s\n' "$jobs_dir" >&2
   printf 'infra_failed\n' > "$EVOLVE_RUN_DIR/status"
   exit 3
 fi
-if [ -n "${EVOLVE_CANDIDATE_SMOKE_MODE:-}" ]; then
+if [ "${EVOLVE_CANDIDATE_SMOKE_MODE:-}" = "single" ]; then
   EVOLVE_HARBOR_N=1
   EVOLVE_HARBOR_ATTEMPTS=1
   EVOLVE_HARBOR_N_CONCURRENT=1
   EVOLVE_TASK_LIMIT=1
+elif [ "${EVOLVE_CANDIDATE_SMOKE_MODE:-}" = "full" ]; then
+  EVOLVE_HARBOR_ATTEMPTS=1
 fi
 cleanup_harbor() {
   "$EVOLVE_FRAMEWORK_PYTHON" evaluator/cleanup_harbor.py "$jobs_dir" || :
@@ -93,12 +100,27 @@ if [ -n "${EVOLVE_TASK_LIMIT:-}" ]; then
 fi
 set -- "$@" --agent "$EVOLVE_HARBOR_AGENT"
 set -- "$@" --ae "EVOLVE_CANDIDATE_SOURCE=$PWD/target"
-set -- "$@" --mounts "$uv_mount"
+set -- "$@" --mounts "$runtime_mounts"
 if [ -f evaluator/agent.env ]; then
   while IFS= read -r agent_entry || [ -n "$agent_entry" ]; do
     [ -n "$agent_entry" ] && set -- "$@" --ae "$agent_entry"
   done < evaluator/agent.env
 fi
+python3 - "$runtime_env" <<'PY' > "$EVOLVE_RUN_DIR/candidate-runtime.env"
+import json
+import sys
+
+values = json.loads(sys.argv[1])
+if not isinstance(values, dict):
+    raise SystemExit("candidate runtime environment must be an object")
+for key, value in sorted(values.items()):
+    if not isinstance(key, str) or not isinstance(value, str) or "\n" in key + value or "=" in key:
+        raise SystemExit("invalid candidate runtime environment entry")
+    print(f"{key}={value}")
+PY
+while IFS= read -r runtime_entry || [ -n "$runtime_entry" ]; do
+  [ -n "$runtime_entry" ] && set -- "$@" --ae "$runtime_entry"
+done < "$EVOLVE_RUN_DIR/candidate-runtime.env"
 if [ -n "${EVOLVE_CANDIDATE_SMOKE_MODE:-}" ]; then
   set -- "$@" --install-only --ae "EVOLVE_CANDIDATE_SMOKE_MODE=$EVOLVE_CANDIDATE_SMOKE_MODE"
 fi

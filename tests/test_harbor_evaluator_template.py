@@ -139,6 +139,27 @@ def test_harbor_smoke_is_install_only_and_exposes_raw_diagnostics(tmp_path: Path
     )
     run_dir = tmp_path / "run"
     cache = tmp_path / "shared-cache"
+    python_dir = tmp_path / "shared-python"
+    runtime_mounts = [
+        {
+            "type": "bind",
+            "source": str(cache),
+            "target": "/opt/evolve/uv/cache",
+            "read_only": False,
+        },
+        {
+            "type": "bind",
+            "source": str(python_dir),
+            "target": "/opt/evolve/uv/python",
+            "read_only": False,
+        },
+    ]
+    runtime_env = {
+        "UV_CACHE_DIR": "/opt/evolve/uv/cache",
+        "UV_LINK_MODE": "copy",
+        "UV_OFFLINE": "1",
+        "UV_PYTHON_INSTALL_DIR": "/opt/evolve/uv/python",
+    }
     args_capture = tmp_path / "args"
     env = {
         **os.environ,
@@ -147,7 +168,9 @@ def test_harbor_smoke_is_install_only_and_exposes_raw_diagnostics(tmp_path: Path
         "HARBOR_ARGS_CAPTURE": str(args_capture),
         "EVOLVE_RUN_DIR": str(run_dir),
         "EVOLVE_CANDIDATE_SMOKE_MODE": "full",
-        "EVOLVE_UV_CACHE_DIR": str(cache),
+        "EVOLVE_CANDIDATE_RUNTIME_MOUNTS_JSON": json.dumps(runtime_mounts),
+        "EVOLVE_CANDIDATE_RUNTIME_ENV_JSON": json.dumps(runtime_env),
+        "EVOLVE_TASK_LIMIT": "8",
         "EVOLVE_ATTEMPT_ID": "smoke-attempt",
         "EVOLVE_FRAMEWORK_PYTHON": sys.executable,
     }
@@ -160,10 +183,19 @@ def test_harbor_smoke_is_install_only_and_exposes_raw_diagnostics(tmp_path: Path
     assert "--install-only" in args
     assert "EVOLVE_CANDIDATE_SMOKE_MODE=full" in args
     assert f"EVOLVE_CANDIDATE_SOURCE={tmp_path / 'target'}" in args
-    assert args[args.index("--n-tasks") + 1] == "1"
+    assert args[args.index("--n-tasks") + 1] == "8"
     assert args[args.index("--n-attempts") + 1] == "1"
-    assert args[args.index("-n") + 1] == "1"
+    assert args[args.index("-n") + 1] == "8"
     mounts = json.loads(args[args.index("--mounts") + 1])
-    assert mounts[0]["source"] == str(cache)
+    assert mounts == runtime_mounts
+    agent_environment = [args[index + 1] for index, value in enumerate(args) if value == "--ae"]
+    for key, value in runtime_env.items():
+        assert f"{key}={value}" in agent_environment
     assert not (run_dir / "harbor-result.json").exists()
     assert not (run_dir / "score").exists()
+
+
+def test_harbor_single_smoke_forces_one_task_attempt_and_worker() -> None:
+    text = _eval_sh("harbor", "fixture")
+
+    assert 'if [ "${EVOLVE_CANDIDATE_SMOKE_MODE:-}" = "single" ]; then' in text
