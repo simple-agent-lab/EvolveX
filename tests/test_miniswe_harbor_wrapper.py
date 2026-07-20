@@ -93,6 +93,8 @@ def test_miniswe_wrapper_subclasses_harbor_miniswe_and_installs_candidate_source
     host_uv.write_text("uv")
     monkeypatch.setenv("EVOLVE_UV_BINARY", str(host_uv))
     monkeypatch.setenv("EVOLVE_CANDIDATE_SOURCE", str(target))
+    for name in ("UV_CACHE_DIR", "UV_LINK_MODE", "UV_OFFLINE", "UV_PYTHON", "UV_PYTHON_INSTALL_DIR"):
+        monkeypatch.delenv(name, raising=False)
     agent = module.MiniSweSourceAgent()
     asyncio.run(agent.install(environment))
 
