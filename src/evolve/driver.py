@@ -156,7 +156,7 @@ def _maybe_final_anchor(workspace: Path, generation: int) -> None:
     if any(isinstance(entry, dict) and entry.get("kind") == "anchor" for entry in candidate.get("evals", [])):
         return
     genid = str(candidate["genid"])
-    _evaluate_with_one_infra_retry(
+    _evaluate_once(
         workspace,
         str(candidate["tag"]),
         genid,
@@ -169,7 +169,6 @@ def _maybe_final_anchor(workspace: Path, generation: int) -> None:
             "kind": "anchor",
             "round": generation,
         },
-        round_number=generation,
         pending_gate_on_complete=False,
     )
 
@@ -710,7 +709,6 @@ def eval_child(
             [str(path) for path in mutated],
             round_number=round_number,
             kind=kind,
-            resume_infrastructure=not force,
         )
     return _finalize_child(workspace, exp_id, genid, parent, tag, round_number=round_number, kind=kind)
 
@@ -771,7 +769,6 @@ def _stamp_evaluation(
     *,
     round_number: int | None = None,
     kind: str = "eval",
-    resume_infrastructure: bool = True,
 ) -> EvaluationRecord:
     metadata = {
         "parent": parent,
@@ -780,15 +777,13 @@ def _stamp_evaluation(
     }
     if round_number is not None:
         metadata.update(kind=kind, round=round_number)
-    return _evaluate_with_one_infra_retry(
+    return _evaluate_once(
         workspace,
         tag,
         genid,
         purpose="candidate",
         metadata=metadata,
-        round_number=round_number,
         pending_gate_on_complete=genid != "0",
-        resume_infrastructure=resume_infrastructure,
     )
 
 
@@ -803,7 +798,7 @@ def _ensure_genesis_evaluated(workspace: Path) -> None:
         Outcome.CANCELLED.value,
     }:
         raise RuntimeError(f"genesis {status}: repair seed before evolution")
-    result = _evaluate_with_one_infra_retry(
+    result = _evaluate_once(
         workspace,
         "gen/0",
         "0",
@@ -821,48 +816,25 @@ def _ensure_genesis_evaluated(workspace: Path) -> None:
         raise RuntimeError(f"genesis {result.outcome.value}: repair seed before evolution")
 
 
-def _evaluate_with_one_infra_retry(
+def _evaluate_once(
     workspace: Path,
     tag: str,
     genid: str,
     *,
     purpose: str,
     metadata: dict[str, Any],
-    round_number: int | None = None,
     pending_gate_on_complete: bool = False,
-    resume_infrastructure: bool = True,
 ) -> EvaluationRecord:
-    def run_attempt(**kwargs: Any) -> EvaluationRecord:
-        try:
-            record = evaluate(workspace, tag, genid, purpose=purpose, **kwargs)
-        except EvaluationInterrupted as interrupted:
-            record, cause = interrupted.args
-            _append_lifecycle_evaluation(workspace, record, metadata, pending_gate_on_complete)
-            raise cause
+    try:
+        record = evaluate(workspace, tag, genid, purpose=purpose)
+    except EvaluationInterrupted as interrupted:
+        record, cause = interrupted.args
         _append_lifecycle_evaluation(workspace, record, metadata, pending_gate_on_complete)
-        return record
-
-    previous = _last_evaluation_event(workspace, genid, purpose, round_number) if resume_infrastructure else None
-    if previous is not None and previous.get("outcome") == Outcome.INFRASTRUCTURE_FAILED:
-        if previous.get("retry_of") is not None:
-            raise EvaluationPaused(f"gen/{genid} infrastructure failed twice")
-        first_attempt = int(previous["attempt"])
-        candidate_commit = str(previous["candidate_commit"])
-    else:
-        first = run_attempt()
-        if first.outcome is not Outcome.INFRASTRUCTURE_FAILED:
-            return first
-        first_attempt = first.attempt
-        candidate_commit = first.candidate_commit
-
-    second = run_attempt(
-        retry_of=first_attempt,
-    )
-    if second.candidate_commit != candidate_commit:
-        raise RuntimeError(f"gen/{genid} changed commit during infrastructure retry")
-    if second.outcome is Outcome.INFRASTRUCTURE_FAILED:
-        raise EvaluationPaused(f"gen/{genid} infrastructure failed twice")
-    return second
+        raise cause
+    _append_lifecycle_evaluation(workspace, record, metadata, pending_gate_on_complete)
+    if record.outcome is Outcome.INFRASTRUCTURE_FAILED:
+        raise EvaluationPaused(f"gen/{genid} infrastructure failed")
+    return record
 
 
 def _append_lifecycle_evaluation(
@@ -881,23 +853,6 @@ def _append_lifecycle_evaluation(
         else {}
     )
     append_evaluation_record(workspace, record, metadata={**metadata, **gate_metadata})
-
-
-def _last_evaluation_event(
-    workspace: Path,
-    genid: str,
-    purpose: str,
-    round_number: int | None,
-) -> dict[str, Any] | None:
-    for event in reversed(read_events(archive_path(workspace))):
-        if (
-            event.get("event_type") == "evaluation"
-            and str(event.get("genid")) == genid
-            and event.get("purpose") == purpose
-            and event.get("round") == round_number
-        ):
-            return event
-    return None
 
 
 def _select_generation_parents(

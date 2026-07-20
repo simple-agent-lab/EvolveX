@@ -40,6 +40,7 @@ APPROVED_MODULES = {
     "task_sets.py",
     "task_vectors.py",
     "trace_analysis.py",
+    "uv_runtime.py",
     "workspace.py",
     # the frozen ring — the invariant-enforcers, grouped under frozen/
     "frozen/__init__.py",

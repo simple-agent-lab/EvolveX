@@ -117,6 +117,7 @@ def test_miniswe_wrapper_subclasses_harbor_miniswe_and_installs_candidate_source
     assert "--no-install-local" not in environment.commands[sync_indices[1]]
     assert 'export PATH="$HOME/.local/bin:$PATH"' in environment.commands[sync_indices[0]]
     for sync_index in sync_indices:
+        assert f"unset {' '.join(module.PROXY_NAMES)}" in environment.commands[sync_index]
         sync_env = environment.envs[sync_index]
         assert sync_env == {
             "UV_CACHE_DIR": "/opt/evolve/uv/cache",
@@ -282,7 +283,47 @@ def test_miniswe_external_dependency_sync_is_infrastructure_owned(
     with pytest.raises(module.EvolveRuntimeInfrastructureError) as raised:
         asyncio.run(module.MiniSweSourceAgent().install(Environment()))
 
-    assert "EVOLVE_CANDIDATE_INVALID" not in str(raised.value)
+    assert str(raised.value) == "EVOLVE_RUNTIME_INFRASTRUCTURE: external_dependency_sync_failed"
+
+
+def test_miniswe_offline_runtime_never_downloads_uv(tmp_path: Path, monkeypatch) -> None:
+    _install_fake_harbor(monkeypatch)
+    target = write_locked_miniswe_seed(tmp_path / "target")
+    wrapper = target / "harbor_agent.py"
+    wrapper.write_text(ADAPTER_TEMPLATE.read_text())
+    module = _load(wrapper)
+    monkeypatch.setenv("EVOLVE_CANDIDATE_SOURCE", str(target))
+    monkeypatch.setenv("UV_OFFLINE", "1")
+    monkeypatch.delenv("EVOLVE_UV_BINARY", raising=False)
+    monkeypatch.setattr(module.shutil, "which", lambda _name: None)
+
+    class Environment:
+        def __init__(self) -> None:
+            self.commands = []
+            self.envs = []
+            self.uploads = []
+            self.fail_on = "EVOLVE_UV_BOOTSTRAP_MISSING"
+
+        async def upload_dir(self, source_dir, target_dir):
+            self.uploads.append((Path(source_dir), target_dir))
+
+        async def upload_file(self, source_path, target_path):
+            self.uploads.append((Path(source_path), target_path))
+
+    environment = Environment()
+    with pytest.raises(
+        module.EvolveRuntimeInfrastructureError,
+        match="EVOLVE_RUNTIME_INFRASTRUCTURE: uv_bootstrap_failed",
+    ):
+        asyncio.run(module.MiniSweSourceAgent().install(environment))
+
+    bootstrap = next(
+        command
+        for command in environment.commands
+        if "EVOLVE_UV_BOOTSTRAP_MISSING" in command
+    )
+    assert "curl" not in bootstrap
+    assert f"unset {' '.join(module.PROXY_NAMES)}" in bootstrap
 
 
 def test_miniswe_install_rejects_missing_lock_before_upload(tmp_path: Path, monkeypatch) -> None:

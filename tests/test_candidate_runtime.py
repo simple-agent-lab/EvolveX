@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from conftest import write_locked_miniswe_seed
 
+from evolve import uv_runtime as uv_runtime_module
 from evolve.evaluation import Outcome
 from evolve.uv_runtime import candidate_runtime_config, prepare_candidate_runtime
 
@@ -151,6 +152,63 @@ def test_uv_runtime_retries_online_sync_twice_and_redacts_failure(tmp_path: Path
     assert "proxy.example" in receipt_text
     assert json.loads(receipt_text)["attempts"] == 2
     assert not (run_dir / ".candidate-runtime-venv").exists()
+
+
+def test_uv_runtime_turns_uv_launch_error_into_redacted_infrastructure_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    checkout, run_dir, runtime_root, evaluator, env, _ = _runtime_fixture(tmp_path)
+    secret = "Bearer very-secret-token"
+
+    def fail_run(*args, **kwargs):
+        raise OSError(f"launcher failed with {secret}")
+
+    monkeypatch.setattr(uv_runtime_module, "run_owned", fail_run)
+    result = prepare_candidate_runtime(
+        checkout, run_dir, runtime_root, "abc123", evaluator, env=env
+    )
+
+    assert result.outcome is Outcome.INFRASTRUCTURE_FAILED
+    assert result.receipt_path == run_dir / "candidate-runtime.json"
+    receipt = result.receipt_path.read_text()
+    assert "very-secret-token" not in receipt
+    assert "Bearer ***" in receipt
+
+
+def test_uv_runtime_missing_uv_is_receipted_as_infrastructure_failure(
+    tmp_path: Path,
+) -> None:
+    checkout, run_dir, runtime_root, evaluator, env, _ = _runtime_fixture(tmp_path)
+    env["EVOLVE_UV_BINARY"] = str(tmp_path / "missing-uv")
+
+    result = prepare_candidate_runtime(
+        checkout, run_dir, runtime_root, "abc123", evaluator, env=env
+    )
+
+    assert result.outcome is Outcome.INFRASTRUCTURE_FAILED
+    assert result.receipt_path == run_dir / "candidate-runtime.json"
+    receipt = json.loads(result.receipt_path.read_text())
+    assert receipt["outcome"] == "infrastructure_failed"
+    assert receipt["attempts"] == 0
+
+
+@pytest.mark.parametrize(
+    "message, secret",
+    [
+        ("https://token-only@proxy.example/simple", "token-only"),
+        ("https://proxy.example/simple?token=query-secret", "query-secret"),
+        ("Authorization: Bearer bearer-secret", "bearer-secret"),
+    ],
+)
+def test_uv_runtime_receipt_redacts_common_credential_forms(
+    tmp_path: Path, message: str, secret: str
+) -> None:
+    result, run_dir, _ = _prepare(
+        tmp_path, UV_OFFLINE_RC="1", UV_ONLINE_RESULTS="1,1", UV_ERROR=message
+    )
+
+    assert result.outcome is Outcome.INFRASTRUCTURE_FAILED
+    assert secret not in (run_dir / "candidate-runtime.json").read_text()
 
 
 def test_uv_runtime_config_resolves_project_inside_checkout(tmp_path: Path) -> None:

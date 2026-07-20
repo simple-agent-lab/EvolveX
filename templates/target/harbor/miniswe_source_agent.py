@@ -102,10 +102,17 @@ class MiniSweSourceAgent(MiniSweAgent):
         if host_uv is not None:
             await environment.upload_file(host_uv, HOST_UV_PATH)
         install_env = self._install_env()
-        await self.exec_as_agent(
+        offline_runtime = self._get_env("UV_OFFLINE") == "1"
+        missing_uv = (
+            'printf "EVOLVE_UV_BOOTSTRAP_MISSING\\n" >&2; false; '
+            if offline_runtime
+            else "curl -LsSf https://astral.sh/uv/0.7.13/install.sh | sh; "
+        )
+        await self._runtime_phase(
             environment,
             command=(
                 "set -euo pipefail; "
+                f"unset {' '.join(PROXY_NAMES)}; "
                 'mkdir -p "$HOME/.local/bin"; export PATH="$HOME/.local/bin:$PATH"; '
                 f"if [ -f {HOST_UV_PATH} ]; then "
                 f'cp {HOST_UV_PATH} "$HOME/.local/bin/uv"; chmod 755 "$HOME/.local/bin/uv"; '
@@ -113,17 +120,19 @@ class MiniSweSourceAgent(MiniSweAgent):
                 "fi; "
                 "if ! command -v uv >/dev/null 2>&1 || ! uv --version >/dev/null 2>&1; then "
                 'rm -f "$HOME/.local/bin/uv"; '
-                "curl -LsSf https://astral.sh/uv/0.7.13/install.sh | sh; "
+                f"{missing_uv}"
                 "fi; "
                 'if [ -f "$HOME/.local/bin/env" ]; then . "$HOME/.local/bin/env"; '
                 'else export PATH="$HOME/.local/bin:$PATH"; fi; '
                 "uv --version >/dev/null"
             ),
+            code="uv_bootstrap_failed",
             env=install_env,
         )
         await self._runtime_phase(
             environment,
             "set -euo pipefail; "
+            f"unset {' '.join(PROXY_NAMES)}; "
             'if [ -f "$HOME/.local/bin/env" ]; then . "$HOME/.local/bin/env"; '
             'else export PATH="$HOME/.local/bin:$PATH"; fi; '
             f"uv sync --project {SOURCE_DIR} --frozen --no-install-local --offline",
@@ -133,6 +142,7 @@ class MiniSweSourceAgent(MiniSweAgent):
         await self._candidate_phase(
             environment,
             "set -euo pipefail; "
+            f"unset {' '.join(PROXY_NAMES)}; "
             'if [ -f "$HOME/.local/bin/env" ]; then . "$HOME/.local/bin/env"; '
             'else export PATH="$HOME/.local/bin:$PATH"; fi; '
             f"uv sync --project {SOURCE_DIR} --frozen --offline",
@@ -168,7 +178,9 @@ class MiniSweSourceAgent(MiniSweAgent):
         try:
             await self.exec_as_agent(environment, command=command, env=env)
         except Exception:
-            raise EvolveRuntimeInfrastructureError(code) from None
+            raise EvolveRuntimeInfrastructureError(
+                f"EVOLVE_RUNTIME_INFRASTRUCTURE: {code}"
+            ) from None
 
     def _preflight_command(self, marker: str, script: str) -> str:
         return (

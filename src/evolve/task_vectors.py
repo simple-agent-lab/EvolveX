@@ -97,6 +97,14 @@ def task_passed(payload: object, task_id: str) -> bool | None:
     if not task:
         return None
     trials = task["trials"]
-    if not trials or any(item["status"] != Outcome.BENCHMARK_COMPLETE or item.get("reward") is None for item in trials):
+    if not trials or any(
+        item.get("reward") is None
+        or not (
+            item["status"] == Outcome.BENCHMARK_COMPLETE
+            or item["status"] == Outcome.TIMEOUT
+            and item.get("owner") in {"benchmark_agent", "benchmark_verifier"}
+        )
+        for item in trials
+    ):
         return None
     return all(float(item["reward"]) > 0 for item in trials)

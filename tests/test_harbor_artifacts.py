@@ -21,6 +21,7 @@ def write_trial(
     exception_type: str | None = None,
     exception_message: str = "fixture failure",
     cost_usd: float = 0.0,
+    agent_result: bool = True,
 ) -> None:
     path.mkdir(parents=True)
     payload = {
@@ -30,9 +31,17 @@ def write_trial(
         "exception_info": (
             {"exception_type": exception_type, "exception_message": exception_message} if exception_type else None
         ),
-        "agent_result": {"cost_usd": cost_usd},
+        "agent_result": {"cost_usd": cost_usd} if agent_result else None,
     }
     (path / "result.json").write_text(json.dumps(payload))
+
+
+def write_job_config(jobs: Path, *, max_retries: int, excluded: list[str] | None = None) -> None:
+    job = jobs / "job"
+    job.mkdir(parents=True, exist_ok=True)
+    (job / "config.json").write_text(
+        json.dumps({"retry": {"max_retries": max_retries, "exclude_exceptions": excluded or []}})
+    )
 
 
 def test_collect_harbor_artifacts_groups_trials_and_classifies_infra(tmp_path: Path) -> None:
@@ -73,6 +82,54 @@ def test_collect_harbor_artifacts_scores_agent_timeouts_as_zero(tmp_path: Path) 
     assert trial["reward"] == 0.0
     assert trial["owner"] == "benchmark_agent"
     assert scoring_rewards == [0.0]
+
+
+def test_final_retried_verifier_timeout_scores_zero_and_preserves_sibling(tmp_path: Path) -> None:
+    jobs = tmp_path / "jobs"
+    write_job_config(jobs, max_retries=1, excluded=["AgentTimeoutError"])
+    write_trial(
+        jobs / "job" / "case-a__one",
+        task="case-a",
+        trial="one",
+        reward=None,
+        exception_type="VerifierTimeoutError",
+    )
+    write_trial(jobs / "job" / "case-b__one", task="case-b", trial="one", reward=1.0)
+
+    vector, _artifacts, rewards = collect_harbor_artifacts(jobs)
+
+    timeout = vector["tasks"]["case-a"]["trials"][0]
+    assert timeout["status"] == "timeout"
+    assert timeout["reward"] == 0.0
+    assert timeout["owner"] == "benchmark_verifier"
+    assert vector["tasks"]["case-b"]["trials"][0]["reward"] == 1.0
+    assert rewards == [0.0, 1.0]
+
+
+def test_verifier_timeout_without_retry_or_agent_result_remains_infrastructure(tmp_path: Path) -> None:
+    jobs = tmp_path / "jobs"
+    write_job_config(jobs, max_retries=0)
+    write_trial(
+        jobs / "job" / "case-a__one",
+        task="case-a",
+        trial="one",
+        reward=None,
+        exception_type="VerifierTimeoutError",
+    )
+    write_trial(
+        jobs / "job" / "case-b__one",
+        task="case-b",
+        trial="one",
+        reward=None,
+        exception_type="VerifierTimeoutError",
+        agent_result=False,
+    )
+
+    vector, _artifacts, rewards = collect_harbor_artifacts(jobs)
+
+    assert vector["tasks"]["case-a"]["trials"][0]["status"] == "infrastructure_failed"
+    assert vector["tasks"]["case-b"]["trials"][0]["status"] == "infrastructure_failed"
+    assert rewards == []
 
 
 def test_exception_precedes_reward_and_failed_cost_is_preserved(tmp_path: Path) -> None:

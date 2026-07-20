@@ -30,9 +30,42 @@ runtime_mounts=${EVOLVE_CANDIDATE_RUNTIME_MOUNTS_JSON:-}
 runtime_env=${EVOLVE_CANDIDATE_RUNTIME_ENV_JSON:-}
 if [ -z "$runtime_mounts" ]; then
   mkdir -p "$EVOLVE_UV_CACHE_DIR"
-  runtime_mounts=$(python3 -c 'import json,sys; print(json.dumps([{"type":"bind","source":sys.argv[1],"target":"/installed-agent/uv-cache"}]))' "$EVOLVE_UV_CACHE_DIR")
+  runtime_mounts=$(python3 -c 'import json,sys; print(json.dumps([{"type":"bind","source":sys.argv[1],"target":"/opt/evolve/uv/cache"}]))' "$EVOLVE_UV_CACHE_DIR")
 fi
 [ -n "$runtime_env" ] || runtime_env='{}'
+if ! python3 - "$runtime_env" "$runtime_mounts" "$EVOLVE_RUN_DIR" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+environment = json.loads(sys.argv[1])
+mounts = json.loads(sys.argv[2])
+if not isinstance(environment, dict):
+    raise SystemExit("candidate runtime environment must be an object")
+if not isinstance(mounts, list) or any(not isinstance(mount, dict) for mount in mounts):
+    raise SystemExit("candidate runtime mounts must be a list of objects")
+for mount in mounts:
+    if (
+        mount.get("type") != "bind"
+        or not isinstance(mount.get("source"), str)
+        or not isinstance(mount.get("target"), str)
+        or not isinstance(mount.get("read_only", False), bool)
+    ):
+        raise SystemExit("invalid candidate runtime mount")
+entries = []
+for key, value in sorted(environment.items()):
+    if not isinstance(key, str) or not isinstance(value, str) or "\n" in key + value or "=" in key:
+        raise SystemExit("invalid candidate runtime environment entry")
+    entries.append(f"{key}={value}")
+run_dir = Path(sys.argv[3])
+(run_dir / "candidate-runtime.env").write_text("\n".join(entries) + ("\n" if entries else ""))
+(run_dir / "candidate-runtime.mounts.json").write_text(json.dumps(mounts, separators=(",", ":")))
+PY
+then
+  printf 'infra_failed\n' > "$EVOLVE_RUN_DIR/status"
+  exit 3
+fi
+runtime_mounts=$(cat "$EVOLVE_RUN_DIR/candidate-runtime.mounts.json")
 jobs_dir="$EVOLVE_RUN_DIR/jobs"
 if ! mkdir "$jobs_dir"; then
   printf 'jobs directory already exists: %s\n' "$jobs_dir" >&2
@@ -106,18 +139,6 @@ if [ -f evaluator/agent.env ]; then
     [ -n "$agent_entry" ] && set -- "$@" --ae "$agent_entry"
   done < evaluator/agent.env
 fi
-python3 - "$runtime_env" <<'PY' > "$EVOLVE_RUN_DIR/candidate-runtime.env"
-import json
-import sys
-
-values = json.loads(sys.argv[1])
-if not isinstance(values, dict):
-    raise SystemExit("candidate runtime environment must be an object")
-for key, value in sorted(values.items()):
-    if not isinstance(key, str) or not isinstance(value, str) or "\n" in key + value or "=" in key:
-        raise SystemExit("invalid candidate runtime environment entry")
-    print(f"{key}={value}")
-PY
 while IFS= read -r runtime_entry || [ -n "$runtime_entry" ]; do
   [ -n "$runtime_entry" ] && set -- "$@" --ae "$runtime_entry"
 done < "$EVOLVE_RUN_DIR/candidate-runtime.env"
@@ -134,6 +155,9 @@ if [ -n "${EVOLVE_HARBOR_AGENT_SETUP_TIMEOUT_MULTIPLIER:-}" ]; then
 fi
 if [ -n "${EVOLVE_HARBOR_MAX_RETRIES:-}" ]; then
   set -- "$@" --max-retries "$EVOLVE_HARBOR_MAX_RETRIES"
+  set -- "$@" --retry-exclude AgentTimeoutError
+  set -- "$@" --retry-exclude EvolveCandidateInvalidError
+  set -- "$@" --retry-exclude ApiUsageLimitError
 fi
 proxy_http=${EVOLVE_HARBOR_HTTP_PROXY:-${http_proxy:-${HTTP_PROXY:-}}}
 proxy_https=${EVOLVE_HARBOR_HTTPS_PROXY:-${https_proxy:-${HTTPS_PROXY:-}}}
@@ -156,5 +180,4 @@ else
 fi
 python3 evaluator/parse_score.py "$jobs_dir" "$EVOLVE_RUN_DIR" "$harbor_rc"
 parser_rc=$?
-[ "$harbor_rc" -eq 0 ] || exit 3
 exit "$parser_rc"

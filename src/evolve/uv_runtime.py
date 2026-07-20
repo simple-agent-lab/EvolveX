@@ -39,9 +39,17 @@ def _digest_project(project: Path) -> str:
 
 
 def _redact(message: str) -> str:
-    return re.sub(
+    redacted = re.sub(
         r"(?i)(https?://)[^\s/@:]+:[^\s/@]+@", r"\1***:***@", message
-    )[:2000]
+    )
+    redacted = re.sub(r"(?i)(https?://)[^\s/@]+@", r"\1***@", redacted)
+    redacted = re.sub(
+        r"(?i)([?&](?:access_token|api_key|key|password|token)=)[^\s&#]+",
+        r"\1***",
+        redacted,
+    )
+    redacted = re.sub(r"(?i)(\bBearer\s+)[^\s]+", r"\1***", redacted)
+    return redacted[:2000]
 
 
 @dataclass(frozen=True)
@@ -263,15 +271,12 @@ def prepare_candidate_runtime(
         )
 
     values = clean_python_env(env)
-    uv = uv_executable(values)
     cache = Path(
         values.get("EVOLVE_UV_CACHE_DIR") or runtime_root / "uv-cache"
     ).resolve()
     python_dir = Path(
         values.get("EVOLVE_UV_PYTHON_INSTALL_DIR") or runtime_root / "uv-python"
     ).resolve()
-    cache.mkdir(parents=True, exist_ok=True)
-    python_dir.mkdir(parents=True, exist_ok=True)
     temporary_environment = run_dir / ".candidate-runtime-venv"
     command_env = {
         **values,
@@ -280,6 +285,9 @@ def prepare_candidate_runtime(
         "UV_PROJECT_ENVIRONMENT": str(temporary_environment),
     }
     try:
+        uv = uv_executable(values)
+        cache.mkdir(parents=True, exist_ok=True)
+        python_dir.mkdir(parents=True, exist_ok=True)
         checked = run_owned(
             [uv, "lock", "--check", "--project", str(project)],
             cwd=checkout,
@@ -345,6 +353,19 @@ def prepare_candidate_runtime(
             attempts=attempts,
             cache_warm=cache_warm,
             uv_version=version,
+        )
+    except Exception as error:
+        return _finish_runtime(
+            run_dir,
+            config,
+            candidate_commit=candidate_commit,
+            dependency_digest=dependency_digest,
+            started=started,
+            outcome=Outcome.INFRASTRUCTURE_FAILED,
+            reason=str(error) or type(error).__name__,
+            attempts=0,
+            cache_warm=False,
+            uv_version=None,
         )
     finally:
         shutil.rmtree(temporary_environment, ignore_errors=True)
