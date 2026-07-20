@@ -25,8 +25,13 @@ from .archive import (
 )
 from .candidate_snapshot import build_candidate_snapshot, commit_candidate_snapshot
 from .config import evaluator_anchor, evaluator_sampling, experiment_id, operator_blocks
-from .evaluation import CANONICAL_OUTCOMES, EvaluationInterrupted, EvaluationRecord, Outcome, evaluation_status
-from .evaluator import evaluate
+from .evaluation import (
+    CANONICAL_OUTCOMES,
+    EvaluationRecord,
+    Outcome,
+    evaluation_status,
+)
+from .evaluation.execution import EvaluationInterrupted, evaluate
 from .feedback import write_feedback_bundle
 from .frozen.interfaces import (
     ArchiveView,

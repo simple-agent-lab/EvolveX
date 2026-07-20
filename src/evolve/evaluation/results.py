@@ -77,10 +77,6 @@ class EvaluationRecord:
         }
 
 
-class EvaluationInterrupted(BaseException):
-    """Carries a cancelled attempt to the driver for append-before-reraise."""
-
-
 def _effective_outcome(trial: TrialResult) -> Outcome:
     if trial.exception_type or trial.exception_message:
         return Outcome.CANDIDATE_INVALID if trial.owner == "candidate" else Outcome.INFRASTRUCTURE_FAILED

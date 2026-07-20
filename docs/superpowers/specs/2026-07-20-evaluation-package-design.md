@@ -44,21 +44,22 @@ without importing Git, subprocess, filesystem, or runtime behavior.
 `execution.py` depends on `results.py`; `results.py` never depends on
 `execution.py`.
 
-`__init__.py` is the public facade. It re-exports the evaluation API currently
-used outside the package so consumers can import from `evolve.evaluation`
-without knowing the internal file split:
+`__init__.py` is the result facade. It re-exports the pure result API currently
+used outside the package, while execution callers import explicitly from
+`evolve.evaluation.execution`. Keeping execution out of the eager package
+facade prevents archive and configuration imports from forming a cycle:
 
 ```python
 from evolve.evaluation import (
     CANONICAL_OUTCOMES,
-    EvaluationInterrupted,
     EvaluationRecord,
     Outcome,
     TrialResult,
     classify_evaluation,
-    evaluate,
     evaluation_status,
 )
+
+from evolve.evaluation.execution import EvaluationInterrupted, evaluate
 ```
 
 Private execution helpers remain importable from
@@ -66,19 +67,19 @@ Private execution helpers remain importable from
 
 ## Data Flow
 
-`driver.py` calls `evaluation.evaluate()`. Execution collects evidence in an
-isolated checkout, converts the task vector to `TrialResult` values, and calls
-`results.classify_evaluation()`. The resulting `EvaluationRecord` returns to
-the driver and is persisted by `archive.py`.
+`driver.py` calls `evaluation.execution.evaluate()`. Execution collects
+evidence in an isolated checkout, converts the task vector to `TrialResult`
+values, and calls `results.classify_evaluation()`. The resulting
+`EvaluationRecord` returns to the driver and is persisted by `archive.py`.
 
 The dependency direction is therefore:
 
 ```text
 driver/archive/task_vectors
         ↓
-evolve.evaluation facade
+evolve.evaluation result facade
         ↓
-execution.py → results.py
+results.py ← execution.py
 ```
 
 ## Migration
@@ -89,10 +90,11 @@ execution.py → results.py
 3. Move `EvaluationInterrupted` from the result definitions to execution,
    because it represents execution lifecycle control rather than persisted
    evaluation data.
-4. Add the facade exports in `evaluation/__init__.py`.
+4. Add the pure result facade exports in `evaluation/__init__.py`; import
+   execution APIs explicitly from `evaluation.execution`.
 5. Replace imports from `evolve.evaluator` with imports from
-   `evolve.evaluation`; retain existing `evolve.evaluation` imports through
-   the facade.
+   `evolve.evaluation.execution`; retain existing result imports from
+   `evolve.evaluation` through the facade.
 6. Update focused tests that intentionally import private execution helpers to
    use `evolve.evaluation.execution`.
 7. Update the pinned module list in `tests/test_coherence.py` and the README

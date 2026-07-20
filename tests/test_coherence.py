@@ -25,8 +25,9 @@ APPROVED_MODULES = {
     "cli.py",
     "config.py",
     "driver.py",
-    "evaluation.py",
-    "evaluator.py",
+    "evaluation/__init__.py",
+    "evaluation/execution.py",
+    "evaluation/results.py",
     "feedback.py",
     "git.py",
     "host_runtime.py",
@@ -50,7 +51,11 @@ APPROVED_MODULES = {
 
 def _module_paths() -> list[Path]:
     """Every mechanism module — top-level plus the frozen ring."""
-    return [*sorted(SRC.glob("*.py")), *sorted((SRC / "frozen").glob("*.py"))]
+    return [
+        *sorted(SRC.glob("*.py")),
+        *sorted((SRC / "evaluation").glob("*.py")),
+        *sorted((SRC / "frozen").glob("*.py")),
+    ]
 
 
 def _module_relpaths() -> set[str]:

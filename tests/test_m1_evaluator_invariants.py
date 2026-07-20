@@ -9,7 +9,7 @@ from conftest import git, init_workspace, rows_by_genid
 from evolve.archive import MECHANISM_EVAL_FIELD, append_event
 from evolve.driver import RunOptions
 from evolve.driver import run as driver_run
-from evolve.evaluator import (
+from evolve.evaluation.execution import (
     _evaluation_artifact_reference,
     _read_task_vector,
     _run_eval_script,
