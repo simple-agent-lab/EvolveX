@@ -203,6 +203,33 @@ def test_eval_script_receives_candidate_runtime_json(tmp_path: Path) -> None:
     assert json.loads((checkout / "runtime-mounts").read_text())[0]["target"] == "/opt/evolve/uv/cache"
 
 
+def test_eval_script_omits_runtime_contract_when_preparation_is_disabled(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    checkout = tmp_path / "checkout"
+    (checkout / "evaluator").mkdir(parents=True)
+    make_eval_script(
+        checkout / "evaluator" / "eval.sh",
+        "#!/bin/sh\n"
+        "set -eu\n"
+        'test -z "${EVOLVE_CANDIDATE_RUNTIME_ENV_JSON+x}"\n'
+        'test -z "${EVOLVE_CANDIDATE_RUNTIME_MOUNTS_JSON+x}"\n',
+    )
+    run_dir = workspace / "runs" / "gen-1" / "eval"
+    run_dir.mkdir(parents=True)
+
+    result = _run_eval_script(
+        checkout,
+        run_dir,
+        "1",
+        None,
+        "research",
+        "gate",
+        CandidateRuntimeResult(None, None),
+    )
+
+    assert result.returncode == 0
+
+
 @pytest.mark.parametrize(
     "outcome", [Outcome.CANDIDATE_INVALID, Outcome.INFRASTRUCTURE_FAILED]
 )

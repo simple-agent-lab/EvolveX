@@ -238,8 +238,9 @@ def _run_eval_script(
         "EVOLVE_WORKSPACE": str(runs_dir.parent.resolve()),
     }
     env["EVOLVE_EVAL_SPLIT"] = evaluation_split
-    env["EVOLVE_CANDIDATE_RUNTIME_ENV_JSON"] = runtime.environment_json()
-    env["EVOLVE_CANDIDATE_RUNTIME_MOUNTS_JSON"] = runtime.mounts_json()
+    if runtime.variant is not None:
+        env["EVOLVE_CANDIDATE_RUNTIME_ENV_JSON"] = runtime.environment_json()
+        env["EVOLVE_CANDIDATE_RUNTIME_MOUNTS_JSON"] = runtime.mounts_json()
     env.setdefault("EVOLVE_FRAMEWORK_PYTHON", sys.executable)
     uv_cache = Path(env.get("EVOLVE_UV_CACHE_DIR") or runs_dir / "runtime" / "uv-cache")
     uv_cache.mkdir(parents=True, exist_ok=True)

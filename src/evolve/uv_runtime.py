@@ -38,9 +38,16 @@ def _digest_project(project: Path) -> str:
     return digest.hexdigest()
 
 
-def _redact(message: str) -> str:
+_SECRET_ENV_NAME = re.compile(r"(?i)(?:secret|token|password|passwd|api[_-]?key|credential|authorization|proxy)")
+
+
+def _redact(message: str, environment: Mapping[str, str] | None = None) -> str:
+    redacted = message
+    for name, value in (environment or {}).items():
+        if _SECRET_ENV_NAME.search(name) and len(value) >= 4:
+            redacted = redacted.replace(value, "***")
     redacted = re.sub(
-        r"(?i)(https?://)[^\s/@:]+:[^\s/@]+@", r"\1***:***@", message
+        r"(?i)(https?://)[^\s/@:]+:[^\s/@]+@", r"\1***:***@", redacted
     )
     redacted = re.sub(r"(?i)(https?://)[^\s/@]+@", r"\1***@", redacted)
     redacted = re.sub(
@@ -171,8 +178,9 @@ def _finish_runtime(
     attempts: int,
     cache_warm: bool,
     uv_version: str | None,
+    secret_environment: Mapping[str, str] | None = None,
 ) -> CandidateRuntimeResult:
-    redacted = _redact(reason)
+    redacted = _redact(reason, secret_environment)
     receipt = _write_receipt(
         run_dir,
         config,
@@ -306,6 +314,7 @@ def prepare_candidate_runtime(
                 attempts=0,
                 cache_warm=False,
                 uv_version=version,
+                secret_environment=command_env,
             )
 
         sync = [
@@ -340,6 +349,7 @@ def prepare_candidate_runtime(
                     attempts=2,
                     cache_warm=False,
                     uv_version=version,
+                    secret_environment=command_env,
                 )
 
         return _finish_ready_runtime(
@@ -366,6 +376,7 @@ def prepare_candidate_runtime(
             attempts=0,
             cache_warm=False,
             uv_version=None,
+            secret_environment=command_env,
         )
     finally:
         shutil.rmtree(temporary_environment, ignore_errors=True)

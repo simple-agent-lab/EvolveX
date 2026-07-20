@@ -211,6 +211,20 @@ def test_uv_runtime_receipt_redacts_common_credential_forms(
     assert secret not in (run_dir / "candidate-runtime.json").read_text()
 
 
+def test_uv_runtime_receipt_redacts_configured_secret_environment_value(tmp_path: Path) -> None:
+    secret = "custom-secret-value-123"
+    result, run_dir, _ = _prepare(
+        tmp_path,
+        UV_OFFLINE_RC="1",
+        UV_ONLINE_RESULTS="1,1",
+        UV_ERROR=f"custom header rejected: {secret}",
+        PRIVATE_API_KEY=secret,
+    )
+
+    assert result.outcome is Outcome.INFRASTRUCTURE_FAILED
+    assert secret not in (run_dir / "candidate-runtime.json").read_text()
+
+
 def test_uv_runtime_config_resolves_project_inside_checkout(tmp_path: Path) -> None:
     checkout = tmp_path / "checkout"
     (checkout / "target").mkdir(parents=True)
