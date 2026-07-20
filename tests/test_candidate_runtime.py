@@ -36,8 +36,11 @@ if args[:2] == ["python", "install"]:
 if args[:2] == ["lock", "--check"]:
     raise SystemExit(int(os.environ.get("UV_LOCK_RC", "0")))
 if "sync" in args and "--offline" in args:
-    raise SystemExit(int(os.environ.get("UV_OFFLINE_RC", "1")))
+    name = "UV_OFFLINE_RC" if "--no-install-local" in args else "UV_LOCAL_OFFLINE_RC"
+    raise SystemExit(int(os.environ.get(name, "0" if name == "UV_LOCAL_OFFLINE_RC" else "1")))
 if "sync" in args:
+    if "--no-install-local" not in args:
+        raise SystemExit(int(os.environ.get("UV_LOCAL_ONLINE_RC", "0")))
     online_before = sum("sync" in json.loads(line) and "--offline" not in json.loads(line) for line in previous)
     results = [int(value) for value in os.environ.get("UV_ONLINE_RESULTS", "0").split(",")]
     result = results[min(online_before, len(results) - 1)]
@@ -115,6 +118,22 @@ def test_uv_runtime_prepares_the_framework_python_for_offline_consumers(tmp_path
     assert result.ready
     invocations = [json.loads(line) for line in calls.read_text().splitlines()]
     assert ["python", "install", "3.12"] in invocations
+
+
+def test_uv_runtime_warms_local_build_requirements_before_consumers(tmp_path: Path) -> None:
+    result, _, calls = _prepare(
+        tmp_path,
+        UV_OFFLINE_RC="0",
+        UV_LOCAL_OFFLINE_RC="1",
+        UV_LOCAL_ONLINE_RC="0",
+    )
+
+    assert result.ready
+    invocations = [json.loads(line) for line in calls.read_text().splitlines()]
+    local_syncs = [call for call in invocations if "sync" in call and "--no-install-local" not in call]
+    assert len(local_syncs) == 2
+    assert "--offline" in local_syncs[0]
+    assert "--offline" not in local_syncs[1]
 
 
 def test_uv_runtime_warm_probe_avoids_online_sync(tmp_path: Path) -> None:

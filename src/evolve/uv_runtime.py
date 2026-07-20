@@ -381,6 +381,33 @@ def prepare_candidate_runtime(
                     secret_environment=command_env,
                 )
 
+        local_sync = [
+            uv,
+            "sync",
+            "--project",
+            str(project),
+            "--frozen",
+        ]
+        shutil.rmtree(temporary_environment, ignore_errors=True)
+        local = run_owned([*local_sync, "--offline"], cwd=checkout, env=command_env)
+        if local.returncode:
+            shutil.rmtree(temporary_environment, ignore_errors=True)
+            local = run_owned(local_sync, cwd=checkout, env=command_env)
+        if local.returncode:
+            return _finish_runtime(
+                run_dir,
+                config,
+                candidate_commit=candidate_commit,
+                dependency_digest=dependency_digest,
+                started=started,
+                outcome=Outcome.CANDIDATE_INVALID,
+                reason=local.stderr or local.stdout or "candidate local project build failed",
+                attempts=attempts,
+                cache_warm=cache_warm,
+                uv_version=version,
+                secret_environment=command_env,
+            )
+
         return _finish_ready_runtime(
             run_dir,
             config,
