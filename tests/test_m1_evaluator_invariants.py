@@ -10,13 +10,13 @@ from evolve.archive import MECHANISM_EVAL_FIELD, append_event
 from evolve.driver import RunOptions
 from evolve.driver import run as driver_run
 from evolve.evaluation.evidence import TaskVectorError
-from evolve.evaluation.identity import effective_task_set_identity
 from evolve.evaluation.execution import (
     _evaluation_artifact_reference,
     _read_task_vector,
     _run_eval_script,
     evaluate,
 )
+from evolve.evaluation.identity import effective_task_set_identity
 from evolve.frozen.interfaces import ArchiveView
 
 

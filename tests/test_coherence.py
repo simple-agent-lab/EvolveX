@@ -25,7 +25,9 @@ APPROVED_MODULES = {
     "config.py",
     "driver.py",
     "evaluation/__init__.py",
+    "evaluation/evidence.py",
     "evaluation/execution.py",
+    "evaluation/identity.py",
     "evaluation/results.py",
     "feedback.py",
     "git.py",
@@ -37,8 +39,6 @@ APPROVED_MODULES = {
     "runtime.py",
     "splits.py",
     "surface.py",
-    "task_sets.py",
-    "task_vectors.py",
     "trace_analysis.py",
     "workspace.py",
     # the frozen ring — the invariant-enforcers, grouped under frozen/

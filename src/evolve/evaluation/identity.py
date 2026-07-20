@@ -19,7 +19,7 @@ class TaskSetIdentity:
 
 def task_set_identity(
     dataset: object,
-    attempts: object,
+    attempts: Any,
     members: tuple[str, ...],
     *,
     purpose: str = "candidate",

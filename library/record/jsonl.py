@@ -7,9 +7,9 @@ import json
 from pathlib import Path
 from typing import Any
 
+from evolve.evaluation.evidence import task_passed
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import ArchiveView, OperatorContext, RecordOperator, RecordResult, Row
-from evolve.evaluation.evidence import task_passed
 
 
 def _record_fields_from_run_dir(run_dir: Path) -> dict[str, Any]:
