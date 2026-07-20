@@ -70,6 +70,12 @@ def test_every_module_is_approved_and_every_approved_module_exists() -> None:
     )
 
 
+def test_population_delegates_evaluation_identity() -> None:
+    source = (SRC / "population.py").read_text()
+    assert "hashlib" not in source
+    assert "json.dumps" not in source
+
+
 def test_no_test_hooks_in_mechanism() -> None:
     for path in _module_paths():
         text = path.read_text()
