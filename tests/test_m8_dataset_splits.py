@@ -7,6 +7,7 @@ from conftest import run_evolve
 
 from evolve.frozen.interfaces import OperatorContext
 from evolve.splits import build_manifest, select_dataset_tasks, selected_task_names, task_set_hash
+from evolve.workspace import InitOptions, init_workspace
 
 
 def _dataset(root: Path, count: int = 10) -> Path:
@@ -64,6 +65,49 @@ def test_init_dataset_option_freezes_local_harbor_tasks(tmp_path: Path) -> None:
     assert manifest["resolved"] is True
     assert manifest["dataset"] == str(dataset)
     assert sum(len(manifest["tasks"][name]) for name in ("train", "gate", "sealed")) == 10
+
+
+def test_init_full_task_scope_freezes_every_task_without_partition(tmp_path: Path, monkeypatch) -> None:
+    dataset = _dataset(tmp_path / "tasks", count=4)
+    workspace = tmp_path / "workspace"
+    monkeypatch.setenv("EVOLVE_RUNTIME_DIGEST", "sha256:test-runtime")
+    monkeypatch.setattr(
+        "evolve.workspace.default_config",
+        lambda _recipe, name: {
+            "experiment": {"id": name, "max_generations": 1, "children_per_gen": 1},
+            "target": {"seed": "builtin-dummy", "harbor_agent": "miniswe-source"},
+            "surface": {"include": ["target/**"], "exclude": []},
+            "operators": {
+                "select": {"variant": "ahe_latest"},
+                "rollout": {"variant": "harbor"},
+                "meta_agent": {"variant": "ahe"},
+                "gate": {"variant": "ahe_artifact_valid"},
+                "record": {"variant": "jsonl"},
+            },
+            "evaluator": {
+                "engine": "harbor",
+                "dataset": str(dataset),
+                "agent": "evolve_harbor_adapter:MiniSweSourceAgent",
+                "task_scope": "full",
+                "evaluation_split": "train",
+                "sampling": "static",
+                "tasks_per_round": 4,
+                "k": 2,
+                "n_concurrent": 4,
+            },
+        },
+    )
+
+    init_workspace(InitOptions(workspace=workspace, recipe="ahe", dataset=str(dataset)))
+
+    manifest = json.loads((workspace / "evaluator" / "splits.json").read_text())
+    assert manifest["ratios"] == {"train": 1.0, "gate": 0.0, "sealed": 0.0}
+    assert manifest["tasks"]["train"] == [f"task-{index}" for index in range(4)]
+    assert manifest["tasks"]["gate"] == []
+    assert manifest["tasks"]["sealed"] == []
+    config = (workspace / "evolve.yaml").read_text()
+    assert "task_scope: full" in config
+    assert "evaluation_split: train" in config
 
 
 def test_split_rejects_invalid_ratios_and_datasets_too_small_for_isolation(tmp_path: Path) -> None:

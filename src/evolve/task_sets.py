@@ -13,6 +13,15 @@ class TaskSetIdentity:
     members: tuple[str, ...]
 
 
+def evaluation_split_name(evaluator: dict[str, Any], purpose: str = "candidate") -> str:
+    if purpose == "anchor":
+        return "sealed"
+    value = evaluator.get("evaluation_split", "gate")
+    if value not in {"train", "gate", "sealed"}:
+        raise ValueError(f"unknown evaluator.evaluation_split: {value}")
+    return str(value)
+
+
 def effective_task_set_identity(
     checkout: Path, evaluator: dict[str, Any], *, purpose: str = "candidate"
 ) -> TaskSetIdentity:
@@ -37,10 +46,10 @@ def effective_task_set_identity(
     else:
         members = ()
         split_path = checkout / "evaluator" / "splits.json"
-        if purpose == "anchor" and split_path.is_file():
+        if split_path.is_file():
             try:
                 manifest = json.loads(split_path.read_text())
-                split_tasks = manifest.get("tasks", {}).get("sealed", [])
+                split_tasks = manifest.get("tasks", {}).get(evaluation_split_name(evaluator, purpose), [])
                 if isinstance(split_tasks, list) and all(isinstance(name, str) for name in split_tasks):
                     members = tuple(sorted(set(split_tasks)))
             except (OSError, json.JSONDecodeError, AttributeError):
@@ -51,6 +60,6 @@ def effective_task_set_identity(
         attempts = 1
     payload = {"dataset": str(evaluator.get("dataset", "")), "attempts": attempts, "tasks": list(members)}
     if purpose == "anchor":
-        payload["split"] = "sealed"
+        payload["split"] = evaluation_split_name(evaluator, purpose)
     digest = hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     return TaskSetIdentity(digest=digest, members=members)

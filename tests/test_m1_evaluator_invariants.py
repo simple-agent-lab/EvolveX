@@ -123,12 +123,31 @@ def test_eval_script_receives_persistent_workspace_uv_cache(tmp_path: Path) -> N
     run_dir = workspace / "runs" / "gen-1" / "eval"
     run_dir.mkdir(parents=True)
 
-    result = _run_eval_script(checkout, run_dir, "1", None, "research")
+    result = _run_eval_script(checkout, run_dir, "1", None, "research", "gate")
 
     assert result.returncode == 0
     expected = workspace / "runs" / "runtime" / "uv-cache"
     assert (checkout / "cache-path").read_text() == f"{expected}\n"
     assert expected.is_dir()
+
+
+def test_eval_script_receives_configured_candidate_cohort(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    checkout = tmp_path / "checkout"
+    (checkout / "evaluator").mkdir(parents=True)
+    make_eval_script(
+        checkout / "evaluator" / "eval.sh",
+        "#!/bin/sh\n"
+        "set -eu\n"
+        'printf "%s\\n" "$EVOLVE_EVAL_SPLIT" > selected-split\n',
+    )
+    run_dir = workspace / "runs" / "evaluations" / "candidate" / "gen-1" / "attempt-1"
+    run_dir.mkdir(parents=True)
+
+    result = _run_eval_script(checkout, run_dir, "1", None, "candidate", "train")
+
+    assert result.returncode == 0
+    assert (checkout / "selected-split").read_text() == "train\n"
 
 
 def test_timeout_zero_rejects_non_boolean_config(
@@ -216,6 +235,29 @@ def test_effective_task_set_identity_accepts_explicit_configured_task_names(tmp_
     )
 
     assert identity.members == ("task-a", "task-b")
+
+
+def test_full_scope_candidate_identity_contains_all_train_tasks(tmp_path: Path) -> None:
+    checkout = tmp_path / "checkout"
+    evaluator_dir = checkout / "evaluator"
+    evaluator_dir.mkdir(parents=True)
+    (evaluator_dir / "splits.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "tasks": {"train": ["a", "b", "c"], "gate": [], "sealed": []},
+            }
+        )
+    )
+    evaluator = {
+        "dataset": "terminal-bench@2.0",
+        "evaluation_split": "train",
+        "k": 2,
+    }
+
+    identity = effective_task_set_identity(checkout, evaluator)
+
+    assert identity.members == ("a", "b", "c")
 
 
 def test_hand_edited_artifact_hash_cannot_replace_mechanism_stamp(tmp_path: Path) -> None:

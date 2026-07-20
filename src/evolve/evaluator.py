@@ -13,7 +13,7 @@ from .evaluation import EvaluationInterrupted, EvaluationRecord, Outcome, classi
 from .git import evaluator_tree, git, git_stdout
 from .host_runtime import clean_python_env
 from .runtime import OwnedResult, attempt_dir, next_attempt, owned_attempt_id, run_owned
-from .task_sets import effective_task_set_identity
+from .task_sets import effective_task_set_identity, evaluation_split_name
 from .task_vectors import trial_results, validate_task_vector
 
 
@@ -76,7 +76,14 @@ def evaluate(
             }
             try:
                 try:
-                    result = _run_eval_script(checkout, run_dir, genid, task_limit, purpose)
+                    result = _run_eval_script(
+                        checkout,
+                        run_dir,
+                        genid,
+                        task_limit,
+                        purpose,
+                        evaluation_split_name(evaluator, purpose),
+                    )
                     setup_outcome, setup_reason = _setup_evidence(run_dir)
                     try:
                         vector = _read_task_vector(run_dir)
@@ -178,7 +185,14 @@ def _expected_trials(
     return max(1, tasks) * attempts
 
 
-def _run_eval_script(checkout: Path, run_dir: Path, genid: str, task_limit: int | None, purpose: str) -> OwnedResult:
+def _run_eval_script(
+    checkout: Path,
+    run_dir: Path,
+    genid: str,
+    task_limit: int | None,
+    purpose: str,
+    evaluation_split: str,
+) -> OwnedResult:
     runs_dir = next(parent for parent in run_dir.parents if parent.name == "runs")
     env: dict[str, str] = {
         **clean_python_env(),
@@ -188,7 +202,7 @@ def _run_eval_script(checkout: Path, run_dir: Path, genid: str, task_limit: int 
         "EVOLVE_ATTEMPT_ID": owned_attempt_id(runs_dir.parent, run_dir),
         "EVOLVE_WORKSPACE": str(runs_dir.parent.resolve()),
     }
-    env["EVOLVE_EVAL_SPLIT"] = "sealed" if purpose == "anchor" else "gate"
+    env["EVOLVE_EVAL_SPLIT"] = evaluation_split
     env.setdefault("EVOLVE_FRAMEWORK_PYTHON", sys.executable)
     uv_cache = runs_dir / "runtime" / "uv-cache"
     uv_cache.mkdir(parents=True, exist_ok=True)

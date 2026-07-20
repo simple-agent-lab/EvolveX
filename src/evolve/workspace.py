@@ -145,8 +145,15 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
     partial_floor = float(evaluator.get("partial_floor", 0.8))
     setup_timeout_multiplier = float(evaluator.get("agent_setup_timeout_multiplier", 1))
     max_retries = int(evaluator.get("max_retries", 0))
+    task_scope = str(evaluator.get("task_scope", "partitioned"))
     split = evaluator.get("split")
-    if not isinstance(split, dict):
+    if task_scope == "full":
+        if split is not None:
+            raise ValueError("evaluator.task_scope full must not define evaluator.split")
+        if evaluator.get("evaluation_split") != "train":
+            raise ValueError("evaluator.task_scope full requires evaluator.evaluation_split train")
+        split = {"train": 1.0, "gate": 0.0, "sealed": 0.0, "seed": 0}
+    elif not isinstance(split, dict):
         raise ValueError("evaluator.split must be a mapping")
     split_manifest = build_manifest(
         evaluator_dataset,
