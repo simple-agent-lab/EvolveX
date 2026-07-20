@@ -164,7 +164,7 @@ def test_harbor_rollout_uses_only_frozen_train_task_names(tmp_path: Path, monkey
         module, "uv_run", lambda _workspace, *_command: (["uv", "run", "harbor"], {"LOCKED_RUNTIME": "1"})
     )
     monkeypatch.setattr(module, "_run_harbor", fake_run)
-    monkeypatch.setattr(module, "_collect_cases", lambda *_args, **_kwargs: [{"reward": 1.0, "outcome": "passed"}])
+    monkeypatch.setattr(module, "collect_cases", lambda *_args, **_kwargs: [{"reward": 1.0, "outcome": "passed"}])
     context = OperatorContext(
         workspace=checkout,
         checkout=checkout,
