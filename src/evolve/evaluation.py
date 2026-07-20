@@ -33,6 +33,9 @@ class TrialResult:
     owner: str
     exception_type: str | None = None
     exception_message: str | None = None
+    source_attempt: int | None = None
+    repaired_from_attempt: int | None = None
+    repair_reason: str | None = None
 
     def score_eligible(self, *, benchmark_timeout_is_zero: bool) -> bool:
         return self.reward is not None and (
@@ -60,6 +63,8 @@ class EvaluationRecord:
     wall_s: float
     retry_of: int | None = None
     artifacts: dict[str, str] | None = None
+    source_attempts: tuple[int, ...] = ()
+    repaired_tasks: tuple[str, ...] = ()
 
     @property
     def status(self) -> str:
@@ -70,18 +75,31 @@ class EvaluationRecord:
         return self.outcome is Outcome.BENCHMARK_COMPLETE and self.purpose in {"candidate", "genesis"}
 
     def to_dict(self) -> dict[str, object]:
-        return {
+        payload = {
             **asdict(self),
             "outcome": self.outcome.value,
-            "trials": [{**asdict(trial), "outcome": trial.outcome.value} for trial in self.trials],
+            "trials": [_trial_payload(trial) for trial in self.trials],
         }
+        if not self.source_attempts:
+            payload.pop("source_attempts")
+        if not self.repaired_tasks:
+            payload.pop("repaired_tasks")
+        return payload
 
 
 class EvaluationInterrupted(BaseException):
     """Carries a cancelled attempt to the driver for append-before-reraise."""
 
 
-def _effective_outcome(trial: TrialResult) -> Outcome:
+def _trial_payload(trial: TrialResult) -> dict[str, object]:
+    payload = {**asdict(trial), "outcome": trial.outcome.value}
+    for field in ("source_attempt", "repaired_from_attempt", "repair_reason"):
+        if payload[field] is None:
+            payload.pop(field)
+    return payload
+
+
+def effective_trial_outcome(trial: TrialResult) -> Outcome:
     if trial.exception_type or trial.exception_message:
         return Outcome.CANDIDATE_INVALID if trial.owner == "candidate" else Outcome.INFRASTRUCTURE_FAILED
     if trial.outcome is Outcome.CANDIDATE_INVALID and trial.owner != "candidate":
@@ -98,7 +116,7 @@ def classify_evaluation(
     setup_reason: str | None = None,
     **values: Any,
 ) -> EvaluationRecord:
-    outcomes = tuple(_effective_outcome(trial) for trial in trials)
+    outcomes = tuple(effective_trial_outcome(trial) for trial in trials)
     if setup_outcome is not None:
         outcomes = (setup_outcome, *outcomes)
     if Outcome.INFRASTRUCTURE_FAILED in outcomes:

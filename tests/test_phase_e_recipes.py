@@ -4,7 +4,7 @@ from evolve.config import RECIPE_NAMES
 
 ROOT = Path(__file__).resolve().parents[1]
 RECIPES = ROOT / "recipes"
-REAL_RECIPES = {"ahe", "hill_climb", "hyperagents"}
+REAL_RECIPES = {"aevolve", "ahe", "gepa", "hill_climb", "hyperagents"}
 SMOKE_RECIPES = {"hill_climb-smoke", "hyperagents-smoke"}
 
 
@@ -41,7 +41,35 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
         assert "engine: harbor" in config
         assert "target/**" in config
         assert "target/agent.py" not in config
-        if name == "ahe":
+        if name == "aevolve":
+            assert "dataset: swe-bench-lite" in config
+            assert "seed: builtin-codex" in config
+            assert "rollout: {variant: harbor" in config
+            assert "trace_analyzer: {variant: execution_records" in config
+            assert "variant: aevolve" in config
+            assert "runner: harbor" in config
+            assert "agent: codex" in config
+            assert "editable_roots: [target]" in config
+            assert "evolve_prompts: true" in config
+            assert "evolve_skills: true" in config
+            assert "evolve_memory: false" in config
+            assert "evolve_tools: false" in config
+            assert "agent: target.agent:HarborAgent" in config
+        elif name == "gepa":
+            assert "dataset: swe-bench-lite" in config
+            assert "seed: builtin-codex" in config
+            assert "select: {variant: pareto" in config
+            assert "rollout: {variant: harbor" in config
+            assert "task_sampling: generation_shuffle" in config
+            assert "variant: gepa" in config
+            assert "variant: minibatch_improvement" in config
+            assert "criterion: strict" in config
+            assert "runner: harbor" in config
+            assert "agent: codex" in config
+            assert "editable_roots: [target]" in config
+            assert "agent: target.agent:HarborAgent" in config
+            assert "record: {variant: gepa" in config
+        elif name == "ahe":
             assert "dataset: swe-bench-lite" in config
             assert "seed: https://github.com/SWE-agent/mini-swe-agent.git" in config
             assert "rollout: {variant: harbor" in config
@@ -79,8 +107,9 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "agent: codex" in config
             assert "variant: noop" not in config
         assert "mutate:" not in config
-        assert "agent: evolve_harbor_adapter:MiniSweSourceAgent" in config
-        assert "harbor_agent: miniswe-source" in config
+        if name not in {"aevolve", "gepa"}:
+            assert "agent: evolve_harbor_adapter:MiniSweSourceAgent" in config
+            assert "harbor_agent: miniswe-source" in config
         assert "variant: fixed" not in config
 
 

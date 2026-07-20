@@ -27,6 +27,8 @@ STAMPED_FIELDS = {
     "cost_usd",
     "wall_s",
     "artifacts",
+    "source_attempts",
+    "repaired_tasks",
     "status",
     "selection_eligible",
     "task_set_members",
@@ -111,6 +113,9 @@ def append_evaluation_record(
         raw = asdict(trial)
         task_id = str(raw.pop("task_id"))
         raw["status"] = raw.pop("outcome").value
+        for field in ("source_attempt", "repaired_from_attempt", "repair_reason"):
+            if raw[field] is None:
+                raw.pop(field)
         tasks.setdefault(task_id, {"trials": []})["trials"].append(raw)
     event = {
         **(metadata or {}),

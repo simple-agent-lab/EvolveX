@@ -175,6 +175,13 @@ def _nonnegative_int(value: object, default: int) -> int:
         return default
 
 
+def _positive_float(value: object, default: float) -> float:
+    try:
+        return max(1.0, float(value))
+    except (TypeError, ValueError):
+        return default
+
+
 def _append_agent_env(command: list[str], config: dict[str, Any]) -> None:
     values: dict[str, str] = {}
     for override, lower, upper in _PROXY_ENV:
@@ -226,6 +233,8 @@ def _base_command(
         "1",
         "--max-retries",
         str(_nonnegative_int(config.get("max_retries"), 0)),
+        "--agent-timeout-multiplier",
+        str(_positive_float(config.get("agent_timeout_multiplier"), 1.0)),
     ]
     environment = config.get("environment")
     if environment:
@@ -255,7 +264,15 @@ def _build_command(
     job_name: str,
     config: dict[str, Any],
 ) -> list[str]:
-    command = _base_command(harbor, bundle.task_root, prompt_path, jobs_root, tasks_dir, job_name, config)
+    command = _base_command(
+        harbor,
+        bundle.task_root / "candidate",
+        prompt_path,
+        jobs_root,
+        tasks_dir,
+        job_name,
+        config,
+    )
     tasks_index = command.index("--tasks-dir")
     command[tasks_index:tasks_index] = ["--artifact", _ARTIFACT_SOURCE]
     return command

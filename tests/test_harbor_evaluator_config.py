@@ -21,6 +21,36 @@ def test_eval_env_uses_configured_harbor_agent() -> None:
     assert "CheckoutTargetAgent" not in env
 
 
+def test_eval_env_freezes_configured_model() -> None:
+    env = _eval_env(
+        "exp",
+        "terminal-bench-2",
+        n_concurrent=2,
+        tasks_per_round=30,
+        trials=1,
+        partial_floor=0.8,
+        agent="evolve_harbor_adapter:MiniSweSourceAgent",
+        model="openai/gpt-5.4-2026-03-05",
+    )
+
+    assert "EVOLVE_HARBOR_MODEL=openai/gpt-5.4-2026-03-05\n" in env
+
+
+def test_eval_env_freezes_agent_timeout_multiplier() -> None:
+    env = _eval_env(
+        "exp",
+        "terminal-bench-2",
+        n_concurrent=8,
+        tasks_per_round=30,
+        trials=1,
+        partial_floor=0.8,
+        agent="evolve_harbor_adapter:MiniSweSourceAgent",
+        agent_timeout_multiplier=4,
+    )
+
+    assert "EVOLVE_HARBOR_AGENT_TIMEOUT_MULTIPLIER=4\n" in env
+
+
 def test_agent_env_renders_frozen_miniswe_limits_deterministically() -> None:
     assert workspace_module._agent_env(
         {

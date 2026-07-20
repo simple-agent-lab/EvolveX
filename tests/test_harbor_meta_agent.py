@@ -131,7 +131,9 @@ trial_dir.mkdir(parents=True, exist_ok=True)
 artifact = trial_dir / "artifacts" / "app" / "candidate"
 if not readonly:
     artifact.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(source / "candidate", artifact, symlinks=True)
+    if source.name != "candidate":
+        raise SystemExit("expected candidate path")
+    shutil.copytree(source, artifact, symlinks=True)
 
     (artifact / "target" / "agent.py").write_text("print('child')\\n")
     (artifact / "target" / "added.txt").write_text("created in Harbor\\n")
@@ -286,6 +288,21 @@ def test_harbor_readonly_agent_returns_response_without_candidate_artifact(
     command = json.loads((output_dir / "command.json").read_text())
     assert "--artifact" not in command
     assert not (checkout / "target" / "added.txt").exists()
+
+
+def test_harbor_meta_agent_passes_agent_timeout_multiplier(tmp_path: Path) -> None:
+    runner = _harbor_runner_module()
+    command = runner._base_command(
+        ["harbor"],
+        tmp_path / "task",
+        tmp_path / "prompt.md",
+        tmp_path / "jobs",
+        tmp_path / "tasks",
+        "job",
+        {"agent_timeout_multiplier": 4},
+    )
+
+    assert command[command.index("--agent-timeout-multiplier") + 1] == "4.0"
 
 
 def test_harbor_meta_agent_round_trips_target_and_operators(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

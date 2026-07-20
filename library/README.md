@@ -20,13 +20,13 @@ See `DESIGN.md` §7 for the full rationale. In short:
 
 ```
 library/
-├─ select/   greedy · newest · random · score_weighted
+├─ select/   greedy · newest · pareto · random · score_weighted
 ├─ rollout/  failure_focused · harbor · noop
-├─ trace_analyzer/ failure_patterns · failed_traces · trace_browser · execution_records · utility_metrics
-├─ meta_agent/ hyperagents
+├─ trace_analyzer/ failure_patterns · failed_traces · trace_browser · execution_records · gepa · utility_metrics
+├─ meta_agent/ aevolve · ahe · gepa · hyperagents
 │  ├─ support/  shared evidence loading
 │  └─ runners/ local · harbor
-├─ validate/ hyperagents
+├─ validate/ hyperagents · minibatch_improvement
 ├─ gate/     hillclimb · parent_eligible
 ├─ record/   jsonl · hyperagents
 └─ _skeletons/   "write a new operator of verb X" starting points   (planned move)
@@ -65,8 +65,10 @@ set used for final evaluation.
 
 ## Meta-agent execution
 
-Meta-agent variants define the improvement strategy. `hyperagents.py` consumes
-normalized rollout feedback and implements self-referential editing. Its
+Meta-agent variants define the improvement strategy. `aevolve.py` performs
+observation-driven prompt and skill evolution, `ahe.py` engineers the target
+harness, `gepa.py` performs component-level reflective mutation, and
+`hyperagents.py` implements self-referential editing. Their
 `runner` selects how the editing agent is executed.
 
 `runners/local.py` executes a trusted host command. `runners/harbor.py` instead

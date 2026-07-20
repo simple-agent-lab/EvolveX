@@ -1,0 +1,54 @@
+experiment:
+  id: aevolve
+  max_generations: 20
+  target_score: null
+  budget_usd: 150
+  children_per_gen: 1
+  mode: driver
+  seed: 0
+target:
+  seed: builtin-codex
+surface:
+  include:
+    - target/**
+  exclude: []
+operators:
+  select: {variant: greedy, timeout_s: 600}
+  rollout: {variant: harbor, budget_tasks: 10, n_concurrent: 4, agent_setup_timeout_multiplier: 3, max_retries: 1, timeout_s: 3600}
+  trace_analyzer: {variant: execution_records, max_chars: 30000, timeout_s: 600}
+  meta_agent:
+    variant: aevolve
+    runner: harbor
+    agent: codex
+    model: gpt-5.4
+    environment: docker
+    editable_roots: [target]
+    evolve_prompts: true
+    evolve_skills: true
+    evolve_memory: false
+    evolve_tools: false
+    prompt_path: target/prompt.md
+    skills_dir: target/skills
+    memory_dir: target/memory
+    tools_dir: target/tools
+    history_cycles: 2
+    max_observations: 30
+    feedback_chars: 300
+    max_retries: 0
+    timeout_s: 3600
+  gate: {variant: hillclimb, strict: true, timeout_s: 600}
+  record: {variant: jsonl, timeout_s: 600}
+  timeout_s: 600
+evaluator:
+  engine: harbor
+  dataset: swe-bench-lite
+  agent: target.agent:HarborAgent
+  split: {train: 0.5, gate: 0.4, sealed: 0.1, seed: 0}
+  sampling: static
+  tasks_per_round: 10
+  anchor: {final: true, every_rounds: 0}
+  k: 1
+  n_concurrent: 4
+  agent_setup_timeout_multiplier: 3
+  max_retries: 1
+  partial_floor: 0.8

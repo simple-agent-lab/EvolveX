@@ -15,7 +15,16 @@ TASK_PATH = "/tmp/miniswe-source-task.txt"
 LOG_PATH = "/logs/agent/mini-swe-agent.txt"
 RUNTIME_EVIDENCE_PATH = "/logs/agent/evolve-runtime.json"
 HOST_UV_PATH = "/tmp/evolve-uv"
-PROXY_NAMES = ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy")
+PROXY_NAMES = (
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+    "NO_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "all_proxy",
+    "no_proxy",
+)
 
 
 RUNNER = r"""
@@ -26,26 +35,45 @@ from pathlib import Path
 from minisweagent.agents.default import AgentConfig, DefaultAgent
 from minisweagent.config import get_config_from_spec
 from minisweagent.environments.local import LocalEnvironment, LocalEnvironmentConfig
-from minisweagent.models.litellm_model import LitellmModel, LitellmModelConfig
+from minisweagent.models.litellm_response_model import LitellmResponseModel, LitellmResponseModelConfig
 
 
 def filtered(payload, fields):
     return {key: value for key, value in dict(payload or {}).items() if key in fields}
 
 
+class EvolveResponseModel(LitellmResponseModel):
+    def _query(self, messages, **kwargs):
+        headers = dict(kwargs.pop("extra_headers", {}) or {})
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if api_key:
+            headers["api-key"] = api_key
+        return super()._query(messages, extra_headers=headers, **kwargs)
+
+
 task = Path(os.environ["MINISWE_TASK_PATH"]).read_text()
 config = get_config_from_spec(os.environ.get("MINISWE_CONFIG", "mini"))
 agent_kwargs = filtered(config.get("agent"), AgentConfig.model_fields)
 env_kwargs = filtered(config.get("environment"), LocalEnvironmentConfig.model_fields)
-model_kwargs = filtered(config.get("model"), LitellmModelConfig.model_fields)
+model_kwargs = filtered(config.get("model"), LitellmResponseModelConfig.model_fields)
 model_kwargs["model_name"] = os.environ["MSWEA_MODEL_NAME"]
 model_kwargs["cost_tracking"] = "ignore_errors"
+runtime_model_kwargs = dict(model_kwargs.get("model_kwargs") or {})
+effort = os.environ.get("MINISWE_REASONING_EFFORT")
+if effort:
+    runtime_model_kwargs["reasoning"] = {"effort": effort}
+runtime_model_kwargs["store"] = False
+include = list(runtime_model_kwargs.get("include") or [])
+if "reasoning.encrypted_content" not in include:
+    include.append("reasoning.encrypted_content")
+runtime_model_kwargs["include"] = include
+model_kwargs["model_kwargs"] = runtime_model_kwargs
 env_kwargs["cwd"] = os.environ.get("MINISWE_CWD", "/app")
 env_kwargs["timeout"] = int(os.environ.get("MINISWE_ENV_TIMEOUT", env_kwargs.get("timeout") or 30))
 agent_kwargs["step_limit"] = int(os.environ.get("MINISWE_STEP_LIMIT", agent_kwargs.get("step_limit") or 0))
 agent_kwargs["cost_limit"] = float(os.environ.get("MINISWE_COST_LIMIT", agent_kwargs.get("cost_limit") or 0))
 agent_kwargs["output_path"] = os.environ.get("MINISWE_OUTPUT_PATH")
-agent = DefaultAgent(LitellmModel(**model_kwargs), LocalEnvironment(**env_kwargs), **agent_kwargs)
+agent = DefaultAgent(EvolveResponseModel(**model_kwargs), LocalEnvironment(**env_kwargs), **agent_kwargs)
 print(json.dumps(agent.run(task), default=str))
 """.strip()
 
@@ -64,17 +92,17 @@ MODEL_PREFLIGHT = r"""
 import os
 
 from minisweagent.config import get_config_from_spec
-from minisweagent.models.litellm_model import LitellmModel, LitellmModelConfig
+from minisweagent.models.litellm_response_model import LitellmResponseModel, LitellmResponseModelConfig
 
 config = get_config_from_spec(os.environ.get("MINISWE_CONFIG", "mini"))
 model_kwargs = {
     key: value
     for key, value in dict(config.get("model") or {}).items()
-    if key in LitellmModelConfig.model_fields
+    if key in LitellmResponseModelConfig.model_fields
 }
 model_kwargs["model_name"] = os.environ["MSWEA_MODEL_NAME"]
 model_kwargs["cost_tracking"] = "ignore_errors"
-LitellmModel(**model_kwargs)
+LitellmResponseModel(**model_kwargs)
 print("EVOLVE_PREFLIGHT: model_path_init_ok")
 """.strip()
 
@@ -221,7 +249,7 @@ class MiniSweSourceAgent(MiniSweAgent):
             "set -euo pipefail\n"
             'if [ -f "$HOME/.local/bin/env" ]; then . "$HOME/.local/bin/env"; '
             'else export PATH="$HOME/.local/bin:$PATH"; fi\n'
-            "unset HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy\n"
+            f"unset {' '.join(PROXY_NAMES)}\n"
             f"cat > {shlex.quote(RUNNER_PATH)} <<'PY'\n{RUNNER}\nPY\n"
             f"{VENV_PYTHON} - <<'PY'\n"
             "from pathlib import Path\n"
@@ -247,7 +275,12 @@ class MiniSweSourceAgent(MiniSweAgent):
         if api_base is not None:
             env["OPENAI_BASE_URL"] = api_base
             env["OPENAI_API_BASE"] = api_base
-        for name in ("MINISWE_STEP_LIMIT", "MINISWE_COST_LIMIT", "MINISWE_ENV_TIMEOUT"):
+        for name in (
+            "MINISWE_STEP_LIMIT",
+            "MINISWE_COST_LIMIT",
+            "MINISWE_ENV_TIMEOUT",
+            "MINISWE_REASONING_EFFORT",
+        ):
             value = self._get_env(name)
             if value is not None:
                 env[name] = value

@@ -1,0 +1,313 @@
+"""A-Evolve strategy: distill recent task observations into workspace updates."""
+
+# ruff: noqa: E402
+
+from __future__ import annotations
+
+import json
+import re
+from pathlib import Path
+from typing import Any
+
+from evolve.agent import AgentCommandError
+from evolve.frozen import sdk
+from evolve.frozen.interfaces import MetaAgentOperator, MetaAgentResult, OperatorContext
+from evolve.patching import create_candidate_patch, load_surface_policy, patch_parent_ref
+from library.meta_agent.runners import run_agent, runner_name
+
+AEVOLVE_SYSTEM_PROMPT = """# A-Evolve Workspace Improvement
+
+You are a meta-learning agent that improves another agent by modifying its
+workspace files. Analyze recent task observations, identify recurring failure
+patterns and transferable lessons, review draft skills, and make precise
+workspace edits that should improve future task performance.
+
+Guidelines:
+- Quality over quantity. Only create skills that genuinely help future tasks.
+- Skills use SKILL.md format with YAML frontmatter (`name`, `description`).
+- Keep memory concise and actionable when memory evolution is enabled.
+- Preserve unrelated behavior and do not encode benchmark-specific answers.
+- Inspect existing files before editing and verify the final diff.
+- Do not modify the evaluator, mechanism, archive, task partitions,
+  credentials, endpoints, model selection, or resource limits.
+"""
+
+
+def _write_json(path: Path, payload: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+
+
+def _safe_usage(usage: object) -> dict[str, Any]:
+    if not isinstance(usage, dict):
+        return {"usd": 0}
+    normalized = dict(usage)
+    usd = normalized.get("usd", 0)
+    normalized["usd"] = usd if isinstance(usd, (int, float)) and not isinstance(usd, bool) else 0
+    return normalized
+
+
+def _positive_int(value: object, default: int) -> int:
+    try:
+        return max(1, int(value))
+    except (TypeError, ValueError):
+        return default
+
+
+def _enabled(config: dict[str, Any], key: str, default: bool) -> bool:
+    value = config.get(key, default)
+    if not isinstance(value, bool):
+        raise ValueError(f"{key} must be a boolean")
+    return value
+
+
+def _relative_path(checkout: Path, value: object, default: str) -> tuple[Path, str]:
+    relative = Path(str(value or default))
+    if relative.is_absolute() or ".." in relative.parts:
+        raise ValueError(f"A-Evolve workspace path must be checkout-relative: {relative}")
+    resolved = (checkout / relative).resolve()
+    root = checkout.resolve()
+    if root not in resolved.parents:
+        raise ValueError(f"A-Evolve workspace path escaped the checkout: {relative}")
+    return resolved, relative.as_posix()
+
+
+def _read_json(path: Path) -> object:
+    try:
+        return json.loads(path.read_text())
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+
+
+def _case_feedback(case: dict[str, Any], limit: int) -> str:
+    verifier = str(case.get("verifier_output") or "").strip()
+    exception = case.get("exception")
+    if isinstance(exception, dict):
+        exception_text = ": ".join(
+            str(value).strip() for value in (exception.get("type"), exception.get("message")) if value
+        )
+    else:
+        exception_text = ""
+    text = verifier or exception_text or str(case.get("outcome") or "unknown")
+    return text[:limit]
+
+
+def _case_summaries(ctx: OperatorContext) -> list[dict[str, Any]]:
+    history_cycles = _positive_int(ctx.config.get("history_cycles"), 2)
+    maximum = _positive_int(ctx.config.get("max_observations"), 30)
+    feedback_limit = _positive_int(ctx.config.get("feedback_chars"), 300)
+    history = _read_json(ctx.run_dir / "feedback" / "evidence" / "history.json")
+    prior_ids = (
+        [
+            str(row.get("genid"))
+            for row in history
+            if isinstance(row, dict)
+            and row.get("genid") is not None
+            and re.fullmatch(r"[A-Za-z0-9_.-]+", str(row.get("genid")))
+        ]
+        if isinstance(history, list)
+        else []
+    )
+    prior_count = max(history_cycles - 1, 0)
+    case_paths = [
+        ctx.workspace / "runs" / f"gen-{genid}" / "rollout" / "cases.json"
+        for genid in (prior_ids[-prior_count:] if prior_count else [])
+    ]
+    case_paths.append(ctx.run_dir / "rollout" / "cases.json")
+    cases: list[dict[str, Any]] = []
+    seen: set[Path] = set()
+    for path in case_paths:
+        resolved = path.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        payload = _read_json(path)
+        if isinstance(payload, list):
+            cases.extend(case for case in payload if isinstance(case, dict))
+    return [
+        {
+            "task_id": case.get("task_name") or case.get("trial_name") or "",
+            "success": case.get("outcome") == "passed",
+            "score": case.get("reward") if isinstance(case.get("reward"), (int, float)) else 0.0,
+            "feedback": _case_feedback(case, feedback_limit),
+        }
+        for case in cases[-maximum:]
+        if case.get("outcome") not in {"infra_error", "incomplete"}
+    ]
+
+
+def _skills(skills_dir: Path) -> list[str]:
+    if not skills_dir.is_dir():
+        return []
+    return sorted(
+        path.name
+        for path in skills_dir.iterdir()
+        if path.is_dir() and not path.name.startswith("_") and (path / "SKILL.md").is_file()
+    )
+
+
+def _drafts(skills_dir: Path) -> list[dict[str, str]]:
+    drafts_dir = skills_dir / "_drafts"
+    if not drafts_dir.is_dir() or drafts_dir.is_symlink():
+        return []
+    return [
+        {"name": path.stem, "content": path.read_text()[:1000]}
+        for path in sorted(drafts_dir.glob("*.md"))
+        if path.is_file() and not path.is_symlink()
+    ]
+
+
+def _draft_section(drafts: list[dict[str, str]]) -> str:
+    if not drafts:
+        return "No draft skills this batch."
+    return "\n\n".join(f"#### Draft: {draft['name']}\n```markdown\n{draft['content']}\n```" for draft in drafts)
+
+
+def _permissions(config: dict[str, Any], paths: dict[str, str]) -> list[str]:
+    permissions: list[str] = []
+    if _enabled(config, "evolve_prompts", True):
+        permissions.append(f"- You CAN modify `{paths['prompt']}`")
+    if _enabled(config, "evolve_skills", True):
+        permissions.append(f"- You CAN create, modify, or delete skills under `{paths['skills']}/`")
+    if _enabled(config, "evolve_memory", True):
+        permissions.append(f"- You CAN add or prune entries under `{paths['memory']}/`")
+    if _enabled(config, "evolve_tools", False):
+        permissions.append(f"- You CAN create or modify tools under `{paths['tools']}/`")
+    if not permissions:
+        raise ValueError("A-Evolve meta-agent has no enabled mutable workspace layers")
+    return permissions
+
+
+def _placeholder_rule(config: dict[str, Any], prompt_relative: str) -> str:
+    values = config.get("required_placeholders")
+    if values is None:
+        values = ["{{ instruction }}"] if Path(prompt_relative).name == "prompt.md" else []
+    if not isinstance(values, list) or not all(isinstance(value, str) and value for value in values):
+        raise ValueError("required_placeholders must be a list of non-empty strings")
+    if not values:
+        return ""
+    if values == ["{{ instruction }}"]:
+        return f"- Preserve the `{{{{ instruction }}}}` placeholder in `{prompt_relative}`."
+    rendered = ", ".join(f"`{value}`" for value in values)
+    return f"- Preserve these literal template expressions in `{prompt_relative}`: {rendered}."
+
+
+def build_prompt(checkout: Path, ctx: OperatorContext) -> tuple[str, dict[str, Any]]:
+    prompt_path, prompt_relative = _relative_path(checkout, ctx.config.get("prompt_path"), "target/prompts/system.md")
+    skills_dir, skills_relative = _relative_path(checkout, ctx.config.get("skills_dir"), "target/skills")
+    _, memory_relative = _relative_path(checkout, ctx.config.get("memory_dir"), "target/memory")
+    _, tools_relative = _relative_path(checkout, ctx.config.get("tools_dir"), "target/tools")
+    paths = {
+        "prompt": prompt_relative,
+        "skills": skills_relative,
+        "memory": memory_relative,
+        "tools": tools_relative,
+    }
+    summaries = _case_summaries(ctx)
+    drafts = _drafts(skills_dir)
+    skill_names = _skills(skills_dir)
+    permissions = _permissions(ctx.config, paths)
+    template_rule = _placeholder_rule(ctx.config, prompt_relative)
+    prompt = (
+        f"{AEVOLVE_SYSTEM_PROMPT.rstrip()}\n\n"
+        f"## Evolution Cycle #{ctx.genid}\n\n"
+        f"### Workspace Layout\n"
+        f"- System prompt: `{prompt_relative}`\n"
+        f"- Reusable skills: `{skills_relative}/*/SKILL.md`\n"
+        f"- Draft skills: `{skills_relative}/_drafts/*.md`\n"
+        f"- Memory: `{memory_relative}/`\n"
+        f"- Tools: `{tools_relative}/`\n\n"
+        f"### Permissions\n{chr(10).join(permissions)}\n\n"
+        f"### Task Summaries (last {ctx.config.get('history_cycles', 2)} cycles, at most "
+        f"{ctx.config.get('max_observations', 30)})\n```json\n"
+        f"{json.dumps(summaries, indent=2, sort_keys=True)}\n```\n\n"
+        f"### Draft Skills\n{_draft_section(drafts)}\n\n"
+        f"### Current Skills ({len(skill_names)})\n"
+        f"{chr(10).join(f'- {name}' for name in skill_names) if skill_names else 'No skills yet.'}\n\n"
+        "### Instructions\n"
+        "1. Review the task summaries and identify patterns, common failures, and recurring themes.\n"
+        "2. Review draft skills: refine into a real skill, merge with an existing skill, or discard.\n"
+        "3. Review current skills and update them only when supported by the observations.\n"
+        "4. Update enabled prompt or memory layers only with concise, transferable insights.\n"
+        "5. Inspect files with your filesystem tools before writing.\n"
+        "6. Verify changes with `git diff` and run proportionate checks.\n"
+        f"{template_rule}\n\n"
+        "Edit the candidate checkout directly. Do not merely print a patch. When done, summarize what you changed and why.\n"
+    )
+    return prompt, {
+        "summaries": summaries,
+        "drafts": drafts,
+        "skills_before": skill_names,
+        "skills_dir": skills_dir,
+    }
+
+
+def _clear_drafts(skills_dir: Path) -> None:
+    drafts_dir = skills_dir / "_drafts"
+    if drafts_dir.is_dir() and not drafts_dir.is_symlink():
+        for path in drafts_dir.glob("*.md"):
+            if path.is_file() and not path.is_symlink():
+                path.unlink()
+
+
+class AEvolveMetaAgent(MetaAgentOperator):
+    def run(self, checkout: Path, observation: str, ctx: OperatorContext) -> MetaAgentResult:
+        del observation
+        parent_ref = patch_parent_ref(checkout, ctx)
+        out = ctx.run_dir / "meta_agent"
+        out.mkdir(parents=True, exist_ok=True)
+        prompt, state = build_prompt(checkout, ctx)
+        (out / "prompt.md").write_text(prompt)
+        try:
+            agent_run = run_agent(checkout, prompt, ctx)
+        except AgentCommandError as exc:
+            (out / "output.txt").write_text(exc.output)
+            _write_json(out / "usage.json", _safe_usage(exc.usage))
+            raise SystemExit(exc.returncode)
+
+        _clear_drafts(state["skills_dir"])
+        skills_before = state["skills_before"]
+        skills_after = _skills(state["skills_dir"])
+        added = sorted(set(skills_after) - set(skills_before))
+        removed = sorted(set(skills_before) - set(skills_after))
+        patch = create_candidate_patch(
+            checkout=checkout,
+            parent_ref=parent_ref,
+            surface=load_surface_policy(checkout),
+            repair=False,
+        )
+        usage = _safe_usage(agent_run.usage)
+        report = {
+            "evo_number": ctx.genid,
+            "tasks_analyzed": len(state["summaries"]),
+            "drafts_reviewed": len(state["drafts"]),
+            "skills_before": len(skills_before),
+            "skills_after": len(skills_after),
+            "new_skills": len(added),
+            "skills_added": added,
+            "skills_removed": removed,
+            "mutated": bool(patch.changed_paths),
+            "usage": usage,
+        }
+        notes = [
+            "variant: aevolve",
+            f"runner: {runner_name(ctx)}",
+            f"tasks-analyzed: {report['tasks_analyzed']}",
+            f"drafts-reviewed: {report['drafts_reviewed']}",
+            f"new-skills: {report['new_skills']}",
+            "written-by: operators/meta_agent.py",
+            *patch.notes,
+        ]
+        (out / "model_patch.diff").write_text(patch.diff)
+        (out / "patch.diff").write_text(patch.diff)
+        (out / "output.txt").write_text(agent_run.output)
+        (out / "rationale.md").write_text("\n".join(notes) + "\n")
+        _write_json(out / "aevolve-report.json", report)
+        _write_json(out / "changed.json", patch.changed_paths)
+        _write_json(out / "surface-check.json", patch.surface_report)
+        _write_json(out / "usage.json", usage)
+        return MetaAgentResult(changed=patch.changed_paths, notes=notes, usage=usage)
+
+
+if __name__ == "__main__":
+    sdk.main(AEvolveMetaAgent)

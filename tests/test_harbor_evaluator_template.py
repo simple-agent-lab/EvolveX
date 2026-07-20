@@ -41,6 +41,21 @@ def test_harbor_evaluator_uses_locked_workspace_runtime() -> None:
     assert '"$PWD/.evolve/launch_splits.py"' in text
 
 
+def test_harbor_evaluator_passes_agent_timeout_multiplier() -> None:
+    text = _eval_sh("harbor", "fixture")
+
+    assert '--agent-timeout-multiplier "$EVOLVE_HARBOR_AGENT_TIMEOUT_MULTIPLIER"' in text
+
+
+def test_harbor_evaluator_prefers_failed_task_repair_selection() -> None:
+    text = _eval_sh("harbor", "fixture")
+
+    repair_override = "EVOLVE_HARBOR_TASK_FILE=$EVOLVE_REPAIR_TASK_FILE"
+    assert repair_override in text
+    assert text.index(repair_override) > text.index('EVOLVE_HARBOR_TASK_FILE="$EVOLVE_RUN_DIR/task-names.txt"')
+    assert text.index(repair_override) < text.index('--include-task-name "$task_name"')
+
+
 def test_harbor_stage_limit_and_anchor_task_file_override(tmp_path: Path) -> None:
     evaluator = tmp_path / "evaluator"
     (evaluator / "tasks").mkdir(parents=True)

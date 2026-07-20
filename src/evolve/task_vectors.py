@@ -53,6 +53,12 @@ def normalize_task_vector(payload: object) -> dict[str, Any]:
                 raise TaskVectorError(f"invalid status {status!r} for {task_id}")
             if reward is not None and (isinstance(reward, bool) or not isinstance(reward, (int, float))):
                 raise TaskVectorError(f"invalid reward for {task_id} trial {trial}")
+            for field in ("source_attempt", "repaired_from_attempt"):
+                value = raw.get(field)
+                if value is not None and (isinstance(value, bool) or not isinstance(value, int) or value < 1):
+                    raise TaskVectorError(f"invalid {field} for {task_id} trial {trial}")
+            if raw.get("repair_reason") is not None and not isinstance(raw["repair_reason"], str):
+                raise TaskVectorError(f"invalid repair_reason for {task_id} trial {trial}")
             score_eligible = (
                 status == Outcome.BENCHMARK_COMPLETE
                 or status == Outcome.TIMEOUT
@@ -86,6 +92,11 @@ def trial_results(payload: object) -> tuple[TrialResult, ...]:
             owner=str(raw.get("owner") or "benchmark"),
             exception_type=str(raw["exception_type"]) if raw.get("exception_type") else None,
             exception_message=str(raw["exception_message"]) if raw.get("exception_message") else None,
+            source_attempt=int(raw["source_attempt"]) if raw.get("source_attempt") is not None else None,
+            repaired_from_attempt=(
+                int(raw["repaired_from_attempt"]) if raw.get("repaired_from_attempt") is not None else None
+            ),
+            repair_reason=str(raw["repair_reason"]) if raw.get("repair_reason") else None,
         )
         for task_id, task in vector["tasks"].items()
         for raw in task["trials"]

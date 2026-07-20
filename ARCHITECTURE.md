@@ -22,18 +22,21 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `__main__.py` | 10 | `python -m evolve` entry |
 | `cli.py` | 200 | argument parsing and verb dispatch only — no logic |
 | `config.py` | 300 | read/render `evolve.yaml`: recipes, experiment values, surface lists, operator blocks |
-| `driver.py` | 1360 | the generation sequencer: orchestrates baseline eval, verbs + operators (incl. novelty, self-modification admission gates, sealed anchors); validates operator outputs; computes verified_fixes; audit quarantine; doctor repair |
+| `driver.py` | 1450 | the generation sequencer: orchestrates baseline eval, verbs + operators (incl. novelty, self-modification admission gates, sealed anchors); validates operator outputs; computes verified_fixes; audit quarantine; doctor repair |
 | `feedback.py` | 220 | assemble current and historical rollout evidence plus ledger-derived feedback for the meta-agent |
 | `operators.py` | 150 | subprocess runner for workspace operator scripts (contract: env vars, --config, timeout) |
 | `population.py` | 150 | genid/lineage bookkeeping for fan-out generations |
-| `archive.py` | 270 | append-only event store: merge semantics, stamped-field protection, mirroring, integrity fsck |
-| `evaluator.py` | 150 | clean-checkout canonical evaluation: tree assertion, exit-code contract, score parsing |
+| `archive.py` | 380 | append-only event store: merge semantics, stamped-field protection, mirroring, integrity fsck |
+| `evaluator.py` | 270 | clean-checkout canonical evaluation: tree assertion, targeted task execution, exit-code contract, score parsing |
+| `evaluation.py` | 170 | canonical evaluation outcomes, trial evidence, records, and classification |
+| `evaluation_repair.py` | 190 | target explicit infrastructure failures, merge repaired trials, and preserve attempt provenance |
+| `task_vectors.py` | 130 | normalize and validate per-task trial evidence from evaluators |
 | `git.py` | 150 | thin git subprocess helpers — nothing evolve-specific |
 | `surface.py` | 150 | mutable-surface pattern matching and violation checks |
 | `report.py` | 182 | status/report rendering, best-ever recomputation, claim checklist |
 | `trace_analysis.py` | 410 | deterministic shared transforms used by the independent trace-analyzer operator variants |
 | `splits.py` | 210 | freeze deterministic train/gate/sealed Harbor task membership and materialize exact runtime selections |
-| `workspace.py` | 510 | `evolve init` scaffolding: file copies, operator binding, deterministic dataset and Harbor runtime config, generated operator palette, protocol stamping, seed + mechanism vendoring, inner-skill copy |
+| `workspace.py` | 620 | `evolve init` scaffolding: file copies, operator binding, deterministic dataset and Harbor runtime config, generated operator palette, protocol stamping, seed + mechanism vendoring, inner-skill copy |
 
 ### The frozen ring (`src/evolve/frozen/`)
 
@@ -49,7 +52,7 @@ each workspace, immutable there because it sits outside the mutable surface
 | `frozen/sdk.py` | 420 | Python operator entrypoint and file-contract IO; no library algorithm policy |
 | `frozen/meta_eval.py` | 130 | self-modification admission gate: confound-free replay of old vs new operator surface (mechanism 1) |
 
-Total `src/evolve/` budget: **4800 lines**. The increase admits the explicit,
+Total `src/evolve/` budget: **5500 lines**. The increase admits the explicit,
 redacted trace-analysis boundary between rollout and feedback assembly; if the mechanism wants to
 grow past that, something belongs in a workspace operator instead —
 that is the spec's rule, not a style preference.

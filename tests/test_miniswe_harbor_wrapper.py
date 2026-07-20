@@ -120,7 +120,16 @@ def test_miniswe_wrapper_subclasses_harbor_miniswe_and_installs_candidate_source
     assert '"frozen_sync": true' in environment.commands[evidence_index]
     assert '"miniswe_import": true' in environment.commands[evidence_index]
     assert '"model_path_init": true' in environment.commands[evidence_index]
-    proxy_names = {"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"}
+    proxy_names = {
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "ALL_PROXY",
+        "NO_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "all_proxy",
+        "no_proxy",
+    }
     assert proxy_names.isdisjoint(environment.envs[model_index])
     assert environment.envs[model_index]["OPENAI_API_KEY"] == "test-key"
     assert environment.envs[model_index]["OPENAI_BASE_URL"] == "https://llm.example/v1"
@@ -154,7 +163,11 @@ def test_miniswe_wrapper_runs_candidate_source_api_not_cli(tmp_path: Path, monke
     assert "get_config_from_spec" in joined
     assert "DefaultAgent" in joined
     assert "from minisweagent.environments.local import LocalEnvironment" in joined
-    assert "from minisweagent.models.litellm_model import LitellmModel" in joined
+    assert "from minisweagent.models.litellm_response_model import LitellmResponseModel" in joined
+    assert 'headers["api-key"] = api_key' in joined
+    assert "EvolveResponseModel(**model_kwargs)" in joined
+    assert 'runtime_model_kwargs["store"] = False' in joined
+    assert 'include.append("reasoning.encrypted_content")' in joined
     env = environment.envs[-1]
     assert env["MSWEA_MODEL_NAME"] == "openai/test-model"
     assert env["OPENAI_API_KEY"] == "test-key"
@@ -188,7 +201,16 @@ def test_miniswe_runtime_unsets_inherited_proxies_but_install_keeps_proxy(tmp_pa
     agent = module.MiniSweSourceAgent(model_name="openai/test-model")
     asyncio.run(agent.run("Fix the bug.", environment, object()))
 
-    proxy_names = ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy")
+    proxy_names = (
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "ALL_PROXY",
+        "NO_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "all_proxy",
+        "no_proxy",
+    )
     unset_command = f"unset {' '.join(proxy_names)}"
     runtime_command = environment.commands[-1]
     assert unset_command in runtime_command

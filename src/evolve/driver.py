@@ -26,6 +26,7 @@ from .archive import (
 from .candidate_snapshot import build_candidate_snapshot, commit_candidate_snapshot
 from .config import evaluator_anchor, evaluator_sampling, experiment_id, operator_blocks
 from .evaluation import CANONICAL_OUTCOMES, EvaluationInterrupted, EvaluationRecord, Outcome, evaluation_status
+from .evaluation_repair import evaluation_record_from_payload, repair_task_ids
 from .evaluator import evaluate
 from .feedback import write_feedback_bundle
 from .frozen.interfaces import (
@@ -846,19 +847,15 @@ def _evaluate_with_one_infra_retry(
     if previous is not None and previous.get("outcome") == Outcome.INFRASTRUCTURE_FAILED:
         if previous.get("retry_of") is not None:
             raise EvaluationPaused(f"gen/{genid} infrastructure failed twice")
-        first_attempt = int(previous["attempt"])
-        candidate_commit = str(previous["candidate_commit"])
+        first = evaluation_record_from_payload(previous)
     else:
         first = run_attempt()
         if first.outcome is not Outcome.INFRASTRUCTURE_FAILED:
             return first
-        first_attempt = first.attempt
-        candidate_commit = first.candidate_commit
 
-    second = run_attempt(
-        retry_of=first_attempt,
-    )
-    if second.candidate_commit != candidate_commit:
+    failed_tasks = repair_task_ids(first)
+    second = run_attempt(repair_from=first) if failed_tasks else run_attempt(retry_of=first.attempt)
+    if second.candidate_commit != first.candidate_commit:
         raise RuntimeError(f"gen/{genid} changed commit during infrastructure retry")
     if second.outcome is Outcome.INFRASTRUCTURE_FAILED:
         raise EvaluationPaused(f"gen/{genid} infrastructure failed twice")
