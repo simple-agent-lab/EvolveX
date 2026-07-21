@@ -552,6 +552,8 @@ class HarborRollout(RolloutOperator):
         command.extend(["--ae", f"EVOLVE_CANDIDATE_SOURCE={(checkout / 'target').resolve()}"])
         _append_proxy_env(command)
         model = ctx.config.get("model") or os.environ.get("EVOLVE_HARBOR_MODEL")
+        if not model and os.environ.get("OPENAI_MODEL"):
+            model = f"openai/{os.environ['OPENAI_MODEL']}"
         if model:
             command.extend(["--model", str(model)])
         include_task = ctx.config.get("include_task_name")

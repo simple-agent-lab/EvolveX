@@ -90,6 +90,8 @@ def test_harbor_rollout_uses_only_frozen_train_task_names(tmp_path: Path, monkey
     from test_m7_harbor_rollout import _harbor_rollout_module
 
     module = _harbor_rollout_module()
+    monkeypatch.delenv("EVOLVE_HARBOR_MODEL", raising=False)
+    monkeypatch.setenv("OPENAI_MODEL", "test-model")
     checkout = tmp_path / "checkout"
     evaluator = checkout / "evaluator"
     evaluator.mkdir(parents=True)
@@ -139,4 +141,5 @@ def test_harbor_rollout_uses_only_frozen_train_task_names(tmp_path: Path, monkey
     assert ("--ae", f"EVOLVE_CANDIDATE_SOURCE={checkout / 'target'}") in zip(
         captured, captured[1:], strict=False
     )
+    assert ("--model", "openai/test-model") in zip(captured, captured[1:], strict=False)
     assert result.summary["split"] == "train"
