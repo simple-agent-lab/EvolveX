@@ -148,7 +148,9 @@ def build_prompt(checkout: Path, observation: str, ctx: OperatorContext) -> str:
         f"# Previous Change Manifest\n\n```json\n{_prior_manifest(ctx)}\n```\n\n"
         f"# Recent Archive Outcomes\n\n```jsonl\n{_recent_archive(ctx)}\n```\n\n"
         f"# Surface Rules\n\n{_surface_rules(checkout)}\n\n"
-        "# Required Final Output\n\nEdit the candidate directly. After the concise summary, emit exactly one block:\n\n"
+        "# Required Final Output\n\nEdit the candidate directly. In the response containing the "
+        "submission action, write the concise summary and exactly one manifest block before the submission action. "
+        "Nothing can be emitted after submission.\n\n"
         f"{MANIFEST_START}\n{json.dumps(template, indent=2)}\n{MANIFEST_END}\n"
     )
 

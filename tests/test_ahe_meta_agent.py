@@ -122,6 +122,7 @@ def test_ahe_prompt_uses_official_decisions_and_required_manifest(tmp_path: Path
         "ROLLBACK + PIVOT",
         "Current debugger reports evaluate the selected parent",
         "<AHE_CHANGE_MANIFEST>",
+        "before the submission action",
         "pass@1",
     ):
         assert required in prompt
