@@ -369,6 +369,27 @@ def _artifact_candidate(trial_dir: Path) -> tuple[Path, list[dict[str, Any]]]:
 
 
 def _agent_output(trial_dir: Path) -> str:
+    for path in sorted((trial_dir / "agent").glob("*.trajectory.json")):
+        if path.name == "trajectory.json":
+            continue
+        raw = _read_json(path)
+        messages = raw.get("messages") if isinstance(raw, dict) else None
+        if not isinstance(messages, list):
+            continue
+        preserved: list[str] = []
+        for item in messages:
+            extra = item.get("extra") if isinstance(item, dict) else None
+            response = extra.get("response") if isinstance(extra, dict) else None
+            choices = response.get("choices") if isinstance(response, dict) else None
+            if not isinstance(choices, list):
+                continue
+            for choice in choices:
+                message = choice.get("message") if isinstance(choice, dict) else None
+                content = message.get("content") if isinstance(message, dict) else None
+                if isinstance(content, str) and content:
+                    preserved.append(content)
+        if preserved:
+            return preserved[-1]
     payload = _read_json(trial_dir / "agent" / "trajectory.json")
     steps = payload.get("steps") if isinstance(payload, dict) else None
     if not isinstance(steps, list):

@@ -448,3 +448,30 @@ def test_install_bundle_omits_ignored_runtime_tree_with_symlinks(tmp_path: Path)
     assert changed == ["target/agent.py"]
     assert (checkout / "target" / "agent.py").read_text() == "print('child')\n"
     assert not (checkout / "target" / ".venv").exists()
+
+
+def test_agent_output_prefers_preserved_model_response_over_post_submit_message(tmp_path: Path) -> None:
+    agent = tmp_path / "trial" / "agent"
+    agent.mkdir(parents=True)
+    (agent / "trajectory.json").write_text(
+        json.dumps({"steps": [{"source": "agent", "message": "submit next"}]})
+    )
+    (agent / "mini-swe-agent.trajectory.json").write_text(
+        json.dumps(
+            {
+                "messages": [
+                    {
+                        "role": "tool",
+                        "content": "continue",
+                        "extra": {
+                            "response": {
+                                "choices": [{"message": {"content": "analysis and required manifest"}}]
+                            }
+                        },
+                    }
+                ]
+            }
+        )
+    )
+
+    assert _harbor_runner_module()._agent_output(tmp_path / "trial") == "analysis and required manifest"
