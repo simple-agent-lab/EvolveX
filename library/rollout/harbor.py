@@ -102,6 +102,13 @@ def _load_eval_env(checkout: Path) -> dict[str, str]:
     return values
 
 
+def _agent_env_entries(checkout: Path) -> list[str]:
+    path = checkout / "evaluator" / "agent.env"
+    if not path.exists():
+        return []
+    return [line.strip() for line in path.read_text().splitlines() if line.strip()]
+
+
 def _reward(payload: dict[str, Any], trial_dir: Path) -> float | None:
     verifier = payload.get("verifier_result")
     rewards = verifier.get("rewards") if isinstance(verifier, dict) else None
@@ -550,6 +557,36 @@ class HarborRollout(RolloutOperator):
         if os.environ.get("EVOLVE_LIVE_OUTPUT") != "1":
             command.append("-q")
         command.extend(["--ae", f"EVOLVE_CANDIDATE_SOURCE={(checkout / 'target').resolve()}"])
+        uv_cache = ctx.workspace / "runs" / "runtime" / "uv-cache"
+        uv_cache.mkdir(parents=True, exist_ok=True)
+        mounts = [
+            {
+                "type": "bind",
+                "source": str(uv_cache.resolve()),
+                "target": "/installed-agent/uv-cache",
+            }
+        ]
+        uv_python = os.environ.get("EVOLVE_UV_PYTHON_INSTALL_DIR")
+        if uv_python:
+            uv_python_dir = Path(uv_python).expanduser().resolve()
+            uv_python_dir.mkdir(parents=True, exist_ok=True)
+            mounts.append(
+                {
+                    "type": "bind",
+                    "source": str(uv_python_dir),
+                    "target": "/installed-agent/uv-python",
+                }
+            )
+        command.extend(
+            [
+                "--mounts",
+                json.dumps(mounts),
+            ]
+        )
+        for entry in _agent_env_entries(checkout):
+            command.extend(["--ae", entry])
+        if uv_python:
+            command.extend(["--ae", "UV_PYTHON_INSTALL_DIR=/installed-agent/uv-python"])
         _append_proxy_env(command)
         model = ctx.config.get("model") or os.environ.get("EVOLVE_HARBOR_MODEL")
         if not model and os.environ.get("OPENAI_MODEL"):

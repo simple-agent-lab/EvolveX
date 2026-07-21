@@ -92,6 +92,8 @@ def test_harbor_rollout_uses_only_frozen_train_task_names(tmp_path: Path, monkey
     module = _harbor_rollout_module()
     monkeypatch.delenv("EVOLVE_HARBOR_MODEL", raising=False)
     monkeypatch.setenv("OPENAI_MODEL", "test-model")
+    python_dir = tmp_path / "uv-python"
+    monkeypatch.setenv("EVOLVE_UV_PYTHON_INSTALL_DIR", str(python_dir))
     checkout = tmp_path / "checkout"
     evaluator = checkout / "evaluator"
     evaluator.mkdir(parents=True)
@@ -107,6 +109,7 @@ def test_harbor_rollout_uses_only_frozen_train_task_names(tmp_path: Path, monkey
     (evaluator / "eval.env").write_text(
         f"EVOLVE_HARBOR_TASKS={dataset}\nEVOLVE_HARBOR_AGENT=target.agent:HarborAgent\n"
     )
+    (evaluator / "agent.env").write_text("UV_OFFLINE=1\nUV_PYTHON=3.12\n")
     captured: list[str] = []
 
     def fake_run(command, _checkout, log_path, env):
@@ -141,5 +144,23 @@ def test_harbor_rollout_uses_only_frozen_train_task_names(tmp_path: Path, monkey
     assert ("--ae", f"EVOLVE_CANDIDATE_SOURCE={checkout / 'target'}") in zip(
         captured, captured[1:], strict=False
     )
+    mounts = json.loads(captured[captured.index("--mounts") + 1])
+    assert mounts == [
+        {
+            "type": "bind",
+            "source": str(checkout / "runs" / "runtime" / "uv-cache"),
+            "target": "/installed-agent/uv-cache",
+        },
+        {
+            "type": "bind",
+            "source": str(python_dir),
+            "target": "/installed-agent/uv-python",
+        },
+    ]
+    assert ("--ae", "UV_PYTHON_INSTALL_DIR=/installed-agent/uv-python") in zip(
+        captured, captured[1:], strict=False
+    )
+    assert ("--ae", "UV_OFFLINE=1") in zip(captured, captured[1:], strict=False)
+    assert ("--ae", "UV_PYTHON=3.12") in zip(captured, captured[1:], strict=False)
     assert ("--model", "openai/test-model") in zip(captured, captured[1:], strict=False)
     assert result.summary["split"] == "train"
