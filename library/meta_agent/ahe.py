@@ -30,7 +30,7 @@ For this generation:
 5. Choose the harness component matching the root cause.
 6. If the same failure survived repeated changes at one component, pivot levels.
 7. Make one coherent target/** change and run proportionate checks.
-8. End with one delimited official-style change manifest describing the changes.
+8. Write one official-style change manifest to the required control file.
 
 Current debugger reports evaluate the selected parent. The new edit will be
 evaluated by the next loop. Do not edit the Harbor adapter, evaluator, mechanism,

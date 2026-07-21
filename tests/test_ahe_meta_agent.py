@@ -132,6 +132,7 @@ def test_ahe_prompt_uses_official_decisions_and_required_manifest(tmp_path: Path
     assert f"runs/gen-{ctx.genid}/trace_analyzer/evidence/cases.jsonl" in prompt
     assert f"runs/gen-{ctx.genid}/rollout/" in prompt
     assert str(ctx.run_dir) not in prompt
+    assert "delimited official-style" not in prompt
 
 
 def test_ahe_prompt_requires_nonempty_overview(tmp_path: Path) -> None:
