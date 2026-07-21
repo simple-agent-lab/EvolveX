@@ -113,8 +113,8 @@ readonly = os.environ.get("FAKE_HARBOR_MODE") == "readonly"
 if readonly:
     if "--artifact" in sys.argv:
         raise SystemExit("readonly execution must not request an artifact")
-elif option("--artifact") != "/app/candidate":
-    raise SystemExit("expected /app/candidate artifact")
+elif option("--artifact") != "/app/task/candidate":
+    raise SystemExit("expected /app/task/candidate artifact")
 if option("--workdir") != "/app":
     raise SystemExit("expected /app workdir")
 if option("--agent") != "mini-swe-agent":
@@ -128,7 +128,7 @@ job_name = option("--job-name")
 job_dir = jobs_dir / job_name
 trial_dir = job_dir / "task-0001__fake"
 trial_dir.mkdir(parents=True, exist_ok=True)
-artifact = trial_dir / "artifacts" / "app" / "candidate"
+artifact = trial_dir / "artifacts" / "app" / "task" / "candidate"
 if not readonly:
     artifact.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(source / "candidate", artifact, symlinks=True)
@@ -150,8 +150,8 @@ manifest = [
         "service": None,
     },
     {
-        "source": "/app/candidate",
-        "destination": "artifacts/app/candidate",
+        "source": "/app/task/candidate",
+        "destination": "artifacts/app/task/candidate",
         "type": "directory",
         "status": "ok",
         "service": None,
@@ -247,7 +247,7 @@ def test_harbor_meta_agent_round_trips_target_and_writes_artifacts(
     assert usage["output_tokens"] == 10
     assert 'predicted_fixes: ["task-1"]' in result.output
     assert "failure evidence" in (meta_dir / "harbor" / "prompt.md").read_text()
-    assert "/app/candidate" in (meta_dir / "harbor" / "prompt.md").read_text()
+    assert "/app/task/candidate" in (meta_dir / "harbor" / "prompt.md").read_text()
     assert list((meta_dir / "harbor" / "jobs").glob("*/*/result.json"))
     assert marker.read_text() == "called"
 

@@ -22,7 +22,7 @@ from evolve.host_runtime import uv_run
 from evolve.patching import SurfacePolicy, load_surface_policy, patch_parent_ref
 from evolve.surface import check_paths
 
-_ARTIFACT_SOURCE = "/app/candidate"
+_ARTIFACT_SOURCE = "/app/task/candidate"
 _SECRET_ASSIGNMENT = re.compile(
     r"(?i)\b([a-z0-9_-]*(?:api[_-]?key|access[_-]?token|auth(?:orization)?|secret|password))\b"
     r"([\"']?)(\s*[:=]\s*)([^\s,;}]+)"
@@ -338,7 +338,7 @@ def _artifact_candidate(trial_dir: Path) -> tuple[Path, list[dict[str, Any]]]:
     entries = [entry for entry in payload if isinstance(entry, dict)]
     entry = next((item for item in entries if item.get("source") == _ARTIFACT_SOURCE), None)
     if entry is None or entry.get("status") != "ok":
-        raise RuntimeError("Harbor did not collect a successful /app/candidate artifact")
+        raise RuntimeError(f"Harbor did not collect a successful {_ARTIFACT_SOURCE} artifact")
     destination = entry.get("destination")
     if not isinstance(destination, str) or not destination:
         raise RuntimeError("Harbor candidate artifact has no destination")
@@ -461,8 +461,8 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
         prompt_path.parent.mkdir(parents=True, exist_ok=True)
         prompt_path.write_text(
             prompt.rstrip() + "\n\n# Harbor Runner Contract\n\n"
-            "The editable candidate is at `/app/candidate`. Edit only paths allowed by the supplied "
-            "surface rules. The complete `/app/candidate` directory is returned as the candidate artifact.\n"
+            f"The editable candidate is at `{_ARTIFACT_SOURCE}`. Edit only paths allowed by the supplied "
+            f"surface rules. The complete `{_ARTIFACT_SOURCE}` directory is returned as the candidate artifact.\n"
         )
         command = _build_command(harbor, bundle, prompt_path, jobs_root, tasks_dir, job_name, ctx.config)
         _write_json(harbor_root / "command.json", [_redact(arg) for arg in command])
