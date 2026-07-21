@@ -8,14 +8,18 @@ import time
 from pathlib import Path
 from typing import Any
 
-from .config import evaluator_boolean, evaluator_sampling, experiment_id, load_config
-from .evaluation import EvaluationInterrupted, EvaluationRecord, Outcome, classify_evaluation
-from .git import evaluator_tree, git, git_stdout
-from .host_runtime import clean_python_env
-from .runtime import OwnedResult, attempt_dir, next_attempt, owned_attempt_id, run_owned
-from .task_sets import effective_task_set_identity, evaluation_split_name
-from .task_vectors import trial_results, validate_task_vector
-from .uv_runtime import CandidateRuntimeResult, prepare_candidate_runtime
+from ..config import evaluator_boolean, evaluator_sampling, experiment_id, load_config
+from ..git import evaluator_tree, git, git_stdout
+from ..host_runtime import clean_python_env
+from ..runtime import OwnedResult, attempt_dir, next_attempt, owned_attempt_id, run_owned
+from ..uv_runtime import CandidateRuntimeResult, prepare_candidate_runtime
+from .evidence import trial_results, validate_task_vector
+from .identity import effective_task_set_identity, evaluation_split_name
+from .results import EvaluationRecord, Outcome, classify_evaluation
+
+
+class EvaluationInterrupted(BaseException):
+    """Carries a cancelled attempt to the driver for append-before-reraise."""
 
 
 def evaluate(

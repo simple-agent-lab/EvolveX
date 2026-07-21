@@ -6,22 +6,22 @@ from pathlib import Path
 import pytest
 from conftest import git, init_workspace, rows_by_genid
 
-import evolve.evaluator as evaluator_module
+import evolve.evaluation.execution as evaluator_module
 from evolve.archive import MECHANISM_EVAL_FIELD, append_event
 from evolve.driver import RunOptions
 from evolve.driver import run as driver_run
 from evolve.evaluation import Outcome
-from evolve.evaluator import (
+from evolve.evaluation.evidence import TaskVectorError
+from evolve.evaluation.execution import (
     _evaluation_artifact_reference,
     _read_task_vector,
     _run_eval_script,
     _runtime_receipt_reference,
     evaluate,
 )
+from evolve.evaluation.identity import effective_task_set_identity
 from evolve.frozen.interfaces import ArchiveView
 from evolve.runtime import OwnedResult
-from evolve.task_sets import effective_task_set_identity
-from evolve.task_vectors import TaskVectorError
 from evolve.uv_runtime import CandidateRuntimeResult, RuntimeMount
 
 
@@ -394,6 +394,8 @@ def test_effective_task_set_identity_accepts_explicit_configured_task_names(tmp_
     )
 
     assert identity.members == ("task-a", "task-b")
+    expected_payload = b'{"attempts":2,"dataset":"stub","tasks":["task-a","task-b"]}'
+    assert identity.digest == hashlib.sha256(expected_payload).hexdigest()
 
 
 def test_full_scope_candidate_identity_contains_all_train_tasks(tmp_path: Path) -> None:

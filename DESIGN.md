@@ -124,7 +124,12 @@ simple-evolve-agent/
 │   ├─ operators.py               subprocess runner for workspace operators
 │   ├─ feedback.py                the ledger-derived feedback bundle (retired `observe`)
 │   ├─ archive.py  population.py  ledger store · lineage bookkeeping
-│   ├─ evaluator.py  git.py  surface.py  report.py  config.py
+│   ├─ evaluation/                result types · evidence · identity · execution
+│   │   ├─ __init__.py  results.py  evidence.py
+│   │   └─ identity.py  execution.py
+│   ├─ candidate/                 exact snapshot construction · evaluator smoke
+│   │   └─ snapshot.py  smoke.py
+│   ├─ git.py  surface.py  report.py  config.py
 │   └─ frozen/                    Ring 0 — the invariant-enforcers, vendored into each workspace
 │       ├─ interfaces.py          THE single source of truth: operator ABCs + result types +
 │       │                         the OPERATORS registry + payload validation

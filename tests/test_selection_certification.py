@@ -17,10 +17,10 @@ from evolve.archive import (
 )
 from evolve.config import load_config
 from evolve.evaluation import Outcome, TrialResult, classify_evaluation
+from evolve.evaluation.identity import effective_task_set_identity
 from evolve.frozen.interfaces import ArchiveView
 from evolve.population import fixed_evaluation_identity, looks_mechanism_written
 from evolve.report import format_report
-from evolve.task_sets import effective_task_set_identity
 
 
 def _record(outcome: Outcome):

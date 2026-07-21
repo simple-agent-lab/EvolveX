@@ -260,7 +260,10 @@ files. Direct import-path manipulation is intentionally unsupported.
 | `src/evolve/workspace.py` | Workspace scaffolding and generation-zero archive event. |
 | `src/evolve/config.py` | Recipe config rendering and lightweight config readers. |
 | `src/evolve/driver.py` | Built-in loop, fork/commit/eval orchestration, feedback bundles. |
-| `src/evolve/evaluator.py` | Clean-checkout evaluator execution and exit-code contract. |
+| `src/evolve/evaluation/results.py` | Evaluation result types and outcome classification. |
+| `src/evolve/evaluation/evidence.py` | Evaluator-output validation and canonical trial conversion. |
+| `src/evolve/evaluation/identity.py` | Task-set identity and frozen evaluation comparability. |
+| `src/evolve/evaluation/execution.py` | Clean-checkout evaluator execution and exit-code contract. |
 | `src/evolve/archive.py` | Append-only archive, mirror reconciliation, stamped-field merge rules. |
 | `src/evolve/surface.py` | Mutable-surface include/exclude checking. |
 | `src/evolve/report.py` | `status` and `report` summaries. |

@@ -82,10 +82,6 @@ class EvaluationRecord:
         }
 
 
-class EvaluationInterrupted(BaseException):
-    """Carries a cancelled attempt to the driver for append-before-reraise."""
-
-
 def _effective_outcome(trial: TrialResult) -> Outcome:
     if trial.outcome is Outcome.TIMEOUT and trial.owner in {"benchmark_agent", "benchmark_verifier"}:
         return Outcome.TIMEOUT

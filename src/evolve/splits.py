@@ -69,7 +69,7 @@ def selected_task_names(
     return names
 
 
-def task_set_hash(split_name: str, names: list[str]) -> str:
+def split_selection_digest(split_name: str, names: list[str]) -> str:
     payload = json.dumps({"split": split_name, "tasks": sorted(names)}, separators=(",", ":"), sort_keys=True).encode()
     return hashlib.sha256(payload).hexdigest()
 
@@ -78,10 +78,12 @@ def harbor_task_pattern(name: str) -> str:
     return escape(name)
 
 
-def configured_task_set_hash(workspace: Path, split_name: str = "gate", *, round_number: int | None = None) -> str:
+def configured_split_selection_digest(
+    workspace: Path, split_name: str = "gate", *, round_number: int | None = None
+) -> str:
     manifest = load_manifest(workspace / "evaluator" / "splits.json")
     names = selected_task_names(manifest, split_name, round_number=round_number)
-    return task_set_hash(split_name, names)
+    return split_selection_digest(split_name, names)
 
 
 def select_dataset_tasks(
@@ -110,7 +112,7 @@ def select_dataset_tasks(
     names = selected_task_names(manifest, split_name, round_number=round_number, limit=limit)
     if not names:
         raise RuntimeError(f"evaluator split {split_name!r} contains no tasks")
-    return names, task_set_hash(split_name, names)
+    return names, split_selection_digest(split_name, names)
 
 
 def write_runtime_selection(
