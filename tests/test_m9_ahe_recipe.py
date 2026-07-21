@@ -67,7 +67,7 @@ def test_ahe_recipe_initializes_harbor_miniswe_composition(tmp_path: Path) -> No
     assert operators["trace_analyzer"] == {
         "variant": "ahe",
         "max_tasks": 90,
-        "max_concurrent": 16,
+        "max_concurrent": 4,
         "timeout_per_task": 600,
         "retry_attempts": 3,
         "field_limit": 2000,
