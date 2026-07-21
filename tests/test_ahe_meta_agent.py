@@ -46,6 +46,10 @@ def _case(tmp_path: Path, *, genid: str = "1", parent: str = "0"):
     (feedback / "index.md").write_text("# Evidence\n\ntool error was not recovered\n")
     analysis = run_dir / "trace_analyzer" / "analysis"
     analysis.mkdir(parents=True)
+    (analysis / "overview.md").write_text("# AHE Debugger Overview\n\nOVERVIEW ROOT CAUSE\n")
+    detail = analysis / "detail"
+    detail.mkdir()
+    (detail / "task-a.md").write_text("DETAIL BODY MUST STAY ON DISK\n")
     (analysis / "change_evaluation.json").write_text(
         json.dumps({"status": "baseline" if parent == "0" else "evaluated", "transitions": {}})
     )
@@ -121,8 +125,21 @@ def test_ahe_prompt_uses_official_decisions_and_required_manifest(tmp_path: Path
         "pass@1",
     ):
         assert required in prompt
-    assert "tool error was not recovered" in prompt
+    assert "OVERVIEW ROOT CAUSE" in prompt
+    assert "DETAIL BODY MUST STAY ON DISK" not in prompt
+    assert f"runs/gen-{ctx.genid}/trace_analyzer/analysis/detail/" in prompt
+    assert f"runs/gen-{ctx.genid}/trace_analyzer/evidence/cases.jsonl" in prompt
+    assert f"runs/gen-{ctx.genid}/rollout/" in prompt
     assert str(ctx.run_dir) not in prompt
+
+
+def test_ahe_prompt_requires_nonempty_overview(tmp_path: Path) -> None:
+    module = _module()
+    checkout, _run_dir, ctx = _case(tmp_path)
+    (ctx.run_dir / "trace_analyzer/analysis/overview.md").write_text("")
+
+    with pytest.raises(RuntimeError, match="empty AHE debugger overview"):
+        module.build_prompt(checkout, "fallback", ctx)
 
 
 def test_ahe_meta_agent_requires_valid_manifest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -130,7 +147,7 @@ def test_ahe_meta_agent_requires_valid_manifest(tmp_path: Path, monkeypatch: pyt
     checkout, run_dir, ctx = _case(tmp_path)
 
     def fake_run_agent(root: Path, prompt: str, actual_ctx: OperatorContext):
-        assert root == checkout and actual_ctx == ctx and "ROOT" not in prompt
+        assert root == checkout and actual_ctx == ctx and "fallback" not in prompt
         source = root / "target/src/minisweagent/agents/default.py"
         source.write_text(source.read_text() + "RETRY_TOOL_ERRORS = True\n")
         return SimpleNamespace(output=_output(_manifest()), usage={"usd": 0.1})
