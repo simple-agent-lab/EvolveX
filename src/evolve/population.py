@@ -1,14 +1,11 @@
 from __future__ import annotations
 
-import hashlib
-import json
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Any
 
-import yaml
-
 from .archive import RECEIPT_CERTIFIED_FIELD
-from .git import git, tag_exists
+from .evaluation.identity import fixed_evaluation_identity
+from .git import tag_exists
 
 
 def valid_genid(genid: str) -> bool:
@@ -50,7 +47,6 @@ def looks_mechanism_written(workspace: Path, row: dict[str, Any]) -> bool:
         for entry in evaluations
     )
 
-
 def valid_parent_rows(workspace: Path, rows_: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
     from .frozen.interfaces import ArchiveView
 
@@ -80,51 +76,3 @@ def is_parent_record(row: dict[str, Any], expected: dict[str, str]) -> bool:
         and isinstance(row.get("score"), (int, float))
         and not isinstance(row.get("score"), bool)
     )
-
-
-def fixed_evaluation_identity(workspace: Path) -> dict[str, str] | None:
-    evaluator_tree = _git_text(workspace, "rev-parse", "gen/0:evaluator")
-    config_text = _git_text(workspace, "show", "gen/0:evolve.yaml", strip=False)
-    runtime_pin = _git_text(workspace, "show", "gen/0:evaluator/runtime.pin", strip=False)
-    if evaluator_tree is None or config_text is None or runtime_pin is None:
-        return None
-    try:
-        loaded = yaml.safe_load(config_text)
-        evaluator = loaded.get("evaluator") if isinstance(loaded, dict) else None
-        if not isinstance(evaluator, dict):
-            return None
-        members = _fixed_task_members(workspace, evaluator)
-        attempts = int(evaluator.get("k", 1))
-    except (OSError, TypeError, ValueError, yaml.YAMLError):
-        return None
-    payload = {"dataset": str(evaluator.get("dataset", "")), "attempts": attempts, "tasks": list(members)}
-    return {
-        "evaluator_fingerprint": evaluator_tree,
-        "task_set_hash": hashlib.sha256(
-            json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
-        ).hexdigest(),
-        "runtime_fingerprint": hashlib.sha256(runtime_pin.encode()).hexdigest(),
-    }
-
-
-def _fixed_task_members(workspace: Path, evaluator: dict[str, Any]) -> tuple[str, ...]:
-    names = evaluator.get("task_names")
-    if isinstance(names, list) and all(isinstance(name, str) and name for name in names):
-        return tuple(sorted(set(names)))
-    configured = evaluator.get("task_file")
-    if not isinstance(configured, str) or not configured:
-        return ()
-    path = PurePosixPath(configured)
-    if path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
-        raise ValueError("evaluator task_file escapes gen/0")
-    contents = _git_text(workspace, "show", f"gen/0:{path.as_posix()}", strip=False)
-    if contents is None:
-        raise OSError("evaluator task_file is unavailable from gen/0")
-    return tuple(
-        sorted({line.strip() for line in contents.splitlines() if line.strip() and not line.lstrip().startswith("#")})
-    )
-
-
-def _git_text(workspace: Path, *args: str, strip: bool = True) -> str | None:
-    result = git(workspace, *args, check=False)
-    return None if result.returncode != 0 else (result.stdout.strip() if strip else result.stdout)

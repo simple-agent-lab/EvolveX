@@ -9,7 +9,7 @@ from pathlib import Path
 import typer
 
 from .archive import archive_path, merged_rows, verify_integrity
-from .candidate_smoke import run_candidate_smoke
+from .candidate.smoke import run_candidate_smoke
 from .config import RECIPE_NAMES, experiment_int
 from .driver import RunOptions, commit_child, eval_child, fork_child, record_fields
 from .driver import doctor as doctor_workspace

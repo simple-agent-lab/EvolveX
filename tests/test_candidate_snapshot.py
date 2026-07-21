@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from evolve.candidate_snapshot import (
+from evolve.candidate.snapshot import (
     CandidateSnapshotError,
     build_candidate_snapshot,
     commit_candidate_snapshot,
