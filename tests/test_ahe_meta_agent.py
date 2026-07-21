@@ -121,7 +121,7 @@ def test_ahe_prompt_uses_official_decisions_and_required_manifest(tmp_path: Path
         "REVISE",
         "ROLLBACK + PIVOT",
         "Current debugger reports evaluate the selected parent",
-        "<AHE_CHANGE_MANIFEST>",
+        "target/.ahe-change-manifest.json",
         "before the submission action",
         "pass@1",
     ):
@@ -151,7 +151,8 @@ def test_ahe_meta_agent_requires_valid_manifest(tmp_path: Path, monkeypatch: pyt
         assert root == checkout and actual_ctx == ctx and "fallback" not in prompt
         source = root / "target/src/minisweagent/agents/default.py"
         source.write_text(source.read_text() + "RETRY_TOOL_ERRORS = True\n")
-        return SimpleNamespace(output=_output(_manifest()), usage={"usd": 0.1})
+        (root / "target/.ahe-change-manifest.json").write_text(json.dumps(_manifest()))
+        return SimpleNamespace(output="edited", usage={"usd": 0.1})
 
     monkeypatch.setattr(module, "run_agent", fake_run_agent)
     result = module.AheMetaAgent().run(checkout, "fallback", ctx)
@@ -159,6 +160,7 @@ def test_ahe_meta_agent_requires_valid_manifest(tmp_path: Path, monkeypatch: pyt
     assert result.changed == ["target/src/minisweagent/agents/default.py"]
     assert "change-manifest: parsed" in result.notes
     assert json.loads((run_dir / "meta_agent/change_manifest.json").read_text()) == _manifest()
+    assert not (checkout / "target/.ahe-change-manifest.json").exists()
 
 
 def test_ahe_invalid_manifest_fails_after_preserving_artifacts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -171,7 +173,7 @@ def test_ahe_invalid_manifest_fails_after_preserving_artifacts(tmp_path: Path, m
         return SimpleNamespace(output="edited without manifest", usage={"usd": 0.1})
 
     monkeypatch.setattr(module, "run_agent", fake_run_agent)
-    with pytest.raises(ValueError, match="exactly one"):
+    with pytest.raises(ValueError, match="manifest file"):
         module.AheMetaAgent().run(checkout, "fallback", ctx)
     for name in ("output.txt", "patch.diff", "changed.json", "surface-check.json", "usage.json"):
         assert (run_dir / "meta_agent" / name).is_file()

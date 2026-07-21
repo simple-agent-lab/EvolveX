@@ -15,6 +15,7 @@ from library.meta_agent.runners import run_agent, runner_name
 
 MANIFEST_START = "<AHE_CHANGE_MANIFEST>"
 MANIFEST_END = "</AHE_CHANGE_MANIFEST>"
+MANIFEST_FILE = Path("target/.ahe-change-manifest.json")
 
 AHE_PROMPT = """# Agentic Harness Engineering
 
@@ -132,6 +133,17 @@ def _extract_manifest(output: str, genid: str) -> dict[str, Any]:
     return payload
 
 
+def _read_manifest_file(checkout: Path, genid: str) -> dict[str, Any]:
+    path = checkout / MANIFEST_FILE
+    try:
+        raw = path.read_text()
+    except OSError as exc:
+        raise ValueError(f"meta-agent must write the AHE manifest file: {MANIFEST_FILE}") from exc
+    finally:
+        path.unlink(missing_ok=True)
+    return _extract_manifest(f"{MANIFEST_START}\n{raw}\n{MANIFEST_END}", genid)
+
+
 def build_prompt(checkout: Path, observation: str, ctx: OperatorContext) -> str:
     del observation
     attribution = _required_text(
@@ -148,10 +160,10 @@ def build_prompt(checkout: Path, observation: str, ctx: OperatorContext) -> str:
         f"# Previous Change Manifest\n\n```json\n{_prior_manifest(ctx)}\n```\n\n"
         f"# Recent Archive Outcomes\n\n```jsonl\n{_recent_archive(ctx)}\n```\n\n"
         f"# Surface Rules\n\n{_surface_rules(checkout)}\n\n"
-        "# Required Final Output\n\nEdit the candidate directly. In the response containing the "
-        "submission action, write the concise summary and exactly one manifest block before the submission action. "
-        "Nothing can be emitted after submission.\n\n"
-        f"{MANIFEST_START}\n{json.dumps(template, indent=2)}\n{MANIFEST_END}\n"
+        "# Required Final Output\n\nEdit the candidate directly. After checks and before the submission action, "
+        f"write the following JSON object to `{MANIFEST_FILE}`. Write JSON only; this control file is removed "
+        "before the candidate patch is created. Then submit normally.\n\n"
+        f"```json\n{json.dumps(template, indent=2)}\n```\n"
     )
 
 
@@ -169,6 +181,13 @@ class AheMetaAgent(MetaAgentOperator):
             _write_json(out / "usage.json", _safe_usage(exc.usage))
             raise SystemExit(exc.returncode)
 
+        manifest_error: ValueError | None = None
+        try:
+            manifest = _read_manifest_file(checkout, ctx.genid)
+        except ValueError as exc:
+            manifest = None
+            manifest_error = exc
+
         patch = create_candidate_patch(
             checkout=checkout,
             parent_ref=parent_ref,
@@ -182,7 +201,9 @@ class AheMetaAgent(MetaAgentOperator):
         _write_json(out / "changed.json", patch.changed_paths)
         _write_json(out / "surface-check.json", patch.surface_report)
         _write_json(out / "usage.json", usage)
-        manifest = _extract_manifest(agent_run.output, ctx.genid)
+        if manifest_error is not None:
+            raise manifest_error
+        assert manifest is not None
         _write_json(out / "change_manifest.json", manifest)
         notes = [
             "variant: ahe",
