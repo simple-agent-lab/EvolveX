@@ -438,6 +438,7 @@ def run_readonly_agent(
         jobs_root = output_dir / "jobs"
         tasks_dir = output_dir / "tasks"
         task_root.mkdir(parents=True, exist_ok=False)
+        (task_root / ".evolve-readonly").write_text("")
         prompt_path.write_text(prompt.rstrip() + "\n")
         command = _base_command(harbor, task_root, prompt_path, jobs_root, tasks_dir, job_name, ctx.config)
         _write_json(output_dir / "command.json", [_redact(arg) for arg in command])

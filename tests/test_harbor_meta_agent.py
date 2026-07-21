@@ -123,6 +123,8 @@ if option("--model") != "gpt-test":
     raise SystemExit("expected gpt-test model")
 
 source = Path(option("--path", "-p"))
+if readonly and not (source / ".evolve-readonly").is_file():
+    raise SystemExit("read-only task root must be materialized")
 jobs_dir = Path(option("--jobs-dir"))
 job_name = option("--job-name")
 job_dir = jobs_dir / job_name
