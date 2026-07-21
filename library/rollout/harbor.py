@@ -549,6 +549,7 @@ class HarborRollout(RolloutOperator):
         ]
         if os.environ.get("EVOLVE_LIVE_OUTPUT") != "1":
             command.append("-q")
+        command.extend(["--ae", f"EVOLVE_CANDIDATE_SOURCE={(checkout / 'target').resolve()}"])
         _append_proxy_env(command)
         model = ctx.config.get("model") or os.environ.get("EVOLVE_HARBOR_MODEL")
         if model:

@@ -136,4 +136,7 @@ def test_harbor_rollout_uses_only_frozen_train_task_names(tmp_path: Path, monkey
     included = [captured[index + 1] for index, value in enumerate(captured) if value == "--include-task-name"]
     assert included == manifest["tasks"]["train"][:3]
     assert not set(included) & set(manifest["tasks"]["gate"] + manifest["tasks"]["sealed"])
+    assert ("--ae", f"EVOLVE_CANDIDATE_SOURCE={checkout / 'target'}") in zip(
+        captured, captured[1:], strict=False
+    )
     assert result.summary["split"] == "train"
