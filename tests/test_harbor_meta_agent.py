@@ -422,3 +422,29 @@ def test_harbor_meta_agent_rejects_returned_symlinks_without_modifying_target(
     }
     assert after == before
     assert "symlink" in str(excinfo.value).lower()
+
+
+def test_install_bundle_omits_ignored_runtime_tree_with_symlinks(tmp_path: Path) -> None:
+    checkout, _run_dir = _checkout(tmp_path)
+    (checkout / "target" / ".gitignore").write_text(".venv/\n")
+    _git(checkout, "add", "target/.gitignore")
+    _git(checkout, "commit", "-qm", "ignore runtime environment")
+    _git(checkout, "tag", "-f", "gen/0")
+    runner = _harbor_runner_module()
+    surface = runner.load_surface_policy(checkout)
+    bundle = runner._prepare_bundle(checkout, ["target"], surface)
+    returned = tmp_path / "returned"
+    shutil.copytree(checkout / "target", returned / "target")
+    (returned / "target" / "agent.py").write_text("print('child')\n")
+    python = returned / "target" / ".venv" / "bin" / "python"
+    python.parent.mkdir(parents=True)
+    python.symlink_to("/runtime/python")
+
+    try:
+        changed = runner._install_bundle(checkout, returned, bundle, "gen/0", surface)
+    finally:
+        shutil.rmtree(bundle.staging, ignore_errors=True)
+
+    assert changed == ["target/agent.py"]
+    assert (checkout / "target" / "agent.py").read_text() == "print('child')\n"
+    assert not (checkout / "target" / ".venv").exists()

@@ -94,6 +94,26 @@ def _remove(path: Path) -> None:
         path.unlink()
 
 
+def _copy_returned_tree(checkout: Path, source: Path, destination: Path, relative: Path) -> None:
+    if not source.is_dir() or source.is_symlink():
+        raise RuntimeError(f"returned candidate root must be a real directory: {source}")
+    destination.mkdir()
+    for child in source.iterdir():
+        child_relative = relative / child.name
+        mode = child.lstat().st_mode
+        ignore_path = child_relative.as_posix() + ("/" if stat.S_ISDIR(mode) else "")
+        if git(checkout, "check-ignore", "--quiet", "--", ignore_path, check=False).returncode == 0:
+            continue
+        if stat.S_ISLNK(mode):
+            raise RuntimeError(f"Harbor meta-agent does not accept symlinks: {child}")
+        if stat.S_ISDIR(mode):
+            _copy_returned_tree(checkout, child, destination / child.name, child_relative)
+        elif stat.S_ISREG(mode):
+            shutil.copy2(child, destination / child.name)
+        else:
+            raise RuntimeError(f"Harbor meta-agent does not accept special files: {child}")
+
+
 def _install_bundle(
     checkout: Path,
     returned: Path,
@@ -120,8 +140,7 @@ def _install_bundle(
     installed: list[str] = []
     try:
         for root in bundle.roots:
-            _validate_tree(returned / root)
-            shutil.copytree(returned / root, replacements / root)
+            _copy_returned_tree(checkout, returned / root, replacements / root, Path(root))
         for root in bundle.roots:
             (checkout / root).rename(backups / root)
             moved.append(root)
