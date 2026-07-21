@@ -296,6 +296,21 @@ def test_missing_runtime_config_disables_preparation(tmp_path: Path) -> None:
     assert candidate_runtime_config(tmp_path, {}) is None
 
 
+def test_stub_evaluation_skips_candidate_runtime_preparation(tmp_path: Path) -> None:
+    checkout, run_dir, runtime_root, evaluator, env, calls = _runtime_fixture(tmp_path)
+    (checkout / "target" / "uv.lock").unlink()
+    env["EVAL_STUB"] = "1"
+
+    result = prepare_candidate_runtime(
+        checkout, run_dir, runtime_root, "abc123", evaluator, env=env
+    )
+
+    assert result.ready
+    assert result.variant is None
+    assert result.receipt_path is None
+    assert not calls.exists()
+
+
 def test_frozen_project_can_rematerialize_offline_from_warm_cache(tmp_path: Path) -> None:
     project = write_locked_miniswe_seed(tmp_path / "project")
     cache = tmp_path / "uv-cache"

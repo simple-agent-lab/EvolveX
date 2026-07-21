@@ -264,6 +264,10 @@ def prepare_candidate_runtime(
     if config is None:
         return CandidateRuntimeResult(None, None)
 
+    values = clean_python_env(env)
+    if values.get("EVAL_STUB") == "1":
+        return CandidateRuntimeResult(None, None)
+
     started = time.monotonic()
     run_dir.mkdir(parents=True, exist_ok=True)
     project = config.project
@@ -285,7 +289,6 @@ def prepare_candidate_runtime(
             uv_version=None,
         )
 
-    values = clean_python_env(env)
     cache = Path(
         values.get("EVOLVE_UV_CACHE_DIR") or runtime_root / "uv-cache"
     ).resolve()
