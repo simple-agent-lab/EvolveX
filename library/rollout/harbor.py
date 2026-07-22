@@ -103,6 +103,13 @@ def _load_eval_env(checkout: Path) -> dict[str, str]:
     return values
 
 
+def _agent_env_entries(checkout: Path) -> list[str]:
+    path = checkout / "evaluator" / "agent.env"
+    if not path.exists():
+        return []
+    return [line.strip() for line in path.read_text().splitlines() if line.strip()]
+
+
 def _reward(payload: dict[str, Any], trial_dir: Path) -> float | None:
     verifier = payload.get("verifier_result")
     rewards = verifier.get("rewards") if isinstance(verifier, dict) else None
@@ -332,7 +339,7 @@ def _artifact_inventory(trial_dir: Path) -> dict[str, list[str]]:
     return inventory
 
 
-def _collect_cases(jobs_dir: Path, field_limit: int = 2000, pass_threshold: float = 1.0) -> list[dict[str, Any]]:
+def collect_cases(jobs_dir: Path, field_limit: int = 2000, pass_threshold: float = 1.0) -> list[dict[str, Any]]:
     cases: list[dict[str, Any]] = []
     if not jobs_dir.exists():
         return cases
@@ -590,6 +597,8 @@ class HarborRollout(RolloutOperator):
             tasks,
             "--agent",
             agent,
+            "--ae",
+            f"EVOLVE_CANDIDATE_SOURCE={(checkout / 'target').resolve()}",
             "--jobs-dir",
             str(jobs_dir),
             "--n-attempts",
@@ -606,11 +615,52 @@ class HarborRollout(RolloutOperator):
             str(max_retries),
             "-y",
         ]
+        environment = ctx.config.get("environment")
+        if environment:
+            command.extend(["--env", str(environment)])
+        environment_kwargs = ctx.config.get("environment_kwargs")
+        if isinstance(environment_kwargs, dict):
+            for key in sorted(environment_kwargs):
+                value = environment_kwargs[key]
+                command.extend(["--environment-kwarg", f"{key}={json.dumps(value, separators=(',', ':'))}"])
         if os.environ.get("EVOLVE_LIVE_OUTPUT") != "1":
             command.append("-q")
         command.extend(["--ae", f"EVOLVE_CANDIDATE_SOURCE={(checkout / 'target').resolve()}"])
+        configured_cache = eval_env.get("EVOLVE_UV_CACHE_DIR") or os.environ.get("EVOLVE_UV_CACHE_DIR")
+        uv_cache = (
+            Path(configured_cache).expanduser() if configured_cache else ctx.workspace / "runs" / "runtime" / "uv-cache"
+        )
+        uv_cache.mkdir(parents=True, exist_ok=True)
+        mounts = [
+            {
+                "type": "bind",
+                "source": str(uv_cache.resolve()),
+                "target": "/installed-agent/uv-cache",
+            }
+        ]
+        uv_python = os.environ.get("EVOLVE_UV_PYTHON_INSTALL_DIR")
+        if uv_python:
+            uv_python_dir = Path(uv_python).expanduser().resolve()
+            uv_python_dir.mkdir(parents=True, exist_ok=True)
+            mounts.append(
+                {
+                    "type": "bind",
+                    "source": str(uv_python_dir),
+                    "target": "/installed-agent/uv-python",
+                }
+            )
+        command.extend(
+            [
+                "--mounts",
+                json.dumps(mounts),
+            ]
+        )
         _append_agent_env(command, checkout, ctx.config)
+        if uv_python:
+            command.extend(["--ae", "UV_PYTHON_INSTALL_DIR=/installed-agent/uv-python"])
         model = ctx.config.get("model") or eval_env.get("EVOLVE_HARBOR_MODEL") or os.environ.get("EVOLVE_HARBOR_MODEL")
+        if not model and os.environ.get("OPENAI_MODEL"):
+            model = f"openai/{os.environ['OPENAI_MODEL']}"
         if model:
             command.extend(["--model", str(model)])
         include_task = ctx.config.get("include_task_name")
@@ -622,7 +672,7 @@ class HarborRollout(RolloutOperator):
 
         rollout_dir = ctx.run_dir / "rollout"
         returncode = _run_harbor(command, checkout, rollout_dir / "harbor.log", harbor_env)
-        cases = _collect_cases(jobs_dir, field_limit=field_limit, pass_threshold=pass_threshold)
+        cases = collect_cases(jobs_dir, field_limit=field_limit, pass_threshold=pass_threshold)
         _write_json(rollout_dir / "cases.json", cases)
         if not cases:
             raise SystemExit(

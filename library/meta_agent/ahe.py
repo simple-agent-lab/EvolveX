@@ -12,10 +12,10 @@ from evolve.frozen import sdk
 from evolve.frozen.interfaces import MetaAgentOperator, MetaAgentResult, OperatorContext
 from evolve.patching import create_candidate_patch, load_surface_policy, patch_parent_ref
 from library.meta_agent.runners import run_agent, runner_name
-from library.meta_agent.support.evidence import load_feedback
 
 MANIFEST_START = "<AHE_CHANGE_MANIFEST>"
 MANIFEST_END = "</AHE_CHANGE_MANIFEST>"
+MANIFEST_FILE = Path("target/.ahe-change-manifest.json")
 
 AHE_PROMPT = """# Agentic Harness Engineering
 
@@ -24,13 +24,23 @@ directly. Optimize pass@1. Treat debugger reports as evidence, not proof.
 
 For this generation:
 1. Read the debugger overview and relevant task details first.
-2. Read change_evaluation.json and the previous change manifest.
+2. Read change_evaluation.json and the previous change context.
 3. Decide KEEP, REVISE, or ROLLBACK + PIVOT before editing.
 4. Cite specific debugger tasks and distinguish evidence from causal inference.
 5. Choose the harness component matching the root cause.
 6. If the same failure survived repeated changes at one component, pivot levels.
 7. Make one coherent target/** change and run proportionate checks.
-8. End with one delimited official-style change manifest describing the changes.
+8. Write one official-style change manifest to the required control file.
+
+Files under `target/` become the deployed benchmark-solving harness.
+Evolution artifacts and instructions in this prompt are not available inside benchmark episodes.
+If you edit a target runtime prompt, include only instructions usable by the benchmark-solving agent.
+Do not copy this evolution workflow, evidence
+paths, KEEP/REVISE/ROLLBACK decisions, or manifest requirements into target files.
+Do not refer to debuggers or other evolution-only context in target runtime prompts.
+Canonical evaluation runs the target's `DefaultAgent` with the `mini` configuration.
+Make changes on that execution path. Benchmark-specific configurations are inactive
+unless evaluator configuration explicitly selects them.
 
 Current debugger reports evaluate the selected parent. The new edit will be
 evaluated by the next loop. Do not edit the Harbor adapter, evaluator, mechanism,
@@ -85,11 +95,38 @@ def _required_text(path: Path, label: str) -> str:
     return text
 
 
-def _prior_manifest(ctx: OperatorContext) -> str:
+def _prior_change_context(ctx: OperatorContext) -> str:
     if ctx.parent in (None, "0"):
-        return "No prior change manifest (baseline generation)."
-    path = ctx.workspace / "runs" / f"gen-{ctx.parent}" / "meta_agent" / "change_manifest.json"
-    return _required_text(path, "prior AHE change manifest")
+        return "No prior change context (baseline generation)."
+    root = ctx.workspace / "runs" / f"gen-{ctx.parent}" / "meta_agent"
+    sections = []
+    for name in ("change_manifest.json", "output.txt", "changed.json", "patch.diff"):
+        path = root / name
+        try:
+            content = path.read_text().strip()
+        except OSError:
+            continue
+        if content:
+            sections.append(f"## {name}\n\n{content[:20000]}")
+    return "\n\n".join(sections) or "No prior change artifacts were preserved."
+
+
+def _overview(ctx: OperatorContext) -> str:
+    return _required_text(
+        ctx.run_dir / "trace_analyzer" / "analysis" / "overview.md",
+        "AHE debugger overview",
+    )
+
+
+def _evidence_paths(ctx: OperatorContext) -> str:
+    root = f"runs/gen-{ctx.genid}"
+    return "\n".join(
+        [
+            f"- Per-task details: `{root}/trace_analyzer/analysis/detail/`",
+            f"- Bounded cases: `{root}/trace_analyzer/evidence/cases.jsonl`",
+            f"- Raw rollout artifacts: `{root}/rollout/`",
+        ]
+    )
 
 
 def _recent_archive(ctx: OperatorContext) -> str:
@@ -115,23 +152,50 @@ def _extract_manifest(output: str, genid: str) -> dict[str, Any]:
     return payload
 
 
+def _read_manifest_file(checkout: Path, genid: str) -> dict[str, Any]:
+    path = checkout / MANIFEST_FILE
+    try:
+        raw = path.read_text()
+    except OSError as exc:
+        raise ValueError(f"meta-agent must write the AHE manifest file: {MANIFEST_FILE}") from exc
+    finally:
+        path.unlink(missing_ok=True)
+    return _extract_manifest(f"{MANIFEST_START}\n{raw}\n{MANIFEST_END}", genid)
+
+
 def build_prompt(checkout: Path, observation: str, ctx: OperatorContext) -> str:
-    feedback = load_feedback(ctx.run_dir, observation)
+    del observation
     attribution = _required_text(
         ctx.run_dir / "trace_analyzer" / "analysis" / "change_evaluation.json",
         "AHE change evaluation",
     )
     template = dict(MANIFEST_TEMPLATE)
     template["iteration"] = int(ctx.genid)
+    if runner_name(ctx) == "harbor":
+        repository = Path("/app/task/workspace")
+        current_run = repository / "runs" / f"gen-{ctx.genid}"
+        experiment = repository
+    else:
+        repository = checkout
+        current_run = ctx.run_dir
+        experiment = ctx.workspace
     return (
         f"{AHE_PROMPT.rstrip()}\n\n"
-        f"# Current Debugger Reports\n\n{feedback}\n\n"
+        f"# Current Debugger Overview\n\n{_overview(ctx)}\n\n"
+        f"# Evidence Paths\n\n{_evidence_paths(ctx)}\n\n"
         f"# Change Attribution\n\n```json\n{attribution}\n```\n\n"
-        f"# Previous Change Manifest\n\n```json\n{_prior_manifest(ctx)}\n```\n\n"
+        f"# Previous Change Context\n\n{_prior_change_context(ctx)}\n\n"
         f"# Recent Archive Outcomes\n\n```jsonl\n{_recent_archive(ctx)}\n```\n\n"
+        "# Evidence Locations\n\n"
+        f"Repository: {repository}\n"
+        f"Archive: {experiment / 'archive.jsonl'}\n"
+        f"Current generation artifacts: {current_run}\n"
+        f"Raw trace evidence: {current_run / 'trace_analyzer' / 'evidence'}\n\n"
         f"# Surface Rules\n\n{_surface_rules(checkout)}\n\n"
-        "# Required Final Output\n\nEdit the candidate directly. After the concise summary, emit exactly one block:\n\n"
-        f"{MANIFEST_START}\n{json.dumps(template, indent=2)}\n{MANIFEST_END}\n"
+        "# Required Final Output\n\nEdit the candidate directly. After checks and before the submission action, "
+        f"write the following JSON object to `{MANIFEST_FILE}`. Write JSON only; this control file is removed "
+        "before the candidate patch is created. Then submit normally.\n\n"
+        f"```json\n{json.dumps(template, indent=2)}\n```\n"
     )
 
 
@@ -149,6 +213,13 @@ class AheMetaAgent(MetaAgentOperator):
             _write_json(out / "usage.json", _safe_usage(exc.usage))
             raise SystemExit(exc.returncode)
 
+        manifest_error: ValueError | None = None
+        try:
+            manifest = _read_manifest_file(checkout, ctx.genid)
+        except ValueError as exc:
+            manifest = None
+            manifest_error = exc
+
         patch = create_candidate_patch(
             checkout=checkout,
             parent_ref=parent_ref,
@@ -162,7 +233,9 @@ class AheMetaAgent(MetaAgentOperator):
         _write_json(out / "changed.json", patch.changed_paths)
         _write_json(out / "surface-check.json", patch.surface_report)
         _write_json(out / "usage.json", usage)
-        manifest = _extract_manifest(agent_run.output, ctx.genid)
+        if manifest_error is not None:
+            raise manifest_error
+        assert manifest is not None
         _write_json(out / "change_manifest.json", manifest)
         notes = [
             "variant: ahe",

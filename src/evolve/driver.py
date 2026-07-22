@@ -162,7 +162,7 @@ def _maybe_final_anchor(workspace: Path, generation: int) -> None:
     if any(isinstance(entry, dict) and entry.get("kind") == "anchor" for entry in candidate.get("evals", [])):
         return
     genid = str(candidate["genid"])
-    _evaluate_with_one_infra_retry(
+    _evaluate_once(
         workspace,
         str(candidate["tag"]),
         genid,
@@ -175,7 +175,6 @@ def _maybe_final_anchor(workspace: Path, generation: int) -> None:
             "kind": "anchor",
             "round": generation,
         },
-        round_number=generation,
         pending_gate_on_complete=False,
     )
 
@@ -730,6 +729,7 @@ def _finalize_child(
     *,
     round_number: int | None = None,
     kind: str = "eval",
+    resume_infrastructure: bool = True,
 ) -> EvaluationRecord | None:
     parent_tag = f"gen/{parent}"
     mutated = git_stdout(workspace, "diff", "--name-only", parent_tag, tag).splitlines()
@@ -765,6 +765,7 @@ def _finalize_child(
         mutated,
         round_number=round_number,
         kind=kind,
+        resume_infrastructure=resume_infrastructure,
     )
 
 
@@ -786,7 +787,7 @@ def _stamp_evaluation(
     }
     if round_number is not None:
         metadata.update(kind=kind, round=round_number)
-    return _evaluate_with_one_infra_retry(
+    return _evaluate_once(
         workspace,
         tag,
         genid,
@@ -809,7 +810,7 @@ def _ensure_genesis_evaluated(workspace: Path) -> None:
         Outcome.CANCELLED.value,
     }:
         raise RuntimeError(f"genesis {status}: repair seed before evolution")
-    result = _evaluate_with_one_infra_retry(
+    result = _evaluate_once(
         workspace,
         "gen/0",
         "0",
@@ -827,7 +828,7 @@ def _ensure_genesis_evaluated(workspace: Path) -> None:
         raise RuntimeError(f"genesis {result.outcome.value}: repair seed before evolution")
 
 
-def _evaluate_with_one_infra_retry(
+def _evaluate_once(
     workspace: Path,
     tag: str,
     genid: str,

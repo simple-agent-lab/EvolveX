@@ -13,8 +13,9 @@ from ..git import evaluator_tree, git, git_stdout
 from ..host_runtime import clean_python_env, workspace_temp_dir
 from ..runtime import OwnedResult, attempt_dir, next_attempt, owned_attempt_id, run_owned
 from ..splits import harbor_task_pattern
+from ..uv_runtime import CandidateRuntimeResult, prepare_candidate_runtime
 from .evidence import trial_results, validate_task_vector
-from .identity import effective_task_set_identity
+from .identity import effective_task_set_identity, evaluation_split_name
 from .repair import finalize_repair, repair_task_ids
 from .results import EvaluationRecord, Outcome, classify_evaluation
 
@@ -54,7 +55,11 @@ def evaluate(
                 raise ValueError("failed-task repair requires explicit infrastructure-failed trial evidence")
             repair_selectors = _repair_task_selectors(checkout, task_set.members, purpose, repair_tasks)
             effective_limit = len(repair_tasks) if repair_tasks else task_limit
-            expected = _expected_trials(evaluator, effective_limit)
+            expected = _expected_trials(
+                evaluator,
+                effective_limit,
+                selected_tasks=len(repair_tasks) or (len(task_set.members) if task_set.members else None),
+            )
             if attempt is None:
                 attempt = next_attempt(
                     workspace,
@@ -84,49 +89,71 @@ def evaluate(
             }
             try:
                 try:
-                    result = _run_eval_script(
+                    runtime = prepare_candidate_runtime(
                         checkout,
                         run_dir,
-                        genid,
-                        effective_limit,
-                        purpose,
-                        task_names=repair_selectors,
+                        workspace / "runs" / "runtime",
+                        candidate_commit,
+                        evaluator,
                     )
-                    setup_outcome, setup_reason = _setup_evidence(run_dir)
-                    try:
-                        vector = _read_task_vector(run_dir)
-                        trials = trial_results(vector) if vector is not None else ()
-                    except (OSError, ValueError, json.JSONDecodeError) as error:
-                        trials = ()
-                        setup_outcome, setup_reason = Outcome.INFRASTRUCTURE_FAILED, str(error)
-                    candidate_owned = setup_outcome is Outcome.CANDIDATE_INVALID or any(
-                        trial.owner == "candidate"
-                        and (
-                            trial.outcome is Outcome.CANDIDATE_INVALID
-                            or trial.exception_type
-                            or trial.exception_message
+                    base["candidate_runtime"] = _runtime_receipt_reference(workspace, runtime.receipt_path)
+                    if not runtime.ready:
+                        record = classify_evaluation(
+                            **base,
+                            trials=(),
+                            setup_outcome=runtime.outcome,
+                            setup_reason=runtime.reason,
+                            benchmark_timeout_is_zero=timeout_zero,
+                            cost_usd=0.0,
+                            wall_s=time.monotonic() - start,
+                            artifacts=None,
                         )
-                        for trial in trials
-                    )
-                    complete_trial_vector = len(trials) == int(base["expected_trials"])
-                    if result.returncode not in {0, 2} and not candidate_owned and not complete_trial_vector:
-                        setup_outcome = Outcome.INFRASTRUCTURE_FAILED
-                        setup_reason = f"evaluator exited with code {result.returncode}"
-                    record = classify_evaluation(
-                        **base,
-                        trials=trials,
-                        setup_outcome=setup_outcome,
-                        setup_reason=setup_reason,
-                        benchmark_timeout_is_zero=timeout_zero,
-                        cost_usd=_read_cost(run_dir),
-                        wall_s=time.monotonic() - start,
-                        artifacts=_evaluation_artifact_reference(workspace, run_dir),
-                    )
+                    else:
+                        result = _run_eval_script(
+                            checkout,
+                            run_dir,
+                            genid,
+                            effective_limit,
+                            purpose,
+                            evaluation_split_name(evaluator, purpose),
+                            runtime,
+                            task_names=repair_selectors,
+                        )
+                        setup_outcome, setup_reason = _setup_evidence(run_dir)
+                        try:
+                            vector = _read_task_vector(run_dir)
+                            trials = trial_results(vector) if vector is not None else ()
+                        except (OSError, ValueError, json.JSONDecodeError) as error:
+                            trials = ()
+                            setup_outcome, setup_reason = Outcome.INFRASTRUCTURE_FAILED, str(error)
+                        candidate_owned = setup_outcome is Outcome.CANDIDATE_INVALID or any(
+                            trial.owner == "candidate"
+                            and (
+                                trial.outcome is Outcome.CANDIDATE_INVALID
+                                or trial.exception_type
+                                or trial.exception_message
+                            )
+                            for trial in trials
+                        )
+                        complete_trial_vector = len(trials) == int(base["expected_trials"])
+                        if result.returncode not in {0, 2} and not candidate_owned and not complete_trial_vector:
+                            setup_outcome = Outcome.INFRASTRUCTURE_FAILED
+                            setup_reason = f"evaluator exited with code {result.returncode}"
+                        record = classify_evaluation(
+                            **base,
+                            trials=trials,
+                            setup_outcome=setup_outcome,
+                            setup_reason=setup_reason,
+                            benchmark_timeout_is_zero=timeout_zero,
+                            cost_usd=_read_cost(run_dir),
+                            wall_s=time.monotonic() - start,
+                            artifacts=_evaluation_artifact_reference(workspace, run_dir),
+                        )
                 finally:
                     cleanup_needed = False
                     git(workspace, "worktree", "remove", "--force", str(checkout), check=False)
             except Exception as error:
-                record = EvaluationRecord(
+                return EvaluationRecord(
                     **base,
                     outcome=Outcome.INFRASTRUCTURE_FAILED,
                     reason=str(error),
@@ -186,6 +213,15 @@ def _evaluation_artifact_reference(workspace: Path, run_dir: Path) -> dict[str, 
     )
 
 
+def _runtime_receipt_reference(workspace: Path, receipt: Path | None) -> dict[str, str] | None:
+    if receipt is None or not receipt.exists():
+        return None
+    return {
+        "path": receipt.resolve().relative_to(workspace.resolve()).as_posix(),
+        "sha256": hashlib.sha256(receipt.read_bytes()).hexdigest(),
+    }
+
+
 def _setup_evidence(run_dir: Path) -> tuple[Outcome | None, str | None]:
     path = run_dir / "setup_outcome"
     if not path.exists():
@@ -205,9 +241,11 @@ def _read_cost(run_dir: Path) -> float:
     return float(value)
 
 
-def _expected_trials(evaluator: dict[str, Any], task_limit: int | None) -> int:
+def _expected_trials(evaluator: dict[str, Any], task_limit: int | None, *, selected_tasks: int | None = None) -> int:
     attempts = max(1, int(evaluator.get("k", 1)))
-    tasks = task_limit if task_limit is not None else int(evaluator.get("tasks_per_round", attempts))
+    tasks = selected_tasks if selected_tasks is not None else int(evaluator.get("tasks_per_round", attempts))
+    if task_limit is not None:
+        tasks = min(tasks, task_limit) if selected_tasks is not None else task_limit
     return max(1, tasks) * attempts
 
 
@@ -243,6 +281,8 @@ def _run_eval_script(
     genid: str,
     task_limit: int | None,
     purpose: str,
+    evaluation_split: str,
+    runtime: CandidateRuntimeResult,
     *,
     task_names: tuple[str, ...] = (),
 ) -> OwnedResult:
@@ -255,8 +295,11 @@ def _run_eval_script(
         "EVOLVE_ATTEMPT_ID": owned_attempt_id(runs_dir.parent, run_dir),
         "EVOLVE_WORKSPACE": str(runs_dir.parent.resolve()),
     }
-    env["EVOLVE_EVAL_SPLIT"] = "sealed" if purpose == "anchor" else "gate"
+    env["EVOLVE_EVAL_SPLIT"] = evaluation_split
     env["TMPDIR"] = str(workspace_temp_dir(runs_dir.parent))
+    if runtime.variant is not None:
+        env["EVOLVE_CANDIDATE_RUNTIME_ENV_JSON"] = runtime.environment_json()
+        env["EVOLVE_CANDIDATE_RUNTIME_MOUNTS_JSON"] = runtime.mounts_json()
     env.setdefault("EVOLVE_FRAMEWORK_PYTHON", sys.executable)
     configured_uv_cache = env.get("EVOLVE_UV_CACHE_DIR")
     uv_cache = Path(configured_uv_cache).expanduser() if configured_uv_cache else runs_dir / "runtime" / "uv-cache"

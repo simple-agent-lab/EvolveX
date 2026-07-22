@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -17,12 +18,18 @@ from typing import Any
 
 from evolve.agent import AgentCommandError, AgentRunResult
 from evolve.frozen.interfaces import OperatorContext
-from evolve.git import git, working_tree_changed_paths
+from evolve.git import git, head_commit, working_tree_changed_paths
 from evolve.host_runtime import uv_run
 from evolve.patching import SurfacePolicy, load_surface_policy, patch_parent_ref
 from evolve.surface import check_paths
 
-_ARTIFACT_SOURCE = "/app/candidate"
+_HARBOR_WORKDIR = "/app"
+_ARTIFACT_SOURCE = "/app/task/workspace"
+_READONLY_ARTIFACT_SOURCE = "/logs/artifacts"
+_READONLY_REPORT = "ahe-debugger-response.md"
+_EVAL_RECEIPT = ".evolve-eval-receipts.jsonl"
+_FILE_TASK_AGENT = "evolve_harbor_agent:FileTaskMiniSweAgent"
+_SAFE_INLINE_INSTRUCTION_BYTES = 96 * 1024
 _SECRET_ASSIGNMENT = re.compile(
     r"(?i)\b([a-z0-9_-]*(?:api[_-]?key|access[_-]?token|auth(?:orization)?|secret|password))\b"
     r"([\"']?)(\s*[:=]\s*)([^\s,;}]+)"
@@ -35,13 +42,22 @@ _PROXY_ENV = (
 )
 
 
-class _EditableBundle:
-    __slots__ = ("staging", "task_root", "roots")
+class _WorkspaceBundle:
+    __slots__ = ("staging", "task_root", "workspace", "roots", "before")
 
-    def __init__(self, staging: Path, task_root: Path, roots: tuple[str, ...]) -> None:
+    def __init__(
+        self,
+        staging: Path,
+        task_root: Path,
+        workspace: Path,
+        roots: tuple[str, ...],
+        before: dict[str, tuple[str, str]],
+    ) -> None:
         self.staging = staging
         self.task_root = task_root
+        self.workspace = workspace
         self.roots = roots
+        self.before = before
 
 
 def _validate_tree(root: Path) -> None:
@@ -73,18 +89,117 @@ def _editable_roots(value: object, surface: SurfacePolicy) -> tuple[str, ...]:
     return tuple(roots)
 
 
-def _prepare_bundle(checkout: Path, value: object, surface: SurfacePolicy) -> _EditableBundle:
+def _copy_tree(source: Path, destination: Path, *, ignore=None) -> None:
+    if not source.exists():
+        return
+    if source.is_dir() and not source.is_symlink():
+        shutil.copytree(source, destination, symlinks=True, dirs_exist_ok=True, ignore=ignore)
+    else:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination, follow_symlinks=False)
+
+
+def _runs_ignore(runs_root: Path):
+    resolved_root = runs_root.resolve()
+
+    def ignore(directory: str, names: list[str]) -> set[str]:
+        current = Path(directory).resolve()
+        ignored: set[str] = set()
+        if current == resolved_root:
+            ignored.add("worktrees")
+        try:
+            relative = current.relative_to(resolved_root)
+        except ValueError:
+            return ignored
+        if len(relative.parts) >= 3 and relative.parts[-2:] == ("meta_agent", "harbor"):
+            ignored.update({"jobs", "tasks"})
+        return ignored.intersection(names)
+
+    return ignore
+
+
+def _manifest_ignored(relative: Path) -> bool:
+    if not relative.parts:
+        return False
+    return relative.parts[0] in {".git", "runs"} or relative.as_posix() in {
+        "archive.jsonl",
+        _EVAL_RECEIPT,
+    }
+
+
+def _tree_manifest(root: Path) -> dict[str, tuple[str, str]]:
+    manifest: dict[str, tuple[str, str]] = {}
+    for directory, dirnames, filenames in os.walk(root, topdown=True, followlinks=False):
+        current = Path(directory)
+        relative_dir = current.relative_to(root)
+        kept_dirs: list[str] = []
+        for name in sorted(dirnames):
+            path = current / name
+            relative = relative_dir / name
+            if _manifest_ignored(relative):
+                continue
+            if path.is_symlink():
+                manifest[relative.as_posix()] = ("symlink", os.readlink(path))
+            else:
+                manifest[relative.as_posix()] = ("directory", "")
+                kept_dirs.append(name)
+        dirnames[:] = kept_dirs
+        for name in sorted(filenames):
+            path = current / name
+            relative = relative_dir / name
+            if _manifest_ignored(relative):
+                continue
+            key = relative.as_posix()
+            if path.is_symlink():
+                manifest[key] = ("symlink", os.readlink(path))
+            elif path.is_file():
+                digest = hashlib.sha256(path.read_bytes()).hexdigest()
+                manifest[key] = ("file", digest)
+            else:
+                manifest[key] = ("special", "")
+    return manifest
+
+
+def _prepare_bundle(
+    checkout: Path,
+    ctx: OperatorContext,
+    value: object,
+    surface: SurfacePolicy,
+) -> _WorkspaceBundle:
     roots = _editable_roots(value, surface)
-    staging = Path(tempfile.mkdtemp(prefix=".evolve-harbor-", dir=checkout))
+    for root in roots:
+        _validate_tree(checkout / root)
+    staging = Path(tempfile.mkdtemp(prefix="evolve-harbor-", dir=checkout.parent))
     task_root = staging / "task"
-    candidate = task_root / "candidate"
+    workspace = task_root / "workspace"
     try:
-        candidate.mkdir(parents=True)
-        for root in roots:
-            source = checkout / root
-            _validate_tree(source)
-            shutil.copytree(source, candidate / root)
-        return _EditableBundle(staging, task_root, roots)
+        task_root.mkdir(parents=True)
+        git(checkout, "clone", "--quiet", "--no-hardlinks", str(checkout), str(workspace))
+        git(workspace, "checkout", "--quiet", "--detach", head_commit(checkout))
+
+        for path in workspace.iterdir():
+            if path.name != ".git":
+                _remove(path)
+        for source in checkout.iterdir():
+            if source.name not in {".git", "runs", "archive.jsonl", _EVAL_RECEIPT}:
+                _copy_tree(source, workspace / source.name)
+
+        archive = ctx.workspace / "archive.jsonl"
+        if archive.is_file():
+            _copy_tree(archive, workspace / "archive.jsonl")
+        receipt = ctx.workspace / _EVAL_RECEIPT
+        if receipt.is_file():
+            _copy_tree(receipt, workspace / _EVAL_RECEIPT)
+        runs = ctx.workspace / "runs"
+        if runs.is_dir():
+            _copy_tree(runs, workspace / "runs", ignore=_runs_ignore(runs))
+        if ctx.run_dir.is_dir():
+            _copy_tree(
+                ctx.run_dir,
+                workspace / "runs" / f"gen-{ctx.genid}",
+                ignore=_runs_ignore(ctx.run_dir.parent),
+            )
+        return _WorkspaceBundle(staging, task_root, workspace, roots, _tree_manifest(workspace))
     except Exception:
         shutil.rmtree(staging, ignore_errors=True)
         raise
@@ -97,22 +212,42 @@ def _remove(path: Path) -> None:
         path.unlink()
 
 
+def _copy_returned_tree(checkout: Path, source: Path, destination: Path, relative: Path) -> None:
+    if not source.is_dir() or source.is_symlink():
+        raise RuntimeError(f"returned candidate root must be a real directory: {source}")
+    destination.mkdir()
+    for child in source.iterdir():
+        child_relative = relative / child.name
+        mode = child.lstat().st_mode
+        ignore_path = child_relative.as_posix() + ("/" if stat.S_ISDIR(mode) else "")
+        if git(checkout, "check-ignore", "--quiet", "--", ignore_path, check=False).returncode == 0:
+            continue
+        if stat.S_ISLNK(mode):
+            raise RuntimeError(f"Harbor meta-agent does not accept symlinks: {child}")
+        if stat.S_ISDIR(mode):
+            _copy_returned_tree(checkout, child, destination / child.name, child_relative)
+        elif stat.S_ISREG(mode):
+            shutil.copy2(child, destination / child.name)
+        else:
+            raise RuntimeError(f"Harbor meta-agent does not accept special files: {child}")
+
+
 def _install_bundle(
     checkout: Path,
     returned: Path,
-    bundle: _EditableBundle,
+    bundle: _WorkspaceBundle,
     parent_ref: str,
     surface: SurfacePolicy,
 ) -> list[str]:
     if not returned.is_dir() or returned.is_symlink():
-        raise RuntimeError("returned candidate must be a real directory")
-    actual = {path.name for path in returned.iterdir()}
-    expected = set(bundle.roots)
-    if actual != expected:
-        raise RuntimeError(
-            "returned candidate roots differ: "
-            f"missing={sorted(expected - actual)}, unexpected={sorted(actual - expected)}"
-        )
+        raise RuntimeError("returned workspace must be a real directory")
+    after = _tree_manifest(returned)
+    changed_workspace = sorted(
+        path for path in set(bundle.before) | set(after) if bundle.before.get(path) != after.get(path)
+    )
+    violations = check_paths(changed_workspace, surface.include, surface.exclude)
+    if violations:
+        raise RuntimeError("returned workspace mutated paths outside surface: " + ", ".join(violations))
 
     transaction = bundle.staging / "install"
     replacements = transaction / "replacements"
@@ -123,8 +258,7 @@ def _install_bundle(
     installed: list[str] = []
     try:
         for root in bundle.roots:
-            _validate_tree(returned / root)
-            shutil.copytree(returned / root, replacements / root)
+            _copy_returned_tree(checkout, returned / root, replacements / root, Path(root))
         for root in bundle.roots:
             (checkout / root).rename(backups / root)
             moved.append(root)
@@ -138,10 +272,10 @@ def _install_bundle(
         ]
         violations = check_paths(changed, surface.include, surface.exclude)
         if violations:
-            raise RuntimeError("returned candidate mutated paths outside surface: " + ", ".join(violations))
+            raise RuntimeError("returned workspace mutated paths outside surface: " + ", ".join(violations))
         diff = git(checkout, "diff", "--check", parent_ref, "--", *bundle.roots, check=False)
         if diff.returncode:
-            raise RuntimeError(f"returned candidate failed git diff --check: {(diff.stderr or diff.stdout).strip()}")
+            raise RuntimeError(f"returned workspace failed git diff --check: {(diff.stderr or diff.stdout).strip()}")
         shutil.rmtree(transaction)
         return changed
     except Exception:
@@ -157,6 +291,18 @@ def _install_bundle(
 def _write_json(path: Path, payload: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+
+
+def _instruction_transport(agent: str, prompt_path: Path) -> dict[str, object]:
+    size = prompt_path.stat().st_size
+    config_file = agent.endswith(":MiniSweSourceAgent")
+    safe = agent == _FILE_TASK_AGENT or config_file
+    mode = "config-file" if config_file else "mounted-file" if safe else "inline-argument"
+    if size > _SAFE_INLINE_INSTRUCTION_BYTES and not safe:
+        raise RuntimeError(
+            f"harbor_instruction_transport_unsafe: agent={agent} bytes={size} limit={_SAFE_INLINE_INSTRUCTION_BYTES}"
+        )
+    return {"bytes": size, "mode": mode, "safe": safe}
 
 
 def _read_json(path: Path) -> object:
@@ -315,6 +461,11 @@ def _base_command(
     environment = config.get("environment")
     if environment:
         command.extend(["--env", str(environment)])
+    environment_kwargs = config.get("environment_kwargs")
+    if isinstance(environment_kwargs, dict):
+        for key in sorted(environment_kwargs):
+            value = environment_kwargs[key]
+            command.extend(["--environment-kwarg", f"{key}={json.dumps(value, separators=(',', ':'))}"])
     image = config.get("image")
     if image:
         command.extend(["--image", str(image)])
@@ -333,7 +484,7 @@ def _base_command(
 
 def _build_command(
     harbor: list[str],
-    bundle: _EditableBundle,
+    bundle: _WorkspaceBundle,
     prompt_path: Path,
     jobs_root: Path,
     tasks_dir: Path,
@@ -347,25 +498,19 @@ def _build_command(
             raise ValueError("MiniSweSourceAgent requires target in editable_roots")
         return _miniswe_config_command(
             harbor,
-            bundle.task_root / "candidate",
+            bundle.task_root,
             prompt_path,
             jobs_root,
             tasks_dir,
             job_name,
             config,
-            candidate_source=bundle.task_root / "candidate" / "target",
+            candidate_source=bundle.workspace / "target",
             artifact=_ARTIFACT_SOURCE,
             uv_cache_dir=uv_cache_dir or _uv_cache_dir(bundle.task_root),
         )
-    command = _base_command(
-        harbor,
-        bundle.task_root / "candidate",
-        prompt_path,
-        jobs_root,
-        tasks_dir,
-        job_name,
-        config,
-    )
+    command = _base_command(harbor, bundle.task_root, prompt_path, jobs_root, tasks_dir, job_name, config)
+    workdir_index = command.index("--workdir")
+    command[workdir_index + 1] = _HARBOR_WORKDIR
     tasks_index = command.index("--tasks-dir")
     command[tasks_index:tasks_index] = ["--artifact", _ARTIFACT_SOURCE]
     return command
@@ -448,18 +593,39 @@ def _artifact_candidate(trial_dir: Path) -> tuple[Path, list[dict[str, Any]]]:
     entries = [entry for entry in payload if isinstance(entry, dict)]
     entry = next((item for item in entries if item.get("source") == _ARTIFACT_SOURCE), None)
     if entry is None or entry.get("status") != "ok":
-        raise RuntimeError("Harbor did not collect a successful /app/candidate artifact")
+        raise RuntimeError(f"Harbor did not collect a successful {_ARTIFACT_SOURCE} artifact")
     destination = entry.get("destination")
     if not isinstance(destination, str) or not destination:
-        raise RuntimeError("Harbor candidate artifact has no destination")
+        raise RuntimeError("Harbor workspace artifact has no destination")
     artifact = (trial_dir / destination).resolve()
     trial_root = trial_dir.resolve()
     if trial_root not in artifact.parents or not artifact.is_dir():
-        raise RuntimeError("Harbor candidate artifact escaped the trial or is not a directory")
+        raise RuntimeError("Harbor workspace artifact escaped the trial or is not a directory")
     return artifact, entries
 
 
 def _agent_output(trial_dir: Path) -> str:
+    for path in sorted((trial_dir / "agent").glob("*.trajectory.json")):
+        if path.name == "trajectory.json":
+            continue
+        raw = _read_json(path)
+        messages = raw.get("messages") if isinstance(raw, dict) else None
+        if not isinstance(messages, list):
+            continue
+        preserved: list[str] = []
+        for item in messages:
+            extra = item.get("extra") if isinstance(item, dict) else None
+            response = extra.get("response") if isinstance(extra, dict) else None
+            choices = response.get("choices") if isinstance(response, dict) else None
+            if not isinstance(choices, list):
+                continue
+            for choice in choices:
+                message = choice.get("message") if isinstance(choice, dict) else None
+                content = message.get("content") if isinstance(message, dict) else None
+                if isinstance(content, str) and content:
+                    preserved.append(content)
+        if preserved:
+            return preserved[-1]
     payload = _read_json(trial_dir / "agent" / "trajectory.json")
     steps = payload.get("steps") if isinstance(payload, dict) else None
     if not isinstance(steps, list):
@@ -486,6 +652,33 @@ def _miniswe_exit_status(trial_dir: Path) -> str | None:
         content = message.get("content")
         return str(content) if content else None
     return None
+
+
+def _readonly_artifact_output(trial_dir: Path) -> str:
+    payload = _read_json(trial_dir / "artifacts" / "manifest.json")
+    entries = [entry for entry in payload if isinstance(entry, dict)] if isinstance(payload, list) else []
+    entry = next((item for item in entries if item.get("source") == _READONLY_ARTIFACT_SOURCE), None)
+    if entry is None or entry.get("status") != "ok":
+        raise RuntimeError("Harbor did not collect AHE debugger artifacts")
+    destination = entry.get("destination")
+    if not isinstance(destination, str) or not destination:
+        raise RuntimeError("Harbor AHE debugger artifact has no destination")
+    artifact_dir = (trial_dir / destination).resolve()
+    trial_root = trial_dir.resolve()
+    if trial_root != artifact_dir and trial_root not in artifact_dir.parents:
+        raise RuntimeError("Harbor AHE debugger artifact escaped the trial")
+    report = artifact_dir / _READONLY_REPORT
+    if not report.is_file():
+        raise RuntimeError(f"missing AHE debugger report: {_READONLY_REPORT}")
+    output = report.read_text().strip()
+    if not output:
+        raise RuntimeError(f"empty AHE debugger report: {_READONLY_REPORT}")
+    return output
+
+
+def _uses_miniswe_artifact(agent: object) -> bool:
+    name = str(agent or "")
+    return name == "mini-swe-agent" or name.endswith(":FileTaskMiniSweAgent")
 
 
 def _usage(payload: dict[str, Any], wall_s: float) -> dict[str, Any]:
@@ -524,7 +717,12 @@ def run_readonly_agent(
         jobs_root = output_dir / "jobs"
         tasks_dir = output_dir / "tasks"
         task_root.mkdir(parents=True, exist_ok=False)
+        (task_root / ".evolve-readonly").write_text("")
         prompt_path.write_text(prompt.rstrip() + "\n")
+        _write_json(
+            output_dir / "instruction-transport.json",
+            _instruction_transport(str(ctx.config.get("agent") or "codex"), prompt_path),
+        )
         agent = str(ctx.config.get("agent") or "codex")
         if agent.endswith(":MiniSweSourceAgent"):
             command = _miniswe_config_command(
@@ -553,7 +751,11 @@ def run_readonly_agent(
         trial_dir, trial = _trial_result(jobs_root / job_name)
         usage = _usage(trial, wall_s)
         _write_json(output_dir / "trial.json", trial)
-        output = _agent_output(trial_dir).strip()
+        output = (
+            _readonly_artifact_output(trial_dir)
+            if _uses_miniswe_artifact(ctx.config.get("agent"))
+            else _agent_output(trial_dir).strip()
+        )
         if returncode != 0:
             raise RuntimeError(f"harbor exec exited {returncode}")
         if trial.get("exception_info") not in (None, {}):
@@ -589,21 +791,29 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
     usage: dict[str, Any] = {"usd": 0, "wall_s": 0}
     output = ""
     returncode = 1
-    bundle: _EditableBundle | None = None
+    bundle: _WorkspaceBundle | None = None
     try:
         if "agent_pythonpath" in ctx.config:
             raise ValueError(
                 "agent_pythonpath was removed; add the adapter to the workspace pyproject.toml and uv.lock"
             )
-        bundle = _prepare_bundle(checkout, ctx.config.get("editable_roots", ["target"]), surface)
+        bundle = _prepare_bundle(checkout, ctx, ctx.config.get("editable_roots", ["target"]), surface)
         if (jobs_root / job_name).exists():
             raise RuntimeError(f"Harbor meta-agent job already exists: {jobs_root / job_name}")
         harbor, harbor_env = uv_run(ctx.workspace, "harbor")
         prompt_path.parent.mkdir(parents=True, exist_ok=True)
         prompt_path.write_text(
             prompt.rstrip() + "\n\n# Harbor Runner Contract\n\n"
-            "The editable candidate is at `/app/candidate`. Edit only paths allowed by the supplied "
-            "surface rules. The complete `/app/candidate` directory is returned as the candidate artifact.\n"
+            f"The disposable experiment workspace is at `{_ARTIFACT_SOURCE}`. It contains the selected parent, "
+            "Git history, configuration, archive, and run evidence. Work in that directory normally. Edit "
+            "only paths allowed by the supplied surface rules. Runtime evidence edits are discarded; only "
+            "configured editable roots are imported after the complete workspace artifact passes the surface gate. "
+            "Before finishing, remove generated virtual environments and caches inside editable roots (for example "
+            "target/.venv, __pycache__, and .pytest_cache); returned editable roots must contain no symlinks.\n"
+        )
+        _write_json(
+            harbor_root / "instruction-transport.json",
+            _instruction_transport(str(ctx.config.get("agent") or "codex"), prompt_path),
         )
         command = _build_command(
             harbor,
@@ -655,6 +865,14 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
             usage=usage,
         )
     except Exception as exc:
+        _write_json(
+            harbor_root / "error.json",
+            {
+                "message": _redact(str(exc)),
+                "returncode": returncode,
+                "type": exc.__class__.__name__,
+            },
+        )
         raise AgentCommandError(
             f"{exc.__class__.__name__}: {_redact(str(exc))}",
             output=output,

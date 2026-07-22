@@ -33,6 +33,7 @@ APPROVED_MODULES = {
     "evaluation/results.py",
     "feedback.py",
     "git.py",
+    "harbor_local.py",
     "host_runtime.py",
     "operators.py",
     "patching.py",
@@ -42,6 +43,7 @@ APPROVED_MODULES = {
     "splits.py",
     "surface.py",
     "trace_analysis.py",
+    "uv_runtime.py",
     "workspace.py",
     # the frozen ring — the invariant-enforcers, grouped under frozen/
     "frozen/__init__.py",

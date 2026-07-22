@@ -37,11 +37,12 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `candidate/snapshot.py` | 80 | exact candidate Git tree construction, temporary materialization, and reviewed-tree commit verification |
 | `candidate/smoke.py` | 130 | run evaluator smoke against an exact candidate snapshot and persist redacted diagnostics |
 | `git.py` | 150 | thin git subprocess helpers — nothing evolve-specific |
+| `harbor_local.py` | 220 | minimal in-place Harbor environment for fast trials against a pre-configured local agent runtime |
 | `surface.py` | 150 | mutable-surface pattern matching and violation checks |
 | `report.py` | 182 | status/report rendering, best-ever recomputation, claim checklist |
 | `trace_analysis.py` | 410 | deterministic shared transforms used by the independent trace-analyzer operator variants |
 | `splits.py` | 210 | freeze deterministic train/gate/sealed Harbor task membership and materialize exact runtime selections |
-| `workspace.py` | 640 | `evolve init` scaffolding: file copies, operator binding, deterministic dataset and Harbor runtime config, generated operator palette, protocol stamping, seed + mechanism vendoring, inner-skill copy |
+| `workspace.py` | 680 | `evolve init` scaffolding: file copies, operator binding, deterministic dataset and Harbor runtime config, generated operator palette, protocol stamping, seed + mechanism vendoring, inner-skill copy |
 
 ### The frozen ring (`src/evolve/frozen/`)
 
@@ -57,8 +58,9 @@ each workspace, immutable there because it sits outside the mutable surface
 | `frozen/sdk.py` | 420 | Python operator entrypoint and file-contract IO; no library algorithm policy |
 | `frozen/meta_eval.py` | 130 | self-modification admission gate: confound-free replay of old vs new operator surface (mechanism 1) |
 
-Total `src/evolve/` budget: **5700 lines**. The increase admits the explicit evaluation-package
-boundaries, failed-task repair, and the redacted trace-analysis boundary between rollout and feedback assembly; if the mechanism wants to
+Total `src/evolve/` budget: **7000 lines**. The budget admits the explicit evaluation-package
+boundaries, failed-task repair, the opt-in in-place Harbor runtime, and the redacted trace-analysis
+boundary between rollout and feedback assembly; if the mechanism wants to
 grow past that, something belongs in a workspace operator instead —
 that is the spec's rule, not a style preference.
 

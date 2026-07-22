@@ -114,6 +114,28 @@ def test_benchmark_agent_timeout_requires_explicit_zero_rule() -> None:
     assert complete.score == 0.0
 
 
+def test_final_verifier_timeout_is_zero_despite_retained_exception_diagnostic() -> None:
+    trial = TrialResult(
+        "a",
+        0,
+        Outcome.TIMEOUT,
+        0.0,
+        "benchmark_verifier",
+        "VerifierTimeoutError",
+        "verifier exceeded deadline",
+    )
+
+    complete = classify_evaluation(
+        **record_values(),
+        trials=(trial,),
+        expected_trials=1,
+        benchmark_timeout_is_zero=True,
+    )
+
+    assert complete.outcome is Outcome.BENCHMARK_COMPLETE
+    assert complete.score == 0.0
+
+
 def test_genesis_complete_record_is_selection_eligible() -> None:
     trial = TrialResult("a", 0, Outcome.BENCHMARK_COMPLETE, 1.0, "benchmark")
 

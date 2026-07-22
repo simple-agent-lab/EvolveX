@@ -26,6 +26,16 @@ pyproject.toml   declared Python runtime for the mechanism and Harbor adapters
 uv.lock          exact cross-platform dependency lock used by every entry point
 ```
 
+Harbor can run directly against an already installed local agent with
+`environment: evolve.harbor_local:LocalEnvironment`. This is useful for fast
+Codex iterations on skills or other small behaviors where container isolation
+is unnecessary. Use `environment_kwargs: {workdir: /app}` to select the virtual
+workspace directory. Harbor maps its fixed absolute task paths into the trial
+output directory, so the backend needs neither root access nor Docker.
+Inside task scripts, use the current directory for workspace files and
+`$HARBOR_LOGS_DIR`, `$HARBOR_TESTS_DIR`, or `$HARBOR_SOLUTION_DIR` instead of
+container-only absolute paths.
+
 ## Python runtime
 
 This workspace is a Python 3.12 `uv` project. Run it through `./evolve`; the

@@ -72,8 +72,8 @@ harness, `gepa.py` performs component-level reflective mutation, and
 `runner` selects how the editing agent is executed.
 
 `runners/local.py` executes a trusted host command. `runners/harbor.py` instead
-transports configured repository trees as `/app/candidate` and transactionally
-installs the validated artifact:
+supplies a disposable full experiment workspace at `/app/workspace` and
+transactionally imports configured roots from the validated artifact:
 
 ```yaml
 operators:

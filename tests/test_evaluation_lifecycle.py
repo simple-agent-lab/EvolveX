@@ -47,7 +47,7 @@ def _evaluation_events(workspace: Path, genid: str) -> list[dict[str, object]]:
     ]
 
 
-def test_later_candidate_infrastructure_retries_same_commit_once(
+def test_candidate_infrastructure_failure_is_recorded_once_without_batch_replay(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

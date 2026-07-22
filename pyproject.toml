@@ -4,8 +4,9 @@ version = "0.1.0"
 description = "Mechanism CLI for file-based agent evolution workspaces."
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
+    "harbor==0.18.0",
     "PyYAML>=6.0",
     "typer>=0.12",
 ]
@@ -23,7 +24,7 @@ dev = [
 
 [tool.ruff]
 line-length = 120
-target-version = "py311"
+target-version = "py312"
 
 [tool.ruff.lint]
 # Pragmatic set: pyflakes (F), pycodestyle (E/W), import order (I),

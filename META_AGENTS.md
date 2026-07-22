@@ -53,11 +53,15 @@ repair only constrains observable candidate changes; it is not a host sandbox.
 
 ## `runner: harbor`: isolated agent with artifact return
 
-The Harbor runner copies configured repository-relative `editable_roots` into a
-generated Harbor Exec task at `/app/candidate`. Harbor returns the complete
-bundle; the runner rejects missing or unexpected roots, symlinks, special files,
-and out-of-surface changes, then installs every root transactionally. AHE
-transports only `target`; HyperAgents transports `target` and `operators`.
+The Harbor runner builds a disposable writable experiment workspace at
+`/app/workspace`. It contains the selected parent, self-contained Git history,
+configuration, archive, and prior/current run evidence, so the agent can inspect
+and edit it like a local checkout. The real host workspace is never mounted.
+Harbor returns the complete disposable workspace; the runner compares it with a
+trusted pre-run manifest, rejects protected changes, symlinks, and special files,
+then transactionally imports only configured `editable_roots`. Changes to Git
+metadata, archive/runtime evidence, and evaluation receipts are discarded.
+AHE imports only `target`; HyperAgents imports `target` and `operators`.
 
 ```yaml
 meta_agent:
@@ -75,7 +79,7 @@ meta_agent:
 Useful optional keys are:
 
 - `agent`: Harbor built-in name, `module.path:ClassName`, or supported ACP shorthand;
-- `editable_roots`: complete repository trees transported through Harbor (defaults to `[target]`);
+- `editable_roots`: top-level repository trees eligible for transactional import (defaults to `[target]`);
 - `model`: model identifier expected by that Harbor adapter;
 - `agent_kwargs`: mapping converted to repeated Harbor `--agent-kwarg key=value` flags;
 - `agent_env`: mapping converted to repeated Harbor `--agent-env KEY=VALUE` flags;

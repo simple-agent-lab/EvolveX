@@ -88,7 +88,7 @@ def test_harbor_rollout_distinguishes_task_agent_and_infra_failures(tmp_path: Pa
         exception_message="Agent execution timed out",
     )
 
-    cases = module._collect_cases(jobs)
+    cases = module.collect_cases(jobs)
     by_name = {case["trial_name"]: case for case in cases}
 
     assert by_name["task-failed"]["outcome"] == "failed"
@@ -153,7 +153,7 @@ def test_harbor_rollout_reads_codex_session_jsonl_when_trajectory_is_absent(tmp_
     ]
     session.write_text("".join(json.dumps(row) + "\n" for row in rows))
 
-    case = module._collect_cases(jobs)[0]
+    case = module.collect_cases(jobs)[0]
 
     assert case["instruction"] == "Fix it."
     assert case["agent_messages"] == ["Inspecting.", "Done."]
@@ -185,7 +185,7 @@ def test_harbor_rollout_bounds_codex_session_events_to_the_latest_trace_window(t
     ]
     session.write_text("".join(json.dumps(row) + "\n" for row in rows))
 
-    case = module._collect_cases(jobs)[0]
+    case = module.collect_cases(jobs)[0]
 
     assert len(case["events"]) == 32
     assert case["events"][0]["message"] == "message-68"
@@ -199,7 +199,7 @@ def test_harbor_rollout_bounds_trajectory_events_to_the_latest_trace_window(tmp_
     trajectory = {"steps": [{"source": "agent", "message": f"message-{index}"} for index in range(100)]}
     (trial / "agent" / "trajectory.json").write_text(json.dumps(trajectory))
 
-    case = module._collect_cases(jobs)[0]
+    case = module.collect_cases(jobs)[0]
 
     assert len(case["events"]) == 32
     assert case["events"][0]["message"] == "message-68"
@@ -226,7 +226,7 @@ def test_trace_analyzer_variants_share_raw_harbor_facts(tmp_path: Path) -> None:
     _write_trial(jobs, name="missing-output-a", reward=0)
     _write_trial(jobs, name="missing-output-b", reward=0)
     _write_trial(jobs, name="passing", reward=1)
-    cases = module._collect_cases(jobs)
+    cases = module.collect_cases(jobs)
 
     for variant in VARIANTS:
         run_dir = tmp_path / variant
