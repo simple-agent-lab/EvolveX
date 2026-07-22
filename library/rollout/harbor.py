@@ -391,6 +391,11 @@ def _collect_cases(jobs_dir: Path, field_limit: int = 2000, pass_threshold: floa
     return cases
 
 
+def _jobs_root(ctx: OperatorContext) -> Path:
+    configured = ctx.config.get("jobs_dir") or os.environ.get("EVOLVE_ROLLOUT_JOBS_DIR")
+    return Path(str(configured)).expanduser() if configured else ctx.workspace / "runs" / "harbor-rollouts"
+
+
 _OUTCOME_ORDER = ("failed", "agent_error", "infra_error", "incomplete", "passed")
 
 
@@ -572,13 +577,7 @@ class HarborRollout(RolloutOperator):
         )
         field_limit = _positive_int(ctx.config.get("field_limit"), 2000)
         pass_threshold = _float_value(ctx.config.get("pass_threshold"), 1.0)
-        jobs_root = Path(
-            str(
-                ctx.config.get("jobs_dir")
-                or os.environ.get("EVOLVE_ROLLOUT_JOBS_DIR")
-                or Path.home() / ".evolve" / "harbor-rollouts" / ctx.workspace.name
-            )
-        ).expanduser()
+        jobs_root = _jobs_root(ctx)
         jobs_dir = jobs_root / f"gen-{ctx.genid}"
         if jobs_dir.exists():
             shutil.rmtree(jobs_dir)

@@ -10,7 +10,7 @@ from typing import Any
 
 from ..config import evaluator_boolean, evaluator_sampling, experiment_id, load_config
 from ..git import evaluator_tree, git, git_stdout
-from ..host_runtime import clean_python_env
+from ..host_runtime import clean_python_env, workspace_temp_dir
 from ..runtime import OwnedResult, attempt_dir, next_attempt, owned_attempt_id, run_owned
 from ..splits import harbor_task_pattern
 from .evidence import trial_results, validate_task_vector
@@ -40,7 +40,7 @@ def evaluate(
     evaluator_fingerprint = evaluator_tree(workspace, tag)
     if evaluator_fingerprint != evaluator_tree(workspace, "gen/0"):
         raise RuntimeError(f"evaluator tree for {tag} differs from gen/0")
-    with tempfile.TemporaryDirectory(prefix="evolve-eval-") as tempdir:
+    with tempfile.TemporaryDirectory(prefix="evolve-eval-", dir=workspace_temp_dir(workspace)) as tempdir:
         checkout = Path(tempdir) / "checkout"
         git(workspace, "worktree", "add", "--detach", str(checkout), candidate_commit)
         cleanup_needed = True
@@ -108,7 +108,8 @@ def evaluate(
                         )
                         for trial in trials
                     )
-                    if result.returncode not in {0, 2} and not candidate_owned:
+                    complete_trial_vector = len(trials) == int(base["expected_trials"])
+                    if result.returncode not in {0, 2} and not candidate_owned and not complete_trial_vector:
                         setup_outcome = Outcome.INFRASTRUCTURE_FAILED
                         setup_reason = f"evaluator exited with code {result.returncode}"
                     record = classify_evaluation(
@@ -145,6 +146,7 @@ def evaluate(
                     wall_s=time.monotonic() - start,
                 )
                 raise EvaluationInterrupted(record, error) from error
+            _write_attempt_summary(run_dir, record)
             return (
                 finalize_repair(
                     workspace,
@@ -164,6 +166,15 @@ def evaluate(
 def _read_task_vector(run_dir: Path) -> dict | None:
     path = run_dir / "task_vector.json"
     return validate_task_vector(json.loads(path.read_text())) if path.exists() else None
+
+
+def _write_attempt_summary(run_dir: Path, record: EvaluationRecord) -> None:
+    (run_dir / "status").write_text(record.status + "\n")
+    score_path = run_dir / "score"
+    if record.score is None:
+        score_path.unlink(missing_ok=True)
+    else:
+        score_path.write_text(f"{record.score}\n")
 
 
 def _evaluation_artifact_reference(workspace: Path, run_dir: Path) -> dict[str, str] | None:
@@ -245,8 +256,13 @@ def _run_eval_script(
         "EVOLVE_WORKSPACE": str(runs_dir.parent.resolve()),
     }
     env["EVOLVE_EVAL_SPLIT"] = "sealed" if purpose == "anchor" else "gate"
+    env["TMPDIR"] = str(workspace_temp_dir(runs_dir.parent))
     env.setdefault("EVOLVE_FRAMEWORK_PYTHON", sys.executable)
-    uv_cache = runs_dir / "runtime" / "uv-cache"
+    configured_uv_cache = env.get("EVOLVE_UV_CACHE_DIR")
+    uv_cache = Path(configured_uv_cache).expanduser() if configured_uv_cache else runs_dir / "runtime" / "uv-cache"
+    if not uv_cache.is_absolute():
+        uv_cache = runs_dir.parent / uv_cache
+    uv_cache = uv_cache.resolve()
     uv_cache.mkdir(parents=True, exist_ok=True)
     env["EVOLVE_UV_CACHE_DIR"] = str(uv_cache)
     if task_limit is not None:

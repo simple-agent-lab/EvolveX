@@ -10,6 +10,7 @@ from harbor.agents.installed.mini_swe_agent import MiniSweAgent
 SOURCE_DIR = "/installed-agent/miniswe-source"
 VENV_PYTHON = f"{SOURCE_DIR}/.venv/bin/python"
 UV_CACHE_DIR = "/installed-agent/uv-cache"
+UV_PYTHON_INSTALL_DIR = f"{UV_CACHE_DIR}/python"
 RUNNER_PATH = "/tmp/miniswe-source-run.py"
 TASK_PATH = "/tmp/miniswe-source-task.txt"
 LOG_PATH = "/logs/agent/mini-swe-agent.txt"
@@ -187,7 +188,10 @@ class MiniSweSourceAgent(MiniSweAgent):
         await self.exec_as_agent(environment, command=self._run_command(task), env=self._source_env())
 
     def _install_env(self) -> dict[str, str]:
-        env: dict[str, str] = {"UV_CACHE_DIR": UV_CACHE_DIR}
+        env: dict[str, str] = {
+            "UV_CACHE_DIR": UV_CACHE_DIR,
+            "UV_PYTHON_INSTALL_DIR": UV_PYTHON_INSTALL_DIR,
+        }
         proxy = (
             self._get_env("EVOLVE_INSTALL_HTTP_PROXY")
             or self._get_env("EVOLVE_DOCKER_HTTP_PROXY")

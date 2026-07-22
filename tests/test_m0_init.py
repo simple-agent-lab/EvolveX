@@ -27,6 +27,7 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
         "uv.lock",
         ".python-version",
         "evolve_harbor_adapter/__init__.py",
+        "evolve_harbor_adapter/modelhub_codex.py",
         "evolve.yaml",
         ".evolve-protocol-version",
         "AGENTS.md",
@@ -158,3 +159,22 @@ def test_init_binds_real_hyperagents_method_surface_and_operators(tmp_path: Path
     assert "HyperAgentsValidate" in (workspace / "operators/validate.py").read_text()
     assert "HyperAgentsRecord" in (workspace / "operators/record.py").read_text()
     assert surface_lists(workspace) == (["target/**", "operators/**"], [])
+
+
+def test_init_tracks_vendored_files_ignored_by_seed_repository(tmp_path: Path) -> None:
+    workspace = tmp_path / "ignored-lock"
+    seed = _miniswe_seed(tmp_path)
+    (seed / ".gitignore").write_text("uv.lock\n")
+
+    result = run_evolve(
+        "init",
+        str(workspace),
+        "--recipe",
+        "hyperagents",
+        "--seed",
+        str(seed),
+        env={"EVAL_STUB": "1", "EVOLVE_HOME": str(tmp_path / "evolve-home")},
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "target/uv.lock" in git(workspace, "ls-files", "target/uv.lock").splitlines()

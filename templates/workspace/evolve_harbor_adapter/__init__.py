@@ -10,6 +10,7 @@ from harbor.agents.installed.mini_swe_agent import MiniSweAgent
 SOURCE_DIR = "/installed-agent/miniswe-source"
 VENV_PYTHON = f"{SOURCE_DIR}/.venv/bin/python"
 UV_CACHE_DIR = "/installed-agent/uv-cache"
+UV_PYTHON_INSTALL_DIR = f"{UV_CACHE_DIR}/python"
 RUNNER_PATH = "/tmp/miniswe-source-run.py"
 TASK_PATH = "/tmp/miniswe-source-task.txt"
 LOG_PATH = "/logs/agent/mini-swe-agent.txt"
@@ -43,6 +44,10 @@ def filtered(payload, fields):
 
 
 class EvolveResponseModel(LitellmResponseModel):
+    def _prepare_messages_for_api(self, messages):
+        prepared = super()._prepare_messages_for_api(messages)
+        return [item for item in prepared if item.get("type") != "reasoning"]
+
     def _query(self, messages, **kwargs):
         headers = dict(kwargs.pop("extra_headers", {}) or {})
         api_key = os.environ.get("OPENAI_API_KEY")
@@ -62,11 +67,13 @@ runtime_model_kwargs = dict(model_kwargs.get("model_kwargs") or {})
 effort = os.environ.get("MINISWE_REASONING_EFFORT")
 if effort:
     runtime_model_kwargs["reasoning"] = {"effort": effort}
+runtime_model_kwargs["max_output_tokens"] = int(os.environ.get("MINISWE_MAX_OUTPUT_LIMIT", "10000"))
 runtime_model_kwargs["store"] = False
-include = list(runtime_model_kwargs.get("include") or [])
-if "reasoning.encrypted_content" not in include:
-    include.append("reasoning.encrypted_content")
-runtime_model_kwargs["include"] = include
+include = [item for item in runtime_model_kwargs.get("include") or [] if item != "reasoning.encrypted_content"]
+if include:
+    runtime_model_kwargs["include"] = include
+else:
+    runtime_model_kwargs.pop("include", None)
 model_kwargs["model_kwargs"] = runtime_model_kwargs
 env_kwargs["cwd"] = os.environ.get("MINISWE_CWD", "/app")
 env_kwargs["timeout"] = int(os.environ.get("MINISWE_ENV_TIMEOUT", env_kwargs.get("timeout") or 30))
@@ -218,7 +225,10 @@ class MiniSweSourceAgent(MiniSweAgent):
         await self.exec_as_agent(environment, command=self._run_command(task), env=self._source_env())
 
     def _install_env(self) -> dict[str, str]:
-        env: dict[str, str] = {"UV_CACHE_DIR": UV_CACHE_DIR}
+        env: dict[str, str] = {
+            "UV_CACHE_DIR": UV_CACHE_DIR,
+            "UV_PYTHON_INSTALL_DIR": UV_PYTHON_INSTALL_DIR,
+        }
         proxy = (
             self._get_env("EVOLVE_INSTALL_HTTP_PROXY")
             or self._get_env("EVOLVE_DOCKER_HTTP_PROXY")
@@ -279,6 +289,7 @@ class MiniSweSourceAgent(MiniSweAgent):
             "MINISWE_STEP_LIMIT",
             "MINISWE_COST_LIMIT",
             "MINISWE_ENV_TIMEOUT",
+            "MINISWE_MAX_OUTPUT_LIMIT",
             "MINISWE_REASONING_EFFORT",
         ):
             value = self._get_env(name)

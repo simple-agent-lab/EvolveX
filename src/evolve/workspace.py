@@ -161,6 +161,7 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
         "uv.lock": _template("workspace/uv.lock"),
         ".python-version": _template("workspace/.python-version"),
         "evolve_harbor_adapter/__init__.py": _template("workspace/evolve_harbor_adapter/__init__.py"),
+        "evolve_harbor_adapter/modelhub_codex.py": _template("workspace/evolve_harbor_adapter/modelhub_codex.py"),
         "evolve.yaml": render_yaml(_runtime_config(config)),
         "README.md": _template("workspace/README.md"),
         "AGENTS.md": _template("workspace/AGENTS.md"),
@@ -481,6 +482,11 @@ def _init_git(workspace: Path) -> None:
     _git(workspace, "config", "user.name", "Evolve Mechanism")
     _git(workspace, "config", "user.email", "evolve@example.invalid")
     _git(workspace, "add", ".")
+    # A vendored seed is an exact experiment input. Its own ignore rules must
+    # not silently remove copied files (for example an upstream-ignored
+    # uv.lock) from the generation-zero snapshot. Sensitive and generated
+    # paths have already been removed by _SEED_IGNORE_PATTERNS during copy.
+    _git(workspace, "add", "-f", "target")
     _git(workspace, "commit", "-m", "evolve gen 0")
     _git(workspace, "tag", "gen/0")
 

@@ -110,6 +110,7 @@ def test_miniswe_wrapper_subclasses_harbor_miniswe_and_installs_candidate_source
     assert 'export PATH="$HOME/.local/bin:$PATH"' in environment.commands[sync_index]
     assert environment.envs[sync_index]["http_proxy"] == "http://proxy.example:8118"
     assert environment.envs[sync_index]["UV_CACHE_DIR"] == "/installed-agent/uv-cache"
+    assert environment.envs[sync_index]["UV_PYTHON_INSTALL_DIR"] == "/installed-agent/uv-cache/python"
     model_index = next(
         index for index, command in enumerate(environment.commands) if "EVOLVE_PREFLIGHT_MODEL" in command
     )
@@ -141,6 +142,7 @@ def test_miniswe_wrapper_runs_candidate_source_api_not_cli(tmp_path: Path, monke
     monkeypatch.setenv("MINISWE_STEP_LIMIT", "100")
     monkeypatch.setenv("MINISWE_COST_LIMIT", "3.0")
     monkeypatch.setenv("MINISWE_ENV_TIMEOUT", "30")
+    monkeypatch.setenv("MINISWE_MAX_OUTPUT_LIMIT", "10000")
     target = tmp_path / "target"
     target.mkdir()
     wrapper = target / "harbor_agent.py"
@@ -167,7 +169,10 @@ def test_miniswe_wrapper_runs_candidate_source_api_not_cli(tmp_path: Path, monke
     assert 'headers["api-key"] = api_key' in joined
     assert "EvolveResponseModel(**model_kwargs)" in joined
     assert 'runtime_model_kwargs["store"] = False' in joined
-    assert 'include.append("reasoning.encrypted_content")' in joined
+    assert 'runtime_model_kwargs["max_output_tokens"] = int(' in joined
+    assert 'item.get("type") != "reasoning"' in joined
+    assert 'item != "reasoning.encrypted_content"' in joined
+    assert 'include.append("reasoning.encrypted_content")' not in joined
     env = environment.envs[-1]
     assert env["MSWEA_MODEL_NAME"] == "openai/test-model"
     assert env["OPENAI_API_KEY"] == "test-key"
@@ -176,6 +181,7 @@ def test_miniswe_wrapper_runs_candidate_source_api_not_cli(tmp_path: Path, monke
     assert env["MINISWE_STEP_LIMIT"] == "100"
     assert env["MINISWE_COST_LIMIT"] == "3.0"
     assert env["MINISWE_ENV_TIMEOUT"] == "30"
+    assert env["MINISWE_MAX_OUTPUT_LIMIT"] == "10000"
     assert 'agent_kwargs["step_limit"] = int(os.environ.get("MINISWE_STEP_LIMIT"' in module.RUNNER
     assert 'agent_kwargs["cost_limit"] = float(os.environ.get("MINISWE_COST_LIMIT"' in module.RUNNER
     assert 'env_kwargs["timeout"] = int(os.environ.get("MINISWE_ENV_TIMEOUT"' in module.RUNNER

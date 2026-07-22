@@ -13,7 +13,8 @@ from evolve.frozen.interfaces import ArchiveView, OperatorContext, RecordOperato
 
 
 def _record_fields_from_run_dir(run_dir: Path) -> dict[str, Any]:
-    gate = json.loads((run_dir / "gate.json").read_text())
+    gate_path = run_dir / "gate.json"
+    gate = json.loads(gate_path.read_text()) if gate_path.exists() else None
     predicted_path = run_dir / "meta_agent" / "predicted_fixes.json"
     note = ""
     rationale = run_dir / "meta_agent" / "rationale.md"
@@ -31,12 +32,13 @@ def _record_fields_from_run_dir(run_dir: Path) -> dict[str, Any]:
             usd = None
         if isinstance(usd, (int, float)) and not isinstance(usd, bool) and usd:
             note = f"{note}; usd: {usd}" if note else f"usd: {usd}"
-    fields = {
-        "valid_parent": gate["valid_parent"],
-        "verdict": gate["verdict"],
-        "reason": gate["reason"],
-        "note": note,
-    }
+    fields = {"note": note} if note else {}
+    if gate is not None:
+        fields.update(
+            valid_parent=gate["valid_parent"],
+            verdict=gate["verdict"],
+            reason=gate["reason"],
+        )
     if predicted_path.exists():
         fields["predicted_fixes"] = json.loads(predicted_path.read_text())
     return fields
