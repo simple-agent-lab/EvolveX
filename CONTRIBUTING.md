@@ -13,7 +13,7 @@ See [`docs/README.md`](docs/README.md) for where new writing goes.
 
 ## Setup
 
-Requires `uv` and `git` (Python 3.11+ is provided by uv).
+Requires `uv` and `git` (Python 3.12+ is provided by uv).
 
 ```bash
 uv sync --dev

@@ -101,7 +101,7 @@ in-place backend is documented in [`LOCAL_ENVIRONMENT.md`](LOCAL_ENVIRONMENT.md)
 
 Requirements:
 
-- Python 3.11+
+- Python 3.12+
 - `uv`
 - `git`
 

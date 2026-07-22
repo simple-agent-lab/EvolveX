@@ -13,14 +13,14 @@ import asyncio
 import os
 import re
 import shutil
-from pathlib import Path
+from pathlib import Path, PurePath
 
-from harbor.environments.base import BaseEnvironment, ExecResult  # ty: ignore[unresolved-import]
-from harbor.environments.capabilities import (  # ty: ignore[unresolved-import]
+from harbor.environments.base import BaseEnvironment, ExecResult
+from harbor.environments.capabilities import (
     EnvironmentCapabilities,
     EnvironmentResourceCapabilities,
 )
-from harbor.models.trial.paths import EnvironmentPaths  # ty: ignore[unresolved-import]
+from harbor.models.trial.paths import EnvironmentPaths
 
 
 class LocalEnvironment(BaseEnvironment):
@@ -91,7 +91,7 @@ class LocalEnvironment(BaseEnvironment):
             normalized = f"{normalized[0]}/{normalized[2:].lstrip('/')}"
         return Path(normalized.lstrip("/"))
 
-    def _map_path(self, path: Path | str) -> Path:
+    def _map_path(self, path: PurePath | str) -> Path:
         raw = str(path)
         normalized = raw.replace("\\", "/")
         for virtual, local in sorted(self._path_map.items(), key=lambda item: len(item[0]), reverse=True):
