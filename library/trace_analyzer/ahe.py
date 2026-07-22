@@ -497,7 +497,7 @@ def _change_evaluation(ctx: OperatorContext, cases: list[Case], field_limit: int
         for task in change.get("risk_tasks", [])
     }
     evaluations = []
-    for change in manifest["changes"]:
+    for change in manifest["changes"] if manifest else []:
         if not isinstance(change, dict):
             continue
         change_predicted = [str(task) for task in change.get("predicted_fixes", [])]

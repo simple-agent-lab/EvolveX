@@ -556,22 +556,11 @@ class HarborRollout(RolloutOperator):
             str(max_retries),
             "-y",
         ]
-        uv_cache = eval_env.get("EVOLVE_UV_CACHE_DIR") or os.environ.get("EVOLVE_UV_CACHE_DIR")
-        if uv_cache:
-            cache_path = Path(uv_cache).expanduser().resolve()
-            cache_path.mkdir(parents=True, exist_ok=True)
-            command.extend(
-                [
-                    "--mounts",
-                    json.dumps(
-                        [{"type": "bind", "source": str(cache_path), "target": "/installed-agent/uv-cache"}]
-                    ),
-                ]
-            )
         if os.environ.get("EVOLVE_LIVE_OUTPUT") != "1":
             command.append("-q")
         command.extend(["--ae", f"EVOLVE_CANDIDATE_SOURCE={(checkout / 'target').resolve()}"])
-        uv_cache = ctx.workspace / "runs" / "runtime" / "uv-cache"
+        configured_cache = eval_env.get("EVOLVE_UV_CACHE_DIR") or os.environ.get("EVOLVE_UV_CACHE_DIR")
+        uv_cache = Path(configured_cache).expanduser() if configured_cache else ctx.workspace / "runs" / "runtime" / "uv-cache"
         uv_cache.mkdir(parents=True, exist_ok=True)
         mounts = [
             {

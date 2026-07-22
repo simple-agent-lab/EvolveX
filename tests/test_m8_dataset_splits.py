@@ -193,18 +193,6 @@ def test_harbor_rollout_uses_only_frozen_train_task_names(tmp_path: Path, monkey
             "type": "bind",
             "source": str(tmp_path / "uv-cache"),
             "target": "/installed-agent/uv-cache",
-        }
-    ]
-    assert not set(included) & set(manifest["tasks"]["gate"] + manifest["tasks"]["sealed"])
-    assert ("--ae", f"EVOLVE_CANDIDATE_SOURCE={checkout / 'target'}") in zip(
-        captured, captured[1:], strict=False
-    )
-    mounts = json.loads(captured[captured.index("--mounts") + 1])
-    assert mounts == [
-        {
-            "type": "bind",
-            "source": str(checkout / "runs" / "runtime" / "uv-cache"),
-            "target": "/installed-agent/uv-cache",
         },
         {
             "type": "bind",
@@ -212,6 +200,11 @@ def test_harbor_rollout_uses_only_frozen_train_task_names(tmp_path: Path, monkey
             "target": "/installed-agent/uv-python",
         },
     ]
+    assert captured.count("--mounts") == 1
+    assert not set(included) & set(manifest["tasks"]["gate"] + manifest["tasks"]["sealed"])
+    assert ("--ae", f"EVOLVE_CANDIDATE_SOURCE={checkout / 'target'}") in zip(
+        captured, captured[1:], strict=False
+    )
     assert ("--ae", "UV_PYTHON_INSTALL_DIR=/installed-agent/uv-python") in zip(
         captured, captured[1:], strict=False
     )
