@@ -13,9 +13,6 @@ from evolve.patching import create_candidate_patch, load_surface_policy, patch_p
 from library.meta_agent.runners import run_agent, runner_name
 from library.meta_agent.support.artifacts import render_artifact_guidance
 
-MAX_INLINE_EVIDENCE_CHARS = 50_000
-LATEST_DIFF_CHARS = 5_000
-
 PROMPT = """# HyperAgents Self-Improvement
 
 Modify any part of the allowed codebase to improve downstream task performance.
@@ -58,53 +55,8 @@ def _remaining_iterations(ctx) -> str:
     return str(max(maximum - current, 0))
 
 
-def _read_optional(path: Path) -> str:
-    try:
-        return path.read_text().strip()
-    except OSError:
-        return ""
-
-
-def _clip_inline(text: str, source: Path, limit: int = MAX_INLINE_EVIDENCE_CHARS) -> str:
-    if len(text) <= limit:
-        return text
-    marker = f"\n\n[inline evidence truncated; complete artifact: {source}]"
-    return text[: max(limit - len(marker), 0)] + marker
-
-
-def _lineage(ctx) -> str:
-    return (
-        "\n".join(
-            "- gen %s: parent=%s score=%s status=%s"
-            % (row.get("genid"), row.get("parent"), row.get("score"), row.get("status"))
-            for row in sdk.rows(ctx.workspace)[-8:]
-        )
-        or "- No recorded generations"
-    )
-
-
-def _prompt_evidence(observation: str, ctx) -> str:
-    selected = ctx.run_dir / "feedback" / "evidence" / "selected.md"
-    attempts = ctx.run_dir / "feedback" / "attempts.md"
-    current = _read_optional(selected)
-    source = selected
-    if not current:
-        current = _read_optional(attempts)
-        source = attempts
-    if not current:
-        current = observation.strip()
-
-    latest_diff_path = ctx.run_dir / "feedback" / "last_accepted.diff"
-    latest_diff = _read_optional(latest_diff_path)
-    rendered_diff = _clip_inline(latest_diff, latest_diff_path, LATEST_DIFF_CHARS) if latest_diff else "(none)"
-    return (
-        f"# Current rollout evidence\n\n{_clip_inline(current, source)}\n\n"
-        f"# Recent lineage\n\n{_lineage(ctx)}\n\n"
-        f"# Latest accepted diff\n\n{rendered_diff}"
-    )
-
-
 def build_prompt(checkout: Path, observation: str, ctx) -> str:
+    del observation
     if runner_name(ctx) == "harbor":
         repository = Path("/app/task/workspace")
         current_run = repository / "runs" / f"gen-{ctx.genid}"
@@ -113,13 +65,23 @@ def build_prompt(checkout: Path, observation: str, ctx) -> str:
         repository = checkout
         current_run = ctx.run_dir
         experiment = ctx.workspace
+    feedback = current_run / "feedback"
+    selected = feedback / "evidence" / "selected.md"
+    latest_diff = feedback / "last_accepted.diff"
+    trace_evidence = current_run / "trace_analyzer" / "evidence"
+    rollout = current_run / "rollout"
     return (
         f"{PROMPT.rstrip()}\n\n"
-        f"{_prompt_evidence(observation, ctx)}\n\n"
+        "# Evidence reading order\n\n"
+        f"1. Read `{feedback / 'index.md'}` for the evidence map.\n"
+        f"2. Read `{selected}` and `{latest_diff}` for selected findings and the latest accepted change.\n"
+        f"3. Inspect relevant files under `{trace_evidence}`.\n"
+        f"4. Open raw rollout artifacts under `{rollout}` only when analyzed evidence is insufficient.\n"
+        "5. Edit the candidate only after reviewing the relevant evidence.\n\n"
         f"Repository: {repository}\n"
-        f"Feedback bundle: {current_run / 'feedback'}\n"
-        f"Complete history: {current_run / 'feedback' / 'evidence' / 'history.json'}\n"
-        f"Raw trace evidence: {current_run / 'trace_analyzer' / 'evidence'}\n"
+        f"Feedback bundle: {feedback}\n"
+        f"Complete history: {feedback / 'evidence' / 'history.json'}\n"
+        f"Raw trace evidence: {trace_evidence}\n"
         f"Archive: {experiment / 'archive.jsonl'}\n"
         f"Prior generation artifacts: {experiment / 'runs'}\n"
         f"Current generation artifacts: {current_run}\n"
