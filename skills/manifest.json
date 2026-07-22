@@ -11,6 +11,12 @@
       "path": "evolve-workspace/SKILL.md",
       "role": "inner",
       "summary": "The meta-agent's manual; travels into every workspace."
+    },
+    {
+      "name": "review-change",
+      "path": "review-change/SKILL.md",
+      "role": "reviewer",
+      "summary": "Evidence-based change review with reusable tasks and Harbor trace output."
     }
   ],
   "shared": ["_invariants.md", "_conventions.md"]

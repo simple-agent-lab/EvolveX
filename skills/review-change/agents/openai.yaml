@@ -1,0 +1,4 @@
+interface:
+  display_name: "Review Change"
+  short_description: "Evidence-based review for simple, understandable code"
+  default_prompt: "Use $review-change to review the current diff for simplicity, user understanding, and engineering quality."

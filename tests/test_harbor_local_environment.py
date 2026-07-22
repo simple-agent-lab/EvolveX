@@ -155,6 +155,57 @@ def test_local_environment_rewrites_nested_harbor_path_once(tmp_path: Path, monk
     assert rewritten == f"touch {expected}"
 
 
+def test_local_environment_quotes_mapped_paths_with_spaces(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _load_module(monkeypatch)
+    root = tmp_path / "local root"
+    environment = _environment(module, tmp_path, root_dir=str(root))
+    asyncio.run(environment.start(force_build=False))
+
+    unquoted = asyncio.run(environment.exec("printf unquoted > /workspace/output.txt"))
+    quoted = asyncio.run(environment.exec('printf quoted > "/workspace/quoted output.txt"'))
+
+    assert unquoted.return_code == 0
+    assert quoted.return_code == 0
+    assert (root / "workspace/output.txt").read_text() == "unquoted"
+    assert (root / "workspace/quoted output.txt").read_text() == "quoted"
+
+
+def test_local_environment_maps_agent_home_into_trial_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _load_module(monkeypatch)
+    environment = _environment(module, tmp_path)
+    asyncio.run(environment.start(force_build=False))
+
+    result = asyncio.run(environment.exec('printf "%s" "$HOME"', env={"HOME": "/tmp/review-home"}))
+
+    assert result.return_code == 0
+    assert result.stdout == str(tmp_path / "trial" / "local-environment" / "tmp/review-home")
+
+
+def test_local_environment_can_bind_workdir_to_existing_workspace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _load_module(monkeypatch)
+    workspace = tmp_path / "existing-workspace"
+    workspace.mkdir()
+    (workspace / "tracked.txt").write_text("present\n")
+    environment = _environment(module, tmp_path, workspace_dir=str(workspace))
+    asyncio.run(environment.start(force_build=False))
+
+    result = asyncio.run(environment.exec('test "$HARBOR_WORKDIR" = "$(pwd)" && cat tracked.txt'))
+
+    assert result.return_code == 0
+    assert result.stdout == "present\n"
+    assert environment._map_path("/workspace") == workspace
+    assert environment._map_path("/logs") == tmp_path / "trial" / "local-environment" / "logs"
+
+
+def test_local_environment_rejects_missing_workspace_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _load_module(monkeypatch)
+
+    with pytest.raises(NotADirectoryError):
+        _environment(module, tmp_path, workspace_dir=str(tmp_path / "missing"))
+
+
 def test_local_environment_copies_directory_contents(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     module = _load_module(monkeypatch)
     environment = _environment(module, tmp_path)

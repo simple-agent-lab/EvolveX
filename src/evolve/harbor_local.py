@@ -12,7 +12,9 @@ from __future__ import annotations
 import asyncio
 import os
 import re
+import shlex
 import shutil
+import subprocess
 from pathlib import Path, PurePath
 
 from harbor.environments.base import BaseEnvironment, ExecResult
@@ -36,11 +38,15 @@ class LocalEnvironment(BaseEnvironment):
         *args,
         workdir: str | None = None,
         root_dir: str | None = None,
+        workspace_dir: str | None = None,
         **kwargs,
     ) -> None:
         self._workdir_override = workdir
         super().__init__(*args, **kwargs)
         self._workdir = self._workdir_override or self.task_env_config.workdir or "/app"
+        self._workspace_dir = Path(workspace_dir).expanduser().resolve() if workspace_dir else None
+        if self._workspace_dir is not None and not self._workspace_dir.is_dir():
+            raise NotADirectoryError(self._workspace_dir)
         self._root_dir = (
             Path(root_dir).expanduser().resolve()
             if root_dir
@@ -82,7 +88,10 @@ class LocalEnvironment(BaseEnvironment):
             virtual_paths.update({"C:/app", "C:/installed-agent", "C:/tmp"})
         else:
             virtual_paths.update({"/app", "/installed-agent", "/tmp"})
-        return {virtual: self._root_dir / self._relative_virtual_path(virtual) for virtual in virtual_paths}
+        mapped = {virtual: self._root_dir / self._relative_virtual_path(virtual) for virtual in virtual_paths}
+        if self._workspace_dir is not None:
+            mapped[self._workdir] = self._workspace_dir
+        return mapped
 
     @staticmethod
     def _relative_virtual_path(path: str) -> Path:
@@ -105,7 +114,42 @@ class LocalEnvironment(BaseEnvironment):
     def _rewrite_command(self, command: str) -> str:
         virtual_paths = sorted(self._path_map.keys(), key=lambda path: len(path), reverse=True)
         pattern = re.compile("(?:" + "|".join(re.escape(path) for path in virtual_paths) + r")(?=$|[/\\\s'\"=:;,])")
-        return pattern.sub(lambda match: str(self._path_map[match.group(0)]), command)
+        return pattern.sub(
+            lambda match: self._quote_mapped_path(command, match.start(), str(self._path_map[match.group(0)])),
+            command,
+        )
+
+    @staticmethod
+    def _quote_mapped_path(command: str, offset: int, path: str) -> str:
+        if os.name == "nt":
+            return subprocess.list2cmdline([path])
+        quote = LocalEnvironment._active_quote(command[:offset])
+        if quote == "'":
+            return path.replace("'", "'\"'\"'")
+        if quote == '"':
+            return path.replace("\\", "\\\\").replace('"', '\\"').replace("$", "\\$").replace("`", "\\`")
+        return shlex.quote(path)
+
+    @staticmethod
+    def _active_quote(prefix: str) -> str | None:
+        quote: str | None = None
+        index = 0
+        while index < len(prefix):
+            char = prefix[index]
+            if quote == "'":
+                if char == "'":
+                    quote = None
+            elif quote == '"':
+                if char == '"':
+                    quote = None
+                elif char == "\\" and index + 1 < len(prefix):
+                    index += 1
+            elif char in {"'", '"'}:
+                quote = char
+            elif char == "\\" and index + 1 < len(prefix):
+                index += 1
+            index += 1
+        return quote
 
     def _map_env(self, values: dict[str, str] | None) -> dict[str, str]:
         mapped: dict[str, str] = {}

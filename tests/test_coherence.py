@@ -39,6 +39,7 @@ APPROVED_MODULES = {
     "patching.py",
     "population.py",
     "report.py",
+    "review.py",
     "runtime.py",
     "splits.py",
     "surface.py",

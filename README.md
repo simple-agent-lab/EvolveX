@@ -97,6 +97,29 @@ For fast Docker-free trials against an already installed local agent—for
 example, using Codex to iterate on a skill or a small behavior—the opt-in
 in-place backend is documented in [`LOCAL_ENVIRONMENT.md`](LOCAL_ENVIRONMENT.md).
 
+## Review A Change
+
+The built-in reviewer runs Codex against a committed git range in a temporary
+detached worktree. It uses the Docker-free Harbor environment and retains both a
+validated JSON report and the complete ATIF trajectory:
+
+```bash
+uv run evolve review . --base origin/main --head HEAD
+```
+
+Runs are written under `runs/reviews/` with resolved commit IDs, model and
+reasoning settings, wall time, Harbor `result.json`, `review-report.json`, and
+`agent/trajectory.json`. Inspect the trajectory with `harbor view` by pointing it
+at the run's `jobs/` directory.
+
+The default reusable task is
+[`review_tasks/framework-quality.toml`](review_tasks/framework-quality.toml).
+Pass another task with `--task`; its rubric categories and finding limit become
+part of the immutable run manifest. The reviewer is instructed to be read-only,
+runs from a temporary detached worktree, and keeps its skills and Codex state in
+the trial-owned local environment rather than global agent directories. As with
+all `LocalEnvironment` runs, this is not a security sandbox.
+
 ## Install For Development
 
 Requirements:

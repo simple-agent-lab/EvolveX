@@ -55,6 +55,7 @@ packages = ["src/evolve", "library"]
 [tool.hatch.build.targets.wheel.force-include]
 "library" = "evolve/library"
 "recipes" = "evolve/recipes"
+"review_tasks" = "evolve/review_tasks"
 "templates" = "evolve/templates"
 "skills" = "evolve/skills"
 

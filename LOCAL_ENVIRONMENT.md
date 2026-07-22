@@ -63,6 +63,14 @@ Docker daemon is involved. Set `environment.workdir` in the task or
 `environment_kwargs.workdir` in `evolve.yaml` to choose the virtual workspace
 path.
 
+Pass `workspace_dir="/absolute/host/checkout"` when `/app` (or the configured
+workdir) should refer to an existing prepared checkout while Harbor-owned logs,
+tests, skills, and temporary files remain under the trial directory. The review
+framework uses this with a temporary detached worktree so the agent cannot edit
+the caller's checkout through ordinary worktree-relative operations. This is
+convenience separation, not a security sandbox; the process still has host user
+permissions.
+
 Harbor commands are translated before execution, but commands spawned inside a
 task script are outside that translation boundary. Portable task scripts should
 therefore use their current directory for workspace files and these variables

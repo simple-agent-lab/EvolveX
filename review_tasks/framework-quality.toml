@@ -1,0 +1,17 @@
+schema_version = 1
+name = "framework-quality"
+max_findings = 10
+rubrics = [
+  "correctness",
+  "simplicity",
+  "user-understanding",
+  "engineering",
+  "python",
+  "llm-agent",
+]
+instruction = """
+Review this change as framework code. Prioritize concrete correctness risks,
+unnecessary concepts, user-visible surprises, and violations of durable
+engineering boundaries. Treat style preferences as non-findings. Prefer the
+smallest coherent fix and explicitly allow a clean review with no findings.
+"""

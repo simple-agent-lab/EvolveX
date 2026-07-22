@@ -20,7 +20,7 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | --- | --- | --- |
 | `__init__.py` | 10 | package marker, version |
 | `__main__.py` | 10 | `python -m evolve` entry |
-| `cli.py` | 200 | argument parsing and verb dispatch only — no logic |
+| `cli.py` | 260 | argument parsing and verb dispatch only — no logic |
 | `config.py` | 300 | read/render `evolve.yaml`: recipes, experiment values, surface lists, operator blocks |
 | `driver.py` | 1450 | the generation sequencer: orchestrates baseline eval, verbs + operators (incl. novelty, self-modification admission gates, sealed anchors); validates operator outputs; computes verified_fixes; audit quarantine; doctor repair |
 | `feedback.py` | 220 | assemble current and historical rollout evidence plus ledger-derived feedback for the meta-agent |
@@ -37,7 +37,8 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `candidate/snapshot.py` | 80 | exact candidate Git tree construction, temporary materialization, and reviewed-tree commit verification |
 | `candidate/smoke.py` | 130 | run evaluator smoke against an exact candidate snapshot and persist redacted diagnostics |
 | `git.py` | 150 | thin git subprocess helpers — nothing evolve-specific |
-| `harbor_local.py` | 220 | minimal in-place Harbor environment for fast trials against a pre-configured local agent runtime |
+| `harbor_local.py` | 270 | minimal in-place Harbor environment for fast trials against a pre-configured local agent runtime |
+| `review.py` | 440 | reusable review-task and report contracts plus Harbor-backed trace-preserving execution and recovery |
 | `surface.py` | 150 | mutable-surface pattern matching and violation checks |
 | `report.py` | 182 | status/report rendering, best-ever recomputation, claim checklist |
 | `trace_analysis.py` | 410 | deterministic shared transforms used by the independent trace-analyzer operator variants |
@@ -58,9 +59,9 @@ each workspace, immutable there because it sits outside the mutable surface
 | `frozen/sdk.py` | 420 | Python operator entrypoint and file-contract IO; no library algorithm policy |
 | `frozen/meta_eval.py` | 130 | self-modification admission gate: confound-free replay of old vs new operator surface (mechanism 1) |
 
-Total `src/evolve/` budget: **7000 lines**. The budget admits the explicit evaluation-package
-boundaries, failed-task repair, the opt-in in-place Harbor runtime, and the redacted trace-analysis
-boundary between rollout and feedback assembly; if the mechanism wants to
+Total `src/evolve/` budget: **7550 lines**. The budget admits the explicit evaluation-package
+boundaries, failed-task repair, the in-place Harbor runtime, reusable review runs, and the redacted
+trace-analysis boundary between rollout and feedback assembly; if the mechanism wants to
 grow past that, something belongs in a workspace operator instead —
 that is the spec's rule, not a style preference.
 
@@ -73,7 +74,7 @@ that is the spec's rule, not a style preference.
 | `docs/coding-style.md` | coding conventions — a maintained doc |
 | `README.md` | user-facing overview — must never overstate milestone reality |
 | `CONTRIBUTING.md` | contributor entry (setup + the enforced constraints) |
-| `pyproject.toml`, `uv.lock` | packaging; runtime is stdlib-only |
+| `pyproject.toml`, `uv.lock` | packaging and locked runtime dependencies, including Harbor |
 
 ## Dependency rules (enforced where cheap, reviewed otherwise)
 

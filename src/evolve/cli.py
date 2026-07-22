@@ -17,6 +17,7 @@ from .driver import run as driver_run
 from .git import head_tag, working_tree_changed_paths
 from .population import best_row
 from .report import format_report, format_status
+from .review import ReviewTask, default_task_path, run_review
 from .surface import check_paths, surface_patterns
 from .workspace import InitOptions, init_workspace
 
@@ -181,6 +182,32 @@ def status(workspace: Path = typer.Argument(Path("."))) -> None:
 def report(workspace: Path = typer.Argument(Path("."))) -> None:
     """Write an experiment report and research-claim checklist."""
     print(format_report(workspace), end="")
+
+
+@app.command()
+@_guard
+def review(
+    repository: Path = typer.Argument(Path(".")),
+    base: str = typer.Option(..., "--base", help="base git revision for the reviewed change"),
+    head: str = typer.Option("HEAD", "--head", help="head git revision for the reviewed change"),
+    task_file: Path = typer.Option(default_task_path(), "--task", help="reusable review task TOML"),
+    model: str = typer.Option("gpt-5.4", "--model"),
+    reasoning_effort: str = typer.Option("medium", "--reasoning-effort"),
+    runs_dir: Path | None = typer.Option(None, "--runs-dir"),
+) -> None:
+    """Review a committed change with Codex and retain its Harbor trajectory."""
+    result = run_review(
+        repository,
+        task=ReviewTask.load(task_file),
+        base_ref=base,
+        head_ref=head,
+        model=model,
+        reasoning_effort=reasoning_effort,
+        runs_dir=runs_dir,
+    )
+    print(f"review: {result.report.verdict} findings={len(result.report.findings)} wall_s={result.wall_s:.2f}")
+    print(f"report: {result.report_path}")
+    print(f"trajectory: {result.trajectory_path}")
 
 
 @app.command()
