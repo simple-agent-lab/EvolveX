@@ -150,7 +150,7 @@ def _parse_args() -> argparse.Namespace:
     return args
 
 
-def _rng_seed(seed: object, genid: str, parent: str | None) -> int:
+def _rng_seed(seed: int | str, genid: str, parent: str | None) -> int:
     identity = json.dumps(
         [int(seed), str(genid), str(parent or "")],
         separators=(",", ":"),
