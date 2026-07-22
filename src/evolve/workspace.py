@@ -141,6 +141,7 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
     evaluator_trials = int(evaluator.get("k", 1))
     tasks_per_round = int(evaluator.get("tasks_per_round", evaluator_trials))
     evaluator_n = int(evaluator.get("n_concurrent", evaluator_trials))
+    evaluator_environment = str(evaluator.get("environment") or "")
     partial_floor = float(evaluator.get("partial_floor", 0.8))
     setup_timeout_multiplier = float(evaluator.get("agent_setup_timeout_multiplier", 1))
     max_retries = int(evaluator.get("max_retries", 0))
@@ -192,12 +193,14 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
             partial_floor,
             evaluator_agent,
             model=str(evaluator["model"]) if evaluator.get("model") else None,
+            environment=evaluator_environment,
             dataset_mode=str(evaluator.get("dataset_mode", "path")),
             task_file=str(evaluator["task_file"]) if "task_file" in evaluator else None,
             setup_timeout_multiplier=setup_timeout_multiplier,
             max_retries=max_retries,
         ),
         "evaluator/agent.env": _agent_env(evaluator.get("agent_env")),
+        "evaluator/environment.kwargs": _environment_kwargs(evaluator.get("environment_kwargs")),
         "evaluator/splits.json": json.dumps(split_manifest, indent=2, sort_keys=True) + "\n",
         "evaluator/dataset.pin": f"dataset={evaluator_dataset}\nchecksum=sha256:stub\n",
         "evaluator/runtime.pin": f"{runtime_digest}\n",
@@ -564,6 +567,23 @@ def _agent_env(value: object) -> str:
     return "".join(lines)
 
 
+def _environment_kwargs(value: object) -> str:
+    if value is None:
+        return ""
+    if not isinstance(value, dict):
+        raise ValueError("evaluator.environment_kwargs must be a mapping")
+    lines: list[str] = []
+    for name in sorted(value):
+        if not isinstance(name, str) or _ENV_NAME.fullmatch(name) is None:
+            raise ValueError(f"invalid evaluator.environment_kwargs name: {name!r}")
+        try:
+            rendered = json.dumps(value[name], separators=(",", ":"), sort_keys=True)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"evaluator.environment_kwargs value for {name} must be JSON-serializable") from exc
+        lines.append(f"{name}={rendered}\n")
+    return "".join(lines)
+
+
 def _eval_env(
     _workspace_name: str,
     dataset: str,
@@ -574,6 +594,7 @@ def _eval_env(
     agent: str,
     *,
     model: str | None = None,
+    environment: str = "",
     dataset_mode: str = "path",
     task_file: str | None = None,
     setup_timeout_multiplier: float = 1,
@@ -591,6 +612,8 @@ def _eval_env(
         f"EVOLVE_HARBOR_AGENT={shlex.quote(agent)}\n"
         f"EVOLVE_PARTIAL_FLOOR={partial_floor}\n"
     )
+    if environment:
+        text += f"EVOLVE_HARBOR_ENVIRONMENT={shlex.quote(environment)}\n"
     if setup_timeout_multiplier > 1:
         text += f"EVOLVE_HARBOR_AGENT_SETUP_TIMEOUT_MULTIPLIER={setup_timeout_multiplier}\n"
     if max_retries > 0:

@@ -36,6 +36,7 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `candidate/snapshot.py` | 80 | exact candidate Git tree construction, temporary materialization, and reviewed-tree commit verification |
 | `candidate/smoke.py` | 130 | run evaluator smoke against an exact candidate snapshot and persist redacted diagnostics |
 | `git.py` | 150 | thin git subprocess helpers — nothing evolve-specific |
+| `harbor_local.py` | 220 | minimal in-place Harbor environment for fast trials against a pre-configured local agent runtime |
 | `surface.py` | 150 | mutable-surface pattern matching and violation checks |
 | `report.py` | 182 | status/report rendering, best-ever recomputation, claim checklist |
 | `trace_analysis.py` | 410 | deterministic shared transforms used by the independent trace-analyzer operator variants |
@@ -56,8 +57,9 @@ each workspace, immutable there because it sits outside the mutable surface
 | `frozen/sdk.py` | 420 | Python operator entrypoint and file-contract IO; no library algorithm policy |
 | `frozen/meta_eval.py` | 130 | self-modification admission gate: confound-free replay of old vs new operator surface (mechanism 1) |
 
-Total `src/evolve/` budget: **5330 lines**. The increase admits the explicit evaluation-package
-boundaries and the redacted trace-analysis boundary between rollout and feedback assembly; if the mechanism wants to
+Total `src/evolve/` budget: **5550 lines**. The budget admits the explicit evaluation-package
+boundaries, the opt-in in-place Harbor runtime, and the redacted trace-analysis boundary between
+rollout and feedback assembly; if the mechanism wants to
 grow past that, something belongs in a workspace operator instead —
 that is the spec's rule, not a style preference.
 

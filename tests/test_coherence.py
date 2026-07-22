@@ -32,6 +32,7 @@ APPROVED_MODULES = {
     "evaluation/results.py",
     "feedback.py",
     "git.py",
+    "harbor_local.py",
     "host_runtime.py",
     "operators.py",
     "patching.py",

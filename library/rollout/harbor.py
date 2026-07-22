@@ -556,6 +556,14 @@ class HarborRollout(RolloutOperator):
             str(max_retries),
             "-y",
         ]
+        environment = ctx.config.get("environment")
+        if environment:
+            command.extend(["--env", str(environment)])
+        environment_kwargs = ctx.config.get("environment_kwargs")
+        if isinstance(environment_kwargs, dict):
+            for key in sorted(environment_kwargs):
+                value = environment_kwargs[key]
+                command.extend(["--environment-kwarg", f"{key}={json.dumps(value, separators=(',', ':'))}"])
         if os.environ.get("EVOLVE_LIVE_OUTPUT") != "1":
             command.append("-q")
         command.extend(["--ae", f"EVOLVE_CANDIDATE_SOURCE={(checkout / 'target').resolve()}"])

@@ -375,6 +375,11 @@ def _base_command(
     environment = config.get("environment")
     if environment:
         command.extend(["--env", str(environment)])
+    environment_kwargs = config.get("environment_kwargs")
+    if isinstance(environment_kwargs, dict):
+        for key in sorted(environment_kwargs):
+            value = environment_kwargs[key]
+            command.extend(["--environment-kwarg", f"{key}={json.dumps(value, separators=(',', ':'))}"])
     image = config.get("image")
     if image:
         command.extend(["--image", str(image)])

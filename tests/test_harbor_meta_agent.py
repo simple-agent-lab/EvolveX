@@ -316,6 +316,22 @@ def test_harbor_meta_agent_rejects_legacy_pythonpath(tmp_path: Path) -> None:
         _harbor_runner_module().run_agent(checkout, "failure evidence", ctx)
 
 
+def test_harbor_meta_agent_forwards_custom_environment_kwargs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    checkout, run_dir = _checkout(tmp_path)
+    bin_dir = tmp_path / "bin"
+    _install_fake_harbor(bin_dir)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    ctx = _ctx(checkout, run_dir)
+    ctx.config["environment"] = "evolve.harbor_local:LocalEnvironment"
+    ctx.config["environment_kwargs"] = {"workdir": "/workspace"}
+
+    _harbor_runner_module().run_agent(checkout, "failure evidence", ctx)
+
+    command = json.loads((run_dir / "meta_agent" / "harbor" / "command.json").read_text())
+    assert command[command.index("--env") + 1] == "evolve.harbor_local:LocalEnvironment"
+    assert command[command.index("--environment-kwarg") + 1] == 'workdir="/workspace"'
+
+
 def test_harbor_readonly_agent_returns_response_without_candidate_artifact(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

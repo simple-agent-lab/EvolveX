@@ -41,6 +41,61 @@ def test_harbor_evaluator_uses_locked_workspace_runtime() -> None:
     assert '"$PWD/.evolve/launch_splits.py"' in text
 
 
+def test_harbor_evaluator_forwards_custom_environment_and_skips_docker_cleanup(tmp_path: Path) -> None:
+    evaluator = tmp_path / "evaluator"
+    evaluator.mkdir()
+    _write_executable(evaluator / "eval.sh", _eval_sh("harbor", "fixture"))
+    (evaluator / "eval.env").write_text(
+        _eval_env(
+            "experiment",
+            "fixture",
+            n_concurrent=1,
+            tasks_per_round=1,
+            trials=1,
+            partial_floor=0.8,
+            agent="custom:Agent",
+            environment="evolve.harbor_local:LocalEnvironment",
+        )
+    )
+    (evaluator / "environment.kwargs").write_text('workdir="/workspace"\n')
+    _write_evaluator_helpers(evaluator)
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    _write_fake_uv(fake_bin)
+    _write_executable(
+        fake_bin / "harbor",
+        "#!/bin/sh\n"
+        'printf \'%s\\n\' "$@" > "$HARBOR_ARGS_CAPTURE"\n'
+        "jobs_dir=\n"
+        'while [ "$#" -gt 0 ]; do\n'
+        '  if [ "$1" = "--jobs-dir" ]; then shift; jobs_dir=$1; fi\n'
+        "  shift || true\n"
+        "done\n"
+        'mkdir -p "$jobs_dir/trial"\n'
+        'printf \'%s\\n\' \'{"task_name":"task","trial_name":"trial","verifier_result":{"rewards":{"reward":1}}}\' > "$jobs_dir/trial/result.json"\n',
+    )
+    _write_executable(fake_bin / "docker", '#!/bin/sh\nprintf called > "$DOCKER_MARKER"\n')
+    args_capture = tmp_path / "args"
+    docker_marker = tmp_path / "docker-called"
+    env = {
+        **os.environ,
+        "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
+        "HARBOR_ARGS_CAPTURE": str(args_capture),
+        "DOCKER_MARKER": str(docker_marker),
+        "EVOLVE_RUN_DIR": str(tmp_path / "run"),
+        "EVOLVE_ATTEMPT_ID": "local-attempt",
+        "EVOLVE_FRAMEWORK_PYTHON": sys.executable,
+    }
+
+    result = subprocess.run([str(evaluator / "eval.sh")], cwd=tmp_path, env=env, text=True, capture_output=True)
+
+    assert result.returncode == 0, result.stderr
+    args = args_capture.read_text().splitlines()
+    assert args[args.index("--env") + 1] == "evolve.harbor_local:LocalEnvironment"
+    assert args[args.index("--environment-kwarg") + 1] == 'workdir="/workspace"'
+    assert not docker_marker.exists()
+
+
 def test_harbor_stage_limit_and_anchor_task_file_override(tmp_path: Path) -> None:
     evaluator = tmp_path / "evaluator"
     (evaluator / "tasks").mkdir(parents=True)

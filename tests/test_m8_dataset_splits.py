@@ -178,7 +178,12 @@ def test_harbor_rollout_uses_only_frozen_train_task_names(tmp_path: Path, monkey
         parent="0",
         round=None,
         fan_out=1,
-        config={"budget_tasks": 3, "jobs_dir": str(tmp_path / "jobs")},
+        config={
+            "budget_tasks": 3,
+            "jobs_dir": str(tmp_path / "jobs"),
+            "environment": "custom.local:Environment",
+            "environment_kwargs": {"workdir": "/workspace"},
+        },
         rng=random.Random(0),
     )
 
@@ -208,3 +213,5 @@ def test_harbor_rollout_uses_only_frozen_train_task_names(tmp_path: Path, monkey
     assert ("--ae", "UV_PYTHON=3.12") in zip(captured, captured[1:], strict=False)
     assert ("--model", "openai/test-model") in zip(captured, captured[1:], strict=False)
     assert result.summary["split"] == "train"
+    assert captured[captured.index("--env") + 1] == "custom.local:Environment"
+    assert captured[captured.index("--environment-kwarg") + 1] == 'workdir="/workspace"'

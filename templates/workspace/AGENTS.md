@@ -16,5 +16,11 @@ status fields; the frozen evaluator side stamps those. If `evolve.yaml` says
 still enforces the honesty invariants. Before finishing manual candidate edits, run
 `./evolve surface-check .` and repair any violations.
 
+Any newly introduced Python package must be added to the workspace root
+`pyproject.toml` with `uv add`, and the resulting `uv.lock` must be committed.
+Harbor trials run from the locked workspace environment: never rely on a package
+installed globally, injected through `PYTHONPATH`, or installed ad hoc during a
+trial.
+
 Repo-local `.env` values supply live meta-agent/evaluator keys and endpoints;
 load them locally, never commit secrets.
