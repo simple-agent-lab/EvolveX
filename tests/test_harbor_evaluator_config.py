@@ -15,9 +15,11 @@ def test_eval_env_uses_configured_harbor_agent() -> None:
         trials=1,
         partial_floor=0.8,
         agent="evolve_harbor_adapter:MiniSweSourceAgent",
+        model="openai/gpt-5.4-2026-03-05",
     )
 
     assert "EVOLVE_HARBOR_AGENT=evolve_harbor_adapter:MiniSweSourceAgent\n" in env
+    assert "EVOLVE_HARBOR_MODEL=openai/gpt-5.4-2026-03-05\n" in env
     assert "CheckoutTargetAgent" not in env
 
 

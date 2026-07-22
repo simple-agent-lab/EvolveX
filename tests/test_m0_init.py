@@ -27,6 +27,7 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
         "uv.lock",
         ".python-version",
         "evolve_harbor_adapter/__init__.py",
+        "evolve_harbor_agent/__init__.py",
         "evolve.yaml",
         ".evolve-protocol-version",
         ".evolve/evolve/harbor_local.py",
@@ -70,7 +71,7 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
     assert (workspace / ".python-version").read_text() == "3.12\n"
     assert "harbor==0.18.0" in (workspace / "pyproject.toml").read_text()
     assert (
-        'packages = [".evolve/evolve", "evolve_harbor_adapter", "library"]'
+        'packages = [".evolve/evolve", "evolve_harbor_adapter", "evolve_harbor_agent", "library"]'
         in (workspace / "pyproject.toml").read_text()
     )
 
@@ -153,7 +154,8 @@ def test_init_binds_real_hyperagents_method_surface_and_operators(tmp_path: Path
 
     assert result.returncode == 0, result.stderr
     assert "score_child_prop" in (workspace / "operators/select.py").read_text()
-    assert "HarborRollout" in (workspace / "operators/rollout.py").read_text()
+    assert "EvaluationReplayRollout" in (workspace / "operators/rollout.py").read_text()
+    assert (workspace / "library/rollout/harbor.py").is_file()
     assert "class TraceBrowser" in (workspace / "operators/trace_analyzer.py").read_text()
     assert "variant: hyperagents" in (workspace / "operators/meta_agent.py").read_text()
     assert "HyperAgents Self-Improvement" in (workspace / "operators/meta_agent.py").read_text()

@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from evolve.agent import AgentCommandError
+from evolve.archive import archive_path, merged_rows
 from evolve.config import operator_blocks
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import OperatorContext, TraceAnalyzerOperator, TraceAnalyzerResult
@@ -306,6 +307,20 @@ def _debugger_prompt(job: TaskAnalysisJob) -> str:
     )
 
 
+def _debugger_runner_prompt(job: TaskAnalysisJob, config: dict[str, Any]) -> str:
+    prompt = _debugger_prompt(job)
+    agent = str(config.get("agent") or "")
+    if agent != "mini-swe-agent" and not agent.endswith(":FileTaskMiniSweAgent"):
+        return prompt
+    return (
+        prompt + "\n\n# MiniSWE submission protocol\n\n"
+        "Every response must include a Bash tool call. Use Bash to inspect the mounted evidence as needed. "
+        "Write the complete requested report to `/logs/artifacts/ahe-debugger-response.md`, then finish with a "
+        "standalone Bash tool call that executes `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`. Do not modify the "
+        "experiment workspace."
+    )
+
+
 _DEBUGGER_RUNNER_KEYS = (
     "agent",
     "model",
@@ -337,14 +352,15 @@ def _safe_task_name(task_name: str) -> str:
 def _run_debugger_job(checkout: Path, ctx: OperatorContext, job: TaskAnalysisJob) -> DebuggerResult:
     attempts = _positive_int(ctx.config.get("retry_attempts"), 3)
     timeout_s = float(ctx.config.get("timeout_per_task") or 600)
-    runner_ctx = replace(ctx, config=_debugger_runner_config(checkout))
+    runner_config = _debugger_runner_config(checkout)
+    runner_ctx = replace(ctx, config=runner_config)
     slug = _safe_task_name(job.task_name)
     last_error: AgentCommandError | None = None
     for attempt in range(1, attempts + 1):
         try:
             result = run_readonly_agent(
                 checkout,
-                _debugger_prompt(job),
+                _debugger_runner_prompt(job, runner_config),
                 runner_ctx,
                 output_dir=ctx.run_dir / "trace_analyzer" / "debugger" / slug / f"attempt-{attempt}",
                 job_name=f"ahe-debug-{slug}-attempt-{attempt}",
@@ -425,6 +441,18 @@ def _transition(before: str | None, after: str | None) -> str:
     return "unknown"
 
 
+def _change_verdict(predicted: list[str], fixed: list[str], realized: list[str]) -> str:
+    if realized and not fixed:
+        return "HARMFUL"
+    if realized and fixed:
+        return "MIXED"
+    if predicted and len(fixed) == len(predicted):
+        return "EFFECTIVE"
+    if fixed:
+        return "PARTIALLY_EFFECTIVE"
+    return "INEFFECTIVE"
+
+
 def _change_evaluation(ctx: OperatorContext, cases: list[Case], field_limit: int) -> Case:
     if ctx.parent in (None, "0"):
         return {
@@ -433,6 +461,9 @@ def _change_evaluation(ctx: OperatorContext, cases: list[Case], field_limit: int
             "transitions": {},
             "prediction_results": {},
             "risk_results": {},
+            "change_evaluations": [],
+            "unattributed_regressions": [],
+            "summary": "baseline generation",
         }
     prior_run = ctx.workspace / "runs" / f"gen-{ctx.parent}"
     prior_raw, error = _load_cases(prior_run / "rollout" / "cases.json")
@@ -440,11 +471,14 @@ def _change_evaluation(ctx: OperatorContext, cases: list[Case], field_limit: int
         raise RuntimeError(error)
     manifest_path = prior_run / "meta_agent" / "change_manifest.json"
     try:
-        manifest = json.loads(manifest_path.read_text())
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise RuntimeError(f"missing or invalid prior AHE manifest: {manifest_path}") from exc
-    if not isinstance(manifest, dict) or not isinstance(manifest.get("changes"), list):
-        raise RuntimeError(f"invalid prior AHE manifest: {manifest_path}")
+        candidate_manifest = json.loads(manifest_path.read_text())
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        candidate_manifest = None
+    manifest = (
+        candidate_manifest
+        if isinstance(candidate_manifest, dict) and isinstance(candidate_manifest.get("changes"), list)
+        else None
+    )
     before = _task_outcomes([_normalize(case, field_limit) for case in prior_raw])
     after = _task_outcomes(cases)
     transitions = {
@@ -452,16 +486,47 @@ def _change_evaluation(ctx: OperatorContext, cases: list[Case], field_limit: int
     }
     predicted = {
         str(task)
-        for change in manifest["changes"]
+        for change in (manifest["changes"] if manifest else [])
         if isinstance(change, dict)
         for task in change.get("predicted_fixes", [])
     }
     risks = {
-        str(task) for change in manifest["changes"] if isinstance(change, dict) for task in change.get("risk_tasks", [])
+        str(task)
+        for change in (manifest["changes"] if manifest else [])
+        if isinstance(change, dict)
+        for task in change.get("risk_tasks", [])
     }
+    evaluations = []
+    for change in manifest["changes"] if manifest else []:
+        if not isinstance(change, dict):
+            continue
+        change_predicted = [str(task) for task in change.get("predicted_fixes", [])]
+        change_risks = [str(task) for task in change.get("risk_tasks", [])]
+        fixed = [task for task in change_predicted if transitions.get(task) == "fail_to_pass"]
+        still_failed = [task for task in change_predicted if task not in fixed]
+        realized = [task for task in change_risks if transitions.get(task) == "pass_to_fail"]
+        evaluations.append(
+            {
+                "change_id": str(change.get("id") or "unknown"),
+                "description": str(change.get("description") or ""),
+                "files": [str(path) for path in change.get("files", [])],
+                "predicted_fixes": change_predicted,
+                "actually_fixed": fixed,
+                "still_failed": still_failed,
+                "predicted_risks": change_risks,
+                "risk_realized": realized,
+                "verdict": _change_verdict(change_predicted, fixed, realized),
+            }
+        )
+    unattributed = [
+        task
+        for task, transition in transitions.items()
+        if transition == "pass_to_fail" and task not in predicted and task not in risks
+    ]
+    summary = ", ".join(f"{item['change_id']}: {item['verdict']}" for item in evaluations)
     return {
         "status": "evaluated",
-        "manifest": str(manifest_path),
+        "manifest": str(manifest_path) if manifest else None,
         "transitions": transitions,
         "prediction_results": {
             task: "confirmed" if transitions.get(task) == "fail_to_pass" else "not_confirmed"
@@ -470,6 +535,62 @@ def _change_evaluation(ctx: OperatorContext, cases: list[Case], field_limit: int
         "risk_results": {
             task: "realized" if transitions.get(task) == "pass_to_fail" else "not_realized" for task in sorted(risks)
         },
+        "change_evaluations": evaluations,
+        "unattributed_regressions": unattributed,
+        "summary": summary,
+    }
+
+
+def _task_vector_outcome(task: Case) -> str:
+    trials = _list(task.get("trials"))
+    statuses = [str(trial.get("status") or "") for trial in trials if isinstance(trial, dict)]
+    if statuses and all(status == "passed" for status in statuses):
+        return "pass"
+    if any(status in {"passed", "failed"} for status in statuses):
+        return "fail"
+    return "exception"
+
+
+def _archive_analysis(ctx: OperatorContext) -> Case:
+    rows = [
+        row
+        for row in merged_rows(archive_path(ctx.workspace))
+        if row.get("selection_eligible") is True and isinstance(row.get("task_vector"), dict)
+    ]
+    scored = [
+        row for row in rows if isinstance(row.get("score"), (int, float)) and not isinstance(row.get("score"), bool)
+    ]
+    best = max(scored, key=lambda row: float(row["score"]), default=None)
+    histories: dict[str, list[str]] = {}
+    for row in rows:
+        tasks = _dict(_dict(row.get("task_vector")).get("tasks"))
+        for task_name, task in tasks.items():
+            if isinstance(task, dict):
+                histories.setdefault(str(task_name), []).append(_task_vector_outcome(task))
+
+    stability: dict[str, list[str]] = {
+        "stable_pass": [],
+        "stable_fail": [],
+        "unstable": [],
+        "possibly_unstable": [],
+        "infra_only": [],
+    }
+    for task_name, outcomes in histories.items():
+        verifier_outcomes = [outcome for outcome in outcomes if outcome in {"pass", "fail"}]
+        if not verifier_outcomes:
+            stability["infra_only"].append(task_name)
+        elif "pass" in verifier_outcomes and "fail" in verifier_outcomes:
+            key = "unstable" if len(verifier_outcomes) >= 3 else "possibly_unstable"
+            stability[key].append(task_name)
+        elif "pass" in verifier_outcomes:
+            stability["stable_pass"].append(task_name)
+        else:
+            stability["stable_fail"].append(task_name)
+    for tasks in stability.values():
+        tasks.sort()
+    return {
+        "best_ever": ({"genid": str(best["genid"]), "score": float(best["score"])} if best is not None else None),
+        "stability": stability,
     }
 
 
@@ -482,7 +603,7 @@ def _diagnosis_line(response: str) -> str:
     return lines[0] if lines else "(empty debugger response)"
 
 
-def _reports(root: Path, results: list[DebuggerResult]) -> tuple[str, list[str]]:
+def _reports(root: Path, results: list[DebuggerResult], archive_analysis: Case) -> tuple[str, list[str]]:
     detail_dir = root / "analysis" / "detail"
     detail_dir.mkdir(parents=True, exist_ok=True)
     details: list[str] = []
@@ -510,7 +631,15 @@ def _reports(root: Path, results: list[DebuggerResult]) -> tuple[str, list[str]]
         )
         relative = f"trace_analyzer/analysis/detail/{_safe_task_name(job.task_name)}.md"
         (root.parent / relative).write_text(detail)
-        details.append(f"# Detail: {job.task_name}\n\n{detail}")
+        workspace_relative = f"runs/{root.parent.name}/{relative}"
+        details.append(
+            f"# Detail: {job.task_name}\n\n"
+            f"- Pass: {job.n_pass}\n- Fail: {job.n_fail}\n- Timeout: {job.n_timeout}\n"
+            f"- Traces: {', '.join(labels)}\n"
+            f"- Full bounded evidence: `{workspace_relative}`\n\n"
+            f"## LLM debugger response\n\n{result.response}\n\n"
+            f"## Failing verifier evidence\n\n{json.dumps(failing_verifier, indent=2)}\n"
+        )
         artifacts.append(relative)
     lines = ["# AHE Debugger Overview", ""]
     for mode, title in (("debug", "Failures and timeouts"), ("summary", "All-pass summaries")):
@@ -520,6 +649,24 @@ def _reports(root: Path, results: list[DebuggerResult]) -> tuple[str, list[str]]
             [f"- **{result.job.task_name}**: {_diagnosis_line(result.response)}" for result in matches] or ["- None"]
         )
         lines.append("")
+    best = archive_analysis.get("best_ever")
+    lines.extend(["## Best Ever", ""])
+    if isinstance(best, dict):
+        lines.append(f"- generation {best.get('genid')}: score={best.get('score')}")
+    else:
+        lines.append("- No eligible canonical evaluation yet")
+    lines.extend(["", "## Task Stability", ""])
+    stability = _dict(archive_analysis.get("stability"))
+    for key, label in (
+        ("stable_pass", "stable pass"),
+        ("stable_fail", "stable fail"),
+        ("unstable", "unstable"),
+        ("possibly_unstable", "possibly unstable"),
+        ("infra_only", "infrastructure only"),
+    ):
+        tasks = [str(task) for task in _list(stability.get(key))]
+        lines.append(f"- {label} ({len(tasks)}): {', '.join(tasks) if tasks else 'None'}")
+    lines.append("")
     overview = "\n".join(lines).rstrip() + "\n"
     (root / "analysis" / "overview.md").write_text(overview)
     return overview + "\n" + "\n\n".join(details), artifacts
@@ -539,7 +686,7 @@ class AheTraceAnalyzer(TraceAnalyzerOperator):
         evidence = root / "evidence"
         root.mkdir(parents=True, exist_ok=True)
         evidence.mkdir(parents=True, exist_ok=True)
-        rendered, detail_artifacts = _reports(root, results)
+        rendered, detail_artifacts = _reports(root, results, _archive_analysis(ctx))
         (root / "feedback.md").write_text(rendered)
         (evidence / "selected.md").write_text(rendered)
         _write_json(evidence / "overview.json", overview)

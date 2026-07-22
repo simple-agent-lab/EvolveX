@@ -12,7 +12,6 @@ Live authority for the system is **not** under this folder:
 Also here:
 
 - [`glossary.md`](glossary.md) — domain terms (non-binding; DESIGN wins on conflict)
-
 ## Where new writing goes
 
 Do **not** recreate `docs/superpowers/`. Place by role:

@@ -49,6 +49,7 @@ def write_harbor_artifacts(jobs_dir: Path, run_dir: Path) -> list[float]:
 def _load_task_trials(jobs_dir: Path) -> list[dict[str, Any]]:
     if not jobs_dir.exists():
         return []
+    verifier_timeout_is_final_zero = _verifier_timeout_is_final_zero(jobs_dir)
     trials: list[dict[str, Any]] = []
     for result_path in sorted(jobs_dir.rglob("result.json")):
         try:
@@ -61,7 +62,7 @@ def _load_task_trials(jobs_dir: Path) -> list[dict[str, Any]]:
         trial_name = result.get("trial_name")
         if not isinstance(task_name, str) or not isinstance(trial_name, str):
             continue
-        status, reward, owner = _trial_result(result)
+        status, reward, owner = _trial_result(result, verifier_timeout_is_final_zero=verifier_timeout_is_final_zero)
         exception_info = result.get("exception_info")
         exception_type = None
         exception_message = None
@@ -135,11 +136,30 @@ def _reward(result: dict[str, Any]) -> float | None:
     return float(reward) if isinstance(reward, (int, float)) and not isinstance(reward, bool) else None
 
 
-def _trial_result(result: dict[str, Any]) -> tuple[str, float | None, str]:
+def _verifier_timeout_is_final_zero(jobs_dir: Path) -> bool:
+    configs = [path for path in jobs_dir.glob("*/config.json") if path.parent.parent == jobs_dir]
+    if len(configs) != 1:
+        return False
+    try:
+        payload = json.loads(configs[0].read_text())
+        retry = payload.get("retry") if isinstance(payload, dict) else None
+        excluded = set((retry or {}).get("exclude_exceptions") or [])
+        return int((retry or {}).get("max_retries") or 0) >= 1 and "VerifierTimeoutError" not in excluded
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        return False
+
+
+def _trial_result(result: dict[str, Any], *, verifier_timeout_is_final_zero: bool) -> tuple[str, float | None, str]:
     exception = result.get("exception_info") or {}
     exception_type = str(exception.get("exception_type") or "")
     if exception_type in {"AgentTimeoutError", "AgentExecutionTimeoutError"}:
         return "timeout", 0.0, "benchmark_agent"
+    if (
+        exception_type == "VerifierTimeoutError"
+        and verifier_timeout_is_final_zero
+        and result.get("agent_result") is not None
+    ):
+        return "timeout", 0.0, "benchmark_verifier"
     if exception_type:
         if candidate_error_code(exception):
             return "candidate_invalid", None, "candidate"

@@ -30,8 +30,8 @@ Precise meanings for the domain terms this project uses.
   into an edit request, such as independent AHE or self-referential HyperAgents.
 
 - **Runner** — the execution and isolation backend. `local` runs a trusted host
-  command; `harbor` transports `editable_roots` to `/app/candidate` and installs
-  the validated returned trees transactionally.
+  command; `harbor` supplies a disposable full workspace at `/app/workspace`
+  and transactionally imports allowed roots from the validated artifact.
 
 - **Agent** — in runner configuration, the concrete Harbor or local editing
   agent. Production AHE and HyperAgents use Harbor's installed `mini-swe-agent`;

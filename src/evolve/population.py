@@ -47,6 +47,7 @@ def looks_mechanism_written(workspace: Path, row: dict[str, Any]) -> bool:
         for entry in evaluations
     )
 
+
 def valid_parent_rows(workspace: Path, rows_: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
     from .frozen.interfaces import ArchiveView
 

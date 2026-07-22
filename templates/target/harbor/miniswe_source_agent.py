@@ -9,7 +9,8 @@ from harbor.agents.installed.mini_swe_agent import MiniSweAgent
 
 SOURCE_DIR = "/installed-agent/miniswe-source"
 VENV_PYTHON = f"{SOURCE_DIR}/.venv/bin/python"
-UV_CACHE_DIR = "/installed-agent/uv-cache"
+UV_CACHE_DIR = "/opt/evolve/uv/cache"
+UV_PYTHON_INSTALL_DIR = "/opt/evolve/uv/python"
 RUNNER_PATH = "/tmp/miniswe-source-run.py"
 TASK_PATH = "/tmp/miniswe-source-task.txt"
 LOG_PATH = "/logs/agent/mini-swe-agent.txt"
@@ -18,36 +19,82 @@ HOST_UV_PATH = "/tmp/evolve-uv"
 PROXY_NAMES = ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy")
 
 
-RUNNER = r"""
-import json
+class EvolveCandidateInvalidError(RuntimeError):
+    pass
+
+
+class EvolveRuntimeInfrastructureError(RuntimeError):
+    pass
+
+
+MODEL_SETUP = r"""
 import os
+from minisweagent.models.litellm_model import LitellmModel, LitellmModelConfig
+
+VALID_REASONING_EFFORTS = ("none", "low", "medium", "high", "xhigh")
+
+
+def _filtered(values, allowed):
+    return {key: value for key, value in (values or {}).items() if key in allowed}
+
+
+def _reasoning_effort():
+    effort = os.environ.get("MINISWE_REASONING_EFFORT", "").strip().lower()
+    if not effort:
+        return None
+    if effort not in VALID_REASONING_EFFORTS:
+        accepted = ", ".join(VALID_REASONING_EFFORTS)
+        raise ValueError(
+            f"Invalid MINISWE_REASONING_EFFORT={effort!r}; expected one of: {accepted}"
+        )
+    return effort
+
+
+def build_model(config):
+    model_name = os.environ["MSWEA_MODEL_NAME"]
+    effort = _reasoning_effort()
+    model_kwargs = _filtered(config.get("model"), LitellmModelConfig.model_fields)
+    model_kwargs["model_name"] = model_name
+    model_kwargs["cost_tracking"] = "ignore_errors"
+
+    if model_name.startswith("openai/") and effort is not None:
+        nested_kwargs = dict(model_kwargs.get("model_kwargs") or {})
+        nested_kwargs.pop("reasoning", None)
+        nested_kwargs.pop("reasoning_effort", None)
+        extra_body = dict(nested_kwargs.get("extra_body") or {})
+        extra_body["reasoning_effort"] = effort
+        nested_kwargs["extra_body"] = extra_body
+        model_kwargs["model_kwargs"] = nested_kwargs
+
+    return LitellmModel(**model_kwargs)
+""".strip()
+
+
+RUNNER = (
+    MODEL_SETUP
+    + r"""
+import json
 from pathlib import Path
 
 from minisweagent.agents.default import AgentConfig, DefaultAgent
 from minisweagent.config import get_config_from_spec
 from minisweagent.environments.local import LocalEnvironment, LocalEnvironmentConfig
-from minisweagent.models.litellm_model import LitellmModel, LitellmModelConfig
-
-
-def filtered(payload, fields):
-    return {key: value for key, value in dict(payload or {}).items() if key in fields}
 
 
 task = Path(os.environ["MINISWE_TASK_PATH"]).read_text()
 config = get_config_from_spec(os.environ.get("MINISWE_CONFIG", "mini"))
-agent_kwargs = filtered(config.get("agent"), AgentConfig.model_fields)
-env_kwargs = filtered(config.get("environment"), LocalEnvironmentConfig.model_fields)
-model_kwargs = filtered(config.get("model"), LitellmModelConfig.model_fields)
-model_kwargs["model_name"] = os.environ["MSWEA_MODEL_NAME"]
-model_kwargs["cost_tracking"] = "ignore_errors"
-env_kwargs["cwd"] = os.environ.get("MINISWE_CWD", "/app")
+agent_kwargs = _filtered(config.get("agent"), AgentConfig.model_fields)
+env_kwargs = _filtered(config.get("environment"), LocalEnvironmentConfig.model_fields)
+env_kwargs["cwd"] = os.environ.get("MINISWE_CWD") or os.getcwd()
 env_kwargs["timeout"] = int(os.environ.get("MINISWE_ENV_TIMEOUT", env_kwargs.get("timeout") or 30))
 agent_kwargs["step_limit"] = int(os.environ.get("MINISWE_STEP_LIMIT", agent_kwargs.get("step_limit") or 0))
 agent_kwargs["cost_limit"] = float(os.environ.get("MINISWE_COST_LIMIT", agent_kwargs.get("cost_limit") or 0))
 agent_kwargs["output_path"] = os.environ.get("MINISWE_OUTPUT_PATH")
-agent = DefaultAgent(LitellmModel(**model_kwargs), LocalEnvironment(**env_kwargs), **agent_kwargs)
+model = build_model(config)
+agent = DefaultAgent(model, LocalEnvironment(**env_kwargs), **agent_kwargs)
 print(json.dumps(agent.run(task), default=str))
-""".strip()
+"""
+).strip()
 
 
 MINISWE_PREFLIGHT = r"""
@@ -60,43 +107,43 @@ print("EVOLVE_PREFLIGHT: miniswe_import_ok")
 """.strip()
 
 
-MODEL_PREFLIGHT = r"""
-import os
-
+MODEL_PREFLIGHT = (
+    MODEL_SETUP
+    + r"""
 from minisweagent.config import get_config_from_spec
-from minisweagent.models.litellm_model import LitellmModel, LitellmModelConfig
 
 config = get_config_from_spec(os.environ.get("MINISWE_CONFIG", "mini"))
-model_kwargs = {
-    key: value
-    for key, value in dict(config.get("model") or {}).items()
-    if key in LitellmModelConfig.model_fields
-}
-model_kwargs["model_name"] = os.environ["MSWEA_MODEL_NAME"]
-model_kwargs["cost_tracking"] = "ignore_errors"
-LitellmModel(**model_kwargs)
+build_model(config)
 print("EVOLVE_PREFLIGHT: model_path_init_ok")
-""".strip()
+"""
+).strip()
 
 
 class MiniSweSourceAgent(MiniSweAgent):
     async def install(self, environment):
         source_dir = Path(__file__).resolve().parent
         if not (source_dir / "pyproject.toml").is_file():
-            raise RuntimeError("EVOLVE_CANDIDATE_INVALID: project_missing")
+            raise EvolveCandidateInvalidError("EVOLVE_CANDIDATE_INVALID: project_missing")
         if not (source_dir / "uv.lock").is_file():
-            raise RuntimeError("EVOLVE_CANDIDATE_INVALID: lock_missing")
+            raise EvolveCandidateInvalidError("EVOLVE_CANDIDATE_INVALID: lock_missing")
         if not ((source_dir / "src" / "minisweagent").is_dir() or (source_dir / "minisweagent").is_dir()):
-            raise RuntimeError("EVOLVE_CANDIDATE_INVALID: source_missing")
+            raise EvolveCandidateInvalidError("EVOLVE_CANDIDATE_INVALID: source_missing")
         await environment.upload_dir(source_dir, SOURCE_DIR)
         host_uv = self._host_uv_binary()
         if host_uv is not None:
             await environment.upload_file(host_uv, HOST_UV_PATH)
         install_env = self._install_env()
-        await self.exec_as_agent(
+        offline_runtime = self._get_env("UV_OFFLINE") == "1"
+        missing_uv = (
+            'printf "EVOLVE_UV_BOOTSTRAP_MISSING\\n" >&2; false; '
+            if offline_runtime
+            else "curl -LsSf https://astral.sh/uv/0.7.13/install.sh | sh; "
+        )
+        await self._runtime_phase(
             environment,
             command=(
                 "set -euo pipefail; "
+                f"unset {' '.join(PROXY_NAMES)}; "
                 'mkdir -p "$HOME/.local/bin"; export PATH="$HOME/.local/bin:$PATH"; '
                 f"if [ -f {HOST_UV_PATH} ]; then "
                 f'cp {HOST_UV_PATH} "$HOME/.local/bin/uv"; chmod 755 "$HOME/.local/bin/uv"; '
@@ -104,21 +151,33 @@ class MiniSweSourceAgent(MiniSweAgent):
                 "fi; "
                 "if ! command -v uv >/dev/null 2>&1 || ! uv --version >/dev/null 2>&1; then "
                 'rm -f "$HOME/.local/bin/uv"; '
-                "curl -LsSf https://astral.sh/uv/0.7.13/install.sh | sh; "
+                f"{missing_uv}"
                 "fi; "
                 'if [ -f "$HOME/.local/bin/env" ]; then . "$HOME/.local/bin/env"; '
                 'else export PATH="$HOME/.local/bin:$PATH"; fi; '
                 "uv --version >/dev/null"
             ),
+            code="uv_bootstrap_failed",
+            env=install_env,
+        )
+        await self._runtime_phase(
+            environment,
+            "set -euo pipefail; "
+            f"unset {' '.join(PROXY_NAMES)}; "
+            'if [ -f "$HOME/.local/bin/env" ]; then . "$HOME/.local/bin/env"; '
+            'else export PATH="$HOME/.local/bin:$PATH"; fi; '
+            f"uv sync --project {SOURCE_DIR} --frozen --no-install-local --offline",
+            "external_dependency_sync_failed",
             env=install_env,
         )
         await self._candidate_phase(
             environment,
             "set -euo pipefail; "
+            f"unset {' '.join(PROXY_NAMES)}; "
             'if [ -f "$HOME/.local/bin/env" ]; then . "$HOME/.local/bin/env"; '
             'else export PATH="$HOME/.local/bin:$PATH"; fi; '
-            f"uv sync --project {SOURCE_DIR} --frozen",
-            "frozen_sync_failed",
+            f"uv sync --project {SOURCE_DIR} --frozen --offline",
+            "local_project_sync_failed",
             env=install_env,
         )
         await self._candidate_phase(
@@ -144,7 +203,13 @@ class MiniSweSourceAgent(MiniSweAgent):
         try:
             await self.exec_as_agent(environment, command=command, env=env)
         except Exception:
-            raise RuntimeError(f"EVOLVE_CANDIDATE_INVALID: {code}") from None
+            raise EvolveCandidateInvalidError(f"EVOLVE_CANDIDATE_INVALID: {code}") from None
+
+    async def _runtime_phase(self, environment, command: str, code: str, *, env: dict[str, str]) -> None:
+        try:
+            await self.exec_as_agent(environment, command=command, env=env)
+        except Exception:
+            raise EvolveRuntimeInfrastructureError(f"EVOLVE_RUNTIME_INFRASTRUCTURE: {code}") from None
 
     def _preflight_command(self, marker: str, script: str) -> str:
         return (
@@ -187,19 +252,12 @@ class MiniSweSourceAgent(MiniSweAgent):
         await self.exec_as_agent(environment, command=self._run_command(task), env=self._source_env())
 
     def _install_env(self) -> dict[str, str]:
-        env: dict[str, str] = {"UV_CACHE_DIR": UV_CACHE_DIR}
-        proxy = (
-            self._get_env("EVOLVE_INSTALL_HTTP_PROXY")
-            or self._get_env("EVOLVE_DOCKER_HTTP_PROXY")
-            or self._get_env("http_proxy")
-            or self._get_env("HTTP_PROXY")
-        )
-        if proxy is not None:
-            env.update({"http_proxy": proxy, "https_proxy": proxy, "HTTP_PROXY": proxy, "HTTPS_PROXY": proxy})
-        no_proxy = self._get_env("EVOLVE_INSTALL_NO_PROXY") or self._get_env("no_proxy") or self._get_env("NO_PROXY")
-        if no_proxy is not None:
-            env.update({"no_proxy": no_proxy, "NO_PROXY": no_proxy})
-        return env
+        return {
+            "UV_CACHE_DIR": self._get_env("UV_CACHE_DIR") or UV_CACHE_DIR,
+            "UV_LINK_MODE": self._get_env("UV_LINK_MODE") or "copy",
+            "UV_OFFLINE": self._get_env("UV_OFFLINE") or "1",
+            "UV_PYTHON_INSTALL_DIR": self._get_env("UV_PYTHON_INSTALL_DIR") or UV_PYTHON_INSTALL_DIR,
+        }
 
     def _augment_instruction(self, instruction: str) -> str:
         if not getattr(self, "mcp_servers", None):
@@ -244,7 +302,12 @@ class MiniSweSourceAgent(MiniSweAgent):
         if api_base is not None:
             env["OPENAI_BASE_URL"] = api_base
             env["OPENAI_API_BASE"] = api_base
-        for name in ("MINISWE_STEP_LIMIT", "MINISWE_COST_LIMIT", "MINISWE_ENV_TIMEOUT"):
+        for name in (
+            "MINISWE_STEP_LIMIT",
+            "MINISWE_COST_LIMIT",
+            "MINISWE_ENV_TIMEOUT",
+            "MINISWE_REASONING_EFFORT",
+        ):
             value = self._get_env(name)
             if value is not None:
                 env[name] = value

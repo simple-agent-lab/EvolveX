@@ -32,7 +32,7 @@ def _ctx(tmp_path: Path, *, genid: str = "1", parent: str = "0") -> OperatorCont
         "  meta_agent:\n"
         "    variant: ahe\n"
         "    runner: harbor\n"
-        "    agent: mini-swe-agent\n"
+        "    agent: evolve_harbor_agent:FileTaskMiniSweAgent\n"
         "    model: gpt-test\n"
         "    environment: docker\n"
         "    editable_roots: [target]\n"
@@ -81,6 +81,30 @@ def _write_cases(run_dir: Path, cases: list[dict]) -> None:
     (rollout / "cases.json").write_text(json.dumps(cases))
 
 
+def _archive_row(
+    genid: str,
+    score: float,
+    tasks: dict[str, list[str]],
+    *,
+    eligible: bool = True,
+) -> dict:
+    return {
+        "genid": genid,
+        "score": score,
+        "selection_eligible": eligible,
+        "task_vector": {
+            "schema_version": 1,
+            "tasks": {
+                task: {"trials": [{"status": status} for status in statuses]} for task, statuses in tasks.items()
+            },
+        },
+    }
+
+
+def _write_archive(ctx: OperatorContext, rows: list[dict]) -> None:
+    (ctx.workspace / "archive.jsonl").write_text("".join(json.dumps(row) + "\n" for row in rows))
+
+
 def _fake_debugger(checkout, prompt, ctx, *, output_dir, job_name, timeout_s):
     del checkout, ctx, output_dir, job_name, timeout_s
     response = "ROOT CAUSE: retry policy" if "ROOT CAUSE:" in prompt else "KEY STRATEGY: inspect first"
@@ -113,13 +137,28 @@ def test_ahe_debugger_reuses_only_allowlisted_meta_agent_config(tmp_path: Path) 
     config = module._debugger_runner_config(ctx.checkout)
 
     assert config == {
-        "agent": "mini-swe-agent",
+        "agent": "evolve_harbor_agent:FileTaskMiniSweAgent",
         "model": "gpt-test",
         "environment": "docker",
         "max_retries": 0,
     }
     assert "editable_roots" not in config
     assert "runner" not in config
+
+
+def test_ahe_miniswe_debugger_prompt_includes_submission_protocol() -> None:
+    module = _module()
+    job = module._build_jobs([_case("task-a", "failed", 0)], 90)[0]
+
+    prompt = module._debugger_runner_prompt(job, {"agent": "mini-swe-agent"})
+
+    assert "/logs/artifacts/ahe-debugger-response.md" in prompt
+    assert "Every response must include a Bash tool call" in prompt
+    assert "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT" in prompt
+    assert "first write the complete requested report as reasoning text" not in prompt
+    file_agent_prompt = module._debugger_runner_prompt(job, {"agent": "evolve_harbor_agent:FileTaskMiniSweAgent"})
+    assert "/logs/artifacts/ahe-debugger-response.md" in file_agent_prompt
+    assert module._debugger_runner_prompt(job, {"agent": "codex"}) == module._debugger_prompt(job)
 
 
 def test_ahe_debugger_retries_and_fails_visibly(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -160,13 +199,103 @@ def test_ahe_analyzer_writes_official_reports_and_baseline(tmp_path: Path, monke
     result = module.AheTraceAnalyzer().analyze(ctx.checkout, ctx)
 
     analysis = ctx.run_dir / "trace_analyzer" / "analysis"
-    assert "ROOT CAUSE" in (analysis / "detail" / "task-a.md").read_text()
+    detail = (analysis / "detail" / "task-a.md").read_text()
+    selected = (ctx.run_dir / "trace_analyzer" / "evidence" / "selected.md").read_text()
+    cases = (ctx.run_dir / "trace_analyzer" / "evidence" / "cases.jsonl").read_text()
+    assert "ROOT CAUSE" in detail
     assert "task-a" in (analysis / "overview.md").read_text()
+    assert "ROOT CAUSE" in selected
+    assert "runs/gen-1/trace_analyzer/analysis/detail/task-a.md" in selected
+    assert "## Bounded cases" not in selected
+    assert "## Bounded cases" in detail
+    assert '"trial_name": "fail-1"' in detail
+    assert '"trial_name": "fail-1"' in cases
     change = json.loads((analysis / "change_evaluation.json").read_text())
     assert change["status"] == "baseline"
     assert result.summary["tasks"] == 2
     assert result.summary["debugger_usd"] == 0.5
     assert "trace_analyzer/analysis/detail/task-a.md" in result.artifacts
+
+
+@pytest.mark.parametrize(
+    ("predicted", "fixed", "realized", "expected"),
+    [
+        (["a"], ["a"], [], "EFFECTIVE"),
+        (["a", "b"], ["a"], [], "PARTIALLY_EFFECTIVE"),
+        (["a"], ["a"], ["risk"], "MIXED"),
+        (["a"], [], [], "INEFFECTIVE"),
+        (["a"], [], ["risk"], "HARMFUL"),
+    ],
+)
+def test_ahe_change_verdict_matches_upstream(predicted, fixed, realized, expected) -> None:
+    module = _module()
+
+    assert module._change_verdict(predicted, fixed, realized) == expected
+
+
+def test_ahe_archive_analysis_reports_best_ever_and_stability(tmp_path: Path) -> None:
+    module = _module()
+    ctx = _ctx(tmp_path, genid="3", parent="2")
+    _write_archive(
+        ctx,
+        [
+            _archive_row("0", 0.20, {"always-pass": ["passed", "passed"], "flip": ["failed", "failed"]}),
+            _archive_row("1", 0.30, {"always-pass": ["passed", "passed"], "flip": ["passed", "passed"]}),
+            _archive_row("2", 0.25, {"always-pass": ["passed", "passed"], "flip": ["failed", "failed"]}),
+            _archive_row("ignored", 0.99, {"always-pass": ["failed", "failed"]}, eligible=False),
+        ],
+    )
+
+    analysis = module._archive_analysis(ctx)
+
+    assert analysis["best_ever"] == {"genid": "1", "score": 0.3}
+    assert analysis["stability"]["stable_pass"] == ["always-pass"]
+    assert analysis["stability"]["unstable"] == ["flip"]
+    assert analysis["stability"]["possibly_unstable"] == []
+
+
+def test_ahe_archive_analysis_marks_two_observation_flip_as_possibly_unstable(tmp_path: Path) -> None:
+    module = _module()
+    ctx = _ctx(tmp_path, genid="2", parent="1")
+    _write_archive(
+        ctx,
+        [
+            _archive_row("0", 0.20, {"flip": ["failed", "failed"]}),
+            _archive_row("1", 0.25, {"flip": ["passed", "passed"]}),
+        ],
+    )
+
+    analysis = module._archive_analysis(ctx)
+
+    assert analysis["stability"]["possibly_unstable"] == ["flip"]
+    assert analysis["stability"]["unstable"] == []
+
+
+def test_ahe_analyzer_renders_archive_analysis_in_overview(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _module()
+    ctx = _ctx(tmp_path, genid="2", parent="1")
+    _write_archive(
+        ctx,
+        [
+            _archive_row("0", 0.20, {"stable": ["failed", "failed"]}),
+            _archive_row("1", 0.25, {"stable": ["failed", "failed"]}),
+        ],
+    )
+    _write_cases(ctx.run_dir, [_case("current", "failed", 0, task="stable")])
+    prior = ctx.workspace / "runs" / "gen-1"
+    _write_cases(prior, [_case("prior", "failed", 0, task="stable")])
+    manifest = prior / "meta_agent" / "change_manifest.json"
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text(json.dumps({"changes": [{"id": "chg-1", "predicted_fixes": [], "risk_tasks": []}]}))
+    monkeypatch.setattr(module, "run_readonly_agent", _fake_debugger)
+
+    module.AheTraceAnalyzer().analyze(ctx.checkout, ctx)
+
+    overview = (ctx.run_dir / "trace_analyzer/analysis/overview.md").read_text()
+    assert "## Best Ever" in overview
+    assert "generation 1" in overview
+    assert "## Task Stability" in overview
+    assert "stable fail (1): stable" in overview
 
 
 def test_ahe_analyzer_attributes_prior_manifest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -183,7 +312,13 @@ def test_ahe_analyzer_attributes_prior_manifest(tmp_path: Path, monkeypatch: pyt
         json.dumps(
             {
                 "changes": [
-                    {"predicted_fixes": ["task-a"], "risk_tasks": ["task-b"]},
+                    {
+                        "id": "chg-1",
+                        "description": "retry failed commands",
+                        "files": ["target/environment.py"],
+                        "predicted_fixes": ["task-a"],
+                        "risk_tasks": ["task-b"],
+                    },
                 ]
             }
         )
@@ -200,6 +335,39 @@ def test_ahe_analyzer_attributes_prior_manifest(tmp_path: Path, monkeypatch: pyt
     assert change["transitions"] == {"task-a": "fail_to_pass", "task-b": "pass_to_fail"}
     assert change["prediction_results"]["task-a"] == "confirmed"
     assert change["risk_results"]["task-b"] == "realized"
+    assert change["change_evaluations"] == [
+        {
+            "actually_fixed": ["task-a"],
+            "change_id": "chg-1",
+            "description": "retry failed commands",
+            "files": ["target/environment.py"],
+            "predicted_fixes": ["task-a"],
+            "predicted_risks": ["task-b"],
+            "risk_realized": ["task-b"],
+            "still_failed": [],
+            "verdict": "MIXED",
+        }
+    ]
+    assert change["unattributed_regressions"] == []
+
+
+def test_ahe_analyzer_computes_transitions_without_prior_manifest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _module()
+    ctx = _ctx(tmp_path, genid="2", parent="1")
+    prior = ctx.workspace / "runs/gen-1"
+    _write_cases(prior, [_case("old-a", "failed", 0, task="task-a")])
+    _write_cases(ctx.run_dir, [_case("new-a", "passed", 1, task="task-a")])
+    monkeypatch.setattr(module, "run_readonly_agent", _fake_debugger)
+
+    module.AheTraceAnalyzer().analyze(ctx.checkout, ctx)
+
+    change = json.loads((ctx.run_dir / "trace_analyzer/analysis/change_evaluation.json").read_text())
+    assert change["transitions"] == {"task-a": "fail_to_pass"}
+    assert change["manifest"] is None
+    assert change["prediction_results"] == {}
+    assert change["risk_results"] == {}
 
 
 def test_ahe_bounds_and_redacts_case_fields() -> None:

@@ -57,7 +57,6 @@ def main(argv: list[str]) -> int:
     harbor_rc = int(argv[3])
     env_values = _load_eval_env(Path("evaluator") / "eval.env")
     expected_trials = _expected_trials(run_dir, env_values)
-    partial_floor = float(env_values.get("EVOLVE_PARTIAL_FLOOR", "0.8"))
     rewards = write_harbor_artifacts(jobs_dir, run_dir)
     if not rewards:
         for reward_path in sorted(jobs_dir.rglob("verifier/reward.txt")) if jobs_dir.exists() else []:
@@ -67,19 +66,6 @@ def main(argv: list[str]) -> int:
                 continue
     completed_trials = len(rewards)
     missing_trials = max(expected_trials - completed_trials, 0)
-    if harbor_rc != 0:
-        _write_outputs(
-            run_dir,
-            status="infra_failed",
-            metrics={
-                "completed_trials": completed_trials,
-                "expected_trials": expected_trials,
-                "missing_trials": missing_trials,
-                "pass_rate": 0.0,
-                "harbor_rc": harbor_rc,
-            },
-        )
-        return 3
     if completed_trials == 0:
         _write_outputs(
             run_dir,
@@ -89,6 +75,7 @@ def main(argv: list[str]) -> int:
                 "expected_trials": expected_trials,
                 "missing_trials": expected_trials,
                 "pass_rate": 0.0,
+                "harbor_rc": harbor_rc,
             },
         )
         return 3
@@ -99,12 +86,11 @@ def main(argv: list[str]) -> int:
         "expected_trials": expected_trials,
         "missing_trials": missing_trials,
         "pass_rate": score,
+        "harbor_rc": harbor_rc,
     }
-    completion_ratio = completed_trials / expected_trials
     if completed_trials < expected_trials:
-        status = "partial" if completion_ratio >= partial_floor else "infra_failed"
-        _write_outputs(run_dir, status=status, metrics=metrics, score=score if status == "partial" else None)
-        return 2 if status == "partial" else 3
+        _write_outputs(run_dir, status="infra_failed", metrics=metrics)
+        return 3
 
     _write_outputs(run_dir, status="complete", metrics=metrics, score=score)
     return 0

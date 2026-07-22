@@ -145,8 +145,15 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
     partial_floor = float(evaluator.get("partial_floor", 0.8))
     setup_timeout_multiplier = float(evaluator.get("agent_setup_timeout_multiplier", 1))
     max_retries = int(evaluator.get("max_retries", 0))
+    task_scope = str(evaluator.get("task_scope", "partitioned"))
     split = evaluator.get("split")
-    if not isinstance(split, dict):
+    if task_scope == "full":
+        if split is not None:
+            raise ValueError("evaluator.task_scope full must not define evaluator.split")
+        if evaluator.get("evaluation_split") != "train":
+            raise ValueError("evaluator.task_scope full requires evaluator.evaluation_split train")
+        split = {"train": 1.0, "gate": 0.0, "sealed": 0.0, "seed": 0}
+    elif not isinstance(split, dict):
         raise ValueError("evaluator.split must be a mapping")
     split_manifest = build_manifest(
         evaluator_dataset,
@@ -161,6 +168,7 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
         "uv.lock": _template("workspace/uv.lock"),
         ".python-version": _template("workspace/.python-version"),
         "evolve_harbor_adapter/__init__.py": _template("workspace/evolve_harbor_adapter/__init__.py"),
+        "evolve_harbor_agent/__init__.py": _template("workspace/evolve_harbor_agent/__init__.py"),
         "evolve.yaml": render_yaml(_runtime_config(config)),
         "README.md": _template("workspace/README.md"),
         "AGENTS.md": _template("workspace/AGENTS.md"),
@@ -184,6 +192,7 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
             evaluator_trials,
             partial_floor,
             evaluator_agent,
+            model=str(evaluator["model"]) if evaluator.get("model") else None,
             environment=evaluator_environment,
             dataset_mode=str(evaluator.get("dataset_mode", "path")),
             task_file=str(evaluator["task_file"]) if "task_file" in evaluator else None,
@@ -481,6 +490,7 @@ def _init_git(workspace: Path) -> None:
     _git(workspace, "config", "user.name", "Evolve Mechanism")
     _git(workspace, "config", "user.email", "evolve@example.invalid")
     _git(workspace, "add", ".")
+    _git(workspace, "add", "-f", "target")
     _git(workspace, "commit", "-m", "evolve gen 0")
     _git(workspace, "tag", "gen/0")
 
@@ -583,6 +593,7 @@ def _eval_env(
     partial_floor: float,
     agent: str,
     *,
+    model: str | None = None,
     environment: str = "",
     dataset_mode: str = "path",
     task_file: str | None = None,
@@ -607,6 +618,8 @@ def _eval_env(
         text += f"EVOLVE_HARBOR_AGENT_SETUP_TIMEOUT_MULTIPLIER={setup_timeout_multiplier}\n"
     if max_retries > 0:
         text += f"EVOLVE_HARBOR_MAX_RETRIES={max_retries}\n"
+    if model:
+        text += f"EVOLVE_HARBOR_MODEL={shlex.quote(model)}\n"
     return text + (f"EVOLVE_HARBOR_TASK_FILE={shlex.quote(task_file)}\n" if task_file else "")
 
 
