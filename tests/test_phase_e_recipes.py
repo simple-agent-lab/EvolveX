@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import yaml
+
 from evolve.config import RECIPE_NAMES
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -10,6 +12,10 @@ SMOKE_RECIPES = {"hill_climb-smoke", "hyperagents-smoke"}
 
 def _config(name: str) -> str:
     return (RECIPES / name / "evolve.yaml").read_text()
+
+
+def _parsed_config(name: str) -> dict:
+    return yaml.safe_load(_config(name))
 
 
 def test_all_recipes_are_recipe_artifacts_only() -> None:
@@ -82,6 +88,29 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
         assert "agent: evolve_harbor_adapter:MiniSweSourceAgent" in config
         assert "harbor_agent: miniswe-source" in config
         assert "variant: fixed" not in config
+
+
+def test_ahe_recipe_configures_reasoning_without_cost_caps() -> None:
+    recipe = _parsed_config("ahe")
+    assert recipe["operators"]["meta_agent"]["agent_kwargs"] == {
+        "reasoning_effort": "xhigh",
+        "cost_limit": 0,
+    }
+    assert recipe["evaluator"]["agent_env"]["MINISWE_REASONING_EFFORT"] == "high"
+    assert recipe["evaluator"]["agent_env"]["MINISWE_COST_LIMIT"] == "0"
+
+
+def test_hyperagents_recipe_configures_reasoning_without_cost_caps() -> None:
+    recipe = _parsed_config("hyperagents")
+    assert recipe["operators"]["meta_agent"]["agent_kwargs"] == {
+        "reasoning_effort": "high",
+        "cost_limit": 0,
+    }
+    assert "budget_usd" not in recipe["experiment"]
+    assert recipe["evaluator"]["agent_env"] == {
+        "MINISWE_REASONING_EFFORT": "high",
+        "MINISWE_COST_LIMIT": "0",
+    }
 
 
 def test_smoke_recipes_are_explicitly_named_and_deterministic() -> None:

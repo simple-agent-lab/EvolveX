@@ -2,7 +2,6 @@ experiment:
   id: hyperagents
   max_generations: 8
   target_score: null
-  budget_usd: 150
   children_per_gen: 1
   mode: driver
   seed: 0
@@ -18,7 +17,7 @@ operators:
   select: {variant: score_child_prop, seed: 0}
   rollout: {variant: harbor, budget_tasks: 32, n_concurrent: 16, agent_setup_timeout_multiplier: 3, max_retries: 1, timeout_s: 3600}
   trace_analyzer: {variant: trace_browser, max_chars: 30000, timeout_s: 600}
-  meta_agent: {variant: hyperagents, runner: harbor, agent: mini-swe-agent, model: openai/gpt-5.4, environment: docker, editable_roots: [target, operators], max_retries: 0, timeout_s: 21600}
+  meta_agent: {variant: hyperagents, runner: harbor, agent: mini-swe-agent, model: openai/gpt-5.4, environment: docker, editable_roots: [target, operators], agent_kwargs: {reasoning_effort: high, cost_limit: 0}, max_retries: 0, timeout_s: 21600}
   validate: {variant: hyperagents, timeout_s: 300}
   gate: {variant: parent_eligible}
   record: {variant: hyperagents}
@@ -33,3 +32,6 @@ evaluator:
   k: 1
   n_concurrent: 16
   partial_floor: 0.8
+  agent_env:
+    MINISWE_REASONING_EFFORT: "high"
+    MINISWE_COST_LIMIT: "0"

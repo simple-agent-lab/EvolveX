@@ -24,6 +24,9 @@ def test_hyperagents_recipe_initializes_broad_harbor_bundle(tmp_path: Path) -> N
     assert "agent: mini-swe-agent" in config
     assert "editable_roots:" in config
     assert "- target" in config and "- operators" in config
+    assert (workspace / "evaluator/agent.env").read_text() == (
+        "MINISWE_COST_LIMIT=0\nMINISWE_REASONING_EFFORT=high\n"
+    )
     prompt = (workspace / "operators/meta_agent.py").read_text()
     assert "substantive `target/**` change" in prompt
     assert "`operators/**` remains editable" in prompt
