@@ -560,7 +560,9 @@ class HarborRollout(RolloutOperator):
             command.append("-q")
         command.extend(["--ae", f"EVOLVE_CANDIDATE_SOURCE={(checkout / 'target').resolve()}"])
         configured_cache = eval_env.get("EVOLVE_UV_CACHE_DIR") or os.environ.get("EVOLVE_UV_CACHE_DIR")
-        uv_cache = Path(configured_cache).expanduser() if configured_cache else ctx.workspace / "runs" / "runtime" / "uv-cache"
+        uv_cache = (
+            Path(configured_cache).expanduser() if configured_cache else ctx.workspace / "runs" / "runtime" / "uv-cache"
+        )
         uv_cache.mkdir(parents=True, exist_ok=True)
         mounts = [
             {

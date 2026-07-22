@@ -70,7 +70,9 @@ def build_model(config):
 """.strip()
 
 
-RUNNER = (MODEL_SETUP + r"""
+RUNNER = (
+    MODEL_SETUP
+    + r"""
 import json
 from pathlib import Path
 
@@ -91,7 +93,8 @@ agent_kwargs["output_path"] = os.environ.get("MINISWE_OUTPUT_PATH")
 model = build_model(config)
 agent = DefaultAgent(model, LocalEnvironment(**env_kwargs), **agent_kwargs)
 print(json.dumps(agent.run(task), default=str))
-""").strip()
+"""
+).strip()
 
 
 MINISWE_PREFLIGHT = r"""
@@ -104,13 +107,16 @@ print("EVOLVE_PREFLIGHT: miniswe_import_ok")
 """.strip()
 
 
-MODEL_PREFLIGHT = (MODEL_SETUP + r"""
+MODEL_PREFLIGHT = (
+    MODEL_SETUP
+    + r"""
 from minisweagent.config import get_config_from_spec
 
 config = get_config_from_spec(os.environ.get("MINISWE_CONFIG", "mini"))
 build_model(config)
 print("EVOLVE_PREFLIGHT: model_path_init_ok")
-""").strip()
+"""
+).strip()
 
 
 class MiniSweSourceAgent(MiniSweAgent):
@@ -203,9 +209,7 @@ class MiniSweSourceAgent(MiniSweAgent):
         try:
             await self.exec_as_agent(environment, command=command, env=env)
         except Exception:
-            raise EvolveRuntimeInfrastructureError(
-                f"EVOLVE_RUNTIME_INFRASTRUCTURE: {code}"
-            ) from None
+            raise EvolveRuntimeInfrastructureError(f"EVOLVE_RUNTIME_INFRASTRUCTURE: {code}") from None
 
     def _preflight_command(self, marker: str, script: str) -> str:
         return (

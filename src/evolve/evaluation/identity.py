@@ -123,9 +123,7 @@ def _fixed_task_members(workspace: Path, evaluator: dict[str, Any]) -> tuple[str
         if contents is None:
             raise OSError("evaluator task_file is unavailable from gen/0")
         return tuple(
-            line.strip()
-            for line in contents.splitlines()
-            if line.strip() and not line.lstrip().startswith("#")
+            line.strip() for line in contents.splitlines() if line.strip() and not line.lstrip().startswith("#")
         )
     split_text = _git_text(workspace, "show", "gen/0:evaluator/splits.json", strip=False)
     if split_text is None:

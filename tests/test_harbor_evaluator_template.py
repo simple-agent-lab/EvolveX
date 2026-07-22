@@ -257,10 +257,10 @@ def test_harbor_rejects_malformed_candidate_runtime_before_launch(tmp_path: Path
 def test_harbor_retry_excludes_only_non_retryable_trial_failures() -> None:
     text = _eval_sh("harbor", "fixture")
 
-    assert '--retry-exclude AgentTimeoutError' in text
-    assert '--retry-exclude EvolveCandidateInvalidError' in text
-    assert '--retry-exclude ApiUsageLimitError' in text
-    assert 'retry-exclude VerifierTimeoutError' not in text
+    assert "--retry-exclude AgentTimeoutError" in text
+    assert "--retry-exclude EvolveCandidateInvalidError" in text
+    assert "--retry-exclude ApiUsageLimitError" in text
+    assert "retry-exclude VerifierTimeoutError" not in text
 
 
 def test_score_parser_accepts_complete_final_vector_after_nonzero_harbor_exit(tmp_path: Path) -> None:

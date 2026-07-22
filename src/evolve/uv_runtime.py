@@ -49,9 +49,7 @@ def _redact(message: str, environment: Mapping[str, str] | None = None) -> str:
     for name, value in (environment or {}).items():
         if _SECRET_ENV_NAME.search(name) and len(value) >= 4:
             redacted = redacted.replace(value, "***")
-    redacted = re.sub(
-        r"(?i)(https?://)[^\s/@:]+:[^\s/@]+@", r"\1***:***@", redacted
-    )
+    redacted = re.sub(r"(?i)(https?://)[^\s/@:]+:[^\s/@]+@", r"\1***:***@", redacted)
     redacted = re.sub(r"(?i)(https?://)[^\s/@]+@", r"\1***@", redacted)
     redacted = re.sub(
         r"(?i)([?&](?:access_token|api_key|key|password|token)=)[^\s&#]+",
@@ -102,18 +100,14 @@ class CandidateRuntimeResult:
         )
 
 
-def candidate_runtime_config(
-    checkout: Path, evaluator: dict[str, Any]
-) -> UvRuntimeConfig | None:
+def candidate_runtime_config(checkout: Path, evaluator: dict[str, Any]) -> UvRuntimeConfig | None:
     value = evaluator.get("candidate_runtime")
     if value is None:
         return None
     if not isinstance(value, dict):
         raise ValueError("evaluator.candidate_runtime must be a mapping")
     if value.get("variant") != "uv":
-        raise ValueError(
-            f"unsupported candidate runtime variant: {value.get('variant')!r}"
-        )
+        raise ValueError(f"unsupported candidate runtime variant: {value.get('variant')!r}")
     raw_project = value.get("project")
     if not isinstance(raw_project, str) or not raw_project.strip():
         raise ValueError("evaluator.candidate_runtime.project must be a relative path")
@@ -272,9 +266,7 @@ def prepare_candidate_runtime(
     run_dir.mkdir(parents=True, exist_ok=True)
     project = config.project
     dependency_digest = _digest_project(project)
-    missing = [
-        name for name in ("pyproject.toml", "uv.lock") if not (project / name).is_file()
-    ]
+    missing = [name for name in ("pyproject.toml", "uv.lock") if not (project / name).is_file()]
     if missing:
         return _finish_runtime(
             run_dir,
@@ -289,12 +281,8 @@ def prepare_candidate_runtime(
             uv_version=None,
         )
 
-    cache = Path(
-        values.get("EVOLVE_UV_CACHE_DIR") or runtime_root / "uv-cache"
-    ).resolve()
-    python_dir = Path(
-        values.get("EVOLVE_UV_PYTHON_INSTALL_DIR") or runtime_root / "uv-python"
-    ).resolve()
+    cache = Path(values.get("EVOLVE_UV_CACHE_DIR") or runtime_root / "uv-cache").resolve()
+    python_dir = Path(values.get("EVOLVE_UV_PYTHON_INSTALL_DIR") or runtime_root / "uv-python").resolve()
     temporary_environment = run_dir / ".candidate-runtime-venv"
     command_env = {
         **values,
@@ -320,9 +308,7 @@ def prepare_candidate_runtime(
                 dependency_digest=dependency_digest,
                 started=started,
                 outcome=Outcome.INFRASTRUCTURE_FAILED,
-                reason=installed_python.stderr
-                or installed_python.stdout
-                or "uv managed Python preparation failed",
+                reason=installed_python.stderr or installed_python.stdout or "uv managed Python preparation failed",
                 attempts=0,
                 cache_warm=False,
                 uv_version=None,
@@ -375,9 +361,7 @@ def prepare_candidate_runtime(
                     dependency_digest=dependency_digest,
                     started=started,
                     outcome=Outcome.INFRASTRUCTURE_FAILED,
-                    reason=online.stderr
-                    or online.stdout
-                    or "uv dependency preparation failed",
+                    reason=online.stderr or online.stdout or "uv dependency preparation failed",
                     attempts=2,
                     cache_warm=False,
                     uv_version=version,

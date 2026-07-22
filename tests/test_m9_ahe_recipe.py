@@ -51,10 +51,7 @@ def test_ahe_recipe_initializes_harbor_miniswe_composition(tmp_path: Path) -> No
     assert not (workspace / "target/harbor_agent.py").exists()
     assert not (workspace / "library/meta_agent/support/ahe_manifest.py").exists()
     assert (workspace / "evaluator/agent.env").read_text() == (
-        "MINISWE_COST_LIMIT=0\n"
-        "MINISWE_ENV_TIMEOUT=30\n"
-        "MINISWE_REASONING_EFFORT=high\n"
-        "MINISWE_STEP_LIMIT=100\n"
+        "MINISWE_COST_LIMIT=0\nMINISWE_ENV_TIMEOUT=30\nMINISWE_REASONING_EFFORT=high\nMINISWE_STEP_LIMIT=100\n"
     )
     config = (workspace / "evolve.yaml").read_text()
     assert "variant: ahe" in config

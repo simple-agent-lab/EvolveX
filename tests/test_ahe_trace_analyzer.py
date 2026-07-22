@@ -95,8 +95,7 @@ def _archive_row(
         "task_vector": {
             "schema_version": 1,
             "tasks": {
-                task: {"trials": [{"status": status} for status in statuses]}
-                for task, statuses in tasks.items()
+                task: {"trials": [{"status": status} for status in statuses]} for task, statuses in tasks.items()
             },
         },
     }
@@ -157,9 +156,7 @@ def test_ahe_miniswe_debugger_prompt_includes_submission_protocol() -> None:
     assert "Every response must include a Bash tool call" in prompt
     assert "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT" in prompt
     assert "first write the complete requested report as reasoning text" not in prompt
-    file_agent_prompt = module._debugger_runner_prompt(
-        job, {"agent": "evolve_harbor_agent:FileTaskMiniSweAgent"}
-    )
+    file_agent_prompt = module._debugger_runner_prompt(job, {"agent": "evolve_harbor_agent:FileTaskMiniSweAgent"})
     assert "/logs/artifacts/ahe-debugger-response.md" in file_agent_prompt
     assert module._debugger_runner_prompt(job, {"agent": "codex"}) == module._debugger_prompt(job)
 
@@ -274,9 +271,7 @@ def test_ahe_archive_analysis_marks_two_observation_flip_as_possibly_unstable(tm
     assert analysis["stability"]["unstable"] == []
 
 
-def test_ahe_analyzer_renders_archive_analysis_in_overview(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_ahe_analyzer_renders_archive_analysis_in_overview(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     module = _module()
     ctx = _ctx(tmp_path, genid="2", parent="1")
     _write_archive(

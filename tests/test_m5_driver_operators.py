@@ -98,9 +98,11 @@ def test_jsonl_record_allows_terminal_attempt_without_gate(tmp_path: Path) -> No
     )
     module = runpy.run_path(str(Path(__file__).resolve().parents[1] / "library" / "record" / "jsonl.py"))
 
-    fields = module["JsonlRecord"]().annotate(
-        {"genid": "1", "parent": "0", "status": "no_proposal", "reason": "no changes to commit"}, ctx
-    ).fields
+    fields = (
+        module["JsonlRecord"]()
+        .annotate({"genid": "1", "parent": "0", "status": "no_proposal", "reason": "no changes to commit"}, ctx)
+        .fields
+    )
 
     assert fields == {"note": "No source change was needed."}
 

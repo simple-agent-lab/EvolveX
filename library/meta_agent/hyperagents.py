@@ -72,11 +72,14 @@ def _clip_inline(text: str, source: Path, limit: int = MAX_INLINE_EVIDENCE_CHARS
 
 
 def _lineage(ctx) -> str:
-    return "\n".join(
-        "- gen %s: parent=%s score=%s status=%s"
-        % (row.get("genid"), row.get("parent"), row.get("score"), row.get("status"))
-        for row in sdk.rows(ctx.workspace)[-8:]
-    ) or "- No recorded generations"
+    return (
+        "\n".join(
+            "- gen %s: parent=%s score=%s status=%s"
+            % (row.get("genid"), row.get("parent"), row.get("score"), row.get("status"))
+            for row in sdk.rows(ctx.workspace)[-8:]
+        )
+        or "- No recorded generations"
+    )
 
 
 def _prompt_evidence(observation: str, ctx) -> str:

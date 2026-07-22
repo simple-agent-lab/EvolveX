@@ -63,9 +63,7 @@ def _runtime_fixture(tmp_path: Path) -> tuple[Path, Path, Path, dict[str, object
     run_dir = tmp_path / "run"
     runtime_root = tmp_path / "runtime"
     executable, calls = _fake_uv(tmp_path)
-    evaluator: dict[str, object] = {
-        "candidate_runtime": {"variant": "uv", "project": "target", "python": "3.12"}
-    }
+    evaluator: dict[str, object] = {"candidate_runtime": {"variant": "uv", "project": "target", "python": "3.12"}}
     env = {
         **os.environ,
         "EVOLVE_UV_BINARY": str(executable),
@@ -149,9 +147,7 @@ def test_uv_runtime_rejects_missing_candidate_files_without_uv(tmp_path: Path, m
     checkout, run_dir, runtime_root, evaluator, env, calls = _runtime_fixture(tmp_path)
     (checkout / "target" / missing).unlink()
 
-    result = prepare_candidate_runtime(
-        checkout, run_dir, runtime_root, "abc123", evaluator, env=env
-    )
+    result = prepare_candidate_runtime(checkout, run_dir, runtime_root, "abc123", evaluator, env=env)
 
     assert result.outcome is Outcome.CANDIDATE_INVALID
     assert not calls.exists()
@@ -196,9 +192,7 @@ def test_uv_runtime_turns_uv_launch_error_into_redacted_infrastructure_receipt(
         raise OSError(f"launcher failed with {secret}")
 
     monkeypatch.setattr(uv_runtime_module, "run_owned", fail_run)
-    result = prepare_candidate_runtime(
-        checkout, run_dir, runtime_root, "abc123", evaluator, env=env
-    )
+    result = prepare_candidate_runtime(checkout, run_dir, runtime_root, "abc123", evaluator, env=env)
 
     assert result.outcome is Outcome.INFRASTRUCTURE_FAILED
     assert result.receipt_path == run_dir / "candidate-runtime.json"
@@ -213,9 +207,7 @@ def test_uv_runtime_missing_uv_is_receipted_as_infrastructure_failure(
     checkout, run_dir, runtime_root, evaluator, env, _ = _runtime_fixture(tmp_path)
     env["EVOLVE_UV_BINARY"] = str(tmp_path / "missing-uv")
 
-    result = prepare_candidate_runtime(
-        checkout, run_dir, runtime_root, "abc123", evaluator, env=env
-    )
+    result = prepare_candidate_runtime(checkout, run_dir, runtime_root, "abc123", evaluator, env=env)
 
     assert result.outcome is Outcome.INFRASTRUCTURE_FAILED
     assert result.receipt_path == run_dir / "candidate-runtime.json"
@@ -232,12 +224,8 @@ def test_uv_runtime_missing_uv_is_receipted_as_infrastructure_failure(
         ("Authorization: Bearer bearer-secret", "bearer-secret"),
     ],
 )
-def test_uv_runtime_receipt_redacts_common_credential_forms(
-    tmp_path: Path, message: str, secret: str
-) -> None:
-    result, run_dir, _ = _prepare(
-        tmp_path, UV_OFFLINE_RC="1", UV_ONLINE_RESULTS="1,1", UV_ERROR=message
-    )
+def test_uv_runtime_receipt_redacts_common_credential_forms(tmp_path: Path, message: str, secret: str) -> None:
+    result, run_dir, _ = _prepare(tmp_path, UV_OFFLINE_RC="1", UV_ONLINE_RESULTS="1,1", UV_ERROR=message)
 
     assert result.outcome is Outcome.INFRASTRUCTURE_FAILED
     assert secret not in (run_dir / "candidate-runtime.json").read_text()
@@ -282,9 +270,7 @@ def test_uv_runtime_config_resolves_project_inside_checkout(tmp_path: Path) -> N
         ({"variant": "uv", "project": "/tmp/outside"}, "candidate runtime project must be relative"),
     ],
 )
-def test_uv_runtime_config_rejects_invalid_or_escaping_paths(
-    tmp_path: Path, value: object, message: str
-) -> None:
+def test_uv_runtime_config_rejects_invalid_or_escaping_paths(tmp_path: Path, value: object, message: str) -> None:
     checkout = tmp_path / "checkout"
     checkout.mkdir()
 
@@ -301,9 +287,7 @@ def test_stub_evaluation_skips_candidate_runtime_preparation(tmp_path: Path) -> 
     (checkout / "target" / "uv.lock").unlink()
     env["EVAL_STUB"] = "1"
 
-    result = prepare_candidate_runtime(
-        checkout, run_dir, runtime_root, "abc123", evaluator, env=env
-    )
+    result = prepare_candidate_runtime(checkout, run_dir, runtime_root, "abc123", evaluator, env=env)
 
     assert result.ready
     assert result.variant is None

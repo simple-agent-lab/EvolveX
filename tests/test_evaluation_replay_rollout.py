@@ -130,7 +130,9 @@ def test_replay_rejects_missing_parent_evidence(tmp_path: Path, monkeypatch, par
     monkeypatch.setattr(module, "ArchiveView", lambda _workspace: _Archive(rows))
 
     with pytest.raises(SystemExit, match=message):
-        module.EvaluationReplayRollout().rollout(_context(workspace, parent=parent).checkout, _context(workspace, parent=parent))
+        module.EvaluationReplayRollout().rollout(
+            _context(workspace, parent=parent).checkout, _context(workspace, parent=parent)
+        )
 
 
 def test_replay_rejects_artifact_digest_mismatch(tmp_path: Path, monkeypatch) -> None:

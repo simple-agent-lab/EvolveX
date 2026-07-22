@@ -150,9 +150,7 @@ def test_eval_script_preserves_explicit_shared_uv_cache(tmp_path: Path, monkeypa
     (checkout / "evaluator").mkdir(parents=True)
     make_eval_script(
         checkout / "evaluator" / "eval.sh",
-        "#!/bin/sh\n"
-        "set -eu\n"
-        'printf "%s\\n" "$EVOLVE_UV_CACHE_DIR" > cache-path\n',
+        '#!/bin/sh\nset -eu\nprintf "%s\\n" "$EVOLVE_UV_CACHE_DIR" > cache-path\n',
     )
     run_dir = workspace / "runs" / "gen-1" / "eval"
     run_dir.mkdir(parents=True)
@@ -194,9 +192,7 @@ def test_eval_script_receives_candidate_runtime_json(tmp_path: Path) -> None:
         mounts=(RuntimeMount(tmp_path / "cache", "/opt/evolve/uv/cache"),),
     )
 
-    result = _run_eval_script(
-        checkout, run_dir, "1", None, "research", "gate", runtime
-    )
+    result = _run_eval_script(checkout, run_dir, "1", None, "research", "gate", runtime)
 
     assert result.returncode == 0
     assert json.loads((checkout / "runtime-env").read_text()) == {"UV_OFFLINE": "1"}
@@ -230,9 +226,7 @@ def test_eval_script_omits_runtime_contract_when_preparation_is_disabled(tmp_pat
     assert result.returncode == 0
 
 
-@pytest.mark.parametrize(
-    "outcome", [Outcome.CANDIDATE_INVALID, Outcome.INFRASTRUCTURE_FAILED]
-)
+@pytest.mark.parametrize("outcome", [Outcome.CANDIDATE_INVALID, Outcome.INFRASTRUCTURE_FAILED])
 def test_runtime_preparation_failure_short_circuits_evaluator(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -288,9 +282,7 @@ def test_eval_script_receives_configured_candidate_cohort(tmp_path: Path) -> Non
     (checkout / "evaluator").mkdir(parents=True)
     make_eval_script(
         checkout / "evaluator" / "eval.sh",
-        "#!/bin/sh\n"
-        "set -eu\n"
-        'printf "%s\\n" "$EVOLVE_EVAL_SPLIT" > selected-split\n',
+        '#!/bin/sh\nset -eu\nprintf "%s\\n" "$EVOLVE_EVAL_SPLIT" > selected-split\n',
     )
     run_dir = workspace / "runs" / "evaluations" / "candidate" / "gen-1" / "attempt-1"
     run_dir.mkdir(parents=True)

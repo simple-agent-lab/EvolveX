@@ -173,9 +173,7 @@ def test_ahe_meta_agent_requires_valid_manifest(tmp_path: Path, monkeypatch: pyt
     assert not (checkout / "target/.ahe-change-manifest.json").exists()
 
 
-def test_ahe_invalid_manifest_fails_after_preserving_artifacts(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_ahe_invalid_manifest_fails_after_preserving_artifacts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     module = _module()
     checkout, run_dir, ctx = _case(tmp_path)
 

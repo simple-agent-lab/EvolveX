@@ -558,9 +558,7 @@ def _archive_analysis(ctx: OperatorContext) -> Case:
         if row.get("selection_eligible") is True and isinstance(row.get("task_vector"), dict)
     ]
     scored = [
-        row
-        for row in rows
-        if isinstance(row.get("score"), (int, float)) and not isinstance(row.get("score"), bool)
+        row for row in rows if isinstance(row.get("score"), (int, float)) and not isinstance(row.get("score"), bool)
     ]
     best = max(scored, key=lambda row: float(row["score"]), default=None)
     histories: dict[str, list[str]] = {}
@@ -591,9 +589,7 @@ def _archive_analysis(ctx: OperatorContext) -> Case:
     for tasks in stability.values():
         tasks.sort()
     return {
-        "best_ever": (
-            {"genid": str(best["genid"]), "score": float(best["score"])} if best is not None else None
-        ),
+        "best_ever": ({"genid": str(best["genid"]), "score": float(best["score"])} if best is not None else None),
         "stability": stability,
     }
 

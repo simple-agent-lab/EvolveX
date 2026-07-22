@@ -88,9 +88,7 @@ def evaluate(
                         candidate_commit,
                         evaluator,
                     )
-                    base["candidate_runtime"] = _runtime_receipt_reference(
-                        workspace, runtime.receipt_path
-                    )
+                    base["candidate_runtime"] = _runtime_receipt_reference(workspace, runtime.receipt_path)
                     if not runtime.ready:
                         return classify_evaluation(
                             **base,
@@ -183,9 +181,7 @@ def _evaluation_artifact_reference(workspace: Path, run_dir: Path) -> dict[str, 
     )
 
 
-def _runtime_receipt_reference(
-    workspace: Path, receipt: Path | None
-) -> dict[str, str] | None:
+def _runtime_receipt_reference(workspace: Path, receipt: Path | None) -> dict[str, str] | None:
     if receipt is None or not receipt.exists():
         return None
     return {
@@ -213,9 +209,7 @@ def _read_cost(run_dir: Path) -> float:
     return float(value)
 
 
-def _expected_trials(
-    evaluator: dict[str, Any], task_limit: int | None, *, selected_tasks: int | None = None
-) -> int:
+def _expected_trials(evaluator: dict[str, Any], task_limit: int | None, *, selected_tasks: int | None = None) -> int:
     attempts = max(1, int(evaluator.get("k", 1)))
     tasks = selected_tasks if selected_tasks is not None else int(evaluator.get("tasks_per_round", attempts))
     if task_limit is not None:

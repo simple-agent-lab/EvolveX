@@ -62,9 +62,7 @@ def _load_task_trials(jobs_dir: Path) -> list[dict[str, Any]]:
         trial_name = result.get("trial_name")
         if not isinstance(task_name, str) or not isinstance(trial_name, str):
             continue
-        status, reward, owner = _trial_result(
-            result, verifier_timeout_is_final_zero=verifier_timeout_is_final_zero
-        )
+        status, reward, owner = _trial_result(result, verifier_timeout_is_final_zero=verifier_timeout_is_final_zero)
         exception_info = result.get("exception_info")
         exception_type = None
         exception_message = None
@@ -151,9 +149,7 @@ def _verifier_timeout_is_final_zero(jobs_dir: Path) -> bool:
         return False
 
 
-def _trial_result(
-    result: dict[str, Any], *, verifier_timeout_is_final_zero: bool
-) -> tuple[str, float | None, str]:
+def _trial_result(result: dict[str, Any], *, verifier_timeout_is_final_zero: bool) -> tuple[str, float | None, str]:
     exception = result.get("exception_info") or {}
     exception_type = str(exception.get("exception_type") or "")
     if exception_type in {"AgentTimeoutError", "AgentExecutionTimeoutError"}:

@@ -391,9 +391,7 @@ def test_miniswe_install_classifies_candidate_phase_failures(
         asyncio.run(module.MiniSweSourceAgent().install(Environment()))
 
 
-def test_miniswe_external_dependency_sync_is_infrastructure_owned(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_miniswe_external_dependency_sync_is_infrastructure_owned(tmp_path: Path, monkeypatch) -> None:
     _install_fake_harbor(monkeypatch)
     target = write_locked_miniswe_seed(tmp_path / "target")
     wrapper = target / "harbor_agent.py"
@@ -452,11 +450,7 @@ def test_miniswe_offline_runtime_never_downloads_uv(tmp_path: Path, monkeypatch)
     ):
         asyncio.run(module.MiniSweSourceAgent().install(environment))
 
-    bootstrap = next(
-        command
-        for command in environment.commands
-        if "EVOLVE_UV_BOOTSTRAP_MISSING" in command
-    )
+    bootstrap = next(command for command in environment.commands if "EVOLVE_UV_BOOTSTRAP_MISSING" in command)
     assert "curl" not in bootstrap
     assert f"unset {' '.join(module.PROXY_NAMES)}" in bootstrap
 

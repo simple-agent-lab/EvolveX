@@ -202,12 +202,8 @@ def test_harbor_rollout_uses_only_frozen_train_task_names(tmp_path: Path, monkey
     ]
     assert captured.count("--mounts") == 1
     assert not set(included) & set(manifest["tasks"]["gate"] + manifest["tasks"]["sealed"])
-    assert ("--ae", f"EVOLVE_CANDIDATE_SOURCE={checkout / 'target'}") in zip(
-        captured, captured[1:], strict=False
-    )
-    assert ("--ae", "UV_PYTHON_INSTALL_DIR=/installed-agent/uv-python") in zip(
-        captured, captured[1:], strict=False
-    )
+    assert ("--ae", f"EVOLVE_CANDIDATE_SOURCE={checkout / 'target'}") in zip(captured, captured[1:], strict=False)
+    assert ("--ae", "UV_PYTHON_INSTALL_DIR=/installed-agent/uv-python") in zip(captured, captured[1:], strict=False)
     assert ("--ae", "UV_OFFLINE=1") in zip(captured, captured[1:], strict=False)
     assert ("--ae", "UV_PYTHON=3.12") in zip(captured, captured[1:], strict=False)
     assert ("--model", "openai/test-model") in zip(captured, captured[1:], strict=False)

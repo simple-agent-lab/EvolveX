@@ -368,9 +368,7 @@ def test_readonly_artifact_output_rejects_escape(tmp_path: Path) -> None:
     artifacts = trial_dir / "artifacts"
     artifacts.mkdir(parents=True)
     (artifacts / "manifest.json").write_text(
-        json.dumps(
-            [{"source": "/logs/artifacts", "destination": "../outside", "status": "ok"}]
-        )
+        json.dumps([{"source": "/logs/artifacts", "destination": "../outside", "status": "ok"}])
     )
 
     with pytest.raises(RuntimeError, match="escaped the trial"):
@@ -582,9 +580,7 @@ def test_install_bundle_omits_ignored_runtime_tree_with_symlinks(tmp_path: Path)
 def test_agent_output_prefers_preserved_model_response_over_post_submit_message(tmp_path: Path) -> None:
     agent = tmp_path / "trial" / "agent"
     agent.mkdir(parents=True)
-    (agent / "trajectory.json").write_text(
-        json.dumps({"steps": [{"source": "agent", "message": "submit next"}]})
-    )
+    (agent / "trajectory.json").write_text(json.dumps({"steps": [{"source": "agent", "message": "submit next"}]}))
     (agent / "mini-swe-agent.trajectory.json").write_text(
         json.dumps(
             {
@@ -593,9 +589,7 @@ def test_agent_output_prefers_preserved_model_response_over_post_submit_message(
                         "role": "tool",
                         "content": "continue",
                         "extra": {
-                            "response": {
-                                "choices": [{"message": {"content": "analysis and required manifest"}}]
-                            }
+                            "response": {"choices": [{"message": {"content": "analysis and required manifest"}}]}
                         },
                     }
                 ]
