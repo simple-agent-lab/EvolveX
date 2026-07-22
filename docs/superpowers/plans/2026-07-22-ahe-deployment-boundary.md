@@ -119,6 +119,51 @@ Verify:
 
 If prompt leakage or another implementation failure appears, do not launch full experiments. Preserve artifacts and return to root-cause analysis.
 
+### Task 2A: Identify the canonical MiniSWE execution path
+
+**Files:**
+- Modify: `tests/test_ahe_meta_agent.py`
+- Modify: `library/meta_agent/ahe.py`
+
+**Interfaces:**
+- Consumes: the canonical evaluator call `get_config_from_spec("mini")`.
+- Produces: an AHE prompt that directs changes onto the active `DefaultAgent`/`mini` path.
+
+- [ ] **Step 1: Extend the prompt-contract test**
+
+Add these required fragments:
+
+```python
+        "runs the target's `DefaultAgent` with the `mini` configuration",
+        "Benchmark-specific configurations are inactive",
+```
+
+- [ ] **Step 2: Run the focused test and verify RED**
+
+```bash
+uv run pytest -q tests/test_ahe_meta_agent.py::test_ahe_prompt_uses_official_decisions_and_required_manifest
+```
+
+Expected: FAIL because the evaluator execution path is absent.
+
+- [ ] **Step 3: Add the minimal runtime-path instruction**
+
+Append to the deployment-boundary paragraph:
+
+```text
+Canonical evaluation runs the target's `DefaultAgent` with the `mini` configuration.
+Make changes on that execution path. Benchmark-specific configurations are inactive
+unless evaluator configuration explicitly selects them.
+```
+
+- [ ] **Step 4: Run focused tests and commit**
+
+```bash
+uv run pytest -q tests/test_ahe_meta_agent.py
+git add library/meta_agent/ahe.py tests/test_ahe_meta_agent.py
+git commit -m "fix: identify AHE evaluator runtime path"
+```
+
 ### Task 3: Launch full experiments after acceptance
 
 **Files:**

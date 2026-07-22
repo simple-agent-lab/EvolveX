@@ -2,13 +2,15 @@
 
 ## Goal
 
-Prevent the AHE meta-agent from copying evolution-only workflow instructions into the candidate MiniSWE runtime prompt while preserving the official AHE strategy, editable target surface, and framework contracts.
+Prevent the AHE meta-agent from copying evolution-only workflow instructions into the candidate MiniSWE runtime prompt or editing configurations outside the canonical evaluation path, while preserving the official AHE strategy, editable target surface, and framework contracts.
 
 ## Evidence and root cause
 
 The `ahe-v23` smoke completed successfully but rewrote `target/src/minisweagent/config/mini.yaml` with instructions to read debugger reports, `change_evaluation.json`, and the previous change manifest. Those artifacts exist in the evolution workspace for the meta-agent, not in a benchmark episode for the candidate MiniSWE agent.
 
 The generated wording closely mirrored `AHE_PROMPT` in `library/meta_agent/ahe.py`. The prompt explains what the evolution agent should do but does not explicitly distinguish that workflow from content suitable for a deployed target prompt. The model therefore treated the meta workflow itself as a candidate prompt improvement.
+
+The corrected `ahe-v25` smoke respected that boundary but edited upstream MiniSWE's `config/benchmarks/programbench.yaml`. Canonical evaluation loads `get_config_from_spec("mini")`, so that benchmark-specific configuration is inactive. The AHE prompt does not currently identify the evaluator's active MiniSWE entry point.
 
 ## Design
 
@@ -18,6 +20,7 @@ Add one deployment-boundary paragraph to the recipe-local `AHE_PROMPT`:
 - The deployed harness cannot rely on evolution-only debugger reports, manifests, archive records, evidence paths, or KEEP/REVISE/ROLLBACK decisions.
 - When editing a target runtime prompt, write only instructions that are usable inside a benchmark episode.
 - Do not copy the AHE meta workflow or manifest requirement into target files.
+- State that canonical evaluation runs `DefaultAgent` with the `mini` configuration, and that benchmark-specific configurations are inactive unless explicitly selected.
 
 Keep the instruction general rather than naming `mini.yaml`, so it applies equally to future target prompt files without restricting AHE's choice of component.
 
@@ -32,7 +35,8 @@ Keep the instruction general rather than naming `mini.yaml`, so it applies equal
 Extend the existing AHE prompt-contract test first. It must fail until the prompt explicitly communicates:
 
 - the separation between evolution context and deployed benchmark context; and
-- the prohibition on copying evolution workflow or manifest instructions into target runtime prompts.
+- the prohibition on copying evolution workflow or manifest instructions into target runtime prompts; and
+- the active `DefaultAgent`/`mini` evaluation path.
 
 Then run the focused AHE meta-agent tests, the full local test suite, Ruff, and `git diff --check`.
 
@@ -43,6 +47,7 @@ Initialize a clean four-task, four-worker AHE smoke on DevBoxS using the existin
 - all lifecycle stages and archive integrity checks succeed;
 - the candidate edit stays inside `target/**`;
 - any target runtime prompt edit contains only benchmark-episode-usable instructions and does not reference evolution-only artifacts or workflow; and
+- every candidate edit affects the `DefaultAgent`/`mini` execution path used by canonical evaluation; and
 - rollout, analyzer, evaluation, record, and sealed-anchor artifacts are complete.
 
 If the corrected AHE smoke is acceptable, launch the full AHE and HyperAgents experiments with their existing faithful recipe policies and remote runtime configuration.
