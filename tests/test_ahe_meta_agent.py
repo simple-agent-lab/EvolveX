@@ -51,13 +51,21 @@ def _case(tmp_path: Path, *, genid: str = "1", parent: str = "0"):
     detail.mkdir()
     (detail / "task-a.md").write_text("DETAIL BODY MUST STAY ON DISK\n")
     (analysis / "change_evaluation.json").write_text(
-        json.dumps({"status": "baseline" if parent == "0" else "evaluated", "transitions": {}})
+        json.dumps(
+            {
+                "status": "baseline" if parent == "0" else "evaluated",
+                "transitions": {},
+                "sentinel": "ATTRIBUTION BODY MUST STAY ON DISK",
+            }
+        )
     )
     evidence = run_dir / "trace_analyzer" / "evidence"
     evidence.mkdir()
     (evidence / "overview.json").write_text(json.dumps({"cases": [{"task_name": "task-a"}]}))
     workspace.mkdir(exist_ok=True)
-    (workspace / "archive.jsonl").write_text('{"genid":"0","score":0}\n')
+    (workspace / "archive.jsonl").write_text(
+        '{"genid":"0","score":0,"sentinel":"ARCHIVE BODY MUST STAY ON DISK"}\n'
+    )
     handoff = workspace / "artifacts" / "generations" / parent / "handoff.md"
     handoff.parent.mkdir(parents=True)
     handoff.write_text("PARENT HANDOFF BODY MUST STAY ON DISK\n")
@@ -135,11 +143,17 @@ def test_ahe_prompt_uses_official_decisions_and_required_manifest(tmp_path: Path
         "Do not refer to debuggers",
     ):
         assert required in prompt
-    assert "OVERVIEW ROOT CAUSE" in prompt
+    assert "Evidence reading order" in prompt
+    assert "OVERVIEW ROOT CAUSE" not in prompt
+    assert "ATTRIBUTION BODY MUST STAY ON DISK" not in prompt
+    assert "ARCHIVE BODY MUST STAY ON DISK" not in prompt
     assert "DETAIL BODY MUST STAY ON DISK" not in prompt
-    assert f"runs/gen-{ctx.genid}/trace_analyzer/analysis/detail/" in prompt
-    assert f"runs/gen-{ctx.genid}/trace_analyzer/evidence/cases.jsonl" in prompt
-    assert f"runs/gen-{ctx.genid}/rollout/" in prompt
+    assert "/app/task/workspace/runs/gen-1/trace_analyzer/analysis/overview.md" in prompt
+    assert "/app/task/workspace/runs/gen-1/trace_analyzer/analysis/change_evaluation.json" in prompt
+    assert "/app/task/workspace/runs/gen-1/trace_analyzer/analysis/detail" in prompt
+    assert "/app/task/workspace/runs/gen-1/trace_analyzer/evidence/cases.jsonl" in prompt
+    assert "/app/task/workspace/runs/gen-1/rollout" in prompt
+    assert "No selected-parent meta-agent change exists for this baseline generation." in prompt
     assert str(ctx.run_dir) not in prompt
     assert "Repository: /app/task/workspace" in prompt
     assert "Archive: /app/task/workspace/archive.jsonl" in prompt
@@ -151,13 +165,16 @@ def test_ahe_prompt_uses_official_decisions_and_required_manifest(tmp_path: Path
     assert "delimited official-style" not in prompt
 
 
-def test_ahe_prompt_requires_nonempty_overview(tmp_path: Path) -> None:
+def test_ahe_prompt_does_not_require_readable_evidence_bodies(tmp_path: Path) -> None:
     module = _module()
     checkout, _run_dir, ctx = _case(tmp_path)
     (ctx.run_dir / "trace_analyzer/analysis/overview.md").write_text("")
+    (ctx.run_dir / "trace_analyzer/analysis/change_evaluation.json").unlink()
 
-    with pytest.raises(RuntimeError, match="empty AHE debugger overview"):
-        module.build_prompt(checkout, "fallback", ctx)
+    prompt = module.build_prompt(checkout, "fallback", ctx)
+
+    assert "/app/task/workspace/runs/gen-1/trace_analyzer/analysis/overview.md" in prompt
+    assert "/app/task/workspace/runs/gen-1/trace_analyzer/analysis/change_evaluation.json" in prompt
 
 
 def test_ahe_meta_agent_requires_valid_manifest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -196,20 +213,22 @@ def test_ahe_invalid_manifest_fails_after_preserving_artifacts(tmp_path: Path, m
         assert (run_dir / "meta_agent" / name).is_file()
 
 
-def test_ahe_prompt_includes_prior_raw_change_context(tmp_path: Path) -> None:
+def test_ahe_prompt_points_to_prior_change_without_inlining_it(tmp_path: Path) -> None:
     module = _module()
     checkout, _run_dir, ctx = _case(tmp_path, genid="2", parent="1")
     prior = ctx.workspace / "runs/gen-1/meta_agent"
-    (prior / "output.txt").write_text("previous reasoning")
+    (prior / "output.txt").write_text("PREVIOUS REASONING BODY")
     (prior / "changed.json").write_text('["target/previous.py"]')
-    (prior / "patch.diff").write_text("previous patch")
+    (prior / "patch.diff").write_text("PREVIOUS PATCH BODY")
 
     prompt = module.build_prompt(checkout, "fallback", ctx)
 
-    assert "Previous Change Context" in prompt
-    assert "previous reasoning" in prompt
-    assert "target/previous.py" in prompt
-    assert "previous patch" in prompt
+    assert "Selected parent meta-agent artifacts" in prompt
+    assert "/app/task/workspace/runs/gen-1/meta_agent" in prompt
+    assert "PREVIOUS REASONING BODY" not in prompt
+    assert "target/previous.py" not in prompt
+    assert "PREVIOUS PATCH BODY" not in prompt
+    assert "No selected-parent meta-agent change exists" not in prompt
 
 
 def test_ahe_runner_failure_preserves_evidence(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

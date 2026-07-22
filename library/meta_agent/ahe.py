@@ -86,57 +86,6 @@ def _surface_rules(checkout: Path) -> str:
     return f"- Surface include: {surface.include}\n- Surface exclude: {surface.exclude}"
 
 
-def _required_text(path: Path, label: str) -> str:
-    try:
-        text = path.read_text().strip()
-    except OSError as exc:
-        raise RuntimeError(f"missing {label}: {path}") from exc
-    if not text:
-        raise RuntimeError(f"empty {label}: {path}")
-    return text
-
-
-def _prior_change_context(ctx: OperatorContext) -> str:
-    if ctx.parent in (None, "0"):
-        return "No prior change context (baseline generation)."
-    root = ctx.workspace / "runs" / f"gen-{ctx.parent}" / "meta_agent"
-    sections = []
-    for name in ("change_manifest.json", "output.txt", "changed.json", "patch.diff"):
-        path = root / name
-        try:
-            content = path.read_text().strip()
-        except OSError:
-            continue
-        if content:
-            sections.append(f"## {name}\n\n{content[:20000]}")
-    return "\n\n".join(sections) or "No prior change artifacts were preserved."
-
-
-def _overview(ctx: OperatorContext) -> str:
-    return _required_text(
-        ctx.run_dir / "trace_analyzer" / "analysis" / "overview.md",
-        "AHE debugger overview",
-    )
-
-
-def _evidence_paths(ctx: OperatorContext) -> str:
-    root = f"runs/gen-{ctx.genid}"
-    return "\n".join(
-        [
-            f"- Per-task details: `{root}/trace_analyzer/analysis/detail/`",
-            f"- Bounded cases: `{root}/trace_analyzer/evidence/cases.jsonl`",
-            f"- Raw rollout artifacts: `{root}/rollout/`",
-        ]
-    )
-
-
-def _recent_archive(ctx: OperatorContext) -> str:
-    path = ctx.workspace / "archive.jsonl"
-    if not path.is_file():
-        return "(archive not created yet)"
-    return "\n".join(path.read_text().splitlines()[-20:])
-
-
 def _extract_manifest(output: str, genid: str) -> dict[str, Any]:
     starts = [match.start() for match in re.finditer(re.escape(MANIFEST_START), output)]
     ends = [match.start() for match in re.finditer(re.escape(MANIFEST_END), output)]
@@ -166,10 +115,6 @@ def _read_manifest_file(checkout: Path, genid: str) -> dict[str, Any]:
 
 def build_prompt(checkout: Path, observation: str, ctx: OperatorContext) -> str:
     del observation
-    attribution = _required_text(
-        ctx.run_dir / "trace_analyzer" / "analysis" / "change_evaluation.json",
-        "AHE change evaluation",
-    )
     template = dict(MANIFEST_TEMPLATE)
     template["iteration"] = int(ctx.genid)
     if runner_name(ctx) == "harbor":
@@ -180,13 +125,29 @@ def build_prompt(checkout: Path, observation: str, ctx: OperatorContext) -> str:
         repository = checkout
         current_run = ctx.run_dir
         experiment = ctx.workspace
+    analysis = current_run / "trace_analyzer" / "analysis"
+    overview = analysis / "overview.md"
+    attribution = analysis / "change_evaluation.json"
+    details = analysis / "detail"
+    cases = current_run / "trace_analyzer" / "evidence" / "cases.jsonl"
+    rollout = current_run / "rollout"
+    if ctx.parent in (None, "0"):
+        prior_change = "No selected-parent meta-agent change exists for this baseline generation."
+    else:
+        parent_meta_agent = experiment / "runs" / f"gen-{ctx.parent}" / "meta_agent"
+        prior_change = (
+            "Inspect the selected parent manifest and patch. "
+            f"Selected parent meta-agent artifacts: `{parent_meta_agent}`"
+        )
     return (
         f"{AHE_PROMPT.rstrip()}\n\n"
-        f"# Current Debugger Overview\n\n{_overview(ctx)}\n\n"
-        f"# Evidence Paths\n\n{_evidence_paths(ctx)}\n\n"
-        f"# Change Attribution\n\n```json\n{attribution}\n```\n\n"
-        f"# Previous Change Context\n\n{_prior_change_context(ctx)}\n\n"
-        f"# Recent Archive Outcomes\n\n```jsonl\n{_recent_archive(ctx)}\n```\n\n"
+        "# Evidence reading order\n\n"
+        f"1. Read `{overview}`.\n"
+        f"2. Read `{attribution}` and decide KEEP, REVISE, or ROLLBACK + PIVOT.\n"
+        f"3. Read only the relevant per-task reports under `{details}`.\n"
+        f"4. {prior_change}\n"
+        f"5. Use `{cases}` and raw rollout artifacts under `{rollout}` only to resolve missing or conflicting evidence.\n"
+        "6. Edit the candidate and write the required AHE change manifest.\n\n"
         "# Evidence Locations\n\n"
         f"Repository: {repository}\n"
         f"Archive: {experiment / 'archive.jsonl'}\n"
