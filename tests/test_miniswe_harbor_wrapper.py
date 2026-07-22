@@ -113,8 +113,8 @@ def test_miniswe_wrapper_forwards_reasoning_effort(adapter_path: Path, monkeypat
     assert "MINISWE_REASONING_EFFORT" not in module.MiniSweSourceAgent()._source_env()
 
 
-def test_miniswe_wrapper_uses_responses_model_for_openai_reasoning(adapter_path: Path, monkeypatch) -> None:
-    _, build_model, (_, FakeLitellmResponseModel) = _load_model_factory(adapter_path, monkeypatch)
+def test_miniswe_wrapper_uses_chat_completions_reasoning_for_openai(adapter_path: Path, monkeypatch) -> None:
+    _, build_model, (FakeLitellmModel, FakeLitellmResponseModel) = _load_model_factory(adapter_path, monkeypatch)
     monkeypatch.setenv("MSWEA_MODEL_NAME", "openai/gpt-5.4")
     monkeypatch.setenv("MINISWE_REASONING_EFFORT", "high")
 
@@ -129,12 +129,13 @@ def test_miniswe_wrapper_uses_responses_model_for_openai_reasoning(adapter_path:
         }
     )
 
-    assert isinstance(model, FakeLitellmResponseModel)
+    assert type(model) is FakeLitellmModel
+    assert not isinstance(model, FakeLitellmResponseModel)
     assert model.kwargs["model_name"] == "openai/gpt-5.4"
     assert model.kwargs["cost_tracking"] == "ignore_errors"
     assert model.kwargs["model_kwargs"]["drop_params"] is True
-    assert model.kwargs["model_kwargs"]["reasoning"] == {"effort": "high"}
-    assert "reasoning_effort" not in model.kwargs["model_kwargs"]
+    assert model.kwargs["model_kwargs"]["reasoning_effort"] == "high"
+    assert "reasoning" not in model.kwargs["model_kwargs"]
 
 
 @pytest.mark.parametrize(

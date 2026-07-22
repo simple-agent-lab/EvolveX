@@ -48,17 +48,13 @@ def build_model(config):
     model_kwargs["model_name"] = model_name
     model_kwargs["cost_tracking"] = "ignore_errors"
 
-    model_class = LitellmModel
     if model_name.startswith("openai/") and effort is not None:
-        from minisweagent.models.litellm_response_model import LitellmResponseModel
-
         nested_kwargs = dict(model_kwargs.get("model_kwargs") or {})
-        nested_kwargs.pop("reasoning_effort", None)
-        nested_kwargs["reasoning"] = {"effort": effort}
+        nested_kwargs.pop("reasoning", None)
+        nested_kwargs["reasoning_effort"] = effort
         model_kwargs["model_kwargs"] = nested_kwargs
-        model_class = LitellmResponseModel
 
-    return model_class(**model_kwargs)
+    return LitellmModel(**model_kwargs)
 """.strip()
 
 
