@@ -21,6 +21,24 @@ def test_eval_env_uses_configured_harbor_agent() -> None:
     assert "CheckoutTargetAgent" not in env
 
 
+def test_eval_env_and_environment_kwargs_render_local_backend() -> None:
+    env = _eval_env(
+        "exp",
+        "tasks",
+        n_concurrent=1,
+        tasks_per_round=1,
+        trials=1,
+        partial_floor=0.8,
+        agent="custom:Agent",
+        environment="evolve.harbor_local:LocalEnvironment",
+    )
+
+    assert "EVOLVE_HARBOR_ENVIRONMENT=evolve.harbor_local:LocalEnvironment\n" in env
+    assert workspace_module._environment_kwargs({"workdir": "/workspace", "options": {"clean": True}}) == (
+        'options={"clean":true}\nworkdir="/workspace"\n'
+    )
+
+
 def test_agent_env_renders_frozen_miniswe_limits_deterministically() -> None:
     assert workspace_module._agent_env(
         {
@@ -44,6 +62,13 @@ def test_agent_env_renders_frozen_miniswe_limits_deterministically() -> None:
 def test_agent_env_rejects_unsafe_values(value: object, message: str) -> None:
     with pytest.raises(ValueError, match=message):
         workspace_module._agent_env(value)
+
+
+def test_environment_kwargs_rejects_invalid_input() -> None:
+    with pytest.raises(ValueError, match="must be a mapping"):
+        workspace_module._environment_kwargs(["bad"])
+    with pytest.raises(ValueError, match="invalid evaluator.environment_kwargs name"):
+        workspace_module._environment_kwargs({"bad-name": True})
 
 
 def test_init_real_harbor_recipe_requires_evaluator_agent(

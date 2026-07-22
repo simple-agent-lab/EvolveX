@@ -127,7 +127,12 @@ def test_harbor_rollout_uses_only_frozen_train_task_names(tmp_path: Path, monkey
         parent="0",
         round=None,
         fan_out=1,
-        config={"budget_tasks": 3, "jobs_dir": str(tmp_path / "jobs")},
+        config={
+            "budget_tasks": 3,
+            "jobs_dir": str(tmp_path / "jobs"),
+            "environment": "custom.local:Environment",
+            "environment_kwargs": {"workdir": "/workspace"},
+        },
         rng=random.Random(0),
     )
 
@@ -137,3 +142,5 @@ def test_harbor_rollout_uses_only_frozen_train_task_names(tmp_path: Path, monkey
     assert included == manifest["tasks"]["train"][:3]
     assert not set(included) & set(manifest["tasks"]["gate"] + manifest["tasks"]["sealed"])
     assert result.summary["split"] == "train"
+    assert captured[captured.index("--env") + 1] == "custom.local:Environment"
+    assert captured[captured.index("--environment-kwarg") + 1] == 'workdir="/workspace"'

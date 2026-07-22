@@ -93,6 +93,9 @@ Trace retention is a separate operator from rollout. See
 and the migration from the former research-method profile names.
 Meta-agents can run as trusted host commands or isolated Harbor agents; see
 [`META_AGENTS.md`](META_AGENTS.md) for both configuration contracts.
+For fast Docker-free trials against an already installed local agent—for
+example, using Codex to iterate on a skill or a small behavior—the opt-in
+in-place backend is documented in [`LOCAL_ENVIRONMENT.md`](LOCAL_ENVIRONMENT.md).
 
 ## Install For Development
 
