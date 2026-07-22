@@ -51,7 +51,10 @@ def build_model(config):
     if model_name.startswith("openai/") and effort is not None:
         nested_kwargs = dict(model_kwargs.get("model_kwargs") or {})
         nested_kwargs.pop("reasoning", None)
-        nested_kwargs["reasoning_effort"] = effort
+        nested_kwargs.pop("reasoning_effort", None)
+        extra_body = dict(nested_kwargs.get("extra_body") or {})
+        extra_body["reasoning_effort"] = effort
+        nested_kwargs["extra_body"] = extra_body
         model_kwargs["model_kwargs"] = nested_kwargs
 
     return LitellmModel(**model_kwargs)

@@ -124,6 +124,8 @@ def test_miniswe_wrapper_uses_chat_completions_reasoning_for_openai(adapter_path
                 "model_kwargs": {
                     "drop_params": True,
                     "reasoning_effort": "legacy",
+                    "reasoning": {"effort": "legacy"},
+                    "extra_body": {"existing": "value"},
                 }
             }
         }
@@ -134,7 +136,11 @@ def test_miniswe_wrapper_uses_chat_completions_reasoning_for_openai(adapter_path
     assert model.kwargs["model_name"] == "openai/gpt-5.4"
     assert model.kwargs["cost_tracking"] == "ignore_errors"
     assert model.kwargs["model_kwargs"]["drop_params"] is True
-    assert model.kwargs["model_kwargs"]["reasoning_effort"] == "high"
+    assert model.kwargs["model_kwargs"]["extra_body"] == {
+        "existing": "value",
+        "reasoning_effort": "high",
+    }
+    assert "reasoning_effort" not in model.kwargs["model_kwargs"]
     assert "reasoning" not in model.kwargs["model_kwargs"]
 
 
