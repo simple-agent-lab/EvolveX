@@ -34,6 +34,9 @@ def _checkout(tmp_path: Path) -> tuple[Path, Path]:
     (workspace / "runs" / "gen-0" / "eval").mkdir(parents=True)
     (workspace / "archive.jsonl").write_text(json.dumps({"genid": "0", "score": 0.1}) + "\n")
     (workspace / "runs" / "gen-0" / "eval" / "summary.json").write_text('{"score": 0.1}\n')
+    handoff = workspace / "artifacts" / "generations" / "0" / "handoff.md"
+    handoff.parent.mkdir(parents=True)
+    handoff.write_text("PARENT HANDOFF BODY MUST STAY ON DISK\n")
     (workspace / "evolve.yaml").write_text(
         "experiment:\n  id: test\n  max_generations: 4\n"
         "target:\n  seed: builtin-dummy\n"
@@ -95,6 +98,10 @@ def test_hyperagents_prompt_points_to_evolvable_codebase_and_prior_artifacts(tmp
     assert "Feedback bundle: /app/task/workspace/runs/gen-1/feedback" in prompt
     assert "Complete history: /app/task/workspace/runs/gen-1/feedback/evidence/history.json" in prompt
     assert "Raw trace evidence: /app/task/workspace/runs/gen-1/trace_analyzer/evidence" in prompt
+    assert "selected parent's handoff" in prompt
+    assert "/app/task/workspace/artifacts/generations/0/handoff.md" in prompt
+    assert "/app/task/workspace/artifacts/generations/1" in prompt
+    assert "PARENT HANDOFF BODY MUST STAY ON DISK" not in prompt
     assert "SELECTED TRACE EVIDENCE" in prompt
     assert "HISTORY MUST NOT BE INLINED" not in prompt
     assert "LATEST ACCEPTED DIFF" in prompt

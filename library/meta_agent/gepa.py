@@ -14,6 +14,7 @@ from evolve.frozen.interfaces import MetaAgentOperator, MetaAgentResult, Operato
 from evolve.patching import create_candidate_patch, load_surface_policy, patch_parent_ref
 from library.gepa_support import component_paths, path_in_scopes, read_json, selected_component_names
 from library.meta_agent.runners import run_agent, runner_name
+from library.meta_agent.support.artifacts import render_artifact_guidance
 
 GEPA_PROMPT = """# GEPA Reflective Mutation
 
@@ -101,6 +102,7 @@ def build_prompt(checkout: Path, ctx: OperatorContext) -> tuple[str, dict[str, A
         if required_placeholders
         else ""
     )
+    experiment = Path("/app/task/workspace") if runner_name(ctx) == "harbor" else ctx.workspace
     prompt = (
         f"{GEPA_PROMPT.rstrip()}\n\n"
         f"## Selected component\n\n{', '.join(f'`{name}`' for name in selected)}\n\n"
@@ -108,6 +110,7 @@ def build_prompt(checkout: Path, ctx: OperatorContext) -> tuple[str, dict[str, A
         f"{placeholder_rule}\n\n"
         f"## Current component\n\n{snapshot}\n\n"
         f"## Reflective dataset\n\n```json\n{rendered_dataset}\n```\n\n"
+        f"{render_artifact_guidance(ctx, experiment)}\n\n"
         "## Required action\n\n"
         "1. Compare high- and low-reward trajectories and verifier feedback.\n"
         "2. State a general lesson internally, then make one coherent component edit.\n"

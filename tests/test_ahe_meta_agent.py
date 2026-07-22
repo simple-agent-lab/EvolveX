@@ -58,6 +58,9 @@ def _case(tmp_path: Path, *, genid: str = "1", parent: str = "0"):
     (evidence / "overview.json").write_text(json.dumps({"cases": [{"task_name": "task-a"}]}))
     workspace.mkdir(exist_ok=True)
     (workspace / "archive.jsonl").write_text('{"genid":"0","score":0}\n')
+    handoff = workspace / "artifacts" / "generations" / parent / "handoff.md"
+    handoff.parent.mkdir(parents=True)
+    handoff.write_text("PARENT HANDOFF BODY MUST STAY ON DISK\n")
     if parent != "0":
         prior = workspace / "runs" / f"gen-{parent}" / "meta_agent"
         prior.mkdir(parents=True, exist_ok=True)
@@ -141,6 +144,10 @@ def test_ahe_prompt_uses_official_decisions_and_required_manifest(tmp_path: Path
     assert "Repository: /app/task/workspace" in prompt
     assert "Archive: /app/task/workspace/archive.jsonl" in prompt
     assert "Raw trace evidence: /app/task/workspace/runs/gen-1/trace_analyzer/evidence" in prompt
+    assert "selected parent's handoff" in prompt
+    assert "/app/task/workspace/artifacts/generations/0/handoff.md" in prompt
+    assert "/app/task/workspace/artifacts/generations/1" in prompt
+    assert "PARENT HANDOFF BODY MUST STAY ON DISK" not in prompt
     assert "delimited official-style" not in prompt
 
 

@@ -12,6 +12,7 @@ from evolve.frozen import sdk
 from evolve.frozen.interfaces import MetaAgentOperator, MetaAgentResult, OperatorContext
 from evolve.patching import create_candidate_patch, load_surface_policy, patch_parent_ref
 from library.meta_agent.runners import run_agent, runner_name
+from library.meta_agent.support.artifacts import render_artifact_guidance
 
 MANIFEST_START = "<AHE_CHANGE_MANIFEST>"
 MANIFEST_END = "</AHE_CHANGE_MANIFEST>"
@@ -191,6 +192,7 @@ def build_prompt(checkout: Path, observation: str, ctx: OperatorContext) -> str:
         f"Archive: {experiment / 'archive.jsonl'}\n"
         f"Current generation artifacts: {current_run}\n"
         f"Raw trace evidence: {current_run / 'trace_analyzer' / 'evidence'}\n\n"
+        f"{render_artifact_guidance(ctx, experiment)}\n\n"
         f"# Surface Rules\n\n{_surface_rules(checkout)}\n\n"
         "# Required Final Output\n\nEdit the candidate directly. After checks and before the submission action, "
         f"write the following JSON object to `{MANIFEST_FILE}`. Write JSON only; this control file is removed "

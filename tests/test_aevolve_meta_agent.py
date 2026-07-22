@@ -86,6 +86,9 @@ def _case(tmp_path: Path):
     (evidence / "history.json").write_text(json.dumps([{"genid": "1"}]))
     workspace.mkdir(exist_ok=True)
     (workspace / "archive.jsonl").write_text('{"genid":"1","score":1}\n')
+    handoff = workspace / "artifacts" / "generations" / "1" / "handoff.md"
+    handoff.parent.mkdir(parents=True)
+    handoff.write_text("AEVOLVE HANDOFF BODY MUST STAY ON DISK\n")
     _git(checkout, "init", "-q")
     _git(checkout, "config", "user.name", "test")
     _git(checkout, "config", "user.email", "test@example.invalid")
@@ -127,6 +130,10 @@ def test_aevolve_reproduces_recent_summary_draft_and_workspace_mutation_cycle(
         assert "target/memory" in prompt and "You CAN add or prune" not in prompt
         assert "x" * 300 not in prompt
         assert "Preserve the `{{ instruction }}` placeholder" in prompt
+        assert "selected parent's handoff" in prompt
+        assert "/app/task/workspace/artifacts/generations/1/handoff.md" in prompt
+        assert "/app/task/workspace/artifacts/generations/2" in prompt
+        assert "AEVOLVE HANDOFF BODY MUST STAY ON DISK" not in prompt
         (root / "target" / "prompt.md").write_text("Verify artifacts before finishing.\n\n{{ instruction }}\n")
         skill = root / "target" / "skills" / "artifact-verification"
         skill.mkdir()

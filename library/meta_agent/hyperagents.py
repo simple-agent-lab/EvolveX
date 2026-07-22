@@ -11,6 +11,7 @@ from evolve.frozen import sdk
 from evolve.frozen.interfaces import MetaAgentOperator, MetaAgentResult
 from evolve.patching import create_candidate_patch, load_surface_policy, patch_parent_ref
 from library.meta_agent.runners import run_agent, runner_name
+from library.meta_agent.support.artifacts import render_artifact_guidance
 
 MAX_INLINE_EVIDENCE_CHARS = 50_000
 LATEST_DIFF_CHARS = 5_000
@@ -122,6 +123,7 @@ def build_prompt(checkout: Path, observation: str, ctx) -> str:
         f"Archive: {experiment / 'archive.jsonl'}\n"
         f"Prior generation artifacts: {experiment / 'runs'}\n"
         f"Current generation artifacts: {current_run}\n"
+        f"\n{render_artifact_guidance(ctx, experiment)}\n\n"
         f"Iterations remaining after this proposal: {_remaining_iterations(ctx)}\n\n"
         "Edit the checkout directly. Do not print a patch instead of editing files.\n"
     )

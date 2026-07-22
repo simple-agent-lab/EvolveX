@@ -18,6 +18,8 @@ evaluator/       the FROZEN ruler — how a candidate is scored. Never changes
                  inside the loop (pinned to gen/0); a harness change is a proposal
                  for a human, not a mutation.
 skills/          the mutator's manual (tool-agnostic: Claude Code, codex, …)
+artifacts/       durable, gitignored meta-agent context: user/ plus one writable
+                 generations/<genid>/ namespace per generation
 evolve.yaml      experiment config: recipe, operator selection, the mutable surface
 program.md       loop orchestration prose (agent mode)
 PROTOCOL.md      the operator contract in prose (authority: the framework)
@@ -25,6 +27,13 @@ archive.jsonl    append-only event ledger (gitignored; the source of truth)
 pyproject.toml   declared Python runtime for the mechanism and Harbor adapters
 uv.lock          exact cross-platform dependency lock used by every entry point
 ```
+
+Meta-agents may read all of `artifacts/` and may persist arbitrary files only in
+their own `artifacts/generations/<genid>/` directory. `handoff.md` is an optional
+free-form convention for orienting a future child selected from that generation;
+it is not required and should be checked against current evidence. Users can put
+stable experiment context in `artifacts/user/`. These files survive generations
+but are excluded from candidate diffs.
 
 Harbor can run directly against an already installed local agent with
 `environment: evolve.harbor_local:LocalEnvironment`. This is useful for fast

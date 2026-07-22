@@ -14,6 +14,7 @@ from evolve.frozen import sdk
 from evolve.frozen.interfaces import MetaAgentOperator, MetaAgentResult, OperatorContext
 from evolve.patching import create_candidate_patch, load_surface_policy, patch_parent_ref
 from library.meta_agent.runners import run_agent, runner_name
+from library.meta_agent.support.artifacts import render_artifact_guidance
 
 AEVOLVE_SYSTEM_PROMPT = """# A-Evolve Workspace Improvement
 
@@ -208,6 +209,7 @@ def build_prompt(checkout: Path, ctx: OperatorContext) -> tuple[str, dict[str, A
     skill_names = _skills(skills_dir)
     permissions = _permissions(ctx.config, paths)
     template_rule = _placeholder_rule(ctx.config, prompt_relative)
+    experiment = Path("/app/task/workspace") if runner_name(ctx) == "harbor" else ctx.workspace
     prompt = (
         f"{AEVOLVE_SYSTEM_PROMPT.rstrip()}\n\n"
         f"## Evolution Cycle #{ctx.genid}\n\n"
@@ -224,6 +226,7 @@ def build_prompt(checkout: Path, ctx: OperatorContext) -> tuple[str, dict[str, A
         f"### Draft Skills\n{_draft_section(drafts)}\n\n"
         f"### Current Skills ({len(skill_names)})\n"
         f"{chr(10).join(f'- {name}' for name in skill_names) if skill_names else 'No skills yet.'}\n\n"
+        f"{render_artifact_guidance(ctx, experiment)}\n\n"
         "### Instructions\n"
         "1. Review the task summaries and identify patterns, common failures, and recurring themes.\n"
         "2. Review draft skills: refine into a real skill, merge with an existing skill, or discard.\n"

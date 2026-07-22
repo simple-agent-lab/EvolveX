@@ -229,6 +229,8 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content)
     (workspace / "runs").mkdir(exist_ok=True)
+    (workspace / "artifacts" / "user").mkdir(parents=True, exist_ok=True)
+    (workspace / "artifacts" / "generations").mkdir(parents=True, exist_ok=True)
 
 
 def _operator_bindings(config: dict[str, object], *, recipe: str, init_cwd: Path) -> list[_OperatorBinding]:

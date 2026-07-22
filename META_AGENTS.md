@@ -54,14 +54,34 @@ repair only constrains observable candidate changes; it is not a host sandbox.
 ## `runner: harbor`: isolated agent with artifact return
 
 The Harbor runner builds a disposable writable experiment workspace at
-`/app/workspace`. It contains the selected parent, self-contained Git history,
+`/app/task/workspace`. It contains the selected parent, self-contained Git history,
 configuration, archive, and prior/current run evidence, so the agent can inspect
 and edit it like a local checkout. The real host workspace is never mounted.
 Harbor returns the complete disposable workspace; the runner compares it with a
 trusted pre-run manifest, rejects protected changes, symlinks, and special files,
-then transactionally imports only configured `editable_roots`. Changes to Git
+then transactionally imports configured `editable_roots` and the current
+generation's durable artifact namespace. Changes to Git
 metadata, archive/runtime evidence, and evaluation receipts are discarded.
 AHE imports only `target`; HyperAgents imports `target` and `operators`.
+
+## Durable meta-agent artifacts and handoffs
+
+Every workspace has a gitignored durable area:
+
+```text
+artifacts/
+├── user/                       # user-supplied context
+└── generations/
+    └── <genid>/                # arbitrary files from that generation
+        └── handoff.md          # optional free-form convention
+```
+
+Meta-agents may read the whole tree, but a generation may persist writes only
+under `artifacts/generations/<genid>/`. The runner copies the tree into Harbor
+and imports only that current namespace; attempted returned edits to `user/` or
+prior generations are discarded. Prompts identify `handoff.md` from the selected
+parent, when present, as orientation rather than proof. A missing handoff is
+normal and non-fatal. Artifact files never become part of a candidate patch.
 
 ```yaml
 meta_agent:

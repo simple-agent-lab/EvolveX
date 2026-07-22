@@ -105,6 +105,15 @@ Implement `run`. Return `MetaAgentResult` with fields `changed`, `notes`, and
 `meta_agent/rationale.md`, and writes `meta_agent/usage.json`. `usage` is a JSON
 object, commonly including `usd`.
 
+The workspace also exposes gitignored durable storage under `artifacts/`.
+`artifacts/user/` is user-managed, while a meta-agent may persist arbitrary
+files only under `artifacts/generations/<EVOLVE_GENID>/`. An optional free-form
+`handoff.md` in that directory is the handoff convention. Shipped prompts point
+to the selected parent's handoff when it exists; absence is non-fatal. Harbor
+copies all durable artifacts into its disposable workspace but imports only the
+current generation namespace, so user and prior-generation content remains
+host-authoritative and artifacts do not enter candidate patches.
+
 ### Novelty (optional)
 
 ABC signature:

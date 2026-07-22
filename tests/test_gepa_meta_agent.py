@@ -51,6 +51,9 @@ def _case(tmp_path: Path):
         )
     )
     workspace.mkdir(exist_ok=True)
+    handoff = workspace / "artifacts" / "generations" / "0" / "handoff.md"
+    handoff.parent.mkdir(parents=True)
+    handoff.write_text("GEPA HANDOFF BODY MUST STAY ON DISK\n")
     _git(checkout, "init", "-q")
     _git(checkout, "config", "user.name", "test")
     _git(checkout, "config", "user.email", "test@example.invalid")
@@ -74,6 +77,10 @@ def test_gepa_meta_agent_edits_only_selected_component(tmp_path: Path, monkeypat
         assert "assertion" not in prompt
         assert "`prompt`" in prompt
         assert "{{ instruction }}" in prompt
+        assert "selected parent's handoff" in prompt
+        assert "/app/task/workspace/artifacts/generations/0/handoff.md" in prompt
+        assert "/app/task/workspace/artifacts/generations/1" in prompt
+        assert "GEPA HANDOFF BODY MUST STAY ON DISK" not in prompt
         (root / "target/prompt.md").write_text("Be systematic. Solve: {{ instruction }}\n")
         return SimpleNamespace(output="edited", usage={"usd": 0.1})
 

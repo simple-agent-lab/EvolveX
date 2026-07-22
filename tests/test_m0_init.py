@@ -56,11 +56,14 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
         "evaluator/parse_score.py",
         "evaluator/engines/local.sh",
         "runs",
+        "artifacts/user",
+        "artifacts/generations",
         ".gitignore",
         "archive.jsonl",
     ]
     for relative_path in expected_paths:
         assert (workspace / relative_path).exists(), relative_path
+    assert "artifacts/" in (workspace / ".gitignore").read_text().splitlines()
     assert not (workspace / "operators" / "mutate.py").exists()
     assert not (workspace / "operators" / "mutate.md").exists()
     assert not (workspace / "operators" / "mutation_brief.md").exists()
