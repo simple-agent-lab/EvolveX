@@ -17,6 +17,15 @@ class TaskSetIdentity:
     members: tuple[str, ...]
 
 
+def evaluation_split_name(evaluator: dict[str, Any], purpose: str = "candidate") -> str:
+    if purpose == "anchor":
+        return "sealed"
+    value = evaluator.get("evaluation_split", "gate")
+    if value not in {"train", "gate", "sealed"}:
+        raise ValueError(f"unknown evaluator.evaluation_split: {value}")
+    return str(value)
+
+
 def task_set_identity(
     dataset: object,
     attempts: Any,
@@ -56,10 +65,10 @@ def effective_task_set_identity(
     else:
         members = ()
         split_path = checkout / "evaluator" / "splits.json"
-        if purpose == "anchor" and split_path.is_file():
+        if split_path.is_file():
             try:
                 manifest = json.loads(split_path.read_text())
-                split_tasks = manifest.get("tasks", {}).get("sealed", [])
+                split_tasks = manifest.get("tasks", {}).get(evaluation_split_name(evaluator, purpose), [])
                 if isinstance(split_tasks, list) and all(isinstance(name, str) for name in split_tasks):
                     members = tuple(split_tasks)
             except (OSError, json.JSONDecodeError, AttributeError):
@@ -106,19 +115,26 @@ def _fixed_task_members(workspace: Path, evaluator: dict[str, Any]) -> tuple[str
     if isinstance(names, list) and all(isinstance(name, str) and name for name in names):
         return tuple(names)
     configured = evaluator.get("task_file")
-    if not isinstance(configured, str) or not configured:
+    if isinstance(configured, str) and configured:
+        path = PurePosixPath(configured)
+        if path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
+            raise ValueError("evaluator task_file escapes gen/0")
+        contents = _git_text(workspace, "show", f"gen/0:{path.as_posix()}", strip=False)
+        if contents is None:
+            raise OSError("evaluator task_file is unavailable from gen/0")
+        return tuple(
+            line.strip()
+            for line in contents.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        )
+    split_text = _git_text(workspace, "show", "gen/0:evaluator/splits.json", strip=False)
+    if split_text is None:
         return ()
-    path = PurePosixPath(configured)
-    if path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
-        raise ValueError("evaluator task_file escapes gen/0")
-    contents = _git_text(workspace, "show", f"gen/0:{path.as_posix()}", strip=False)
-    if contents is None:
-        raise OSError("evaluator task_file is unavailable from gen/0")
-    return tuple(
-        line.strip()
-        for line in contents.splitlines()
-        if line.strip() and not line.lstrip().startswith("#")
-    )
+    manifest = json.loads(split_text)
+    split_tasks = manifest.get("tasks", {}).get(evaluation_split_name(evaluator), [])
+    if not isinstance(split_tasks, list) or not all(isinstance(name, str) for name in split_tasks):
+        return ()
+    return tuple(split_tasks)
 
 
 def _git_text(workspace: Path, *args: str, strip: bool = True) -> str | None:

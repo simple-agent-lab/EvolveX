@@ -43,6 +43,7 @@ archive.jsonl
 .superpowers/
 .worktrees/
 /docs/superpowers/
+/docs/guides/
 doc/
 
 # Editor, OS, and logs

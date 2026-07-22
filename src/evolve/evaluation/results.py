@@ -37,7 +37,11 @@ class TrialResult:
     def score_eligible(self, *, benchmark_timeout_is_zero: bool) -> bool:
         return self.reward is not None and (
             self.outcome is Outcome.BENCHMARK_COMPLETE
-            or (self.outcome is Outcome.TIMEOUT and self.owner == "benchmark_agent" and benchmark_timeout_is_zero)
+            or (
+                self.outcome is Outcome.TIMEOUT
+                and self.owner in {"benchmark_agent", "benchmark_verifier"}
+                and benchmark_timeout_is_zero
+            )
         )
 
 
@@ -60,6 +64,7 @@ class EvaluationRecord:
     wall_s: float
     retry_of: int | None = None
     artifacts: dict[str, str] | None = None
+    candidate_runtime: dict[str, str] | None = None
 
     @property
     def status(self) -> str:
@@ -78,6 +83,8 @@ class EvaluationRecord:
 
 
 def _effective_outcome(trial: TrialResult) -> Outcome:
+    if trial.outcome is Outcome.TIMEOUT and trial.owner in {"benchmark_agent", "benchmark_verifier"}:
+        return Outcome.TIMEOUT
     if trial.exception_type or trial.exception_message:
         return Outcome.CANDIDATE_INVALID if trial.owner == "candidate" else Outcome.INFRASTRUCTURE_FAILED
     if trial.outcome is Outcome.CANDIDATE_INVALID and trial.owner != "candidate":

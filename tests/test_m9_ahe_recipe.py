@@ -33,7 +33,8 @@ def test_ahe_recipe_initializes_harbor_miniswe_composition(tmp_path: Path) -> No
     assert (workspace / "target/pyproject.toml").is_file()
     assert (workspace / "target/uv.lock").is_file()
     assert surface_lists(workspace) == (["target/**"], [])
-    assert "source=library/rollout/harbor.py" in (workspace / "operators/rollout.py").read_text()
+    assert "source=library/rollout/evaluation_replay.py" in (workspace / "operators/rollout.py").read_text()
+    assert (workspace / "library/rollout/harbor.py").is_file()
     assert "source=library/trace_analyzer/ahe.py" in (workspace / "operators/trace_analyzer.py").read_text()
     assert "source=library/meta_agent/ahe.py" in (workspace / "operators/meta_agent.py").read_text()
     assert "source=library/select/ahe_latest.py" in (workspace / "operators/select.py").read_text()
@@ -46,6 +47,7 @@ def test_ahe_recipe_initializes_harbor_miniswe_composition(tmp_path: Path) -> No
     ):
         assert (workspace / relative).is_file(), relative
     assert (workspace / "evolve_harbor_adapter/__init__.py").is_file()
+    assert (workspace / "evolve_harbor_agent/__init__.py").is_file()
     assert not (workspace / "target/harbor_agent.py").exists()
     assert not (workspace / "library/meta_agent/support/ahe_manifest.py").exists()
     assert (workspace / "evaluator/agent.env").read_text() == (
@@ -54,18 +56,18 @@ def test_ahe_recipe_initializes_harbor_miniswe_composition(tmp_path: Path) -> No
     config = (workspace / "evolve.yaml").read_text()
     assert "variant: ahe" in config
     assert "runner: harbor" in config
-    assert "agent: mini-swe-agent" in config
+    assert "agent: evolve_harbor_agent:FileTaskMiniSweAgent" in config
     assert "editable_roots:" in config
     operators = operator_blocks(workspace)
     assert {name: operator_timeout(operators, name) for name in ("rollout", "trace_analyzer", "meta_agent")} == {
-        "rollout": 3600,
+        "rollout": 600,
         "trace_analyzer": 3600,
         "meta_agent": 3600,
     }
     assert operators["trace_analyzer"] == {
         "variant": "ahe",
         "max_tasks": 90,
-        "max_concurrent": 16,
+        "max_concurrent": 4,
         "timeout_per_task": 600,
         "retry_attempts": 3,
         "field_limit": 2000,
@@ -74,3 +76,4 @@ def test_ahe_recipe_initializes_harbor_miniswe_composition(tmp_path: Path) -> No
     config = (workspace / "evolve.yaml").read_text()
     assert "budget_usd" not in config
     assert "max_cases" not in config
+    assert "  k: 2" in config

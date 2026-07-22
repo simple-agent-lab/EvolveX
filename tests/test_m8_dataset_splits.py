@@ -7,6 +7,7 @@ from conftest import run_evolve
 
 from evolve.frozen.interfaces import OperatorContext
 from evolve.splits import build_manifest, select_dataset_tasks, selected_task_names, split_selection_digest
+from evolve.workspace import InitOptions, init_workspace
 
 
 def _dataset(root: Path, count: int = 10) -> Path:
@@ -66,6 +67,49 @@ def test_init_dataset_option_freezes_local_harbor_tasks(tmp_path: Path) -> None:
     assert sum(len(manifest["tasks"][name]) for name in ("train", "gate", "sealed")) == 10
 
 
+def test_init_full_task_scope_freezes_every_task_without_partition(tmp_path: Path, monkeypatch) -> None:
+    dataset = _dataset(tmp_path / "tasks", count=4)
+    workspace = tmp_path / "workspace"
+    monkeypatch.setenv("EVOLVE_RUNTIME_DIGEST", "sha256:test-runtime")
+    monkeypatch.setattr(
+        "evolve.workspace.default_config",
+        lambda _recipe, name: {
+            "experiment": {"id": name, "max_generations": 1, "children_per_gen": 1},
+            "target": {"seed": "builtin-dummy", "harbor_agent": "miniswe-source"},
+            "surface": {"include": ["target/**"], "exclude": []},
+            "operators": {
+                "select": {"variant": "ahe_latest"},
+                "rollout": {"variant": "harbor"},
+                "meta_agent": {"variant": "ahe"},
+                "gate": {"variant": "ahe_artifact_valid"},
+                "record": {"variant": "jsonl"},
+            },
+            "evaluator": {
+                "engine": "harbor",
+                "dataset": str(dataset),
+                "agent": "evolve_harbor_adapter:MiniSweSourceAgent",
+                "task_scope": "full",
+                "evaluation_split": "train",
+                "sampling": "static",
+                "tasks_per_round": 4,
+                "k": 2,
+                "n_concurrent": 4,
+            },
+        },
+    )
+
+    init_workspace(InitOptions(workspace=workspace, recipe="ahe", dataset=str(dataset)))
+
+    manifest = json.loads((workspace / "evaluator" / "splits.json").read_text())
+    assert manifest["ratios"] == {"train": 1.0, "gate": 0.0, "sealed": 0.0}
+    assert manifest["tasks"]["train"] == [f"task-{index}" for index in range(4)]
+    assert manifest["tasks"]["gate"] == []
+    assert manifest["tasks"]["sealed"] == []
+    config = (workspace / "evolve.yaml").read_text()
+    assert "task_scope: full" in config
+    assert "evaluation_split: train" in config
+
+
 def test_split_rejects_invalid_ratios_and_datasets_too_small_for_isolation(tmp_path: Path) -> None:
     dataset = _dataset(tmp_path / "tasks", count=2)
     with pytest.raises(ValueError, match="sum to 1.0"):
@@ -103,7 +147,9 @@ def test_harbor_rollout_uses_only_frozen_train_task_names(tmp_path: Path, monkey
     )
     (evaluator / "splits.json").write_text(json.dumps(manifest))
     (evaluator / "eval.env").write_text(
-        f"EVOLVE_HARBOR_TASKS={dataset}\nEVOLVE_HARBOR_AGENT=target.agent:HarborAgent\n"
+        f"EVOLVE_HARBOR_TASKS={dataset}\n"
+        "EVOLVE_HARBOR_AGENT=target.agent:HarborAgent\n"
+        f"EVOLVE_UV_CACHE_DIR={tmp_path / 'uv-cache'}\n"
     )
     captured: list[str] = []
 
@@ -118,7 +164,7 @@ def test_harbor_rollout_uses_only_frozen_train_task_names(tmp_path: Path, monkey
         module, "uv_run", lambda _workspace, *_command: (["uv", "run", "harbor"], {"LOCKED_RUNTIME": "1"})
     )
     monkeypatch.setattr(module, "_run_harbor", fake_run)
-    monkeypatch.setattr(module, "_collect_cases", lambda *_args, **_kwargs: [{"reward": 1.0, "outcome": "passed"}])
+    monkeypatch.setattr(module, "collect_cases", lambda *_args, **_kwargs: [{"reward": 1.0, "outcome": "passed"}])
     context = OperatorContext(
         workspace=checkout,
         checkout=checkout,
@@ -135,5 +181,14 @@ def test_harbor_rollout_uses_only_frozen_train_task_names(tmp_path: Path, monkey
 
     included = [captured[index + 1] for index, value in enumerate(captured) if value == "--include-task-name"]
     assert included == manifest["tasks"]["train"][:3]
+    assert f"EVOLVE_CANDIDATE_SOURCE={checkout / 'target'}" in captured
+    mounts = json.loads(captured[captured.index("--mounts") + 1])
+    assert mounts == [
+        {
+            "type": "bind",
+            "source": str(tmp_path / "uv-cache"),
+            "target": "/installed-agent/uv-cache",
+        }
+    ]
     assert not set(included) & set(manifest["tasks"]["gate"] + manifest["tasks"]["sealed"])
     assert result.summary["split"] == "train"

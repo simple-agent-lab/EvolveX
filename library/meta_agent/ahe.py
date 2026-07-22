@@ -24,13 +24,13 @@ directly. Optimize pass@1. Treat debugger reports as evidence, not proof.
 
 For this generation:
 1. Read the debugger overview and relevant task details first.
-2. Read change_evaluation.json and the previous change manifest.
+2. Read change_evaluation.json and the previous change context.
 3. Decide KEEP, REVISE, or ROLLBACK + PIVOT before editing.
 4. Cite specific debugger tasks and distinguish evidence from causal inference.
 5. Choose the harness component matching the root cause.
 6. If the same failure survived repeated changes at one component, pivot levels.
 7. Make one coherent target/** change and run proportionate checks.
-8. End with one delimited official-style change manifest describing the changes.
+8. When possible, end with one delimited official-style change manifest.
 
 Current debugger reports evaluate the selected parent. The new edit will be
 evaluated by the next loop. Do not edit the Harbor adapter, evaluator, mechanism,
@@ -85,11 +85,20 @@ def _required_text(path: Path, label: str) -> str:
     return text
 
 
-def _prior_manifest(ctx: OperatorContext) -> str:
+def _prior_change_context(ctx: OperatorContext) -> str:
     if ctx.parent in (None, "0"):
-        return "No prior change manifest (baseline generation)."
-    path = ctx.workspace / "runs" / f"gen-{ctx.parent}" / "meta_agent" / "change_manifest.json"
-    return _required_text(path, "prior AHE change manifest")
+        return "No prior change context (baseline generation)."
+    root = ctx.workspace / "runs" / f"gen-{ctx.parent}" / "meta_agent"
+    sections = []
+    for name in ("change_manifest.json", "output.txt", "changed.json", "patch.diff"):
+        path = root / name
+        try:
+            content = path.read_text().strip()
+        except OSError:
+            continue
+        if content:
+            sections.append(f"## {name}\n\n{content[:20000]}")
+    return "\n\n".join(sections) or "No prior change artifacts were preserved."
 
 
 def _recent_archive(ctx: OperatorContext) -> str:
@@ -115,6 +124,26 @@ def _extract_manifest(output: str, genid: str) -> dict[str, Any]:
     return payload
 
 
+def _manifest_or_context(output: str, genid: str, changed: list[str]) -> tuple[dict[str, Any], str]:
+    try:
+        return _extract_manifest(output, genid), "parsed"
+    except (ValueError, json.JSONDecodeError):
+        return {
+            "iteration": int(genid),
+            "changes": [
+                {
+                    "id": f"chg-{genid}",
+                    "type": "improvement",
+                    "description": output.strip()[:2000] or "Candidate patch produced without a manifest.",
+                    "files": changed,
+                    "predicted_fixes": [],
+                    "risk_tasks": [],
+                }
+            ],
+            "source": "synthesized_from_patch",
+        }, "synthesized"
+
+
 def build_prompt(checkout: Path, observation: str, ctx: OperatorContext) -> str:
     feedback = load_feedback(ctx.run_dir, observation)
     attribution = _required_text(
@@ -123,14 +152,27 @@ def build_prompt(checkout: Path, observation: str, ctx: OperatorContext) -> str:
     )
     template = dict(MANIFEST_TEMPLATE)
     template["iteration"] = int(ctx.genid)
+    if runner_name(ctx) == "harbor":
+        repository = Path("/app/task/workspace")
+        current_run = repository / "runs" / f"gen-{ctx.genid}"
+        experiment = repository
+    else:
+        repository = checkout
+        current_run = ctx.run_dir
+        experiment = ctx.workspace
     return (
         f"{AHE_PROMPT.rstrip()}\n\n"
         f"# Current Debugger Reports\n\n{feedback}\n\n"
         f"# Change Attribution\n\n```json\n{attribution}\n```\n\n"
-        f"# Previous Change Manifest\n\n```json\n{_prior_manifest(ctx)}\n```\n\n"
+        f"# Previous Change Context\n\n{_prior_change_context(ctx)}\n\n"
         f"# Recent Archive Outcomes\n\n```jsonl\n{_recent_archive(ctx)}\n```\n\n"
+        "# Evidence Locations\n\n"
+        f"Repository: {repository}\n"
+        f"Archive: {experiment / 'archive.jsonl'}\n"
+        f"Current generation artifacts: {current_run}\n"
+        f"Raw trace evidence: {current_run / 'trace_analyzer' / 'evidence'}\n\n"
         f"# Surface Rules\n\n{_surface_rules(checkout)}\n\n"
-        "# Required Final Output\n\nEdit the candidate directly. After the concise summary, emit exactly one block:\n\n"
+        "# Preferred Final Output\n\nEdit the candidate directly. After the concise summary, preferably emit one block:\n\n"
         f"{MANIFEST_START}\n{json.dumps(template, indent=2)}\n{MANIFEST_END}\n"
     )
 
@@ -162,12 +204,12 @@ class AheMetaAgent(MetaAgentOperator):
         _write_json(out / "changed.json", patch.changed_paths)
         _write_json(out / "surface-check.json", patch.surface_report)
         _write_json(out / "usage.json", usage)
-        manifest = _extract_manifest(agent_run.output, ctx.genid)
+        manifest, manifest_source = _manifest_or_context(agent_run.output, ctx.genid, patch.changed_paths)
         _write_json(out / "change_manifest.json", manifest)
         notes = [
             "variant: ahe",
             f"runner: {runner_name(ctx)}",
-            "change-manifest: parsed",
+            f"change-manifest: {manifest_source}",
             "written-by: operators/meta_agent.py",
             *patch.notes,
         ]

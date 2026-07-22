@@ -9,13 +9,22 @@ from harbor.agents.installed.mini_swe_agent import MiniSweAgent
 
 SOURCE_DIR = "/installed-agent/miniswe-source"
 VENV_PYTHON = f"{SOURCE_DIR}/.venv/bin/python"
-UV_CACHE_DIR = "/installed-agent/uv-cache"
+UV_CACHE_DIR = "/opt/evolve/uv/cache"
+UV_PYTHON_INSTALL_DIR = "/opt/evolve/uv/python"
 RUNNER_PATH = "/tmp/miniswe-source-run.py"
 TASK_PATH = "/tmp/miniswe-source-task.txt"
 LOG_PATH = "/logs/agent/mini-swe-agent.txt"
 RUNTIME_EVIDENCE_PATH = "/logs/agent/evolve-runtime.json"
 HOST_UV_PATH = "/tmp/evolve-uv"
 PROXY_NAMES = ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy")
+
+
+class EvolveCandidateInvalidError(RuntimeError):
+    pass
+
+
+class EvolveRuntimeInfrastructureError(RuntimeError):
+    pass
 
 
 RUNNER = r"""
@@ -83,23 +92,30 @@ class MiniSweSourceAgent(MiniSweAgent):
     async def install(self, environment):
         source = self._get_env("EVOLVE_CANDIDATE_SOURCE")
         if not source:
-            raise RuntimeError("EVOLVE_CANDIDATE_INVALID: candidate_source_missing")
+            raise EvolveCandidateInvalidError("EVOLVE_CANDIDATE_INVALID: candidate_source_missing")
         source_dir = Path(source).expanduser().resolve()
         if not (source_dir / "pyproject.toml").is_file():
-            raise RuntimeError("EVOLVE_CANDIDATE_INVALID: project_missing")
+            raise EvolveCandidateInvalidError("EVOLVE_CANDIDATE_INVALID: project_missing")
         if not (source_dir / "uv.lock").is_file():
-            raise RuntimeError("EVOLVE_CANDIDATE_INVALID: lock_missing")
+            raise EvolveCandidateInvalidError("EVOLVE_CANDIDATE_INVALID: lock_missing")
         if not ((source_dir / "src" / "minisweagent").is_dir() or (source_dir / "minisweagent").is_dir()):
-            raise RuntimeError("EVOLVE_CANDIDATE_INVALID: source_missing")
+            raise EvolveCandidateInvalidError("EVOLVE_CANDIDATE_INVALID: source_missing")
         await environment.upload_dir(source_dir, SOURCE_DIR)
         host_uv = self._host_uv_binary()
         if host_uv is not None:
             await environment.upload_file(host_uv, HOST_UV_PATH)
         install_env = self._install_env()
-        await self.exec_as_agent(
+        offline_runtime = self._get_env("UV_OFFLINE") == "1"
+        missing_uv = (
+            'printf "EVOLVE_UV_BOOTSTRAP_MISSING\\n" >&2; false; '
+            if offline_runtime
+            else "curl -LsSf https://astral.sh/uv/0.7.13/install.sh | sh; "
+        )
+        await self._runtime_phase(
             environment,
             command=(
                 "set -euo pipefail; "
+                f"unset {' '.join(PROXY_NAMES)}; "
                 'mkdir -p "$HOME/.local/bin"; export PATH="$HOME/.local/bin:$PATH"; '
                 f"if [ -f {HOST_UV_PATH} ]; then "
                 f'cp {HOST_UV_PATH} "$HOME/.local/bin/uv"; chmod 755 "$HOME/.local/bin/uv"; '
@@ -107,21 +123,33 @@ class MiniSweSourceAgent(MiniSweAgent):
                 "fi; "
                 "if ! command -v uv >/dev/null 2>&1 || ! uv --version >/dev/null 2>&1; then "
                 'rm -f "$HOME/.local/bin/uv"; '
-                "curl -LsSf https://astral.sh/uv/0.7.13/install.sh | sh; "
+                f"{missing_uv}"
                 "fi; "
                 'if [ -f "$HOME/.local/bin/env" ]; then . "$HOME/.local/bin/env"; '
                 'else export PATH="$HOME/.local/bin:$PATH"; fi; '
                 "uv --version >/dev/null"
             ),
+            code="uv_bootstrap_failed",
+            env=install_env,
+        )
+        await self._runtime_phase(
+            environment,
+            "set -euo pipefail; "
+            f"unset {' '.join(PROXY_NAMES)}; "
+            'if [ -f "$HOME/.local/bin/env" ]; then . "$HOME/.local/bin/env"; '
+            'else export PATH="$HOME/.local/bin:$PATH"; fi; '
+            f"uv sync --project {SOURCE_DIR} --frozen --no-install-local --offline",
+            "external_dependency_sync_failed",
             env=install_env,
         )
         await self._candidate_phase(
             environment,
             "set -euo pipefail; "
+            f"unset {' '.join(PROXY_NAMES)}; "
             'if [ -f "$HOME/.local/bin/env" ]; then . "$HOME/.local/bin/env"; '
             'else export PATH="$HOME/.local/bin:$PATH"; fi; '
-            f"uv sync --project {SOURCE_DIR} --frozen",
-            "frozen_sync_failed",
+            f"uv sync --project {SOURCE_DIR} --frozen --offline",
+            "local_project_sync_failed",
             env=install_env,
         )
         await self._candidate_phase(
@@ -147,7 +175,15 @@ class MiniSweSourceAgent(MiniSweAgent):
         try:
             await self.exec_as_agent(environment, command=command, env=env)
         except Exception:
-            raise RuntimeError(f"EVOLVE_CANDIDATE_INVALID: {code}") from None
+            raise EvolveCandidateInvalidError(f"EVOLVE_CANDIDATE_INVALID: {code}") from None
+
+    async def _runtime_phase(self, environment, command: str, code: str, *, env: dict[str, str]) -> None:
+        try:
+            await self.exec_as_agent(environment, command=command, env=env)
+        except Exception:
+            raise EvolveRuntimeInfrastructureError(
+                f"EVOLVE_RUNTIME_INFRASTRUCTURE: {code}"
+            ) from None
 
     def _preflight_command(self, marker: str, script: str) -> str:
         return (
@@ -190,19 +226,12 @@ class MiniSweSourceAgent(MiniSweAgent):
         await self.exec_as_agent(environment, command=self._run_command(task), env=self._source_env())
 
     def _install_env(self) -> dict[str, str]:
-        env: dict[str, str] = {"UV_CACHE_DIR": UV_CACHE_DIR}
-        proxy = (
-            self._get_env("EVOLVE_INSTALL_HTTP_PROXY")
-            or self._get_env("EVOLVE_DOCKER_HTTP_PROXY")
-            or self._get_env("http_proxy")
-            or self._get_env("HTTP_PROXY")
-        )
-        if proxy is not None:
-            env.update({"http_proxy": proxy, "https_proxy": proxy, "HTTP_PROXY": proxy, "HTTPS_PROXY": proxy})
-        no_proxy = self._get_env("EVOLVE_INSTALL_NO_PROXY") or self._get_env("no_proxy") or self._get_env("NO_PROXY")
-        if no_proxy is not None:
-            env.update({"no_proxy": no_proxy, "NO_PROXY": no_proxy})
-        return env
+        return {
+            "UV_CACHE_DIR": self._get_env("UV_CACHE_DIR") or UV_CACHE_DIR,
+            "UV_LINK_MODE": self._get_env("UV_LINK_MODE") or "copy",
+            "UV_OFFLINE": self._get_env("UV_OFFLINE") or "1",
+            "UV_PYTHON_INSTALL_DIR": self._get_env("UV_PYTHON_INSTALL_DIR") or UV_PYTHON_INSTALL_DIR,
+        }
 
     def _augment_instruction(self, instruction: str) -> str:
         if not getattr(self, "mcp_servers", None):

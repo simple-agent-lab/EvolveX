@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+
+if [ "$#" -eq 3 ] && [ "$1" = "tool" ] && [ "$2" = "install" ] && [ "$3" = "mini-swe-agent" ]; then
+    shift 2
+    exec /root/.local/bin/uv-real tool install --python 3.13 --with fastapi --with orjson "$@"
+fi
+
+exec /root/.local/bin/uv-real "$@"

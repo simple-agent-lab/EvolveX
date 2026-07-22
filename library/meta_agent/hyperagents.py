@@ -16,11 +16,12 @@ from library.meta_agent.support.evidence import load_feedback
 PROMPT = """# HyperAgents Self-Improvement
 
 Modify any part of the allowed codebase to improve downstream task performance.
-The benchmark directly evaluates `target/**`. Every proposal must include at
-least one substantive `target/**` change intended to improve downstream task
-performance. `operators/**` remains editable, including this mutation workflow
-and prompt, but operator changes must accompany, not replace, the target
-improvement. Re-evaluating an unchanged target cannot demonstrate improvement.
+The benchmark directly evaluates `target/**`. Strongly prefer a substantive `target/**`
+improvement in every proposal. An operator-only proposal is allowed
+when evidence shows that improving the search or improvement process is higher
+leverage; explain how it should benefit later target proposals. `operators/**` remains editable,
+including this mutation workflow and prompt. Do not add
+cosmetic target edits merely to satisfy this preference.
 Inspect prior generations and evaluation artifacts before editing. Make one
 coherent repository change. An operator mutation becomes active the next time
 that operator is invoked: earlier-stage changes affect later generations, while
@@ -56,15 +57,23 @@ def _remaining_iterations(ctx) -> str:
 
 def build_prompt(checkout: Path, observation: str, ctx) -> str:
     feedback = load_feedback(ctx.run_dir, observation)
+    if runner_name(ctx) == "harbor":
+        repository = Path("/app/task/workspace")
+        current_run = repository / "runs" / f"gen-{ctx.genid}"
+        experiment = repository
+    else:
+        repository = checkout
+        current_run = ctx.run_dir
+        experiment = ctx.workspace
     return (
         f"{PROMPT.rstrip()}\n\n"
         f"# Current rollout evidence\n\n{feedback}\n\n"
-        f"Repository: {checkout}\n"
-        f"Feedback bundle: {ctx.run_dir / 'feedback'}\n"
-        f"Raw trace evidence: {ctx.run_dir / 'trace_analyzer' / 'evidence'}\n"
-        f"Archive: {ctx.workspace / 'archive.jsonl'}\n"
-        f"Prior generation artifacts: {ctx.workspace / 'runs'}\n"
-        f"Current generation artifacts: {ctx.run_dir}\n"
+        f"Repository: {repository}\n"
+        f"Feedback bundle: {current_run / 'feedback'}\n"
+        f"Raw trace evidence: {current_run / 'trace_analyzer' / 'evidence'}\n"
+        f"Archive: {experiment / 'archive.jsonl'}\n"
+        f"Prior generation artifacts: {experiment / 'runs'}\n"
+        f"Current generation artifacts: {current_run}\n"
         f"Iterations remaining after this proposal: {_remaining_iterations(ctx)}\n\n"
         "Edit the checkout directly. Do not print a patch instead of editing files.\n"
     )

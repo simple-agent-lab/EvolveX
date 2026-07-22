@@ -62,6 +62,20 @@ def test_render_yaml_round_trips_all_five_sections(tmp_path: Path) -> None:
     assert load_config(config_path) == config
 
 
+def test_render_yaml_preserves_nested_candidate_runtime(tmp_path: Path) -> None:
+    config = {section: {} for section in CONFIG_SECTIONS}
+    config["evaluator"] = {
+        "engine": "harbor",
+        "candidate_runtime": {"variant": "uv", "project": "target", "python": "3.12"},
+        "max_retries": 1,
+        "benchmark_timeout_is_zero": True,
+    }
+    config_path = tmp_path / "evolve.yaml"
+    config_path.write_text(render_yaml(config))
+
+    assert load_config(config_path)["evaluator"] == config["evaluator"]
+
+
 def test_unknown_top_level_section_is_rejected(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()

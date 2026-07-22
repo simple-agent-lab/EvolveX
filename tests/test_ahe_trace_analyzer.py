@@ -32,7 +32,7 @@ def _ctx(tmp_path: Path, *, genid: str = "1", parent: str = "0") -> OperatorCont
         "  meta_agent:\n"
         "    variant: ahe\n"
         "    runner: harbor\n"
-        "    agent: mini-swe-agent\n"
+        "    agent: evolve_harbor_agent:FileTaskMiniSweAgent\n"
         "    model: gpt-test\n"
         "    environment: docker\n"
         "    editable_roots: [target]\n"
@@ -113,13 +113,30 @@ def test_ahe_debugger_reuses_only_allowlisted_meta_agent_config(tmp_path: Path) 
     config = module._debugger_runner_config(ctx.checkout)
 
     assert config == {
-        "agent": "mini-swe-agent",
+        "agent": "evolve_harbor_agent:FileTaskMiniSweAgent",
         "model": "gpt-test",
         "environment": "docker",
         "max_retries": 0,
     }
     assert "editable_roots" not in config
     assert "runner" not in config
+
+
+def test_ahe_miniswe_debugger_prompt_includes_submission_protocol() -> None:
+    module = _module()
+    job = module._build_jobs([_case("task-a", "failed", 0)], 90)[0]
+
+    prompt = module._debugger_runner_prompt(job, {"agent": "mini-swe-agent"})
+
+    assert "/logs/artifacts/ahe-debugger-response.md" in prompt
+    assert "Every response must include a Bash tool call" in prompt
+    assert "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT" in prompt
+    assert "first write the complete requested report as reasoning text" not in prompt
+    file_agent_prompt = module._debugger_runner_prompt(
+        job, {"agent": "evolve_harbor_agent:FileTaskMiniSweAgent"}
+    )
+    assert "/logs/artifacts/ahe-debugger-response.md" in file_agent_prompt
+    assert module._debugger_runner_prompt(job, {"agent": "codex"}) == module._debugger_prompt(job)
 
 
 def test_ahe_debugger_retries_and_fails_visibly(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -160,8 +177,17 @@ def test_ahe_analyzer_writes_official_reports_and_baseline(tmp_path: Path, monke
     result = module.AheTraceAnalyzer().analyze(ctx.checkout, ctx)
 
     analysis = ctx.run_dir / "trace_analyzer" / "analysis"
-    assert "ROOT CAUSE" in (analysis / "detail" / "task-a.md").read_text()
+    detail = (analysis / "detail" / "task-a.md").read_text()
+    selected = (ctx.run_dir / "trace_analyzer" / "evidence" / "selected.md").read_text()
+    cases = (ctx.run_dir / "trace_analyzer" / "evidence" / "cases.jsonl").read_text()
+    assert "ROOT CAUSE" in detail
     assert "task-a" in (analysis / "overview.md").read_text()
+    assert "ROOT CAUSE" in selected
+    assert "runs/gen-1/trace_analyzer/analysis/detail/task-a.md" in selected
+    assert "## Bounded cases" not in selected
+    assert "## Bounded cases" in detail
+    assert '"trial_name": "fail-1"' in detail
+    assert '"trial_name": "fail-1"' in cases
     change = json.loads((analysis / "change_evaluation.json").read_text())
     assert change["status"] == "baseline"
     assert result.summary["tasks"] == 2
@@ -200,6 +226,25 @@ def test_ahe_analyzer_attributes_prior_manifest(tmp_path: Path, monkeypatch: pyt
     assert change["transitions"] == {"task-a": "fail_to_pass", "task-b": "pass_to_fail"}
     assert change["prediction_results"]["task-a"] == "confirmed"
     assert change["risk_results"]["task-b"] == "realized"
+
+
+def test_ahe_analyzer_computes_transitions_without_prior_manifest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _module()
+    ctx = _ctx(tmp_path, genid="2", parent="1")
+    prior = ctx.workspace / "runs/gen-1"
+    _write_cases(prior, [_case("old-a", "failed", 0, task="task-a")])
+    _write_cases(ctx.run_dir, [_case("new-a", "passed", 1, task="task-a")])
+    monkeypatch.setattr(module, "run_readonly_agent", _fake_debugger)
+
+    module.AheTraceAnalyzer().analyze(ctx.checkout, ctx)
+
+    change = json.loads((ctx.run_dir / "trace_analyzer/analysis/change_evaluation.json").read_text())
+    assert change["transitions"] == {"task-a": "fail_to_pass"}
+    assert change["manifest"] is None
+    assert change["prediction_results"] == {}
+    assert change["risk_results"] == {}
 
 
 def test_ahe_bounds_and_redacts_case_fields() -> None:

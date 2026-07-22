@@ -19,7 +19,7 @@ from evolve.config import load_config
 from evolve.evaluation import Outcome, TrialResult, classify_evaluation
 from evolve.evaluation.identity import effective_task_set_identity
 from evolve.frozen.interfaces import ArchiveView
-from evolve.population import looks_mechanism_written
+from evolve.population import fixed_evaluation_identity, looks_mechanism_written
 from evolve.report import format_report
 
 
@@ -58,6 +58,24 @@ def _archive_workspace(tmp_path: Path) -> tuple[Path, dict[str, str]]:
 
 def _append_evaluation(workspace: Path, expected: dict[str, str], outcome: Outcome) -> None:
     append_evaluation_record(workspace, replace(_record(outcome), experiment_id=workspace.name, **expected))
+
+
+def test_fixed_identity_uses_resolved_split_tasks(tmp_path: Path) -> None:
+    workspace, _evolve_home = init_workspace(tmp_path)
+    manifest = {
+        "resolved": True,
+        "tasks": {"train": [], "gate": ["task-b", "task-a"], "sealed": []},
+    }
+    (workspace / "evaluator" / "splits.json").write_text(json.dumps(manifest) + "\n")
+    git(workspace, "add", "evaluator/splits.json")
+    git(workspace, "commit", "-m", "configure resolved split")
+    git(workspace, "tag", "-f", "gen/0")
+
+    evaluator = load_config(workspace / "evolve.yaml")["evaluator"]
+    fixed = fixed_evaluation_identity(workspace)
+
+    assert fixed is not None
+    assert fixed["task_set_hash"] == effective_task_set_identity(workspace, evaluator).digest
 
 
 def test_failed_and_cancelled_records_cannot_become_parents(tmp_path, monkeypatch) -> None:

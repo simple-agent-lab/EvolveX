@@ -78,7 +78,28 @@ def test_benchmark_agent_timeout_may_preserve_zero_reward() -> None:
     }
 
     assert normalize_task_vector(vector) == vector
-    assert task_passed(vector, "task-a") is None
+    assert task_passed(vector, "task-a") is False
+
+
+def test_task_passed_treats_scoreable_verifier_timeout_as_failure() -> None:
+    vector = {
+        "schema_version": 1,
+        "tasks": {
+            "task-a": {
+                "trials": [
+                    {
+                        "trial": 0,
+                        "status": "timeout",
+                        "reward": 0.0,
+                        "owner": "benchmark_verifier",
+                        "exception_type": "VerifierTimeoutError",
+                    }
+                ]
+            }
+        },
+    }
+
+    assert task_passed(vector, "task-a") is False
 
 
 def test_non_benchmark_timeout_cannot_carry_reward() -> None:

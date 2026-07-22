@@ -331,7 +331,7 @@ def _artifact_inventory(trial_dir: Path) -> dict[str, list[str]]:
     return inventory
 
 
-def _collect_cases(jobs_dir: Path, field_limit: int = 2000, pass_threshold: float = 1.0) -> list[dict[str, Any]]:
+def collect_cases(jobs_dir: Path, field_limit: int = 2000, pass_threshold: float = 1.0) -> list[dict[str, Any]]:
     cases: list[dict[str, Any]] = []
     if not jobs_dir.exists():
         return cases
@@ -533,6 +533,8 @@ class HarborRollout(RolloutOperator):
             tasks,
             "--agent",
             agent,
+            "--ae",
+            f"EVOLVE_CANDIDATE_SOURCE={(checkout / 'target').resolve()}",
             "--jobs-dir",
             str(jobs_dir),
             "--n-attempts",
@@ -547,6 +549,18 @@ class HarborRollout(RolloutOperator):
             str(max_retries),
             "-y",
         ]
+        uv_cache = eval_env.get("EVOLVE_UV_CACHE_DIR") or os.environ.get("EVOLVE_UV_CACHE_DIR")
+        if uv_cache:
+            cache_path = Path(uv_cache).expanduser().resolve()
+            cache_path.mkdir(parents=True, exist_ok=True)
+            command.extend(
+                [
+                    "--mounts",
+                    json.dumps(
+                        [{"type": "bind", "source": str(cache_path), "target": "/installed-agent/uv-cache"}]
+                    ),
+                ]
+            )
         if os.environ.get("EVOLVE_LIVE_OUTPUT") != "1":
             command.append("-q")
         _append_proxy_env(command)
@@ -562,7 +576,7 @@ class HarborRollout(RolloutOperator):
 
         rollout_dir = ctx.run_dir / "rollout"
         returncode = _run_harbor(command, checkout, rollout_dir / "harbor.log", harbor_env)
-        cases = _collect_cases(jobs_dir, field_limit=field_limit, pass_threshold=pass_threshold)
+        cases = collect_cases(jobs_dir, field_limit=field_limit, pass_threshold=pass_threshold)
         _write_json(rollout_dir / "cases.json", cases)
         if not cases:
             raise SystemExit(

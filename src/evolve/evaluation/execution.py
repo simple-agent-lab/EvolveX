@@ -12,8 +12,9 @@ from ..config import evaluator_boolean, evaluator_sampling, experiment_id, load_
 from ..git import evaluator_tree, git, git_stdout
 from ..host_runtime import clean_python_env
 from ..runtime import OwnedResult, attempt_dir, next_attempt, owned_attempt_id, run_owned
+from ..uv_runtime import CandidateRuntimeResult, prepare_candidate_runtime
 from .evidence import trial_results, validate_task_vector
-from .identity import effective_task_set_identity
+from .identity import effective_task_set_identity, evaluation_split_name
 from .results import EvaluationRecord, Outcome, classify_evaluation
 
 
@@ -46,7 +47,11 @@ def evaluate(
             timeout_zero = evaluator_boolean(evaluator, "benchmark_timeout_is_zero")
             task_set = effective_task_set_identity(checkout, evaluator, purpose=purpose)
             runtime_fingerprint = hashlib.sha256((checkout / "evaluator" / "runtime.pin").read_bytes()).hexdigest()
-            expected = _expected_trials(evaluator, task_limit)
+            expected = _expected_trials(
+                evaluator,
+                task_limit,
+                selected_tasks=len(task_set.members) if task_set.members else None,
+            )
             if attempt is None:
                 attempt = next_attempt(
                     workspace,
@@ -76,7 +81,36 @@ def evaluate(
             }
             try:
                 try:
-                    result = _run_eval_script(checkout, run_dir, genid, task_limit, purpose)
+                    runtime = prepare_candidate_runtime(
+                        checkout,
+                        run_dir,
+                        workspace / "runs" / "runtime",
+                        candidate_commit,
+                        evaluator,
+                    )
+                    base["candidate_runtime"] = _runtime_receipt_reference(
+                        workspace, runtime.receipt_path
+                    )
+                    if not runtime.ready:
+                        return classify_evaluation(
+                            **base,
+                            trials=(),
+                            setup_outcome=runtime.outcome,
+                            setup_reason=runtime.reason,
+                            benchmark_timeout_is_zero=timeout_zero,
+                            cost_usd=0.0,
+                            wall_s=time.monotonic() - start,
+                            artifacts=None,
+                        )
+                    result = _run_eval_script(
+                        checkout,
+                        run_dir,
+                        genid,
+                        task_limit,
+                        purpose,
+                        evaluation_split_name(evaluator, purpose),
+                        runtime,
+                    )
                     setup_outcome, setup_reason = _setup_evidence(run_dir)
                     try:
                         vector = _read_task_vector(run_dir)
@@ -149,6 +183,17 @@ def _evaluation_artifact_reference(workspace: Path, run_dir: Path) -> dict[str, 
     )
 
 
+def _runtime_receipt_reference(
+    workspace: Path, receipt: Path | None
+) -> dict[str, str] | None:
+    if receipt is None or not receipt.exists():
+        return None
+    return {
+        "path": receipt.resolve().relative_to(workspace.resolve()).as_posix(),
+        "sha256": hashlib.sha256(receipt.read_bytes()).hexdigest(),
+    }
+
+
 def _setup_evidence(run_dir: Path) -> tuple[Outcome | None, str | None]:
     path = run_dir / "setup_outcome"
     if not path.exists():
@@ -168,13 +213,25 @@ def _read_cost(run_dir: Path) -> float:
     return float(value)
 
 
-def _expected_trials(evaluator: dict[str, Any], task_limit: int | None) -> int:
+def _expected_trials(
+    evaluator: dict[str, Any], task_limit: int | None, *, selected_tasks: int | None = None
+) -> int:
     attempts = max(1, int(evaluator.get("k", 1)))
-    tasks = task_limit if task_limit is not None else int(evaluator.get("tasks_per_round", attempts))
+    tasks = selected_tasks if selected_tasks is not None else int(evaluator.get("tasks_per_round", attempts))
+    if task_limit is not None:
+        tasks = min(tasks, task_limit) if selected_tasks is not None else task_limit
     return max(1, tasks) * attempts
 
 
-def _run_eval_script(checkout: Path, run_dir: Path, genid: str, task_limit: int | None, purpose: str) -> OwnedResult:
+def _run_eval_script(
+    checkout: Path,
+    run_dir: Path,
+    genid: str,
+    task_limit: int | None,
+    purpose: str,
+    evaluation_split: str,
+    runtime: CandidateRuntimeResult,
+) -> OwnedResult:
     runs_dir = next(parent for parent in run_dir.parents if parent.name == "runs")
     env: dict[str, str] = {
         **clean_python_env(),
@@ -184,9 +241,12 @@ def _run_eval_script(checkout: Path, run_dir: Path, genid: str, task_limit: int 
         "EVOLVE_ATTEMPT_ID": owned_attempt_id(runs_dir.parent, run_dir),
         "EVOLVE_WORKSPACE": str(runs_dir.parent.resolve()),
     }
-    env["EVOLVE_EVAL_SPLIT"] = "sealed" if purpose == "anchor" else "gate"
+    env["EVOLVE_EVAL_SPLIT"] = evaluation_split
+    if runtime.variant is not None:
+        env["EVOLVE_CANDIDATE_RUNTIME_ENV_JSON"] = runtime.environment_json()
+        env["EVOLVE_CANDIDATE_RUNTIME_MOUNTS_JSON"] = runtime.mounts_json()
     env.setdefault("EVOLVE_FRAMEWORK_PYTHON", sys.executable)
-    uv_cache = runs_dir / "runtime" / "uv-cache"
+    uv_cache = Path(env.get("EVOLVE_UV_CACHE_DIR") or runs_dir / "runtime" / "uv-cache")
     uv_cache.mkdir(parents=True, exist_ok=True)
     env["EVOLVE_UV_CACHE_DIR"] = str(uv_cache)
     if task_limit is not None:

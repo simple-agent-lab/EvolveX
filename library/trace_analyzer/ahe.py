@@ -306,6 +306,20 @@ def _debugger_prompt(job: TaskAnalysisJob) -> str:
     )
 
 
+def _debugger_runner_prompt(job: TaskAnalysisJob, config: dict[str, Any]) -> str:
+    prompt = _debugger_prompt(job)
+    agent = str(config.get("agent") or "")
+    if agent != "mini-swe-agent" and not agent.endswith(":FileTaskMiniSweAgent"):
+        return prompt
+    return (
+        prompt + "\n\n# MiniSWE submission protocol\n\n"
+        "Every response must include a Bash tool call. Use Bash to inspect the mounted evidence as needed. "
+        "Write the complete requested report to `/logs/artifacts/ahe-debugger-response.md`, then finish with a "
+        "standalone Bash tool call that executes `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`. Do not modify the "
+        "experiment workspace."
+    )
+
+
 _DEBUGGER_RUNNER_KEYS = (
     "agent",
     "model",
@@ -337,14 +351,15 @@ def _safe_task_name(task_name: str) -> str:
 def _run_debugger_job(checkout: Path, ctx: OperatorContext, job: TaskAnalysisJob) -> DebuggerResult:
     attempts = _positive_int(ctx.config.get("retry_attempts"), 3)
     timeout_s = float(ctx.config.get("timeout_per_task") or 600)
-    runner_ctx = replace(ctx, config=_debugger_runner_config(checkout))
+    runner_config = _debugger_runner_config(checkout)
+    runner_ctx = replace(ctx, config=runner_config)
     slug = _safe_task_name(job.task_name)
     last_error: AgentCommandError | None = None
     for attempt in range(1, attempts + 1):
         try:
             result = run_readonly_agent(
                 checkout,
-                _debugger_prompt(job),
+                _debugger_runner_prompt(job, runner_config),
                 runner_ctx,
                 output_dir=ctx.run_dir / "trace_analyzer" / "debugger" / slug / f"attempt-{attempt}",
                 job_name=f"ahe-debug-{slug}-attempt-{attempt}",
@@ -440,11 +455,14 @@ def _change_evaluation(ctx: OperatorContext, cases: list[Case], field_limit: int
         raise RuntimeError(error)
     manifest_path = prior_run / "meta_agent" / "change_manifest.json"
     try:
-        manifest = json.loads(manifest_path.read_text())
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise RuntimeError(f"missing or invalid prior AHE manifest: {manifest_path}") from exc
-    if not isinstance(manifest, dict) or not isinstance(manifest.get("changes"), list):
-        raise RuntimeError(f"invalid prior AHE manifest: {manifest_path}")
+        candidate_manifest = json.loads(manifest_path.read_text())
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        candidate_manifest = None
+    manifest = (
+        candidate_manifest
+        if isinstance(candidate_manifest, dict) and isinstance(candidate_manifest.get("changes"), list)
+        else None
+    )
     before = _task_outcomes([_normalize(case, field_limit) for case in prior_raw])
     after = _task_outcomes(cases)
     transitions = {
@@ -452,16 +470,19 @@ def _change_evaluation(ctx: OperatorContext, cases: list[Case], field_limit: int
     }
     predicted = {
         str(task)
-        for change in manifest["changes"]
+        for change in (manifest["changes"] if manifest else [])
         if isinstance(change, dict)
         for task in change.get("predicted_fixes", [])
     }
     risks = {
-        str(task) for change in manifest["changes"] if isinstance(change, dict) for task in change.get("risk_tasks", [])
+        str(task)
+        for change in (manifest["changes"] if manifest else [])
+        if isinstance(change, dict)
+        for task in change.get("risk_tasks", [])
     }
     return {
         "status": "evaluated",
-        "manifest": str(manifest_path),
+        "manifest": str(manifest_path) if manifest else None,
         "transitions": transitions,
         "prediction_results": {
             task: "confirmed" if transitions.get(task) == "fail_to_pass" else "not_confirmed"
@@ -510,7 +531,15 @@ def _reports(root: Path, results: list[DebuggerResult]) -> tuple[str, list[str]]
         )
         relative = f"trace_analyzer/analysis/detail/{_safe_task_name(job.task_name)}.md"
         (root.parent / relative).write_text(detail)
-        details.append(f"# Detail: {job.task_name}\n\n{detail}")
+        workspace_relative = f"runs/{root.parent.name}/{relative}"
+        details.append(
+            f"# Detail: {job.task_name}\n\n"
+            f"- Pass: {job.n_pass}\n- Fail: {job.n_fail}\n- Timeout: {job.n_timeout}\n"
+            f"- Traces: {', '.join(labels)}\n"
+            f"- Full bounded evidence: `{workspace_relative}`\n\n"
+            f"## LLM debugger response\n\n{result.response}\n\n"
+            f"## Failing verifier evidence\n\n{json.dumps(failing_verifier, indent=2)}\n"
+        )
         artifacts.append(relative)
     lines = ["# AHE Debugger Overview", ""]
     for mode, title in (("debug", "Failures and timeouts"), ("summary", "All-pass summaries")):

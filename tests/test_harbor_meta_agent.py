@@ -12,6 +12,7 @@ from evolve.agent import AgentCommandError
 from evolve.frozen.interfaces import OperatorContext
 
 ROOT = Path(__file__).resolve().parents[1]
+FILE_TASK_AGENT = "evolve_harbor_agent:FileTaskMiniSweAgent"
 
 
 def _harbor_runner_module():
@@ -23,6 +24,27 @@ def _harbor_runner_module():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def test_harbor_rejects_oversized_instruction_with_unsafe_agent(tmp_path: Path) -> None:
+    runner = _harbor_runner_module()
+    prompt = tmp_path / "prompt.md"
+    prompt.write_text("x" * (96 * 1024 + 1))
+
+    with pytest.raises(RuntimeError, match="harbor_instruction_transport_unsafe"):
+        runner._instruction_transport("mini-swe-agent", prompt)
+
+
+def test_harbor_accepts_oversized_instruction_with_file_agent(tmp_path: Path) -> None:
+    runner = _harbor_runner_module()
+    prompt = tmp_path / "prompt.md"
+    prompt.write_text("x" * 200_000)
+
+    assert runner._instruction_transport(FILE_TASK_AGENT, prompt) == {
+        "bytes": 200_000,
+        "mode": "mounted-file",
+        "safe": True,
+    }
 
 
 def _git(root: Path, *args: str) -> str:
@@ -62,6 +84,10 @@ def _checkout(tmp_path: Path) -> tuple[Path, Path]:
     _git(checkout, "add", ".")
     _git(checkout, "commit", "-qm", "parent")
     _git(checkout, "tag", "gen/0")
+    (checkout / "archive.jsonl").write_text('{"genid":"0"}\n')
+    evidence = run_dir / "trace_analyzer" / "evidence"
+    evidence.mkdir(parents=True)
+    (evidence / "raw_traces.jsonl").write_text('{"task_name":"task-a"}\n')
     return checkout, run_dir
 
 
@@ -113,10 +139,10 @@ readonly = os.environ.get("FAKE_HARBOR_MODE") == "readonly"
 if readonly:
     if "--artifact" in sys.argv:
         raise SystemExit("readonly execution must not request an artifact")
-elif option("--artifact") != "/app/candidate":
-    raise SystemExit("expected /app/candidate artifact")
+elif option("--artifact") != "/app/task/workspace":
+    raise SystemExit("expected /app/task/workspace artifact")
 if option("--workdir") != "/app":
-    raise SystemExit("expected /app workdir")
+    raise SystemExit("unexpected workdir")
 if option("--agent") != "mini-swe-agent":
     raise SystemExit("expected mini-swe-agent")
 if option("--model") != "gpt-test":
@@ -128,10 +154,17 @@ job_name = option("--job-name")
 job_dir = jobs_dir / job_name
 trial_dir = job_dir / "task-0001__fake"
 trial_dir.mkdir(parents=True, exist_ok=True)
-artifact = trial_dir / "artifacts" / "app" / "candidate"
+artifact = trial_dir / "artifacts" / "app" / "task" / "workspace"
 if not readonly:
     artifact.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(source / "candidate", artifact, symlinks=True)
+    workspace = source / "workspace"
+    if not (workspace / ".git").exists():
+        raise SystemExit("workspace is missing Git history")
+    if not (workspace / "archive.jsonl").is_file():
+        raise SystemExit("workspace is missing archive evidence")
+    if not (workspace / "runs" / "gen-1" / "trace_analyzer" / "evidence" / "raw_traces.jsonl").is_file():
+        raise SystemExit("workspace is missing current trace evidence")
+    shutil.copytree(workspace, artifact, symlinks=True)
 
     (artifact / "target" / "agent.py").write_text("print('child')\\n")
     (artifact / "target" / "added.txt").write_text("created in Harbor\\n")
@@ -140,6 +173,8 @@ if not readonly:
         (artifact / "operators" / "meta_agent.md").write_text("# Changed by Harbor\\n")
     if os.environ.get("FAKE_HARBOR_MODE") == "artifact-symlink":
         (artifact / "target" / "link.txt").symlink_to("agent.py")
+    if os.environ.get("FAKE_HARBOR_MODE") == "protected-edit":
+        (artifact / "evolve.yaml").write_text("experiment: {id: compromised}\\n")
 
 manifest = [
     {
@@ -150,15 +185,27 @@ manifest = [
         "service": None,
     },
     {
-        "source": "/app/candidate",
-        "destination": "artifacts/app/candidate",
+        "source": "/app/task/workspace",
+        "destination": "artifacts/app/task/workspace",
         "type": "directory",
         "status": "ok",
         "service": None,
     },
 ]
-if not readonly:
-    (trial_dir / "artifacts" / "manifest.json").write_text(json.dumps(manifest))
+if readonly:
+    report_dir = trial_dir / "artifacts" / "logs" / "artifacts"
+    report_dir.mkdir(parents=True)
+    (report_dir / "ahe-debugger-response.md").write_text("ROOT CAUSE: collected artifact")
+    manifest = [
+        {
+            "source": "/logs/artifacts",
+            "destination": "artifacts/logs/artifacts",
+            "type": "directory",
+            "status": "ok",
+            "service": None,
+        }
+    ]
+(trial_dir / "artifacts" / "manifest.json").write_text(json.dumps(manifest))
 
 exception = None
 if os.environ.get("FAKE_HARBOR_MODE") == "agent-error":
@@ -197,7 +244,7 @@ agent_dir.mkdir()
                 {
                     "source": "agent",
                     "message": (
-                        "ROOT CAUSE: tool retry loop"
+                        "ROOT CAUSE: ignored trajectory"
                         if readonly
                         else 'Completed the mutation.\\npredicted_fixes: ["task-1"]'
                     ),
@@ -246,8 +293,14 @@ def test_harbor_meta_agent_round_trips_target_and_writes_artifacts(
     assert usage["cache_tokens"] == 25
     assert usage["output_tokens"] == 10
     assert 'predicted_fixes: ["task-1"]' in result.output
-    assert "failure evidence" in (meta_dir / "harbor" / "prompt.md").read_text()
-    assert "/app/candidate" in (meta_dir / "harbor" / "prompt.md").read_text()
+    prompt = (meta_dir / "harbor" / "prompt.md").read_text()
+    assert "failure evidence" in prompt
+    assert "/app/task/workspace" in prompt
+    assert "remove generated virtual environments" in prompt
+    assert "/app/candidate" not in prompt
+    command = json.loads((meta_dir / "harbor" / "command.json").read_text())
+    assert command[command.index("--artifact") + 1] == "/app/task/workspace"
+    assert command[command.index("--workdir") + 1] == "/app"
     assert list((meta_dir / "harbor" / "jobs").glob("*/*/result.json"))
     assert marker.read_text() == "called"
 
@@ -281,11 +334,66 @@ def test_harbor_readonly_agent_returns_response_without_candidate_artifact(
         timeout_s=30,
     )
 
-    assert result.output == "ROOT CAUSE: tool retry loop"
+    assert result.output == "ROOT CAUSE: collected artifact"
     assert result.usage["usd"] == 0.25
     command = json.loads((output_dir / "command.json").read_text())
     assert "--artifact" not in command
     assert not (checkout / "target" / "added.txt").exists()
+
+
+def test_readonly_artifact_output_rejects_missing_report(tmp_path: Path) -> None:
+    trial_dir = tmp_path / "trial"
+    artifacts = trial_dir / "artifacts"
+    artifacts.mkdir(parents=True)
+    (artifacts / "manifest.json").write_text(
+        json.dumps(
+            [
+                {
+                    "source": "/logs/artifacts",
+                    "destination": "artifacts/logs/artifacts",
+                    "status": "ok",
+                }
+            ]
+        )
+    )
+
+    with pytest.raises(RuntimeError, match="missing AHE debugger report"):
+        _harbor_runner_module()._readonly_artifact_output(trial_dir)
+
+
+def test_readonly_artifact_output_rejects_escape(tmp_path: Path) -> None:
+    trial_dir = tmp_path / "trial"
+    artifacts = trial_dir / "artifacts"
+    artifacts.mkdir(parents=True)
+    (artifacts / "manifest.json").write_text(
+        json.dumps(
+            [{"source": "/logs/artifacts", "destination": "../outside", "status": "ok"}]
+        )
+    )
+
+    with pytest.raises(RuntimeError, match="escaped the trial"):
+        _harbor_runner_module()._readonly_artifact_output(trial_dir)
+
+
+def test_readonly_artifact_output_rejects_empty_report(tmp_path: Path) -> None:
+    trial_dir = tmp_path / "trial"
+    report_dir = trial_dir / "artifacts" / "logs" / "artifacts"
+    report_dir.mkdir(parents=True)
+    (report_dir / "ahe-debugger-response.md").write_text("\n")
+    (trial_dir / "artifacts" / "manifest.json").write_text(
+        json.dumps(
+            [
+                {
+                    "source": "/logs/artifacts",
+                    "destination": "artifacts/logs/artifacts",
+                    "status": "ok",
+                }
+            ]
+        )
+    )
+
+    with pytest.raises(RuntimeError, match="empty AHE debugger report"):
+        _harbor_runner_module()._readonly_artifact_output(trial_dir)
 
 
 def test_harbor_meta_agent_round_trips_target_and_operators(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -312,16 +420,32 @@ def test_harbor_meta_agent_rejects_non_top_level_editable_root(tmp_path: Path, m
         runner.run_agent(checkout, "failure evidence", ctx)
 
 
+def test_harbor_meta_agent_rejects_protected_workspace_edits(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    checkout, run_dir = _checkout(tmp_path)
+    before_config = (checkout / "evolve.yaml").read_text()
+    before_target = (checkout / "target" / "agent.py").read_text()
+    bin_dir = tmp_path / "bin"
+    _install_fake_harbor(bin_dir)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("FAKE_HARBOR_MODE", "protected-edit")
+
+    with pytest.raises(AgentCommandError, match="outside surface"):
+        _harbor_runner_module().run_agent(checkout, "failure evidence", _ctx(checkout, run_dir))
+
+    assert (checkout / "evolve.yaml").read_text() == before_config
+    assert (checkout / "target" / "agent.py").read_text() == before_target
+
+
 def test_multi_root_install_rolls_back_when_second_replacement_fails(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    checkout, _run_dir = _checkout(tmp_path)
+    checkout, run_dir = _checkout(tmp_path)
     runner = _harbor_runner_module()
     surface = runner.load_surface_policy(checkout)
-    bundle = runner._prepare_bundle(checkout, ["target", "operators"], surface)
+    bundle = runner._prepare_bundle(checkout, _ctx(checkout, run_dir), ["target", "operators"], surface)
+    assert bundle.staging.parent == checkout.parent
     returned = tmp_path / "returned"
-    shutil.copytree(checkout / "target", returned / "target")
-    shutil.copytree(checkout / "operators", returned / "operators")
+    shutil.copytree(bundle.workspace, returned, symlinks=True)
     (returned / "target" / "agent.py").write_text("print('child')\n")
     (returned / "operators" / "meta_agent.md").write_text("# child\n")
     before_target = (checkout / "target" / "agent.py").read_text()
@@ -367,6 +491,9 @@ def test_harbor_trial_exception_does_not_modify_target(tmp_path: Path, monkeypat
     }
     assert after == before
     assert "NonZeroAgentExitCodeError" in str(excinfo.value)
+    error = json.loads((run_dir / "meta_agent" / "harbor" / "error.json").read_text())
+    assert error["type"] == "RuntimeError"
+    assert "NonZeroAgentExitCodeError" in error["message"]
 
 
 def test_harbor_meta_agent_rejects_source_symlinks_before_launch(
