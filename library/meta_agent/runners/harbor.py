@@ -193,6 +193,8 @@ def _agent_env(config: dict[str, Any]) -> dict[str, str]:
     configured = config.get("agent_env")
     if isinstance(configured, dict):
         values.update({str(key): str(value) for key, value in configured.items()})
+    if str(config.get("agent") or "").strip().lower() == "codex":
+        values["CODEX_FORCE_AUTH_JSON"] = "1"
     force_auth = os.environ.get("CODEX_FORCE_AUTH_JSON")
     if force_auth and "CODEX_FORCE_AUTH_JSON" not in values:
         values["CODEX_FORCE_AUTH_JSON"] = force_auth

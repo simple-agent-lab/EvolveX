@@ -7,6 +7,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
+import pytest
 from conftest import run_evolve
 
 
@@ -24,6 +25,9 @@ class FakeCodex:
         self.model_name = model_name
         self.kwargs = kwargs
         self.base_setup_called = False
+
+    def _get_env(self, _name: str) -> str | None:
+        return None
 
     async def setup(self, environment: object) -> None:
         self.base_setup_called = True
@@ -95,6 +99,14 @@ def test_builtin_codex_wrapper_injects_skills_and_opt_in_compaction(tmp_path: Pa
     assert environment.uploads == [
         (workspace / "target" / "skills", "/tmp/evolve-target-skills"),
     ]
+
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    auth_path = tmp_path / "home" / ".codex" / "auth.json"
+    with pytest.raises(ValueError, match="auth.json does not exist"):
+        agent._resolve_auth_json_path()
+    auth_path.parent.mkdir(parents=True)
+    auth_path.write_text("{}\n")
+    assert agent._resolve_auth_json_path() == auth_path
 
     config_path = workspace / "target" / "codex.toml"
     config_path.write_text(config_path.read_text().replace("override_defaults = false", "override_defaults = true"))

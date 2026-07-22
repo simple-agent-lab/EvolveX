@@ -170,8 +170,9 @@ evolve init /tmp/evolve-codex --recipe hill_climb --seed builtin-codex \
 The generated `target/` owns its prompt, skills, Codex version/model settings,
 and opt-in compaction overrides. Harbor still installs and executes the Codex
 CLI inside each task container. Runtime authentication stays outside the
-workspace: export `OPENAI_API_KEY`, or use host `codex login` with
-`CODEX_FORCE_AUTH_JSON=1`.
+workspace: run `codex login` on the host so `~/.codex/auth.json` exists. The
+framework injects that file into Harbor Codex containers without copying it
+into the target or generated configuration.
 
 For a local Harbor dataset, init deterministically freezes disjoint
 `train`/`gate`/`sealed` task-name lists in `evaluator/splits.json`. Harbor

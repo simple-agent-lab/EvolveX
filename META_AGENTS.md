@@ -111,32 +111,13 @@ Harbor and the framework are always launched with `uv run --project
 arbitrary executable is not a Harbor agent adapter; use `local` for that
 executable, or package a Harbor adapter class.
 
-Keep credentials in the environment rather than recipe YAML. Harbor's Codex
-adapter accepts `OPENAI_API_KEY`, or host `auth.json` when
-`CODEX_FORCE_AUTH_JSON=1` is exported. Proxy values are forwarded from the
+Codex authentication always uses a host `auth.json`: run `codex login` before
+starting the experiment. For `agent: codex`, the Harbor runner automatically
+sets `CODEX_FORCE_AUTH_JSON=1`; the built-in Codex target also requires
+`~/.codex/auth.json`. Use `CODEX_AUTH_JSON_PATH` when the file is stored at a
+different path. Credentials are uploaded at runtime and never written into the
+recipe, target, or retained Harbor command. Proxy values are forwarded from the
 standard proxy environment or `EVOLVE_HARBOR_*_PROXY` overrides.
-
-Generated workspaces also include
-`evolve_harbor_adapter.modelhub_codex:ModelHubCodexAgent` for a local bridge
-that exposes an OpenAI-compatible Responses endpoint to Codex. Configure the
-non-secret bridge URL in the operator block and keep its credential in the
-process environment:
-
-```yaml
-meta_agent:
-  runner: harbor
-  agent: evolve_harbor_adapter.modelhub_codex:ModelHubCodexAgent
-  model: gpt-5.4
-  agent_kwargs:
-    reasoning_effort: xhigh
-  agent_env:
-    OPENAI_BASE_URL: http://bridge-host.example:8787/v1
-```
-
-The adapter selects API authentication, the Responses wire protocol, and
-disables WebSockets. The bridge is responsible for any upstream-specific
-headers and conversation affinity; the framework does not persist bridge
-credentials in generated config or artifacts.
 
 ## Retained Harbor evidence
 

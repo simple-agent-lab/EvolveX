@@ -25,6 +25,14 @@ def _harbor_runner_module():
     return module
 
 
+def test_codex_meta_agent_always_uses_host_auth_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _harbor_runner_module()
+    monkeypatch.delenv("CODEX_FORCE_AUTH_JSON", raising=False)
+
+    assert module._agent_env({"agent": "codex"})["CODEX_FORCE_AUTH_JSON"] == "1"
+    assert "CODEX_FORCE_AUTH_JSON" not in module._agent_env({"agent": "mini-swe-agent"})
+
+
 def _git(root: Path, *args: str) -> str:
     result = subprocess.run(
         ["git", "-C", str(root), *args],

@@ -27,7 +27,6 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
         "uv.lock",
         ".python-version",
         "evolve_harbor_adapter/__init__.py",
-        "evolve_harbor_adapter/modelhub_codex.py",
         "evolve.yaml",
         ".evolve-protocol-version",
         "AGENTS.md",
@@ -62,6 +61,7 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
     assert not (workspace / "operators" / "mutate.py").exists()
     assert not (workspace / "operators" / "mutate.md").exists()
     assert not (workspace / "operators" / "mutation_brief.md").exists()
+    assert not (workspace / "evolve_harbor_adapter" / "modelhub_codex.py").exists()
     assert not (workspace / "operators" / "meta_agent.md").exists()
     assert not (workspace / "operators" / "meta_agent_brief.md").exists()
     assert not (workspace / "evaluator" / "checkout_agent.py").exists()
