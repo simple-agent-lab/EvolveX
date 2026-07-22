@@ -146,6 +146,29 @@ def test_meta_agent_image_provides_harbor_workspace_parent() -> None:
     assert 'uv-real tool install --python 3.13 --with fastapi --with orjson "$@"' in wrapper
 
 
+def test_ahe_recipe_configures_reasoning_without_cost_caps() -> None:
+    recipe = _parsed_config("ahe")
+    assert recipe["operators"]["meta_agent"]["agent_kwargs"] == {
+        "reasoning_effort": "xhigh",
+        "cost_limit": 0,
+    }
+    assert recipe["evaluator"]["agent_env"]["MINISWE_REASONING_EFFORT"] == "high"
+    assert recipe["evaluator"]["agent_env"]["MINISWE_COST_LIMIT"] == "0"
+
+
+def test_hyperagents_recipe_configures_reasoning_without_cost_caps() -> None:
+    recipe = _parsed_config("hyperagents")
+    assert recipe["operators"]["meta_agent"]["agent_kwargs"] == {
+        "reasoning_effort": "high",
+        "cost_limit": 0,
+    }
+    assert "budget_usd" not in recipe["experiment"]
+    assert recipe["evaluator"]["agent_env"] == {
+        "MINISWE_REASONING_EFFORT": "high",
+        "MINISWE_COST_LIMIT": "0",
+    }
+
+
 def test_smoke_recipes_are_explicitly_named_and_deterministic() -> None:
     for name in SMOKE_RECIPES:
         config = _config(name)

@@ -27,36 +27,71 @@ class EvolveRuntimeInfrastructureError(RuntimeError):
     pass
 
 
-RUNNER = r"""
-import json
+MODEL_SETUP = r"""
 import os
+from minisweagent.models.litellm_model import LitellmModel, LitellmModelConfig
+
+VALID_REASONING_EFFORTS = ("none", "low", "medium", "high", "xhigh")
+
+
+def _filtered(values, allowed):
+    return {key: value for key, value in (values or {}).items() if key in allowed}
+
+
+def _reasoning_effort():
+    effort = os.environ.get("MINISWE_REASONING_EFFORT", "").strip().lower()
+    if not effort:
+        return None
+    if effort not in VALID_REASONING_EFFORTS:
+        accepted = ", ".join(VALID_REASONING_EFFORTS)
+        raise ValueError(
+            f"Invalid MINISWE_REASONING_EFFORT={effort!r}; expected one of: {accepted}"
+        )
+    return effort
+
+
+def build_model(config):
+    model_name = os.environ["MSWEA_MODEL_NAME"]
+    effort = _reasoning_effort()
+    model_kwargs = _filtered(config.get("model"), LitellmModelConfig.model_fields)
+    model_kwargs["model_name"] = model_name
+    model_kwargs["cost_tracking"] = "ignore_errors"
+
+    if model_name.startswith("openai/") and effort is not None:
+        nested_kwargs = dict(model_kwargs.get("model_kwargs") or {})
+        nested_kwargs.pop("reasoning", None)
+        nested_kwargs.pop("reasoning_effort", None)
+        extra_body = dict(nested_kwargs.get("extra_body") or {})
+        extra_body["reasoning_effort"] = effort
+        nested_kwargs["extra_body"] = extra_body
+        model_kwargs["model_kwargs"] = nested_kwargs
+
+    return LitellmModel(**model_kwargs)
+""".strip()
+
+
+RUNNER = (MODEL_SETUP + r"""
+import json
 from pathlib import Path
 
 from minisweagent.agents.default import AgentConfig, DefaultAgent
 from minisweagent.config import get_config_from_spec
 from minisweagent.environments.local import LocalEnvironment, LocalEnvironmentConfig
-from minisweagent.models.litellm_model import LitellmModel, LitellmModelConfig
-
-
-def filtered(payload, fields):
-    return {key: value for key, value in dict(payload or {}).items() if key in fields}
 
 
 task = Path(os.environ["MINISWE_TASK_PATH"]).read_text()
 config = get_config_from_spec(os.environ.get("MINISWE_CONFIG", "mini"))
-agent_kwargs = filtered(config.get("agent"), AgentConfig.model_fields)
-env_kwargs = filtered(config.get("environment"), LocalEnvironmentConfig.model_fields)
-model_kwargs = filtered(config.get("model"), LitellmModelConfig.model_fields)
-model_kwargs["model_name"] = os.environ["MSWEA_MODEL_NAME"]
-model_kwargs["cost_tracking"] = "ignore_errors"
+agent_kwargs = _filtered(config.get("agent"), AgentConfig.model_fields)
+env_kwargs = _filtered(config.get("environment"), LocalEnvironmentConfig.model_fields)
 env_kwargs["cwd"] = os.environ.get("MINISWE_CWD") or os.getcwd()
 env_kwargs["timeout"] = int(os.environ.get("MINISWE_ENV_TIMEOUT", env_kwargs.get("timeout") or 30))
 agent_kwargs["step_limit"] = int(os.environ.get("MINISWE_STEP_LIMIT", agent_kwargs.get("step_limit") or 0))
 agent_kwargs["cost_limit"] = float(os.environ.get("MINISWE_COST_LIMIT", agent_kwargs.get("cost_limit") or 0))
 agent_kwargs["output_path"] = os.environ.get("MINISWE_OUTPUT_PATH")
-agent = DefaultAgent(LitellmModel(**model_kwargs), LocalEnvironment(**env_kwargs), **agent_kwargs)
+model = build_model(config)
+agent = DefaultAgent(model, LocalEnvironment(**env_kwargs), **agent_kwargs)
 print(json.dumps(agent.run(task), default=str))
-""".strip()
+""").strip()
 
 
 MINISWE_PREFLIGHT = r"""
@@ -69,23 +104,13 @@ print("EVOLVE_PREFLIGHT: miniswe_import_ok")
 """.strip()
 
 
-MODEL_PREFLIGHT = r"""
-import os
-
+MODEL_PREFLIGHT = (MODEL_SETUP + r"""
 from minisweagent.config import get_config_from_spec
-from minisweagent.models.litellm_model import LitellmModel, LitellmModelConfig
 
 config = get_config_from_spec(os.environ.get("MINISWE_CONFIG", "mini"))
-model_kwargs = {
-    key: value
-    for key, value in dict(config.get("model") or {}).items()
-    if key in LitellmModelConfig.model_fields
-}
-model_kwargs["model_name"] = os.environ["MSWEA_MODEL_NAME"]
-model_kwargs["cost_tracking"] = "ignore_errors"
-LitellmModel(**model_kwargs)
+build_model(config)
 print("EVOLVE_PREFLIGHT: model_path_init_ok")
-""".strip()
+""").strip()
 
 
 class MiniSweSourceAgent(MiniSweAgent):
@@ -276,7 +301,12 @@ class MiniSweSourceAgent(MiniSweAgent):
         if api_base is not None:
             env["OPENAI_BASE_URL"] = api_base
             env["OPENAI_API_BASE"] = api_base
-        for name in ("MINISWE_STEP_LIMIT", "MINISWE_COST_LIMIT", "MINISWE_ENV_TIMEOUT"):
+        for name in (
+            "MINISWE_STEP_LIMIT",
+            "MINISWE_COST_LIMIT",
+            "MINISWE_ENV_TIMEOUT",
+            "MINISWE_REASONING_EFFORT",
+        ):
             value = self._get_env(name)
             if value is not None:
                 env[name] = value

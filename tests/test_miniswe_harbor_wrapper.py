@@ -8,7 +8,17 @@ from pathlib import Path
 import pytest
 from conftest import git, write_locked_miniswe_seed
 
-ADAPTER_TEMPLATE = Path("templates/workspace/evolve_harbor_adapter/__init__.py")
+ROOT = Path(__file__).resolve().parents[1]
+ADAPTER_TEMPLATE = ROOT / "templates" / "workspace" / "evolve_harbor_adapter" / "__init__.py"
+ADAPTER_TEMPLATES = (
+    ROOT / "templates" / "target" / "harbor" / "miniswe_source_agent.py",
+    ADAPTER_TEMPLATE,
+)
+
+
+@pytest.fixture(params=ADAPTER_TEMPLATES, ids=("target", "workspace"))
+def adapter_path(request):
+    return request.param
 
 
 def _install_fake_harbor(monkeypatch):
@@ -60,6 +70,128 @@ def _load(path: Path):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def _install_fake_miniswe_models(monkeypatch):
+    minisweagent = types.ModuleType("minisweagent")
+    models = types.ModuleType("minisweagent.models")
+    litellm_model = types.ModuleType("minisweagent.models.litellm_model")
+    litellm_response_model = types.ModuleType("minisweagent.models.litellm_response_model")
+
+    class FakeLitellmModel:
+        def __init__(self, **kwargs) -> None:
+            self.kwargs = kwargs
+
+    class FakeLitellmResponseModel(FakeLitellmModel):
+        pass
+
+    class FakeLitellmModelConfig:
+        model_fields = {"model_name", "model_kwargs", "cost_tracking"}
+
+    litellm_model.LitellmModel = FakeLitellmModel
+    litellm_model.LitellmModelConfig = FakeLitellmModelConfig
+    litellm_response_model.LitellmResponseModel = FakeLitellmResponseModel
+    monkeypatch.setitem(sys.modules, "minisweagent", minisweagent)
+    monkeypatch.setitem(sys.modules, "minisweagent.models", models)
+    monkeypatch.setitem(sys.modules, "minisweagent.models.litellm_model", litellm_model)
+    monkeypatch.setitem(sys.modules, "minisweagent.models.litellm_response_model", litellm_response_model)
+    return FakeLitellmModel, FakeLitellmResponseModel
+
+
+def _load_model_factory(adapter_path: Path, monkeypatch):
+    _install_fake_harbor(monkeypatch)
+    module = _load(adapter_path)
+    model_classes = _install_fake_miniswe_models(monkeypatch)
+    namespace = {}
+    exec(module.MODEL_SETUP, namespace)
+    return module, namespace["build_model"], model_classes
+
+
+def test_miniswe_wrapper_forwards_reasoning_effort(adapter_path: Path, monkeypatch) -> None:
+    _install_fake_harbor(monkeypatch)
+    module = _load(adapter_path)
+    monkeypatch.setenv("MINISWE_REASONING_EFFORT", "high")
+
+    source_env = module.MiniSweSourceAgent()._source_env()
+
+    assert source_env["MINISWE_REASONING_EFFORT"] == "high"
+    monkeypatch.delenv("MINISWE_REASONING_EFFORT")
+    assert "MINISWE_REASONING_EFFORT" not in module.MiniSweSourceAgent()._source_env()
+
+
+def test_miniswe_wrapper_uses_chat_completions_reasoning_for_openai(adapter_path: Path, monkeypatch) -> None:
+    _, build_model, (FakeLitellmModel, FakeLitellmResponseModel) = _load_model_factory(adapter_path, monkeypatch)
+    monkeypatch.setenv("MSWEA_MODEL_NAME", "openai/gpt-5.4")
+    monkeypatch.setenv("MINISWE_REASONING_EFFORT", "high")
+
+    model = build_model(
+        {
+            "model": {
+                "model_kwargs": {
+                    "drop_params": True,
+                    "reasoning_effort": "legacy",
+                    "reasoning": {"effort": "legacy"},
+                    "extra_body": {"existing": "value"},
+                }
+            }
+        }
+    )
+
+    assert type(model) is FakeLitellmModel
+    assert not isinstance(model, FakeLitellmResponseModel)
+    assert model.kwargs["model_name"] == "openai/gpt-5.4"
+    assert model.kwargs["cost_tracking"] == "ignore_errors"
+    assert model.kwargs["model_kwargs"]["drop_params"] is True
+    assert model.kwargs["model_kwargs"]["extra_body"] == {
+        "existing": "value",
+        "reasoning_effort": "high",
+    }
+    assert "reasoning_effort" not in model.kwargs["model_kwargs"]
+    assert "reasoning" not in model.kwargs["model_kwargs"]
+
+
+@pytest.mark.parametrize(
+    ("model_name", "effort"),
+    [("openai/gpt-5.4", None), ("anthropic/claude-sonnet-4", "high")],
+    ids=("openai-without-effort", "non-openai-with-effort"),
+)
+def test_miniswe_wrapper_uses_standard_model_without_openai_reasoning(
+    adapter_path: Path,
+    monkeypatch,
+    model_name: str,
+    effort: str | None,
+) -> None:
+    _, build_model, (FakeLitellmModel, FakeLitellmResponseModel) = _load_model_factory(adapter_path, monkeypatch)
+    monkeypatch.setenv("MSWEA_MODEL_NAME", model_name)
+    if effort is None:
+        monkeypatch.delenv("MINISWE_REASONING_EFFORT", raising=False)
+    else:
+        monkeypatch.setenv("MINISWE_REASONING_EFFORT", effort)
+
+    model = build_model({"model": {"model_kwargs": {"drop_params": True}}})
+
+    assert type(model) is FakeLitellmModel
+    assert not isinstance(model, FakeLitellmResponseModel)
+    assert model.kwargs["model_kwargs"] == {"drop_params": True}
+
+
+def test_miniswe_wrapper_rejects_invalid_reasoning_effort(adapter_path: Path, monkeypatch) -> None:
+    _, build_model, _ = _load_model_factory(adapter_path, monkeypatch)
+    monkeypatch.setenv("MSWEA_MODEL_NAME", "openai/gpt-5.4")
+    monkeypatch.setenv("MINISWE_REASONING_EFFORT", "maximum")
+
+    with pytest.raises(ValueError, match=r"none, low, medium, high, xhigh"):
+        build_model({"model": {}})
+
+
+def test_miniswe_wrapper_reuses_model_setup_for_runner_and_preflight(adapter_path: Path, monkeypatch) -> None:
+    _install_fake_harbor(monkeypatch)
+    module = _load(adapter_path)
+
+    assert module.RUNNER.startswith(module.MODEL_SETUP)
+    assert module.MODEL_PREFLIGHT.startswith(module.MODEL_SETUP)
+    assert "model = build_model(config)" in module.RUNNER
+    assert "build_model(config)" in module.MODEL_PREFLIGHT
 
 
 def test_miniswe_wrapper_subclasses_harbor_miniswe_and_installs_candidate_source(
