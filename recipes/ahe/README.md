@@ -1,13 +1,14 @@
 # AHE on Terminal-Bench 2.0
 
-This recipe keeps the AHE strategy independent from the target agent. Each
-candidate is evaluated on the complete 89-task Terminal-Bench 2.0 dataset with
-two trials per task. That certified evaluation is replayed as the next AHE
-debugger input, so its score and debugger evidence come from the same retained
-Harbor trajectories rather than a separate rollout run. Each task receives one
-required LLM debugger analysis using the same model configuration as the
-meta-agent. Failures stop the generation after three attempts; there is no
-silent deterministic fallback.
+This recipe keeps the AHE strategy independent from the target agent. It uses
+the local `terminal-bench-2-10-10-10` dataset. Workspace initialization freezes
+disjoint 10-task train, gate, and sealed partitions with seed 0. Each candidate
+is evaluated on the 10-task gate partition with two trials per task. That
+certified evaluation is replayed as the next AHE debugger input, so its score
+and debugger evidence come from the same retained Harbor trajectories rather
+than a separate rollout run. Each task receives one required LLM debugger
+analysis using the same model configuration as the meta-agent. Failures stop
+the generation after three attempts; there is no silent deterministic fallback.
 
 Canonical evaluation is deliberately different: the frozen
 `MiniSweSourceAgent` adapter installs the returned candidate source and invokes
@@ -20,13 +21,13 @@ and risk attribution is used only when available. The newest valid generation
 remains the next parent even after a score regression, allowing the following
 generation to attribute it and choose KEEP, REVISE, or ROLLBACK + PIVOT.
 
-Generation 0 and generations 1 through 10 are all evaluated on the same full
-benchmark. The resulting 89-task learning curve measures optimization on
-Terminal-Bench 2.0; it is not a held-out generalization result and has no final
-sealed anchor.
+Generation 0 and generations 1 through 10 use the same frozen partitions. The
+resulting gate learning curve measures optimization on the 10-task gate set;
+sealed tasks remain isolated from meta-agent feedback.
 
 ```bash
-evolve init /path/to/ahe-run --recipe ahe --dataset /absolute/path/to/harbor/tasks
+cd /path/to/simple-evolve-agent
+evolve init /path/to/ahe-run --recipe ahe
 cd /path/to/ahe-run
 ./evolve run . --max-generations 1
 ```

@@ -9,18 +9,18 @@ instead of always following the current best score.
 `children_per_gen: 1` creates one candidate per round.
 `surface.include` exposes `target/**` plus `operators/**`.
 `select.variant: score_child_prop` balances score with child-proposal behavior.
-`rollout.variant: evaluation_replay` exposes the selected parent's certified full-benchmark evaluation to the trace browser without launching a second task run.
+`rollout.variant: evaluation_replay` exposes the selected parent's certified gate evaluation to the trace browser without launching a second task run.
 `trace_analyzer.variant: trace_browser` exposes current traces, metrics, and history through the normalized feedback bundle.
 `meta_agent.variant: hyperagents` consumes that bundle through Harbor's installed MiniSWE agent while retaining self-referential editing.
 `gate.variant: parent_eligible` admits evaluated process variants.
 `evaluator.engine: harbor` runs the canonical black-box benchmark.
-`sampling: static` freezes all 89 task identities when the workspace is initialized.
+`sampling: static` freezes 10 train, 10 gate, and 10 sealed task identities when the workspace is initialized from the project root.
 
-The selected parent's retained evaluation is available before the child is
-produced, and every installable child is then immediately evaluated once on the
-complete benchmark. Generation 0 and generations 1 through 10 therefore form a
-full-benchmark optimization curve. It is not a held-out generalization result
-and has no final sealed anchor.
+The selected parent's retained gate evaluation is available before the child
+is produced, and every installable child is then immediately evaluated on the
+same frozen gate partition. Generation 0 and generations 1 through 10 therefore
+form a 10-task gate optimization curve. Sealed tasks remain isolated from
+meta-agent feedback.
 
 Build the workspace image once before running:
 
