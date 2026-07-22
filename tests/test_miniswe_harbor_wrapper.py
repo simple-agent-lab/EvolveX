@@ -183,6 +183,7 @@ def test_miniswe_wrapper_runs_candidate_source_api_not_cli(tmp_path: Path, monke
     assert 'agent_kwargs["step_limit"] = int(os.environ.get("MINISWE_STEP_LIMIT"' in module.RUNNER
     assert 'agent_kwargs["cost_limit"] = float(os.environ.get("MINISWE_COST_LIMIT"' in module.RUNNER
     assert 'env_kwargs["timeout"] = int(os.environ.get("MINISWE_ENV_TIMEOUT"' in module.RUNNER
+    assert 'env_kwargs["cwd"] = os.environ.get("MINISWE_CWD") or os.getcwd()' in module.RUNNER
 
 
 def test_miniswe_runtime_and_offline_install_do_not_forward_proxies(tmp_path: Path, monkeypatch) -> None:
@@ -351,6 +352,7 @@ def test_init_with_local_miniswe_seed_writes_protected_harbor_adapter(tmp_path: 
     from evolve.workspace import InitOptions, init_workspace
 
     seed = write_locked_miniswe_seed(tmp_path / "miniswe")
+    (seed / ".gitignore").write_text("uv.lock\n")
     expected_lock = (seed / "uv.lock").read_bytes()
     workspace = tmp_path / "workspace"
     config = workspace_module.default_config("hill_climb", workspace.name)
@@ -365,6 +367,7 @@ def test_init_with_local_miniswe_seed_writes_protected_harbor_adapter(tmp_path: 
     assert "class MiniSweSourceAgent(MiniSweAgent):" in wrapper.read_text()
     assert not (workspace / "target" / "harbor_agent.py").exists()
     assert (workspace / "target" / "uv.lock").read_bytes() == expected_lock
+    assert git(workspace, "ls-files", "target/uv.lock") == "target/uv.lock"
 
 
 def test_init_tracks_seed_lockfile_even_when_seed_gitignore_excludes_it(tmp_path: Path, monkeypatch) -> None:

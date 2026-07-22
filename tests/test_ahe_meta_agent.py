@@ -46,6 +46,10 @@ def _case(tmp_path: Path, *, genid: str = "1", parent: str = "0"):
     (feedback / "index.md").write_text("# Evidence\n\ntool error was not recovered\n")
     analysis = run_dir / "trace_analyzer" / "analysis"
     analysis.mkdir(parents=True)
+    (analysis / "overview.md").write_text("# AHE Debugger Overview\n\nOVERVIEW ROOT CAUSE\n")
+    detail = analysis / "detail"
+    detail.mkdir()
+    (detail / "task-a.md").write_text("DETAIL BODY MUST STAY ON DISK\n")
     (analysis / "change_evaluation.json").write_text(
         json.dumps({"status": "baseline" if parent == "0" else "evaluated", "transitions": {}})
     )
@@ -117,15 +121,36 @@ def test_ahe_prompt_uses_official_decisions_and_required_manifest(tmp_path: Path
         "REVISE",
         "ROLLBACK + PIVOT",
         "Current debugger reports evaluate the selected parent",
-        "<AHE_CHANGE_MANIFEST>",
+        "target/.ahe-change-manifest.json",
+        "before the submission action",
         "pass@1",
+        "deployed benchmark-solving harness",
+        "not available inside benchmark episodes",
+        "Do not copy this evolution workflow",
+        "runs the target's `DefaultAgent` with the `mini` configuration",
+        "Benchmark-specific configurations are inactive",
+        "Do not refer to debuggers",
     ):
         assert required in prompt
-    assert "tool error was not recovered" in prompt
+    assert "OVERVIEW ROOT CAUSE" in prompt
+    assert "DETAIL BODY MUST STAY ON DISK" not in prompt
+    assert f"runs/gen-{ctx.genid}/trace_analyzer/analysis/detail/" in prompt
+    assert f"runs/gen-{ctx.genid}/trace_analyzer/evidence/cases.jsonl" in prompt
+    assert f"runs/gen-{ctx.genid}/rollout/" in prompt
     assert str(ctx.run_dir) not in prompt
     assert "Repository: /app/task/workspace" in prompt
     assert "Archive: /app/task/workspace/archive.jsonl" in prompt
     assert "Raw trace evidence: /app/task/workspace/runs/gen-1/trace_analyzer/evidence" in prompt
+    assert "delimited official-style" not in prompt
+
+
+def test_ahe_prompt_requires_nonempty_overview(tmp_path: Path) -> None:
+    module = _module()
+    checkout, _run_dir, ctx = _case(tmp_path)
+    (ctx.run_dir / "trace_analyzer/analysis/overview.md").write_text("")
+
+    with pytest.raises(RuntimeError, match="empty AHE debugger overview"):
+        module.build_prompt(checkout, "fallback", ctx)
 
 
 def test_ahe_meta_agent_requires_valid_manifest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -133,10 +158,11 @@ def test_ahe_meta_agent_requires_valid_manifest(tmp_path: Path, monkeypatch: pyt
     checkout, run_dir, ctx = _case(tmp_path)
 
     def fake_run_agent(root: Path, prompt: str, actual_ctx: OperatorContext):
-        assert root == checkout and actual_ctx == ctx and "ROOT" not in prompt
+        assert root == checkout and actual_ctx == ctx and "fallback" not in prompt
         source = root / "target/src/minisweagent/agents/default.py"
         source.write_text(source.read_text() + "RETRY_TOOL_ERRORS = True\n")
-        return SimpleNamespace(output=_output(_manifest()), usage={"usd": 0.1})
+        (root / "target/.ahe-change-manifest.json").write_text(json.dumps(_manifest()))
+        return SimpleNamespace(output="edited", usage={"usd": 0.1})
 
     monkeypatch.setattr(module, "run_agent", fake_run_agent)
     result = module.AheMetaAgent().run(checkout, "fallback", ctx)
@@ -144,9 +170,10 @@ def test_ahe_meta_agent_requires_valid_manifest(tmp_path: Path, monkeypatch: pyt
     assert result.changed == ["target/src/minisweagent/agents/default.py"]
     assert "change-manifest: parsed" in result.notes
     assert json.loads((run_dir / "meta_agent/change_manifest.json").read_text()) == _manifest()
+    assert not (checkout / "target/.ahe-change-manifest.json").exists()
 
 
-def test_ahe_missing_manifest_synthesizes_context_without_discarding_patch(
+def test_ahe_invalid_manifest_fails_after_preserving_artifacts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     module = _module()
@@ -158,14 +185,8 @@ def test_ahe_missing_manifest_synthesizes_context_without_discarding_patch(
         return SimpleNamespace(output="edited without manifest", usage={"usd": 0.1})
 
     monkeypatch.setattr(module, "run_agent", fake_run_agent)
-    result = module.AheMetaAgent().run(checkout, "fallback", ctx)
-
-    assert result.changed == ["target/src/minisweagent/agents/default.py"]
-    assert "change-manifest: synthesized" in result.notes
-    manifest = json.loads((run_dir / "meta_agent/change_manifest.json").read_text())
-    assert manifest["iteration"] == 1
-    assert manifest["changes"][0]["files"] == result.changed
-    assert manifest["changes"][0]["predicted_fixes"] == []
+    with pytest.raises(ValueError, match="manifest file"):
+        module.AheMetaAgent().run(checkout, "fallback", ctx)
     for name in ("output.txt", "patch.diff", "changed.json", "surface-check.json", "usage.json"):
         assert (run_dir / "meta_agent" / name).is_file()
 

@@ -149,6 +149,8 @@ if option("--model") != "gpt-test":
     raise SystemExit("expected gpt-test model")
 
 source = Path(option("--path", "-p"))
+if readonly and not (source / ".evolve-readonly").is_file():
+    raise SystemExit("read-only task root must be materialized")
 jobs_dir = Path(option("--jobs-dir"))
 job_name = option("--job-name")
 job_dir = jobs_dir / job_name
@@ -549,3 +551,56 @@ def test_harbor_meta_agent_rejects_returned_symlinks_without_modifying_target(
     }
     assert after == before
     assert "symlink" in str(excinfo.value).lower()
+
+
+def test_install_bundle_omits_ignored_runtime_tree_with_symlinks(tmp_path: Path) -> None:
+    checkout, run_dir = _checkout(tmp_path)
+    (checkout / "target" / ".gitignore").write_text(".venv/\n")
+    _git(checkout, "add", "target/.gitignore")
+    _git(checkout, "commit", "-qm", "ignore runtime environment")
+    _git(checkout, "tag", "-f", "gen/0")
+    runner = _harbor_runner_module()
+    surface = runner.load_surface_policy(checkout)
+    bundle = runner._prepare_bundle(checkout, _ctx(checkout, run_dir), ["target"], surface)
+    returned = tmp_path / "returned"
+    shutil.copytree(bundle.workspace, returned)
+    (returned / "target" / "agent.py").write_text("print('child')\n")
+    python = returned / "target" / ".venv" / "bin" / "python"
+    python.parent.mkdir(parents=True)
+    python.symlink_to("/runtime/python")
+
+    try:
+        changed = runner._install_bundle(checkout, returned, bundle, "gen/0", surface)
+    finally:
+        shutil.rmtree(bundle.staging, ignore_errors=True)
+
+    assert changed == ["target/agent.py"]
+    assert (checkout / "target" / "agent.py").read_text() == "print('child')\n"
+    assert not (checkout / "target" / ".venv").exists()
+
+
+def test_agent_output_prefers_preserved_model_response_over_post_submit_message(tmp_path: Path) -> None:
+    agent = tmp_path / "trial" / "agent"
+    agent.mkdir(parents=True)
+    (agent / "trajectory.json").write_text(
+        json.dumps({"steps": [{"source": "agent", "message": "submit next"}]})
+    )
+    (agent / "mini-swe-agent.trajectory.json").write_text(
+        json.dumps(
+            {
+                "messages": [
+                    {
+                        "role": "tool",
+                        "content": "continue",
+                        "extra": {
+                            "response": {
+                                "choices": [{"message": {"content": "analysis and required manifest"}}]
+                            }
+                        },
+                    }
+                ]
+            }
+        )
+    )
+
+    assert _harbor_runner_module()._agent_output(tmp_path / "trial") == "analysis and required manifest"

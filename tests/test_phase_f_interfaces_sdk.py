@@ -58,6 +58,32 @@ def test_sdk_main_runs_select_operator_and_writes_parents(tmp_path: Path, monkey
     assert json.loads((tmp_path / "run" / "parents.json").read_text()) == {"parents": ["0"]}
 
 
+def test_sdk_rng_is_reproducible_for_same_generation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_sdk_env(monkeypatch, tmp_path, genid="5", parent="2", config={"seed": 123})
+    first_rng = sdk._context({"seed": 123}).rng
+    second_rng = sdk._context({"seed": 123}).rng
+
+    assert [first_rng.random() for _ in range(3)] == [second_rng.random() for _ in range(3)]
+
+
+def test_sdk_rng_varies_by_generation_and_parent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_sdk_env(monkeypatch, tmp_path, genid="5", parent="2", config={"seed": 123})
+    original = sdk._context({"seed": 123}).rng.random()
+    monkeypatch.setenv("EVOLVE_GENID", "6")
+    by_generation = sdk._context({"seed": 123}).rng.random()
+    monkeypatch.setenv("EVOLVE_GENID", "5")
+    monkeypatch.setenv("EVOLVE_PARENT", "3")
+    by_parent = sdk._context({"seed": 123}).rng.random()
+
+    assert len({original, by_generation, by_parent}) == 3
+
+
+def test_sdk_rng_accepts_string_generation_ids(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_sdk_env(monkeypatch, tmp_path, genid="candidate-a", parent="root", config={"seed": 0})
+
+    assert isinstance(sdk._context({"seed": 0}).rng.random(), float)
+
+
 def test_sdk_main_runs_meta_agent_operator_and_writes_meta_agent_artifacts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

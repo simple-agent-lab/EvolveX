@@ -209,6 +209,26 @@ def _remove(path: Path) -> None:
         path.unlink()
 
 
+def _copy_returned_tree(checkout: Path, source: Path, destination: Path, relative: Path) -> None:
+    if not source.is_dir() or source.is_symlink():
+        raise RuntimeError(f"returned candidate root must be a real directory: {source}")
+    destination.mkdir()
+    for child in source.iterdir():
+        child_relative = relative / child.name
+        mode = child.lstat().st_mode
+        ignore_path = child_relative.as_posix() + ("/" if stat.S_ISDIR(mode) else "")
+        if git(checkout, "check-ignore", "--quiet", "--", ignore_path, check=False).returncode == 0:
+            continue
+        if stat.S_ISLNK(mode):
+            raise RuntimeError(f"Harbor meta-agent does not accept symlinks: {child}")
+        if stat.S_ISDIR(mode):
+            _copy_returned_tree(checkout, child, destination / child.name, child_relative)
+        elif stat.S_ISREG(mode):
+            shutil.copy2(child, destination / child.name)
+        else:
+            raise RuntimeError(f"Harbor meta-agent does not accept special files: {child}")
+
+
 def _install_bundle(
     checkout: Path,
     returned: Path,
@@ -235,8 +255,7 @@ def _install_bundle(
     installed: list[str] = []
     try:
         for root in bundle.roots:
-            _validate_tree(returned / root)
-            shutil.copytree(returned / root, replacements / root)
+            _copy_returned_tree(checkout, returned / root, replacements / root, Path(root))
         for root in bundle.roots:
             (checkout / root).rename(backups / root)
             moved.append(root)
@@ -478,6 +497,27 @@ def _artifact_candidate(trial_dir: Path) -> tuple[Path, list[dict[str, Any]]]:
 
 
 def _agent_output(trial_dir: Path) -> str:
+    for path in sorted((trial_dir / "agent").glob("*.trajectory.json")):
+        if path.name == "trajectory.json":
+            continue
+        raw = _read_json(path)
+        messages = raw.get("messages") if isinstance(raw, dict) else None
+        if not isinstance(messages, list):
+            continue
+        preserved: list[str] = []
+        for item in messages:
+            extra = item.get("extra") if isinstance(item, dict) else None
+            response = extra.get("response") if isinstance(extra, dict) else None
+            choices = response.get("choices") if isinstance(response, dict) else None
+            if not isinstance(choices, list):
+                continue
+            for choice in choices:
+                message = choice.get("message") if isinstance(choice, dict) else None
+                content = message.get("content") if isinstance(message, dict) else None
+                if isinstance(content, str) and content:
+                    preserved.append(content)
+        if preserved:
+            return preserved[-1]
     payload = _read_json(trial_dir / "agent" / "trajectory.json")
     steps = payload.get("steps") if isinstance(payload, dict) else None
     if not isinstance(steps, list):
@@ -553,6 +593,7 @@ def run_readonly_agent(
         jobs_root = output_dir / "jobs"
         tasks_dir = output_dir / "tasks"
         task_root.mkdir(parents=True, exist_ok=False)
+        (task_root / ".evolve-readonly").write_text("")
         prompt_path.write_text(prompt.rstrip() + "\n")
         _write_json(
             output_dir / "instruction-transport.json",

@@ -80,6 +80,31 @@ def test_jsonl_record_omits_verified_fixes_when_prediction_artifact_is_missing(t
     assert "verified_fixes" not in fields
 
 
+def test_jsonl_record_allows_terminal_attempt_without_gate(tmp_path: Path) -> None:
+    workspace, _evolve_home = init_workspace(tmp_path)
+    run_dir = workspace / "runs" / "record-no-proposal"
+    (run_dir / "meta_agent").mkdir(parents=True)
+    (run_dir / "meta_agent" / "rationale.md").write_text("No source change was needed.\n")
+    ctx = OperatorContext(
+        workspace=workspace,
+        checkout=workspace,
+        run_dir=run_dir,
+        genid="1",
+        parent="0",
+        round=None,
+        fan_out=1,
+        config={},
+        rng=random.Random(0),
+    )
+    module = runpy.run_path(str(Path(__file__).resolve().parents[1] / "library" / "record" / "jsonl.py"))
+
+    fields = module["JsonlRecord"]().annotate(
+        {"genid": "1", "parent": "0", "status": "no_proposal", "reason": "no changes to commit"}, ctx
+    ).fields
+
+    assert fields == {"note": "No source change was needed."}
+
+
 def test_jsonl_record_preserves_explicit_optional_predictions(tmp_path: Path) -> None:
     workspace, _evolve_home = init_workspace(tmp_path)
     run_dir = workspace / "runs" / "record-with-predictions"

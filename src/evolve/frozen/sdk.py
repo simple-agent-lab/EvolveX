@@ -6,6 +6,7 @@ Files remain the source of truth; operators may parse them directly.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import random
@@ -149,19 +150,30 @@ def _parse_args() -> argparse.Namespace:
     return args
 
 
+def _rng_seed(seed: int | str, genid: str, parent: str | None) -> int:
+    identity = json.dumps(
+        [int(seed), str(genid), str(parent or "")],
+        separators=(",", ":"),
+        ensure_ascii=True,
+    ).encode()
+    return int.from_bytes(hashlib.sha256(identity).digest()[:8], "big")
+
+
 def _context(config: dict[str, Any]) -> OperatorContext:
     seed = config.get("seed", 0)
+    genid = os.environ["EVOLVE_GENID"]
+    parent = os.environ.get("EVOLVE_PARENT") or None
     fan_out = config.get("fan_out", 1)
     return OperatorContext(
         workspace=Path(os.environ["EVOLVE_WORKSPACE"]),
         checkout=Path(os.environ["EVOLVE_CHECKOUT"]),
         run_dir=Path(os.environ["EVOLVE_RUN_DIR"]),
-        genid=os.environ["EVOLVE_GENID"],
-        parent=os.environ.get("EVOLVE_PARENT") or None,
+        genid=genid,
+        parent=parent,
         round=None,
         fan_out=int(fan_out),
         config=config,
-        rng=random.Random(int(seed)),
+        rng=random.Random(_rng_seed(seed, genid, parent)),
     )
 
 

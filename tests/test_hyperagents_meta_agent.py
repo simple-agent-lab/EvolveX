@@ -77,8 +77,13 @@ def test_hyperagents_prompt_points_to_evolvable_codebase_and_prior_artifacts(tmp
     evidence = run_dir / "feedback" / "evidence"
     evidence.mkdir(parents=True)
     (evidence / "selected.md").write_text("SELECTED TRACE EVIDENCE\n")
+    (evidence / "history.json").write_text('"HISTORY MUST NOT BE INLINED"\n')
+    (run_dir / "feedback" / "attempts.md").write_text("COMPACT ATTEMPTS FALLBACK\n")
+    (run_dir / "feedback" / "last_accepted.diff").write_text("LATEST ACCEPTED DIFF\n")
     (run_dir / "feedback" / "index.md").write_text(
-        "# Feedback Bundle\n\n- [selected trace evidence](evidence/selected.md)\n"
+        "# Feedback Bundle\n\n"
+        "- [selected trace evidence](evidence/selected.md)\n"
+        "- [complete history](evidence/history.json)\n"
     )
 
     prompt = module.build_prompt(checkout, "fallback observation", ctx)
@@ -88,8 +93,11 @@ def test_hyperagents_prompt_points_to_evolvable_codebase_and_prior_artifacts(tmp
     assert "Archive: /app/task/workspace/archive.jsonl" in prompt
     assert "Prior generation artifacts: /app/task/workspace/runs" in prompt
     assert "Feedback bundle: /app/task/workspace/runs/gen-1/feedback" in prompt
+    assert "Complete history: /app/task/workspace/runs/gen-1/feedback/evidence/history.json" in prompt
     assert "Raw trace evidence: /app/task/workspace/runs/gen-1/trace_analyzer/evidence" in prompt
     assert "SELECTED TRACE EVIDENCE" in prompt
+    assert "HISTORY MUST NOT BE INLINED" not in prompt
+    assert "LATEST ACCEPTED DIFF" in prompt
     assert "fallback observation" not in prompt
     assert "Iterations remaining after this proposal: 3" in prompt
     assert "Modify any part of the allowed codebase" in prompt
@@ -99,6 +107,34 @@ def test_hyperagents_prompt_points_to_evolvable_codebase_and_prior_artifacts(tmp
     assert "`operators/**` remains editable" in prompt
     assert "cosmetic target edits" in prompt
     assert "You are editing the MiniSWE source checkout under target/." not in prompt
+
+
+def test_hyperagents_prompt_bounds_inline_evidence(tmp_path: Path) -> None:
+    module = _load_hyperagents_meta_agent()
+    checkout, run_dir = _checkout(tmp_path)
+    ctx = _ctx(run_dir.parents[1], checkout, run_dir)
+    evidence = run_dir / "feedback" / "evidence"
+    evidence.mkdir(parents=True)
+    (evidence / "selected.md").write_text("x" * (module.MAX_INLINE_EVIDENCE_CHARS + 1000))
+
+    prompt = module.build_prompt(checkout, "fallback", ctx)
+
+    assert "[inline evidence truncated; complete artifact:" in prompt
+    assert len(prompt) < module.MAX_INLINE_EVIDENCE_CHARS + 15_000
+
+
+def test_hyperagents_prompt_uses_attempts_fallback(tmp_path: Path) -> None:
+    module = _load_hyperagents_meta_agent()
+    checkout, run_dir = _checkout(tmp_path)
+    ctx = _ctx(run_dir.parents[1], checkout, run_dir)
+    feedback = run_dir / "feedback"
+    feedback.mkdir(parents=True)
+    (feedback / "attempts.md").write_text("COMPACT ATTEMPTS")
+
+    prompt = module.build_prompt(checkout, "fallback", ctx)
+
+    assert "COMPACT ATTEMPTS" in prompt
+    assert "fallback" not in prompt
 
 
 def test_hyperagents_meta_agent_records_complete_patch_for_target_and_workflow_edits(
