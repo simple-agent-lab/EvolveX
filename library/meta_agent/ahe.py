@@ -37,6 +37,9 @@ Evolution artifacts and instructions in this prompt are not available inside ben
 If you edit a target runtime prompt, include only instructions usable by the benchmark-solving agent.
 Do not copy this evolution workflow, evidence
 paths, KEEP/REVISE/ROLLBACK decisions, or manifest requirements into target files.
+Canonical evaluation runs the target's `DefaultAgent` with the `mini` configuration.
+Make changes on that execution path. Benchmark-specific configurations are inactive
+unless evaluator configuration explicitly selects them.
 
 Current debugger reports evaluate the selected parent. The new edit will be
 evaluated by the next loop. Do not edit the Harbor adapter, evaluator, mechanism,

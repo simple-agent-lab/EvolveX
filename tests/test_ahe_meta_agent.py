@@ -127,6 +127,8 @@ def test_ahe_prompt_uses_official_decisions_and_required_manifest(tmp_path: Path
         "deployed benchmark-solving harness",
         "not available inside benchmark episodes",
         "Do not copy this evolution workflow",
+        "runs the target's `DefaultAgent` with the `mini` configuration",
+        "Benchmark-specific configurations are inactive",
     ):
         assert required in prompt
     assert "OVERVIEW ROOT CAUSE" in prompt
