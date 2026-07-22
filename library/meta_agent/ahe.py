@@ -32,6 +32,12 @@ For this generation:
 7. Make one coherent target/** change and run proportionate checks.
 8. Write one official-style change manifest to the required control file.
 
+Files under `target/` become the deployed benchmark-solving harness.
+Evolution artifacts and instructions in this prompt are not available inside benchmark episodes.
+If you edit a target runtime prompt, include only instructions usable by the benchmark-solving agent.
+Do not copy this evolution workflow, evidence
+paths, KEEP/REVISE/ROLLBACK decisions, or manifest requirements into target files.
+
 Current debugger reports evaluate the selected parent. The new edit will be
 evaluated by the next loop. Do not edit the Harbor adapter, evaluator, mechanism,
 archive, workspace configuration, task partitions, model selection, credentials,

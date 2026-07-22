@@ -124,6 +124,9 @@ def test_ahe_prompt_uses_official_decisions_and_required_manifest(tmp_path: Path
         "target/.ahe-change-manifest.json",
         "before the submission action",
         "pass@1",
+        "deployed benchmark-solving harness",
+        "not available inside benchmark episodes",
+        "Do not copy this evolution workflow",
     ):
         assert required in prompt
     assert "OVERVIEW ROOT CAUSE" in prompt
