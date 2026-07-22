@@ -15,12 +15,14 @@ from evolve.evaluation.evidence import TaskVectorError
 from evolve.evaluation.execution import (
     _evaluation_artifact_reference,
     _read_task_vector,
+    _repair_task_selectors,
     _run_eval_script,
     _runtime_receipt_reference,
     evaluate,
 )
 from evolve.evaluation.identity import effective_task_set_identity
 from evolve.frozen.interfaces import ArchiveView
+from evolve.host_runtime import workspace_temp_dir
 from evolve.runtime import OwnedResult
 from evolve.uv_runtime import CandidateRuntimeResult, RuntimeMount
 
@@ -30,7 +32,35 @@ def make_eval_script(path: Path, body: str) -> None:
     path.chmod(path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
 
-def configure_outcome_evaluator(workspace: Path, *, timeout_rule: str | None = None) -> None:
+def test_evaluation_temp_root_defaults_to_workspace_volume(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("EVOLVE_TMPDIR", raising=False)
+    workspace = tmp_path / "workspace"
+
+    root = workspace_temp_dir(workspace)
+
+    assert root == workspace / "runs" / ".tmp"
+    assert root.is_dir()
+
+
+def test_evaluation_temp_root_accepts_configured_relative_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace = tmp_path / "workspace"
+    monkeypatch.setenv("EVOLVE_TMPDIR", "scratch")
+
+    assert workspace_temp_dir(workspace) == workspace / "scratch"
+
+
+def configure_outcome_evaluator(
+    workspace: Path,
+    *,
+    timeout_rule: str | None = None,
+    exit_code: int = 0,
+) -> None:
     make_eval_script(
         workspace / "evaluator/eval.sh",
         "#!/bin/sh\n"
@@ -45,7 +75,8 @@ def configure_outcome_evaluator(workspace: Path, *, timeout_rule: str | None = N
         '  cancelled) reward="null"; owner="evaluator" ;;\n'
         "esac\n"
         'printf \'{"schema_version":1,"tasks":{"case-a":{"trials":[{"trial":0,"status":"%s","reward":%s,"owner":"%s"}]}}}\\n\' '
-        '"$outcome" "$reward" "$owner" > "$EVOLVE_RUN_DIR/task_vector.json"\n',
+        '"$outcome" "$reward" "$owner" > "$EVOLVE_RUN_DIR/task_vector.json"\n'
+        f"exit {exit_code}\n",
     )
     config = workspace / "evolve.yaml"
     text = config.read_text().replace("tasks_per_round: 16", "tasks_per_round: 1")
@@ -57,6 +88,20 @@ def configure_outcome_evaluator(workspace: Path, *, timeout_rule: str | None = N
     git(workspace, "add", "evaluator/eval.sh", "evolve.yaml")
     git(workspace, "commit", "-m", "configure canonical outcome evaluator")
     git(workspace, "tag", "-f", "gen/0")
+
+
+def test_complete_trial_vector_outweighs_nonzero_aggregate_evaluator_exit(tmp_path: Path) -> None:
+    workspace, _evolve_home = init_workspace(tmp_path)
+    configure_outcome_evaluator(workspace, exit_code=3)
+
+    record = evaluate(workspace, "gen/0", "0", purpose="genesis")
+
+    assert record.outcome is Outcome.BENCHMARK_COMPLETE
+    assert record.score == 1.0
+    attempts = list((workspace / "runs/evaluations/genesis/gen-0").glob("*/attempt-1"))
+    assert len(attempts) == 1
+    assert (attempts[0] / "status").read_text() == "complete\n"
+    assert (attempts[0] / "score").read_text() == "1.0\n"
 
 
 def prepare_lifecycle_generation(workspace: Path) -> None:
@@ -122,6 +167,7 @@ def test_eval_script_receives_persistent_workspace_uv_cache(tmp_path: Path) -> N
         "set -eu\n"
         'mkdir -p "$EVOLVE_RUN_DIR"\n'
         'printf "%s\\n" "$EVOLVE_UV_CACHE_DIR" > cache-path\n'
+        'printf "%s\\n" "$TMPDIR" > tmp-path\n'
         'printf "complete\\n" > "$EVOLVE_RUN_DIR/status"\n'
         'printf "1.0\\n" > "$EVOLVE_RUN_DIR/score"\n',
     )
@@ -142,6 +188,7 @@ def test_eval_script_receives_persistent_workspace_uv_cache(tmp_path: Path) -> N
     expected = workspace / "runs" / "runtime" / "uv-cache"
     assert (checkout / "cache-path").read_text() == f"{expected}\n"
     assert expected.is_dir()
+    assert (checkout / "tmp-path").read_text() == f"{workspace / 'runs' / '.tmp'}\n"
 
 
 def test_eval_script_preserves_explicit_shared_uv_cache(tmp_path: Path, monkeypatch) -> None:
@@ -338,6 +385,34 @@ def test_evaluator_validates_task_vectors_and_compacts_artifact_references(tmp_p
     vector_path.write_text('{"schema_version": 99, "tasks": {}}\n')
     with pytest.raises(TaskVectorError, match="unsupported task vector schema"):
         _read_task_vector(run_dir)
+
+
+def test_repair_maps_harbor_result_ids_back_to_frozen_local_task_selectors(tmp_path: Path) -> None:
+    evaluator = tmp_path / "evaluator"
+    evaluator.mkdir()
+    (evaluator / "splits.json").write_text(
+        json.dumps(
+            {
+                "tasks": {
+                    "gate": ["rstan-to-pystan", "sqlite-db-truncate"],
+                    "sealed": ["sealed-task"],
+                }
+            }
+        )
+    )
+
+    assert _repair_task_selectors(
+        tmp_path,
+        (),
+        "candidate",
+        ("terminal-bench/rstan-to-pystan",),
+    ) == ("rstan-to-pystan",)
+    assert _repair_task_selectors(
+        tmp_path,
+        (),
+        "anchor",
+        ("terminal-bench/sealed-task",),
+    ) == ("sealed-task",)
 
 
 def test_evaluator_tree_mismatch_does_not_consume_attempt_identity(tmp_path: Path) -> None:

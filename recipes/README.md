@@ -10,5 +10,8 @@ file is `library/gate/parent_eligible.py`.
 
 - [Hill Climb](hill_climb/README.md)
 - `hill_climb-smoke` — deterministic local counterpart
+- [A-Evolve](aevolve/README.md)
+- [Agentic Harness Engineering](ahe/README.md)
+- [GEPA](gepa/README.md)
 - [HyperAgents](hyperagents/README.md)
 - `hyperagents-smoke` — deterministic local counterpart

@@ -186,13 +186,13 @@ appending the remaining object to the archive.
 The shipped library uses canonical algorithm names only. Recipe research names
 may appear in recipe prose, but `variant:` values point to these files:
 
-- select: `greedy`, `random`, `score_weighted`, `newest`
+- select: `greedy`, `random`, `score_weighted`, `newest`, `pareto`
 - rollout: `failure_focused`, `harbor`, `noop`
-- trace_analyzer: `failure_patterns`, `failed_traces`, `trace_browser`, `execution_records`, `utility_metrics`
-- meta_agent: `hyperagents` (`runner`: `local` or `harbor`)
-- validate: `hyperagents`
+- trace_analyzer: `failure_patterns`, `failed_traces`, `trace_browser`, `execution_records`, `gepa`, `utility_metrics`
+- meta_agent: `aevolve`, `ahe`, `gepa`, `hyperagents` (`runner`: `local` or `harbor`)
+- validate: `hyperagents`, `minibatch_improvement`
 - gate: `hillclimb`, `parent_eligible`
-- record: `jsonl`
+- record: `gepa`, `jsonl`
 
 ## Stability Tiers
 

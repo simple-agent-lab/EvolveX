@@ -212,6 +212,50 @@ def test_harbor_rollout_uses_only_frozen_train_task_names(tmp_path: Path, monkey
     assert ("--ae", "UV_OFFLINE=1") in zip(captured, captured[1:], strict=False)
     assert ("--ae", "UV_PYTHON=3.12") in zip(captured, captured[1:], strict=False)
     assert ("--model", "openai/test-model") in zip(captured, captured[1:], strict=False)
-    assert result.summary["split"] == "train"
     assert captured[captured.index("--env") + 1] == "custom.local:Environment"
     assert captured[captured.index("--environment-kwarg") + 1] == 'workdir="/workspace"'
+    assert result.summary["split"] == "train"
+
+
+def test_harbor_rollout_exact_task_replay_is_limited_to_frozen_train_split(tmp_path: Path, monkeypatch) -> None:
+    from test_m7_harbor_rollout import _harbor_rollout_module
+
+    module = _harbor_rollout_module()
+    monkeypatch.setattr(
+        module,
+        "select_dataset_tasks",
+        lambda *_args, **_kwargs: (["train-a", "train-b", "train-c"], "hash"),
+    )
+
+    selected = module._select_train_tasks(tmp_path / "splits.json", "dataset", 1, ["train-c", "train-a"])
+
+    assert selected == ["train-c", "train-a"]
+    with pytest.raises(ValueError, match="frozen train split"):
+        module._select_train_tasks(tmp_path / "splits.json", "dataset", 1, ["gate-a"])
+
+
+def test_harbor_rollout_can_shuffle_train_minibatches_by_generation(tmp_path: Path, monkeypatch) -> None:
+    from test_m7_harbor_rollout import _harbor_rollout_module
+
+    module = _harbor_rollout_module()
+    names = [f"train-{index}" for index in range(20)]
+    monkeypatch.setattr(module, "select_dataset_tasks", lambda *_args, **_kwargs: (names, "hash"))
+
+    first = module._select_train_tasks(
+        tmp_path / "splits.json",
+        "dataset",
+        5,
+        sampling="generation_shuffle",
+        sampling_key="0:1",
+    )
+    second = module._select_train_tasks(
+        tmp_path / "splits.json",
+        "dataset",
+        5,
+        sampling="generation_shuffle",
+        sampling_key="0:2",
+    )
+
+    assert first != second
+    assert len(first) == len(set(first)) == 5
+    assert set(first) <= set(names)

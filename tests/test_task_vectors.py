@@ -65,6 +65,31 @@ def test_trial_results_converts_normalized_vector_to_canonical_evidence() -> Non
     assert trial_results(vector)[0].exception_type == "RuntimeError"
 
 
+def test_trial_results_preserves_repair_attempt_provenance() -> None:
+    vector = {
+        "schema_version": 1,
+        "tasks": {
+            "task-a": {
+                "trials": [
+                    {
+                        "trial": 0,
+                        "status": "benchmark_complete",
+                        "reward": 1.0,
+                        "source_attempt": 2,
+                        "repaired_from_attempt": 1,
+                        "repair_reason": "ConnectionError: reset",
+                    }
+                ]
+            }
+        },
+    }
+
+    trial = trial_results(vector)[0]
+    assert trial.source_attempt == 2
+    assert trial.repaired_from_attempt == 1
+    assert trial.repair_reason == "ConnectionError: reset"
+
+
 def test_benchmark_agent_timeout_may_preserve_zero_reward() -> None:
     vector = {
         "schema_version": 1,

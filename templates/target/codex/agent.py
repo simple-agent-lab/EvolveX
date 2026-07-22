@@ -80,6 +80,13 @@ class HarborAgent(Codex):
 
         super().__init__(logs_dir=logs_dir, model_name=resolved_model, **kwargs)
 
+    def _resolve_auth_json_path(self) -> Path:
+        configured = self._get_env("CODEX_AUTH_JSON_PATH")
+        auth_path = Path(configured).expanduser() if configured else Path.home() / ".codex" / "auth.json"
+        if not auth_path.is_file():
+            raise ValueError(f"Codex auth.json does not exist: {auth_path}")
+        return auth_path
+
     async def setup(self, environment: BaseEnvironment) -> None:
         await super().setup(environment)
         skills = TARGET_ROOT / "skills"

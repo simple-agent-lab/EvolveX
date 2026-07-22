@@ -80,8 +80,11 @@ def _editable_roots(value: object, surface: SurfacePolicy) -> tuple[str, ...]:
             raise ValueError(f"editable root must be one top-level relative directory: {raw!r}")
         if raw in roots:
             raise ValueError(f"duplicate editable root: {raw}")
-        if check_paths([raw], surface.include, surface.exclude):
-            raise ValueError(f"editable root is not covered by mutable surface: {raw}")
+        includes = surface.include or ["target/**"]
+        root_is_mutable = not check_paths([raw], surface.include, surface.exclude)
+        contains_mutable_path = any(pattern.startswith(raw + "/") for pattern in includes)
+        if not root_is_mutable and not contains_mutable_path:
+            raise ValueError(f"editable root contains no mutable surface paths: {raw}")
         roots.append(raw)
     return tuple(roots)
 
@@ -292,8 +295,9 @@ def _write_json(path: Path, payload: object) -> None:
 
 def _instruction_transport(agent: str, prompt_path: Path) -> dict[str, object]:
     size = prompt_path.stat().st_size
-    safe = agent == _FILE_TASK_AGENT
-    mode = "mounted-file" if safe else "inline-argument"
+    config_file = agent.endswith(":MiniSweSourceAgent")
+    safe = agent == _FILE_TASK_AGENT or config_file
+    mode = "config-file" if config_file else "mounted-file" if safe else "inline-argument"
     if size > _SAFE_INLINE_INSTRUCTION_BYTES and not safe:
         raise RuntimeError(
             f"harbor_instruction_transport_unsafe: agent={agent} bytes={size} limit={_SAFE_INLINE_INSTRUCTION_BYTES}"
@@ -321,6 +325,11 @@ def _nonnegative_int(value: object, default: int) -> int:
 
 
 def _append_agent_env(command: list[str], config: dict[str, Any]) -> None:
+    for key, value in _agent_env(config).items():
+        command.extend(["--ae", f"{key}={value}"])
+
+
+def _agent_env(config: dict[str, Any]) -> dict[str, str]:
     values: dict[str, str] = {}
     for override, lower, upper in _PROXY_ENV:
         value = os.environ.get(override) or os.environ.get(lower) or os.environ.get(upper)
@@ -330,11 +339,88 @@ def _append_agent_env(command: list[str], config: dict[str, Any]) -> None:
     configured = config.get("agent_env")
     if isinstance(configured, dict):
         values.update({str(key): str(value) for key, value in configured.items()})
+    if str(config.get("agent") or "").strip().lower() == "codex":
+        values["CODEX_FORCE_AUTH_JSON"] = "1"
     force_auth = os.environ.get("CODEX_FORCE_AUTH_JSON")
     if force_auth and "CODEX_FORCE_AUTH_JSON" not in values:
         values["CODEX_FORCE_AUTH_JSON"] = force_auth
-    for key, value in values.items():
-        command.extend(["--ae", f"{key}={value}"])
+    return values
+
+
+def _uv_cache_dir(workspace: Path) -> Path:
+    configured = os.environ.get("EVOLVE_UV_CACHE_DIR")
+    cache = Path(configured).expanduser() if configured else workspace / "runs" / "runtime" / "uv-cache"
+    if not cache.is_absolute():
+        cache = workspace / cache
+    cache = cache.resolve()
+    cache.mkdir(parents=True, exist_ok=True)
+    return cache
+
+
+def _miniswe_config_command(
+    harbor: list[str],
+    source: Path,
+    prompt_path: Path,
+    jobs_root: Path,
+    tasks_dir: Path,
+    job_name: str,
+    config: dict[str, Any],
+    *,
+    candidate_source: Path,
+    artifact: str | None,
+    uv_cache_dir: Path,
+) -> list[str]:
+    agent_env = _agent_env(config)
+    agent_env.setdefault("EVOLVE_CANDIDATE_SOURCE", str(candidate_source.resolve()))
+    agent: dict[str, Any] = {
+        "name": str(config.get("agent")),
+        "env": agent_env,
+    }
+    model = config.get("model")
+    if model:
+        agent["model_name"] = str(model)
+    kwargs = config.get("agent_kwargs")
+    if isinstance(kwargs, dict) and kwargs:
+        agent["kwargs"] = {str(key): value for key, value in kwargs.items()}
+
+    compile_environment: dict[str, Any] = {"paths": [str(source.resolve())]}
+    image = config.get("image")
+    if image:
+        compile_environment["image"] = str(image)
+    workdir = str(config.get("workdir") or "/app")
+    if workdir != "/app":
+        compile_environment["workdir"] = workdir
+    compile_config: dict[str, Any] = {
+        "task_name_prefix": job_name,
+        "output_dir": str(tasks_dir.resolve()),
+        "instructions": [{"text": prompt_path.read_text()}],
+        "artifacts": [artifact] if artifact else [],
+        "environments": [compile_environment],
+        "verifiers": ([{"auto_verifier": {"required_artifacts": [artifact]}}] if artifact else []),
+    }
+    environment: dict[str, Any] = {
+        "type": str(config.get("environment") or "docker"),
+        "mounts": [
+            {
+                "type": "bind",
+                "source": str(uv_cache_dir.resolve()),
+                "target": "/installed-agent/uv-cache",
+            }
+        ],
+    }
+    job_config: dict[str, Any] = {
+        "job_name": job_name,
+        "jobs_dir": str(jobs_root.resolve()),
+        "n_concurrent_trials": 1,
+        "quiet": os.environ.get("EVOLVE_LIVE_OUTPUT") != "1",
+        "retry": {"max_retries": _nonnegative_int(config.get("max_retries"), 0)},
+        "environment": environment,
+        "agents": [agent],
+    }
+    exec_config = {"map": {"compile": compile_config, "job": job_config}}
+    config_path = prompt_path.parent / "exec-config.json"
+    _write_json(config_path, exec_config)
+    return [*harbor, "exec", "--config", str(config_path.resolve())]
 
 
 def _base_command(
@@ -404,7 +490,24 @@ def _build_command(
     tasks_dir: Path,
     job_name: str,
     config: dict[str, Any],
+    uv_cache_dir: Path | None = None,
 ) -> list[str]:
+    agent = str(config.get("agent") or "codex")
+    if agent.endswith(":MiniSweSourceAgent"):
+        if "target" not in bundle.roots:
+            raise ValueError("MiniSweSourceAgent requires target in editable_roots")
+        return _miniswe_config_command(
+            harbor,
+            bundle.task_root,
+            prompt_path,
+            jobs_root,
+            tasks_dir,
+            job_name,
+            config,
+            candidate_source=bundle.workspace / "target",
+            artifact=_ARTIFACT_SOURCE,
+            uv_cache_dir=uv_cache_dir or _uv_cache_dir(bundle.task_root),
+        )
     command = _base_command(harbor, bundle.task_root, prompt_path, jobs_root, tasks_dir, job_name, config)
     workdir_index = command.index("--workdir")
     command[workdir_index + 1] = _HARBOR_WORKDIR
@@ -535,6 +638,22 @@ def _agent_output(trial_dir: Path) -> str:
     return messages[-1] if messages else ""
 
 
+def _miniswe_exit_status(trial_dir: Path) -> str | None:
+    payload = _read_json(trial_dir / "agent" / "mini-swe-agent.trajectory.json")
+    messages = payload.get("messages") if isinstance(payload, dict) else None
+    if not isinstance(messages, list):
+        return None
+    for message in reversed(messages):
+        if not isinstance(message, dict) or message.get("role") != "exit":
+            continue
+        extra = message.get("extra")
+        if isinstance(extra, dict) and isinstance(extra.get("exit_status"), str):
+            return extra["exit_status"]
+        content = message.get("content")
+        return str(content) if content else None
+    return None
+
+
 def _readonly_artifact_output(trial_dir: Path) -> str:
     payload = _read_json(trial_dir / "artifacts" / "manifest.json")
     entries = [entry for entry in payload if isinstance(entry, dict)] if isinstance(payload, list) else []
@@ -604,7 +723,22 @@ def run_readonly_agent(
             output_dir / "instruction-transport.json",
             _instruction_transport(str(ctx.config.get("agent") or "codex"), prompt_path),
         )
-        command = _base_command(harbor, task_root, prompt_path, jobs_root, tasks_dir, job_name, ctx.config)
+        agent = str(ctx.config.get("agent") or "codex")
+        if agent.endswith(":MiniSweSourceAgent"):
+            command = _miniswe_config_command(
+                harbor,
+                task_root,
+                prompt_path,
+                jobs_root,
+                tasks_dir,
+                job_name,
+                ctx.config,
+                candidate_source=checkout / "target",
+                artifact=None,
+                uv_cache_dir=_uv_cache_dir(ctx.workspace),
+            )
+        else:
+            command = _base_command(harbor, task_root, prompt_path, jobs_root, tasks_dir, job_name, ctx.config)
         _write_json(output_dir / "command.json", [_redact(arg) for arg in command])
         returncode, wall_s = _run_harbor(
             command,
@@ -681,7 +815,16 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
             harbor_root / "instruction-transport.json",
             _instruction_transport(str(ctx.config.get("agent") or "codex"), prompt_path),
         )
-        command = _build_command(harbor, bundle, prompt_path, jobs_root, tasks_dir, job_name, ctx.config)
+        command = _build_command(
+            harbor,
+            bundle,
+            prompt_path,
+            jobs_root,
+            tasks_dir,
+            job_name,
+            ctx.config,
+            _uv_cache_dir(ctx.workspace),
+        )
         _write_json(harbor_root / "command.json", [_redact(arg) for arg in command])
         returncode, wall_s = _run_harbor(command, checkout, harbor_root / "harbor.log", harbor_env)
         usage["wall_s"] = wall_s
@@ -702,6 +845,13 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
             raise RuntimeError(f"harbor exec exited {returncode}; see {harbor_root / 'harbor.log'}")
         if trial.get("exception_info") not in (None, {}):
             raise RuntimeError(f"Harbor meta-agent trial failed: {_redact(str(trial.get('exception_info')))}")
+        if str(ctx.config.get("agent") or "").endswith(":MiniSweSourceAgent"):
+            exit_status = _miniswe_exit_status(trial_dir)
+            if exit_status != "Submitted":
+                raise RuntimeError(
+                    "Harbor MiniSwe meta-agent did not submit successfully: "
+                    f"exit_status={_redact(str(exit_status or 'missing'))}"
+                )
         artifact, manifest = _artifact_candidate(trial_dir)
         _write_json(harbor_root / "artifact-manifest.json", manifest)
         output = _agent_output(trial_dir)

@@ -1,0 +1,56 @@
+experiment:
+  id: gepa
+  max_generations: 20
+  target_score: null
+  budget_usd: 150
+  children_per_gen: 1
+  mode: driver
+  seed: 0
+target:
+  seed: builtin-codex
+surface:
+  include:
+    - target/**
+  exclude: []
+operators:
+  select: {variant: pareto, seed: 0, timeout_s: 600}
+  rollout: {variant: harbor, budget_tasks: 10, task_sampling: generation_shuffle, n_concurrent: 4, agent_setup_timeout_multiplier: 3, max_retries: 1, timeout_s: 3600}
+  trace_analyzer:
+    variant: gepa
+    components:
+      system_prompt: target/prompt.md
+      task_execution_skill: target/skills/task-execution/SKILL.md
+    max_cases: 10
+    field_limit: 4000
+    timeout_s: 600
+  meta_agent:
+    variant: gepa
+    runner: harbor
+    agent: codex
+    model: gpt-5.4
+    environment: docker
+    editable_roots: [target]
+    components:
+      system_prompt: target/prompt.md
+      task_execution_skill: target/skills/task-execution/SKILL.md
+    component_strategy: round_robin
+    max_examples: 10
+    max_retries: 0
+    timeout_s: 3600
+  validate: {variant: minibatch_improvement, criterion: strict, n_concurrent: 4, agent_setup_timeout_multiplier: 3, max_retries: 1, timeout_s: 3600}
+  gate: {variant: parent_eligible, timeout_s: 600}
+  record: {variant: gepa, timeout_s: 600}
+  timeout_s: 600
+evaluator:
+  engine: harbor
+  dataset: swe-bench-lite
+  agent: target.agent:HarborAgent
+  split: {train: 0.5, gate: 0.4, sealed: 0.1, seed: 0}
+  sampling: static
+  tasks_per_round: 10
+  anchor: {final: true, every_rounds: 0}
+  k: 1
+  n_concurrent: 4
+  agent_setup_timeout_multiplier: 3
+  max_retries: 1
+  partial_floor: 0.8

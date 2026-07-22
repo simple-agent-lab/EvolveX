@@ -12,6 +12,6 @@ surface under `target/**` so Evolve can mutate it.
 Compaction overrides are off by default so Codex uses model defaults. Set
 `compaction.override_defaults = true` to evaluate the candidate values.
 
-Authentication is runtime state, not part of the genome. Export either
-`OPENAI_API_KEY`, or run `codex login` on the host and export
-`CODEX_FORCE_AUTH_JSON=1`. Never commit credentials under `target/`.
+Authentication is runtime state, not part of the genome. Run `codex login` on
+the host so `~/.codex/auth.json` exists; set `CODEX_AUTH_JSON_PATH` only when
+using another auth file location. Never commit credentials under `target/`.

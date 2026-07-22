@@ -1,10 +1,12 @@
 import importlib.util
 import json
+import random
 from pathlib import Path
 
 from conftest import init_workspace
 
 from evolve.feedback import write_feedback_bundle
+from evolve.frozen.interfaces import OperatorContext
 from evolve.trace_analysis import VARIANTS, write_evidence_bundle
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -102,6 +104,24 @@ def test_harbor_rollout_distinguishes_task_agent_and_infra_failures(tmp_path: Pa
     assert "must-not-leak" not in by_name["task-failed"]["verifier_output"]
     assert "[REDACTED]" in by_name["task-failed"]["verifier_output"]
     assert "json-secret" not in module._redact('{"OPENAI_API_KEY":"json-secret"}')
+
+
+def test_harbor_rollout_defaults_jobs_to_workspace_runs(tmp_path: Path, monkeypatch) -> None:
+    module = _harbor_rollout_module()
+    monkeypatch.delenv("EVOLVE_ROLLOUT_JOBS_DIR", raising=False)
+    ctx = OperatorContext(
+        workspace=tmp_path,
+        checkout=tmp_path,
+        run_dir=tmp_path / "runs" / "gen-1",
+        genid="1",
+        parent="0",
+        round=None,
+        fan_out=1,
+        config={},
+        rng=random.Random(0),
+    )
+
+    assert module._jobs_root(ctx) == tmp_path / "runs" / "harbor-rollouts"
 
 
 def test_harbor_rollout_reads_codex_session_jsonl_when_trajectory_is_absent(tmp_path: Path) -> None:

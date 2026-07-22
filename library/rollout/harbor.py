@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -397,6 +398,11 @@ def collect_cases(jobs_dir: Path, field_limit: int = 2000, pass_threshold: float
     return cases
 
 
+def _jobs_root(ctx: OperatorContext) -> Path:
+    configured = ctx.config.get("jobs_dir") or os.environ.get("EVOLVE_ROLLOUT_JOBS_DIR")
+    return Path(str(configured)).expanduser() if configured else ctx.workspace / "runs" / "harbor-rollouts"
+
+
 _OUTCOME_ORDER = ("failed", "agent_error", "infra_error", "incomplete", "passed")
 
 
@@ -423,12 +429,26 @@ def _run_timeout() -> float | None:
     return max(0.1, outer - min(5.0, max(0.5, outer * 0.05)))
 
 
-def _append_proxy_env(command: list[str]) -> None:
+def _append_agent_env(command: list[str], checkout: Path, config: dict[str, Any]) -> None:
     for override, lower, upper in _PROXY_ENV:
         value = os.environ.get(override) or os.environ.get(lower) or os.environ.get(upper)
         if value:
             for key in (lower, upper):
                 command.extend(["--ae", f"{key}={value}", "--ve", f"{key}={value}"])
+    values = _load_eval_env(checkout)
+    agent_env = checkout / "evaluator" / "agent.env"
+    if agent_env.is_file():
+        for line in agent_env.read_text().splitlines():
+            if line.strip() and not line.lstrip().startswith("#") and "=" in line:
+                key, value = line.split("=", 1)
+                values[key.strip()] = value
+    configured = config.get("agent_env")
+    if isinstance(configured, dict):
+        values.update({str(key): str(value) for key, value in configured.items()})
+    for key, value in values.items():
+        if key.startswith("EVOLVE_HARBOR_") or key.startswith("EVOLVE_EVALUATOR_"):
+            continue
+        command.extend(["--ae", f"{key}={value}"])
 
 
 def _run_harbor(command: list[str], checkout: Path, log_path: Path, env: dict[str, str]) -> int:
@@ -470,6 +490,43 @@ def _run_harbor(command: list[str], checkout: Path, log_path: Path, env: dict[st
     return process.returncode if process.returncode is not None else 1
 
 
+def _select_train_tasks(
+    manifest_path: Path,
+    dataset: str,
+    budget_tasks: int,
+    requested: object = None,
+    *,
+    sampling: str = "head",
+    sampling_key: str = "0",
+) -> list[str]:
+    """Resolve a bounded train batch, optionally preserving an exact prior batch."""
+    all_train, _ = select_dataset_tasks(manifest_path, dataset, "train", limit=None)
+    if requested is None:
+        if sampling == "head":
+            ordered = all_train
+        elif sampling == "generation_shuffle":
+            ordered = sorted(
+                all_train,
+                key=lambda name: hashlib.sha256(f"{sampling_key}\0{name}".encode()).hexdigest(),
+            )
+        else:
+            raise ValueError("task_sampling must be 'head' or 'generation_shuffle'")
+        return ordered[:budget_tasks]
+    if (
+        not isinstance(requested, list)
+        or not requested
+        or not all(isinstance(item, str) and item for item in requested)
+    ):
+        raise ValueError("task_names must be a non-empty list of task names")
+    if len(set(requested)) != len(requested):
+        raise ValueError("task_names must not contain duplicates")
+    train_set = set(all_train)
+    unknown = [name for name in requested if name not in train_set]
+    if unknown:
+        raise ValueError("task_names must come from the frozen train split: " + ", ".join(unknown))
+    return list(requested)
+
+
 class HarborRollout(RolloutOperator):
     def rollout(self, checkout: Path, ctx: OperatorContext) -> RolloutResult:
         harbor, harbor_env = uv_run(ctx.workspace, "harbor")
@@ -500,20 +557,26 @@ class HarborRollout(RolloutOperator):
             if split_name != "train":
                 raise SystemExit("harbor rollout may only consume the train split")
             try:
-                split_task_names, _ = select_dataset_tasks(
+                split_task_names = _select_train_tasks(
                     manifest_path,
                     tasks,
-                    "train",
-                    limit=budget_tasks,
+                    budget_tasks,
+                    ctx.config.get("task_names"),
+                    sampling=str(ctx.config.get("task_sampling") or "head"),
+                    sampling_key=f"{ctx.config.get('seed', 0)}:{ctx.genid}",
                 )
             except Exception as exc:
                 raise SystemExit(str(exc)) from exc
-            budget_tasks = min(budget_tasks, len(split_task_names))
+            budget_tasks = len(split_task_names)
         default_concurrent = _positive_int(eval_env.get("EVOLVE_HARBOR_N_CONCURRENT"), budget_tasks)
         n_concurrent = min(budget_tasks, _positive_int(ctx.config.get("n_concurrent"), default_concurrent))
         setup_timeout_multiplier = _float_value(
             ctx.config.get("agent_setup_timeout_multiplier"),
             _float_value(eval_env.get("EVOLVE_HARBOR_AGENT_SETUP_TIMEOUT_MULTIPLIER"), 1),
+        )
+        agent_timeout_multiplier = _float_value(
+            ctx.config.get("agent_timeout_multiplier"),
+            _float_value(eval_env.get("EVOLVE_HARBOR_AGENT_TIMEOUT_MULTIPLIER"), 1),
         )
         max_retries = max(
             0,
@@ -521,13 +584,7 @@ class HarborRollout(RolloutOperator):
         )
         field_limit = _positive_int(ctx.config.get("field_limit"), 2000)
         pass_threshold = _float_value(ctx.config.get("pass_threshold"), 1.0)
-        jobs_root = Path(
-            str(
-                ctx.config.get("jobs_dir")
-                or os.environ.get("EVOLVE_ROLLOUT_JOBS_DIR")
-                or Path.home() / ".evolve" / "harbor-rollouts" / ctx.workspace.name
-            )
-        ).expanduser()
+        jobs_root = _jobs_root(ctx)
         jobs_dir = jobs_root / f"gen-{ctx.genid}"
         if jobs_dir.exists():
             shutil.rmtree(jobs_dir)
@@ -552,6 +609,8 @@ class HarborRollout(RolloutOperator):
             str(budget_tasks),
             "--agent-setup-timeout-multiplier",
             str(max(setup_timeout_multiplier, 1)),
+            "--agent-timeout-multiplier",
+            str(max(agent_timeout_multiplier, 1)),
             "--max-retries",
             str(max_retries),
             "-y",
@@ -596,12 +655,10 @@ class HarborRollout(RolloutOperator):
                 json.dumps(mounts),
             ]
         )
-        for entry in _agent_env_entries(checkout):
-            command.extend(["--ae", entry])
+        _append_agent_env(command, checkout, ctx.config)
         if uv_python:
             command.extend(["--ae", "UV_PYTHON_INSTALL_DIR=/installed-agent/uv-python"])
-        _append_proxy_env(command)
-        model = ctx.config.get("model") or os.environ.get("EVOLVE_HARBOR_MODEL")
+        model = ctx.config.get("model") or eval_env.get("EVOLVE_HARBOR_MODEL") or os.environ.get("EVOLVE_HARBOR_MODEL")
         if not model and os.environ.get("OPENAI_MODEL"):
             model = f"openai/{os.environ['OPENAI_MODEL']}"
         if model:

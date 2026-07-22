@@ -134,6 +134,28 @@ def test_jsonl_record_preserves_explicit_optional_predictions(tmp_path: Path) ->
     assert "verified_fixes" not in fields
 
 
+def test_jsonl_record_tolerates_missing_gate_after_earlier_operator_failure(tmp_path: Path) -> None:
+    workspace, _evolve_home = init_workspace(tmp_path)
+    run_dir = workspace / "runs" / "failed-before-gate"
+    run_dir.mkdir(parents=True)
+    ctx = OperatorContext(
+        workspace=workspace,
+        checkout=workspace,
+        run_dir=run_dir,
+        genid="1",
+        parent="0",
+        round=None,
+        fan_out=1,
+        config={},
+        rng=random.Random(0),
+    )
+    module = runpy.run_path(str(Path(__file__).resolve().parents[1] / "library" / "record" / "jsonl.py"))
+
+    fields = module["JsonlRecord"]().annotate({"genid": "1", "parent": "0", "status": "operator_failed"}, ctx).fields
+
+    assert fields == {}
+
+
 def test_jsonl_record_without_gate_preserves_terminal_annotation(tmp_path: Path) -> None:
     workspace, _evolve_home = init_workspace(tmp_path)
     run_dir = workspace / "runs" / "operator-failed"

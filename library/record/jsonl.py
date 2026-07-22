@@ -30,7 +30,7 @@ def _record_fields_from_run_dir(run_dir: Path) -> dict[str, Any]:
             usd = None
         if isinstance(usd, (int, float)) and not isinstance(usd, bool) and usd:
             note = f"{note}; usd: {usd}" if note else f"usd: {usd}"
-    fields: dict[str, Any] = {"note": note}
+    fields = {"note": note} if note else {}
     gate_path = run_dir / "gate.json"
     if gate_path.is_file():
         gate = json.loads(gate_path.read_text())

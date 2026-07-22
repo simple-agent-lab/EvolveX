@@ -144,6 +144,7 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
     evaluator_environment = str(evaluator.get("environment") or "")
     partial_floor = float(evaluator.get("partial_floor", 0.8))
     setup_timeout_multiplier = float(evaluator.get("agent_setup_timeout_multiplier", 1))
+    agent_timeout_multiplier = float(evaluator.get("agent_timeout_multiplier", 1))
     max_retries = int(evaluator.get("max_retries", 0))
     task_scope = str(evaluator.get("task_scope", "partitioned"))
     split = evaluator.get("split")
@@ -197,6 +198,7 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
             dataset_mode=str(evaluator.get("dataset_mode", "path")),
             task_file=str(evaluator["task_file"]) if "task_file" in evaluator else None,
             setup_timeout_multiplier=setup_timeout_multiplier,
+            agent_timeout_multiplier=agent_timeout_multiplier,
             max_retries=max_retries,
         ),
         "evaluator/agent.env": _agent_env(evaluator.get("agent_env")),
@@ -490,6 +492,10 @@ def _init_git(workspace: Path) -> None:
     _git(workspace, "config", "user.name", "Evolve Mechanism")
     _git(workspace, "config", "user.email", "evolve@example.invalid")
     _git(workspace, "add", ".")
+    # A vendored seed is an exact experiment input. Its own ignore rules must
+    # not silently remove copied files (for example an upstream-ignored
+    # uv.lock) from the generation-zero snapshot. Sensitive and generated
+    # paths have already been removed by _SEED_IGNORE_PATTERNS during copy.
     _git(workspace, "add", "-f", "target")
     _git(workspace, "commit", "-m", "evolve gen 0")
     _git(workspace, "tag", "gen/0")
@@ -598,6 +604,7 @@ def _eval_env(
     dataset_mode: str = "path",
     task_file: str | None = None,
     setup_timeout_multiplier: float = 1,
+    agent_timeout_multiplier: float = 1,
     max_retries: int = 0,
 ) -> str:
     expected_trials = tasks_per_round * max(trials, 1)
@@ -616,6 +623,8 @@ def _eval_env(
         text += f"EVOLVE_HARBOR_ENVIRONMENT={shlex.quote(environment)}\n"
     if setup_timeout_multiplier > 1:
         text += f"EVOLVE_HARBOR_AGENT_SETUP_TIMEOUT_MULTIPLIER={setup_timeout_multiplier}\n"
+    if agent_timeout_multiplier > 1:
+        text += f"EVOLVE_HARBOR_AGENT_TIMEOUT_MULTIPLIER={agent_timeout_multiplier}\n"
     if max_retries > 0:
         text += f"EVOLVE_HARBOR_MAX_RETRIES={max_retries}\n"
     if model:

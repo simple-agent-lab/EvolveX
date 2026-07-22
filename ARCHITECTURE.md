@@ -22,16 +22,17 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `__main__.py` | 10 | `python -m evolve` entry |
 | `cli.py` | 200 | argument parsing and verb dispatch only — no logic |
 | `config.py` | 300 | read/render `evolve.yaml`: recipes, experiment values, surface lists, operator blocks |
-| `driver.py` | 1360 | the generation sequencer: orchestrates baseline eval, verbs + operators (incl. novelty, self-modification admission gates, sealed anchors); validates operator outputs; computes verified_fixes; audit quarantine; doctor repair |
+| `driver.py` | 1450 | the generation sequencer: orchestrates baseline eval, verbs + operators (incl. novelty, self-modification admission gates, sealed anchors); validates operator outputs; computes verified_fixes; audit quarantine; doctor repair |
 | `feedback.py` | 220 | assemble current and historical rollout evidence plus ledger-derived feedback for the meta-agent |
 | `operators.py` | 150 | subprocess runner for workspace operator scripts (contract: env vars, --config, timeout) |
 | `population.py` | 150 | genid/lineage bookkeeping for fan-out generations |
-| `archive.py` | 270 | append-only event store: merge semantics, stamped-field protection, mirroring, integrity fsck |
+| `archive.py` | 380 | append-only event store: merge semantics, stamped-field protection, mirroring, integrity fsck |
 | `evaluation/__init__.py` | 30 | pure evaluation-result facade |
-| `evaluation/results.py` | 150 | evaluation result types, outcome classification, and persisted record shape |
-| `evaluation/evidence.py` | 120 | evaluator-output validation and conversion into canonical trial results |
+| `evaluation/results.py` | 170 | evaluation result types, outcome classification, and persisted record shape |
+| `evaluation/evidence.py` | 130 | evaluator-output validation and conversion into canonical trial results |
 | `evaluation/identity.py` | 150 | canonical task-set identity plus checkout and frozen-baseline comparability |
-| `evaluation/execution.py` | 220 | clean-checkout canonical evaluation: tree assertion, lifecycle, artifact loading, and score parsing |
+| `evaluation/execution.py` | 280 | clean-checkout canonical evaluation: tree assertion, targeted task execution, lifecycle, artifacts, and score parsing |
+| `evaluation/repair.py` | 190 | target explicit infrastructure failures, merge repaired trials, and preserve attempt provenance |
 | `candidate/__init__.py` | 10 | candidate-boundary package marker |
 | `candidate/snapshot.py` | 80 | exact candidate Git tree construction, temporary materialization, and reviewed-tree commit verification |
 | `candidate/smoke.py` | 130 | run evaluator smoke against an exact candidate snapshot and persist redacted diagnostics |
@@ -41,7 +42,7 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `report.py` | 182 | status/report rendering, best-ever recomputation, claim checklist |
 | `trace_analysis.py` | 410 | deterministic shared transforms used by the independent trace-analyzer operator variants |
 | `splits.py` | 210 | freeze deterministic train/gate/sealed Harbor task membership and materialize exact runtime selections |
-| `workspace.py` | 510 | `evolve init` scaffolding: file copies, operator binding, deterministic dataset and Harbor runtime config, generated operator palette, protocol stamping, seed + mechanism vendoring, inner-skill copy |
+| `workspace.py` | 680 | `evolve init` scaffolding: file copies, operator binding, deterministic dataset and Harbor runtime config, generated operator palette, protocol stamping, seed + mechanism vendoring, inner-skill copy |
 
 ### The frozen ring (`src/evolve/frozen/`)
 
@@ -57,9 +58,9 @@ each workspace, immutable there because it sits outside the mutable surface
 | `frozen/sdk.py` | 420 | Python operator entrypoint and file-contract IO; no library algorithm policy |
 | `frozen/meta_eval.py` | 130 | self-modification admission gate: confound-free replay of old vs new operator surface (mechanism 1) |
 
-Total `src/evolve/` budget: **5550 lines**. The budget admits the explicit evaluation-package
-boundaries, the opt-in in-place Harbor runtime, and the redacted trace-analysis boundary between
-rollout and feedback assembly; if the mechanism wants to
+Total `src/evolve/` budget: **7000 lines**. The budget admits the explicit evaluation-package
+boundaries, failed-task repair, the opt-in in-place Harbor runtime, and the redacted trace-analysis
+boundary between rollout and feedback assembly; if the mechanism wants to
 grow past that, something belongs in a workspace operator instead —
 that is the spec's rule, not a style preference.
 

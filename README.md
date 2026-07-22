@@ -173,13 +173,23 @@ evolve init /tmp/evolve-codex --recipe hill_climb --seed builtin-codex \
 The generated `target/` owns its prompt, skills, Codex version/model settings,
 and opt-in compaction overrides. Harbor still installs and executes the Codex
 CLI inside each task container. Runtime authentication stays outside the
-workspace: export `OPENAI_API_KEY`, or use host `codex login` with
-`CODEX_FORCE_AUTH_JSON=1`.
+workspace: run `codex login` on the host so `~/.codex/auth.json` exists. The
+framework injects that file into Harbor Codex containers without copying it
+into the target or generated configuration.
 
 For a local Harbor dataset, init deterministically freezes disjoint
 `train`/`gate`/`sealed` task-name lists in `evaluator/splits.json`. Harbor
 rollout consumes only `train`, canonical evaluation consumes only `gate`, and
 sealed anchor results are auxiliary records that never enter meta-agent feedback.
+
+Canonical evaluation repairs explicit infrastructure-owned task failures once
+without rerunning successful tasks. The retry is restricted to failed task IDs;
+the resulting ledger keeps each trial's `source_attempt`, marks replaced slots
+with `repaired_from_attempt`, and points to a composite artifact manifest that
+references both raw attempts. Failures without task-level evidence still use one
+full retry because there is no safe subset to target. With `k > 1`, Harbor may
+rerun every trial for a selected failed task, but the merge replaces only the
+failed `(task_id, trial)` slots and keeps previously successful siblings.
 
 Inspect the population and the claim checklist:
 
@@ -201,7 +211,9 @@ shape, and evaluator template.
 | Recipe | Children | Mode | Evaluator shape | Surface shape |
 | --- | ---: | --- | --- | --- |
 | `hill_climb` | 1 | driver | Harbor pass@k | target |
+| `aevolve` | 1 | driver | Harbor pass@k | prompt + skills under target |
 | `ahe` | 1 | driver | Harbor pass@k | target |
+| `gepa` | 1 | driver | Harbor pass@k + same-minibatch validation | prompt + task-execution skill |
 | `hyperagents` | 1 | driver | Harbor pass@k | target + meta-agent operator/prompt |
 
 Example:

@@ -5,7 +5,7 @@ import pytest
 from conftest import git, init_workspace, smoke_agent_command
 
 from evolve.archive import MECHANISM_EVAL_FIELD, read_events, rows_by_genid
-from evolve.driver import EvaluationPaused, RunOptions, run
+from evolve.driver import RunOptions, run
 
 
 def _lifecycle_workspace(tmp_path: Path, outcomes: dict[str, list[str]]) -> Path:
@@ -60,10 +60,21 @@ def test_candidate_infrastructure_failure_is_recorded_once_without_batch_replay(
     )
     monkeypatch.setenv("EVOLVE_AGENT_COMMAND", smoke_agent_command())
 
-    with pytest.raises(EvaluationPaused, match="infrastructure failed"):
-        run(RunOptions(workspace, max_generations=1, children_per_gen=1))
+    run(RunOptions(workspace, max_generations=1, children_per_gen=1))
 
     attempts = _evaluation_events(workspace, "1")
-    assert [event["attempt"] for event in attempts] == [1]
-    assert attempts[0]["retry_of"] is None
-    assert rows_by_genid(workspace)["1"]["status"] == "infrastructure_failed"
+    assert [event["attempt"] for event in attempts] == [1, 2]
+    assert attempts[0]["candidate_commit"] == attempts[1]["candidate_commit"]
+    assert attempts[1]["retry_of"] == 1
+    assert attempts[1]["source_attempts"] == [2]
+    assert attempts[1]["repaired_tasks"] == ["case-a"]
+    assert attempts[1]["trials"][0]["source_attempt"] == 2
+    assert attempts[1]["trials"][0]["repaired_from_attempt"] == 1
+    repaired_trial = attempts[1]["task_vector"]["tasks"]["case-a"]["trials"][0]
+    assert repaired_trial["source_attempt"] == 2
+    assert repaired_trial["repaired_from_attempt"] == 1
+    repair_dir = Path(workspace / attempts[1]["artifacts"]["path"]).parent
+    assert (repair_dir / "repair-task-names.txt").read_text() == "case-a\n"
+    assert (repair_dir / "composite_evaluation_artifacts.json").exists()
+    assert rows_by_genid(workspace)["1"]["attempt"] == 2
+    assert rows_by_genid(workspace)["1"]["status"] == "complete"

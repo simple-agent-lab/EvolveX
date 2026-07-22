@@ -25,6 +25,10 @@ if python3 -c 'import json,sys; raise SystemExit(0 if json.load(open(sys.argv[1]
   EVOLVE_HARBOR_TASK_FILE="$EVOLVE_RUN_DIR/task-names.txt"
   export EVOLVE_HARBOR_TASK_FILE
 fi
+if [ -n "${EVOLVE_REPAIR_TASK_FILE:-}" ]; then
+  EVOLVE_HARBOR_TASK_FILE=$EVOLVE_REPAIR_TASK_FILE
+  export EVOLVE_HARBOR_TASK_FILE
+fi
 : "${EVOLVE_UV_CACHE_DIR:=$HOME/.evolve/uv-cache}"
 runtime_mounts=${EVOLVE_CANDIDATE_RUNTIME_MOUNTS_JSON:-}
 runtime_env=${EVOLVE_CANDIDATE_RUNTIME_ENV_JSON:-}
@@ -162,6 +166,9 @@ elif [ -n "${OPENAI_MODEL:-}" ]; then
 fi
 if [ -n "${EVOLVE_HARBOR_AGENT_SETUP_TIMEOUT_MULTIPLIER:-}" ]; then
   set -- "$@" --agent-setup-timeout-multiplier "$EVOLVE_HARBOR_AGENT_SETUP_TIMEOUT_MULTIPLIER"
+fi
+if [ -n "${EVOLVE_HARBOR_AGENT_TIMEOUT_MULTIPLIER:-}" ]; then
+  set -- "$@" --agent-timeout-multiplier "$EVOLVE_HARBOR_AGENT_TIMEOUT_MULTIPLIER"
 fi
 if [ -n "${EVOLVE_HARBOR_MAX_RETRIES:-}" ]; then
   set -- "$@" --max-retries "$EVOLVE_HARBOR_MAX_RETRIES"

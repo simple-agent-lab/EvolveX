@@ -26,6 +26,14 @@ def _harbor_runner_module():
     return module
 
 
+def test_codex_meta_agent_always_uses_host_auth_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _harbor_runner_module()
+    monkeypatch.delenv("CODEX_FORCE_AUTH_JSON", raising=False)
+
+    assert module._agent_env({"agent": "codex"})["CODEX_FORCE_AUTH_JSON"] == "1"
+    assert "CODEX_FORCE_AUTH_JSON" not in module._agent_env({"agent": "mini-swe-agent"})
+
+
 def test_harbor_rejects_oversized_instruction_with_unsafe_agent(tmp_path: Path) -> None:
     runner = _harbor_runner_module()
     prompt = tmp_path / "prompt.md"
@@ -133,26 +141,44 @@ def option(*names):
 
 if len(sys.argv) < 2 or sys.argv[1] != "exec":
     raise SystemExit("expected harbor exec")
-if "--no-scan" not in sys.argv:
-    raise SystemExit("expected --no-scan")
-readonly = os.environ.get("FAKE_HARBOR_MODE") == "readonly"
-if readonly:
-    if "--artifact" in sys.argv:
-        raise SystemExit("readonly execution must not request an artifact")
-elif option("--artifact") != "/app/task/workspace":
-    raise SystemExit("expected /app/task/workspace artifact")
-if option("--workdir") != "/app":
-    raise SystemExit("unexpected workdir")
-if option("--agent") != "mini-swe-agent":
-    raise SystemExit("expected mini-swe-agent")
-if option("--model") != "gpt-test":
-    raise SystemExit("expected gpt-test model")
-
-source = Path(option("--path", "-p"))
-if readonly and not (source / ".evolve-readonly").is_file():
-    raise SystemExit("read-only task root must be materialized")
-jobs_dir = Path(option("--jobs-dir"))
-job_name = option("--job-name")
+if "--config" in sys.argv:
+    config = json.loads(Path(option("--config")).read_text())
+    compile_config = config["map"]["compile"]
+    job_config = config["map"]["job"]
+    source = Path(compile_config["environments"][0]["paths"][0])
+    jobs_dir = Path(job_config["jobs_dir"])
+    job_name = job_config["job_name"]
+    agent_config = job_config["agents"][0]
+    if agent_config["name"] != "evolve_harbor_adapter:MiniSweSourceAgent":
+        raise SystemExit("unexpected config agent")
+    if agent_config["model_name"] != "gpt-test":
+        raise SystemExit("expected config model")
+    mounts = job_config["environment"]["mounts"]
+    if not any(item.get("target") == "/installed-agent/uv-cache" for item in mounts):
+        raise SystemExit("expected persistent uv cache mount")
+    readonly = "/app/task/workspace" not in compile_config.get("artifacts", [])
+    miniswe = True
+else:
+    miniswe = False
+    if "--no-scan" not in sys.argv:
+        raise SystemExit("expected --no-scan")
+    readonly = os.environ.get("FAKE_HARBOR_MODE") == "readonly"
+    if readonly:
+        if "--artifact" in sys.argv:
+            raise SystemExit("readonly execution must not request an artifact")
+    elif option("--artifact") != "/app/task/workspace":
+        raise SystemExit("expected /app/task/workspace artifact")
+    if option("--workdir") != "/app":
+        raise SystemExit("expected /app workdir")
+    if option("--agent") != "mini-swe-agent":
+        raise SystemExit("unexpected agent")
+    if option("--model") != "gpt-test":
+        raise SystemExit("expected gpt-test model")
+    source = Path(option("--path", "-p"))
+    if readonly and not (source / ".evolve-readonly").is_file():
+        raise SystemExit("read-only task root must be materialized")
+    jobs_dir = Path(option("--jobs-dir"))
+    job_name = option("--job-name")
 job_dir = jobs_dir / job_name
 trial_dir = job_dir / "task-0001__fake"
 trial_dir.mkdir(parents=True, exist_ok=True)
@@ -255,6 +281,21 @@ agent_dir.mkdir()
         }
     )
 )
+if miniswe:
+    exit_status = "RepeatedFormatError" if os.environ.get("FAKE_HARBOR_MODE") == "miniswe-exit-error" else "Submitted"
+    (agent_dir / "mini-swe-agent.trajectory.json").write_text(
+        json.dumps(
+            {
+                "messages": [
+                    {
+                        "role": "exit",
+                        "content": exit_status,
+                        "extra": {"exit_status": exit_status, "submission": ""},
+                    }
+                ]
+            }
+        )
+    )
 print(f"Map job written to {job_dir}")
 """
     )
@@ -307,6 +348,51 @@ def test_harbor_meta_agent_round_trips_target_and_writes_artifacts(
     assert marker.read_text() == "called"
 
 
+def test_harbor_meta_agent_injects_staged_miniswe_candidate_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    checkout, run_dir = _checkout(tmp_path)
+    bin_dir = tmp_path / "bin"
+    _install_fake_harbor(bin_dir)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    ctx = _ctx(checkout, run_dir)
+    ctx.config["agent"] = "evolve_harbor_adapter:MiniSweSourceAgent"
+
+    _harbor_runner_module().run_agent(checkout, "failure evidence", ctx)
+
+    harbor_root = run_dir / "meta_agent" / "harbor"
+    command = json.loads((harbor_root / "command.json").read_text())
+    harbor_index = command.index("harbor")
+    assert command[harbor_index : harbor_index + 3] == ["harbor", "exec", "--config"]
+    config = json.loads((harbor_root / "exec-config.json").read_text())
+    job = config["map"]["job"]
+    candidate_source = job["agents"][0]["env"]["EVOLVE_CANDIDATE_SOURCE"]
+    assert candidate_source.endswith("/task/workspace/target")
+    mounts = job["environment"]["mounts"]
+    assert mounts == [
+        {
+            "type": "bind",
+            "source": str((checkout / "runs" / "runtime" / "uv-cache").resolve()),
+            "target": "/installed-agent/uv-cache",
+        }
+    ]
+
+
+def test_harbor_meta_agent_rejects_unsuccessful_miniswe_exit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    checkout, run_dir = _checkout(tmp_path)
+    bin_dir = tmp_path / "bin"
+    _install_fake_harbor(bin_dir)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("FAKE_HARBOR_MODE", "miniswe-exit-error")
+    ctx = _ctx(checkout, run_dir)
+    ctx.config["agent"] = "evolve_harbor_adapter:MiniSweSourceAgent"
+
+    with pytest.raises(AgentCommandError, match="exit_status=RepeatedFormatError"):
+        _harbor_runner_module().run_agent(checkout, "failure evidence", ctx)
+
+    assert (checkout / "target" / "agent.py").read_text() == "print('parent')\n"
+
+
 def test_harbor_meta_agent_rejects_legacy_pythonpath(tmp_path: Path) -> None:
     checkout, run_dir = _checkout(tmp_path)
     ctx = _ctx(checkout, run_dir)
@@ -357,6 +443,21 @@ def test_harbor_readonly_agent_returns_response_without_candidate_artifact(
     command = json.loads((output_dir / "command.json").read_text())
     assert "--artifact" not in command
     assert not (checkout / "target" / "added.txt").exists()
+
+
+def test_harbor_meta_agent_does_not_pass_run_only_timeout_multiplier(tmp_path: Path) -> None:
+    runner = _harbor_runner_module()
+    command = runner._base_command(
+        ["harbor"],
+        tmp_path / "task",
+        tmp_path / "prompt.md",
+        tmp_path / "jobs",
+        tmp_path / "tasks",
+        "job",
+        {"agent_timeout_multiplier": 4},
+    )
+
+    assert "--agent-timeout-multiplier" not in command
 
 
 def test_readonly_artifact_output_rejects_missing_report(tmp_path: Path) -> None:
@@ -434,6 +535,29 @@ def test_harbor_meta_agent_rejects_non_top_level_editable_root(tmp_path: Path, m
 
     with pytest.raises(AgentCommandError, match="top-level relative directory"):
         runner.run_agent(checkout, "failure evidence", ctx)
+
+
+def test_harbor_meta_agent_accepts_root_containing_narrow_mutable_surface(tmp_path: Path) -> None:
+    checkout, _run_dir = _checkout(tmp_path)
+    config = checkout / "evolve.yaml"
+    config.write_text(config.read_text().replace("    - target/**\n", "    - target/agent.py\n"))
+    runner = _harbor_runner_module()
+
+    roots = runner._editable_roots(["target"], runner.load_surface_policy(checkout))
+
+    assert roots == ("target",)
+
+
+def test_harbor_meta_agent_rejects_root_disjoint_from_mutable_surface(tmp_path: Path) -> None:
+    checkout, _run_dir = _checkout(tmp_path)
+    config = checkout / "evolve.yaml"
+    config.write_text(
+        config.read_text().replace("    - target/**\n", "    - target/agent.py\n").replace("    - operators/**\n", "")
+    )
+    runner = _harbor_runner_module()
+
+    with pytest.raises(ValueError, match="contains no mutable surface paths"):
+        runner._editable_roots(["operators"], runner.load_surface_policy(checkout))
 
 
 def test_harbor_meta_agent_rejects_protected_workspace_edits(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
