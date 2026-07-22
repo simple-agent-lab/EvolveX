@@ -116,9 +116,9 @@ The default reusable task is
 [`review_tasks/framework-quality.toml`](review_tasks/framework-quality.toml).
 Pass another task with `--task`; its rubric categories and finding limit become
 part of the immutable run manifest. The reviewer is instructed to be read-only,
-runs from a temporary detached worktree, and keeps its skills and Codex state in
-the trial-owned local environment rather than global agent directories. As with
-all `LocalEnvironment` runs, this is not a security sandbox.
+runs from a temporary detached worktree, and keeps its Codex state in the
+trial-owned local environment rather than global agent directories. As with all
+`LocalEnvironment` runs, this is not a security sandbox.
 
 ## Install For Development
 

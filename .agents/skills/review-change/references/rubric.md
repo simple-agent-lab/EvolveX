@@ -1,4 +1,4 @@
-# Review rubric
+# Repository review rubric
 
 Apply the smallest relevant subset. A rubric is a question to investigate, not a reason to manufacture a finding.
 

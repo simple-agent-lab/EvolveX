@@ -258,8 +258,11 @@ def _write_harbor_task(path: Path, task: ReviewTask, base_commit: str, head_comm
         f"{task.instruction.strip()}\n\n"
         f"Review exactly `{base_commit}..{head_commit}`. The checkout is pinned at the head commit.\n"
         f"Enabled rubric categories: {rubrics}. Return at most {task.max_findings} actionable findings.\n"
-        "Do not edit the repository. Write the required structured report to "
-        "`$HARBOR_LOGS_DIR/agent/review-report.json` before returning your concise human-readable review.\n"
+        "Do not edit the repository. Every finding requires a severity (P0, P1, or P2), enabled category, "
+        "title, non-empty evidence with path/detail and optional line, impact, smallest_fix, and confidence "
+        "(high, medium, or low). Write a JSON object with schema_version=1, verdict "
+        "(ready, needs_changes, or discuss), summary, findings, questions, and strengths to "
+        "`$HARBOR_LOGS_DIR/agent/review-report.json`, then return a concise human-readable review.\n"
     )
 
 
@@ -283,8 +286,6 @@ def _harbor_command(
         f"reasoning_effort={reasoning_effort}",
         "--agent-env",
         "HOME=/tmp/evolve-review-home",
-        "--skill",
-        str(_review_skill_dir()),
         "--env",
         "evolve.harbor_local:LocalEnvironment",
         "--environment-kwarg",
@@ -303,15 +304,6 @@ def _harbor_executable() -> str:
     if not Path(candidate).is_file():
         raise RuntimeError("harbor executable is missing from the evolve environment")
     return candidate
-
-
-def _review_skill_dir() -> Path:
-    source = Path(__file__).resolve().parents[2] / "skills/review-change"
-    installed = Path(__file__).resolve().parent / "skills/review-change"
-    path = source if source.is_dir() else installed
-    if not path.is_dir():
-        raise RuntimeError("packaged review-change skill is missing")
-    return path
 
 
 def _trial_result(root: Path) -> Path:

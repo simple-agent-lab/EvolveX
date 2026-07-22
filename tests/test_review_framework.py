@@ -89,9 +89,12 @@ def test_review_run_collects_report_result_and_atif_trajectory(tmp_path: Path, m
         del env, timeout_s
         assert cwd == repo
         jobs_dir = Path(command[command.index("--jobs-dir") + 1])
+        task_dir = Path(command[command.index("--path") + 1])
         assert "--agent-include-logs" not in command
+        assert "--skill" not in command
         assert command[command.index("--agent-env") + 1] == "HOME=/tmp/evolve-review-home"
         assert command[command.index("--agent-kwarg") + 1] == "reasoning_effort=medium"
+        assert "schema_version=1" in (task_dir / "instruction.md").read_text()
         trial = jobs_dir / "review-framework-quality" / "task" / "trial"
         agent = trial / "agent"
         agent.mkdir(parents=True)

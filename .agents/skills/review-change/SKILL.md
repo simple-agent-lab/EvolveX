@@ -1,6 +1,6 @@
 ---
 name: review-change
-description: Review a git diff, commit range, branch, or pull request for correctness, simplicity, user understanding, Python quality, and LLM/agent engineering. Use when asked to review code or when a Harbor review task requires a structured evidence-based report. Do not use for implementing fixes unless the user separately asks for changes.
+description: Review changes in this repository for correctness, simplicity, user understanding, Python quality, and LLM/agent engineering. Use when asked to review a diff, commit range, branch, or pull request in simple-evolve-agent. Do not implement fixes unless the user separately asks for changes.
 ---
 
 # Review a change
@@ -10,9 +10,9 @@ Review the selected change, not the repository in the abstract. Lead with action
 ## Workflow
 
 1. Resolve the exact base and head revisions. Inspect the diff and changed-file summary first.
-2. Read repository-owned instructions and architecture documents relevant to the changed files.
+2. Read `ARCHITECTURE.md`, `DESIGN.md`, `CONTRIBUTING.md`, and any instructions relevant to the changed files.
 3. Trace each changed user-facing path from entry point through result, error, and recovery behavior.
-4. Read [references/rubric.md](references/rubric.md) and apply only categories enabled by the task.
+4. Read [references/rubric.md](references/rubric.md) and apply only categories relevant to the change.
 5. Verify each suspected finding against surrounding code, tests, types, or a focused runtime check.
 6. Remove findings that are preferences, hypothetical future risks, or unsupported by evidence.
 7. Report findings in severity order. Do not edit the reviewed checkout.
@@ -39,30 +39,3 @@ Return:
 4. a verdict: `ready`, `needs_changes`, or `discuss`.
 
 Keep summaries short. If there are no actionable findings, say so directly.
-
-## Harbor report artifact
-
-When `HARBOR_LOGS_DIR` is present, always write `$HARBOR_LOGS_DIR/agent/review-report.json` before the final response. Create its parent directory if needed. Use this exact shape:
-
-```json
-{
-  "schema_version": 1,
-  "verdict": "ready",
-  "summary": "Concise assessment.",
-  "findings": [
-    {
-      "severity": "P1",
-      "category": "correctness",
-      "title": "Imperative actionable title",
-      "evidence": [{"path": "src/example.py", "line": 42, "detail": "Observed behavior."}],
-      "impact": "What fails and for whom.",
-      "smallest_fix": "Smallest coherent correction.",
-      "confidence": "high"
-    }
-  ],
-  "questions": [],
-  "strengths": []
-}
-```
-
-Use only task-enabled categories. Valid severities are `P0`, `P1`, and `P2`; confidence is `high`, `medium`, or `low`. Every finding requires non-empty evidence. Respect the task's finding limit.
