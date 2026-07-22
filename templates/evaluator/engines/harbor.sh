@@ -41,7 +41,9 @@ if [ -n "${EVOLVE_CANDIDATE_SMOKE_MODE:-}" ]; then
   EVOLVE_TASK_LIMIT=1
 fi
 cleanup_harbor() {
-  "$EVOLVE_FRAMEWORK_PYTHON" evaluator/cleanup_harbor.py "$jobs_dir" || :
+  case "${EVOLVE_HARBOR_ENVIRONMENT:-docker}" in
+    docker) "$EVOLVE_FRAMEWORK_PYTHON" evaluator/cleanup_harbor.py "$jobs_dir" || : ;;
+  esac
 }
 cleanup_on_exit() {
   cleanup_rc=$?
@@ -92,6 +94,14 @@ if [ -n "${EVOLVE_TASK_LIMIT:-}" ]; then
   export EVOLVE_HARBOR_EXPECTED_TRIALS=$((EVOLVE_TASK_LIMIT * EVOLVE_HARBOR_ATTEMPTS))
 fi
 set -- "$@" --agent "$EVOLVE_HARBOR_AGENT"
+if [ -n "${EVOLVE_HARBOR_ENVIRONMENT:-}" ]; then
+  set -- "$@" --env "$EVOLVE_HARBOR_ENVIRONMENT"
+fi
+if [ -f evaluator/environment.kwargs ]; then
+  while IFS= read -r environment_kwarg || [ -n "$environment_kwarg" ]; do
+    [ -n "$environment_kwarg" ] && set -- "$@" --environment-kwarg "$environment_kwarg"
+  done < evaluator/environment.kwargs
+fi
 set -- "$@" --ae "EVOLVE_CANDIDATE_SOURCE=$PWD/target"
 set -- "$@" --mounts "$uv_mount"
 if [ -f evaluator/agent.env ]; then
