@@ -8,7 +8,8 @@ instead of always following the current best score.
 
 The MiniSWE target is pinned to commit
 `388da74aad620a384ab47669b17c52133e30e7c3`, whose checked-in `uv.lock` is part
-of the candidate runtime contract.
+of the candidate runtime contract. Because upstream does not track that lock,
+workspace initialization generates and freezes it explicitly.
 
 `children_per_gen: 1` creates one candidate per round.
 `surface.include` exposes `target/**` plus `operators/**`.

@@ -27,6 +27,7 @@ from .config import (
     render_yaml,
     resource_root,
 )
+from .host_runtime import uv_executable
 from .splits import build_manifest
 
 _SEED_IGNORE_PATTERNS = (
@@ -73,11 +74,13 @@ def init_workspace(options: InitOptions) -> None:
     if options.seed:
         target["seed"] = options.seed
         target.pop("revision", None)
+        target.pop("generate_lock", None)
     elif options.dataset:
         # Dataset-backed experiments should be self-contained and must not need
         # a network clone merely to freeze their evaluator split.
         target["seed"] = "builtin-codex"
         target.pop("revision", None)
+        target.pop("generate_lock", None)
     if options.dataset:
         evaluator = config["evaluator"]
         assert isinstance(evaluator, dict)
@@ -424,6 +427,9 @@ def _write_target(workspace: Path, target_config: dict[str, Any]) -> None:
     seed_text = str(seed) if seed else None
     revision_value = target_config.get("revision")
     revision = str(revision_value) if revision_value else None
+    generate_lock = target_config.get("generate_lock", False)
+    if not isinstance(generate_lock, bool):
+        raise ValueError("target.generate_lock must be a boolean")
     if revision is not None and _GIT_COMMIT.fullmatch(revision) is None:
         raise ValueError("target.revision must be a full 40-character git commit")
     if not seed_text or seed_text == "builtin-dummy":
@@ -446,6 +452,8 @@ def _write_target(workspace: Path, target_config: dict[str, Any]) -> None:
             checkout = Path(tmp) / "seed"
             _git_clone(seed_text, checkout, revision=revision)
             _vendor_seed(workspace, checkout, seed_text)
+        if generate_lock:
+            _generate_target_lock(workspace / "target")
         return
     if revision is not None:
         raise ValueError("target.revision requires a git URL seed")
@@ -453,6 +461,8 @@ def _write_target(workspace: Path, target_config: dict[str, Any]) -> None:
     if not source.is_dir():
         raise ValueError(f"seed is not a local directory or git URL: {seed_text}")
     _vendor_seed(workspace, source.resolve(), str(source.resolve()))
+    if generate_lock:
+        _generate_target_lock(workspace / "target")
 
 
 def _copy_resource_tree(source: Traversable, destination: Path) -> None:
@@ -505,6 +515,17 @@ def _git_clone(url: str, destination: Path, *, revision: str | None = None) -> N
         result = subprocess.run(command, text=True, capture_output=True, check=False)
         if result.returncode != 0:
             raise RuntimeError(result.stderr.strip() or "git clone failed")
+
+
+def _generate_target_lock(target: Path) -> None:
+    result = subprocess.run(
+        [uv_executable(), "lock", "--project", str(target)],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or "target lock generation failed")
 
 
 def _init_git(workspace: Path) -> None:

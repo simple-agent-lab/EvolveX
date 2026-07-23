@@ -43,6 +43,34 @@ def test_git_seed_revision_freezes_exact_commit(tmp_path: Path) -> None:
     assert upstream == {"commit": locked_commit, "remote": seed.as_uri()}
 
 
+def test_git_seed_can_explicitly_generate_missing_lock(tmp_path: Path) -> None:
+    seed = tmp_path / "seed"
+    seed.mkdir()
+    subprocess.run(["git", "init", str(seed)], check=True, capture_output=True, text=True)
+    git(seed, "config", "user.name", "Seed Test")
+    git(seed, "config", "user.email", "seed@example.invalid")
+    (seed / "pyproject.toml").write_text(
+        "[project]\nname='unlocked-seed'\nversion='0'\nrequires-python='>=3.11'\ndependencies=[]\n"
+    )
+    git(seed, "add", "pyproject.toml")
+    git(seed, "commit", "-m", "unlocked seed")
+    seed_commit = git(seed, "rev-parse", "HEAD")
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    _write_target(
+        workspace,
+        {
+            "seed": seed.as_uri(),
+            "revision": seed_commit,
+            "generate_lock": True,
+            "harbor_agent": "miniswe-source",
+        },
+    )
+
+    assert (workspace / "target" / "uv.lock").is_file()
+
+
 def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
     workspace = tmp_path / "experiment"
 
