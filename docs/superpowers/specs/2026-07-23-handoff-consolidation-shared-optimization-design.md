@@ -62,9 +62,12 @@ Responses route/payload rather than the Docker image.
 
 ### 4. Experiment capacity and lifecycle
 
-- AHE and HyperAgents evaluator concurrency changes from four to five workers.
-- AHE retains `k=2`; HyperAgents retains `k=1` because this is a
-  method-specific setting rather than infrastructure parity.
+- AHE and HyperAgents both use `k=1` for faster, directly comparable
+  optimization evaluations.
+- Both recipes start the smoke with five evaluator workers. Healthy full runs
+  may scale to ten evaluator workers per experiment.
+- AHE trace analysis uses ten workers when healthy and never fewer than five
+  unless the run must be stopped for diagnosis.
 - `--max-generations` limits evolution rounds only. It does not cap evaluator
   attempts, task count, agent steps, or the complete Harbor task lifecycle.
 - Earlier tmux loss killed parent controllers while leaving Harbor children
@@ -76,15 +79,20 @@ Responses route/payload rather than the Docker image.
 - `containers/meta-agent/Dockerfile` now installs the expanded shell and Python
   tool set from PR 15, including `jq`, `ripgrep`, `rsync`, `tree`,
   `python3-pip`, and `python3-venv`.
-- The proven DevBoxS image is still the locally tagged July 18 image
+- The proven fallback DevBoxS image is the locally tagged July 18 image
   `evolve-meta-agent-app:ubuntu-latest`, image ID
   `sha256:61b800306be7032671455fe02b60002dad7853ef2e8de1e3e772f91dcb059998`.
 - The expanded Dockerfile has not yet been built and is not reproducible
   because it inherits `ubuntu:latest` and installs unpinned packages.
 
-The full experiments will use the proven July 18 image for continuity and
-record its exact image ID. Building and publishing a pinned replacement image
-is follow-up work, not a prerequisite for these experiments.
+The preferred experiment image is a fresh build of the expanded Dockerfile.
+The build will receive a distinct versioned local tag and its exact image ID
+will be recorded. DevBoxS proxy configuration may be used for Docker, APT, UV,
+and Python installation after inspecting the existing proxy setup without
+printing credentials. If the new image causes a reproducible runtime failure,
+the failure evidence will be preserved and diagnosed. The experiments may
+fall back to the proven July 18 image if the new image cannot be made healthy
+without delaying the experiment materially.
 
 ## Shared optimization-set design
 
@@ -100,6 +108,7 @@ evaluator:
     seed: 0
   sampling: static
   tasks_per_round: 10
+  k: 1
 ```
 
 The manifest remains disjoint and deterministic. Candidate evaluation is
@@ -130,15 +139,53 @@ considered merged; unrelated historical branch tips are left untouched.
 Before remote execution:
 
 1. Add tests that require both real recipes to use `evaluation_split: train`.
-2. Update recipe documentation to describe the shared optimization set and
+2. Add tests that require both recipes to use `k=1` and the same candidate
+   limits.
+3. Update recipe documentation to describe the shared optimization set and
    sealed holdout accurately.
-3. Run focused tests for recipe initialization, split identity, AHE analysis,
+4. Run focused tests for recipe initialization, split identity, AHE analysis,
    Harbor file transport, and MiniSWE Responses configuration.
-4. Run the complete local test suite and `git diff --check`.
-5. Initialize fresh local or remote workspaces and compare their frozen
+5. Run the complete local test suite and `git diff --check`.
+6. Initialize fresh local or remote workspaces and compare their frozen
    `evaluator/splits.json` train members byte-for-byte.
 
+## Shared candidate limits
+
+Both recipes use the same candidate-agent limits:
+
+- reasoning effort `high`;
+- step limit `100`;
+- environment command timeout `30`;
+- cost limit `0` (unlimited);
+- Responses output default `64000`.
+
+If live evidence shows that a shared limit is materially too low or too high,
+the setting may be adjusted. Any fairness-relevant adjustment applies to both
+recipes. If the setting is frozen into initialized workspaces, preserve the
+old workspaces and restart both recipes from fresh, identically configured
+workspaces.
+
+## Smoke promotion rubric
+
+Generation 1 of each real workspace is the smoke; successful smoke work is
+retained when continuing through generation 10. Promotion requires:
+
+- both workspaces freeze identical optimization and sealed task identities;
+- genesis and generation 1 are durably archived;
+- both recipes complete ten expected trials per candidate evaluation;
+- AHE produces ten task detail reports with `debugger_errors == 0`;
+- live traces confirm the expected Responses endpoint, reasoning effort,
+  64k output default, and valid tool calls;
+- each generated candidate is non-empty, installable, and evaluated;
+- there is no controller, archive, API-routing, truncation, repeated-format,
+  or unexplained container error.
+
 ## DevBoxS experiment launch
+
+All active experiment controllers and experiment-owned task containers on
+DevBoxS may be stopped before the new pair is launched. Exact processes,
+sessions, and containers must be enumerated before termination so unrelated
+interactive or system services are not touched.
 
 Fresh AHE and HyperAgents experiment workspaces will be initialized from the
 same consolidated source state. They will use:
@@ -146,36 +193,73 @@ same consolidated source state. They will use:
 - dataset `terminal-bench-2-10-10-10`;
 - 10 generations;
 - 10 optimization tasks per round;
-- five evaluator workers;
+- one trial per task;
+- five evaluator workers for smoke, scaling to ten per experiment when host
+  and API health permit;
+- ten AHE trace-analyzer workers when healthy, with a minimum of five;
 - model `openai/gpt-5.4-2026-03-05`;
 - the Responses endpoint recorded in the recipes;
 - `EVOLVE_RUNTIME_DIGEST=tb2-10x3-runtime-20260722-v3`;
 - `EVOLVE_UV_BINARY=/home/zimuwang/.local/bin/uv`;
-- the proven July 18 meta-agent image, with its exact image ID recorded.
+- the newly built expanded meta-agent image when healthy, with the July 18
+  image as a recorded fallback.
 
 Each fresh workspace first runs through one generation as a real-path health
 gate. The same workspace then continues to generation 10, so successful smoke
 work is retained rather than repeated.
 
-Promotion requires:
-
-- frozen train membership is identical across AHE and HyperAgents;
-- live requests show the expected Responses endpoint, reasoning effort, and
-  64k default;
-- no API routing, truncation, formatting, controller, or archive error;
-- AHE produces ten task detail reports with `debugger_errors == 0`;
-- candidate evaluation completes and the generation is durably archived.
-
 If either recipe fails its method-specific health gate, preserve its workspace
 and evidence, stop only its matching controller and task containers, and do
 not promote that run blindly.
+
+## Monitoring and recovery
+
+Each run uses a durable controller with a PID file, exit-status file, and
+unbuffered log. Monitoring covers:
+
+- controller and Harbor process liveness;
+- task-container state and cleanup;
+- archive generation and evaluation progress;
+- expected task and trial counts;
+- trace and artifact freshness;
+- API, formatting, timeout, and retry errors;
+- host CPU, memory, load, disk, and Docker pressure;
+- generated candidate substance and installability.
+
+Configured retries handle isolated task failures. A dead controller with a
+consistent archive resumes the same workspace. Corrupt state or a frozen
+configuration change causes the failed workspace and logs to be preserved and
+a fresh workspace to be initialized. A shared fairness-setting change is
+applied to both recipes and both are restarted. Failed evidence is never
+silently deleted.
+
+Worker counts are adaptive. Smoke begins at five evaluator workers per
+experiment. Full runs scale to ten per experiment only while host resources,
+container turnover, artifact progress, and API error rates remain healthy. AHE
+trace analysis similarly targets ten workers and may be reduced no lower than
+five in response to pressure or throttling. Every adjustment is recorded.
+
+## Result artifacts
+
+No sealed evaluation or polished morning report is required. The sealed tasks
+remain untouched for later user-run evaluation. The experiment handoff must
+leave inspectable artifacts containing:
+
+- both archives and generation-by-generation optimization scores;
+- analyzer summaries, task reports, and debugger error counts;
+- meta-agent traces, candidate patches, and generated workspaces;
+- task/trial results, failures, cost, and wall time;
+- controller logs, exit states, and recovery history;
+- exact source commit, frozen task identities, runtime digest, image tag, and
+  image ID;
+- a short status file linking the relevant remote paths.
 
 ## Out of scope
 
 - Merging historical branches that diverged before the repository history
   rewrite.
-- Publishing or pinning a replacement meta-agent image.
-- Equalizing AHE `k=2` and HyperAgents `k=1`.
-- Using the sealed set during evolution.
+- Publishing the new meta-agent image to a remote registry.
+- Using or evaluating the sealed set.
+- Producing a polished experiment report.
 - Starting the old inline-versus-file-backed AHE comparison as the final
   two-recipe experiment.
