@@ -1,5 +1,6 @@
 import asyncio
 import importlib.util
+import json
 import os
 import sys
 import types
@@ -119,7 +120,9 @@ def test_miniswe_wrapper_forwards_reasoning_effort(adapter_path: Path, monkeypat
     assert "MINISWE_REASONING_EFFORT" not in module.MiniSweSourceAgent()._source_env()
 
 
-def test_miniswe_wrapper_uses_chat_completions_reasoning_for_openai(adapter_path: Path, monkeypatch) -> None:
+def test_miniswe_wrapper_uses_responses_reasoning_and_session_for_openai(
+    adapter_path: Path, monkeypatch
+) -> None:
     _, build_model, (FakeLitellmModel, FakeLitellmResponseModel) = _load_model_factory(adapter_path, monkeypatch)
     monkeypatch.setenv("MSWEA_MODEL_NAME", "openai/gpt-5.4")
     monkeypatch.setenv("MINISWE_REASONING_EFFORT", "high")
@@ -131,42 +134,58 @@ def test_miniswe_wrapper_uses_chat_completions_reasoning_for_openai(adapter_path
                     "drop_params": True,
                     "reasoning_effort": "legacy",
                     "reasoning": {"effort": "legacy"},
-                    "extra_body": {"existing": "value"},
                 }
             }
         }
     )
 
-    assert type(model) is FakeLitellmModel
-    assert not isinstance(model, FakeLitellmResponseModel)
+    assert type(model) is FakeLitellmResponseModel
     assert model.kwargs["model_name"] == "openai/gpt-5.4"
     assert model.kwargs["cost_tracking"] == "ignore_errors"
-    assert model.kwargs["model_kwargs"]["drop_params"] is True
-    assert model.kwargs["model_kwargs"]["extra_body"] == {
-        "existing": "value",
-        "reasoning_effort": "high",
+    kwargs = model.kwargs["model_kwargs"]
+    assert kwargs["drop_params"] is True
+    assert kwargs["max_output_tokens"] == 64_000
+    assert kwargs["reasoning"] == {"effort": "high"}
+    assert kwargs["include"] == ["reasoning.encrypted_content"]
+    assert kwargs["prompt_cache_key"].startswith("evolve-")
+    assert json.loads(kwargs["extra_headers"]["extra"]) == {
+        "session_id": kwargs["prompt_cache_key"]
     }
-    assert "reasoning_effort" not in model.kwargs["model_kwargs"]
-    assert "reasoning" not in model.kwargs["model_kwargs"]
+    assert "reasoning_effort" not in kwargs
+    assert "store" not in kwargs
 
 
-@pytest.mark.parametrize(
-    ("model_name", "effort"),
-    [("openai/gpt-5.4", None), ("anthropic/claude-sonnet-4", "high")],
-    ids=("openai-without-effort", "non-openai-with-effort"),
-)
-def test_miniswe_wrapper_uses_standard_model_without_openai_reasoning(
-    adapter_path: Path,
-    monkeypatch,
-    model_name: str,
-    effort: str | None,
+def test_miniswe_wrapper_preserves_explicit_responses_output_budget(
+    adapter_path: Path, monkeypatch
+) -> None:
+    _, build_model, (_, FakeLitellmResponseModel) = _load_model_factory(adapter_path, monkeypatch)
+    monkeypatch.setenv("MSWEA_MODEL_NAME", "openai/gpt-5.4")
+    monkeypatch.setenv("MINISWE_REASONING_EFFORT", "high")
+
+    model = build_model({"model": {"model_kwargs": {"max_output_tokens": 12_345}}})
+
+    assert type(model) is FakeLitellmResponseModel
+    assert model.kwargs["model_kwargs"]["max_output_tokens"] == 12_345
+
+
+def test_miniswe_wrapper_uses_responses_without_openai_reasoning(
+    adapter_path: Path, monkeypatch
 ) -> None:
     _, build_model, (FakeLitellmModel, FakeLitellmResponseModel) = _load_model_factory(adapter_path, monkeypatch)
-    monkeypatch.setenv("MSWEA_MODEL_NAME", model_name)
-    if effort is None:
-        monkeypatch.delenv("MINISWE_REASONING_EFFORT", raising=False)
-    else:
-        monkeypatch.setenv("MINISWE_REASONING_EFFORT", effort)
+    monkeypatch.setenv("MSWEA_MODEL_NAME", "openai/gpt-5.4")
+    monkeypatch.delenv("MINISWE_REASONING_EFFORT", raising=False)
+
+    model = build_model({"model": {"model_kwargs": {"drop_params": True}}})
+
+    assert type(model) is FakeLitellmResponseModel
+    assert "reasoning" not in model.kwargs["model_kwargs"]
+    assert model.kwargs["model_kwargs"]["include"] == ["reasoning.encrypted_content"]
+
+
+def test_miniswe_wrapper_uses_standard_model_for_non_openai(adapter_path: Path, monkeypatch) -> None:
+    _, build_model, (FakeLitellmModel, FakeLitellmResponseModel) = _load_model_factory(adapter_path, monkeypatch)
+    monkeypatch.setenv("MSWEA_MODEL_NAME", "anthropic/claude-sonnet-4")
+    monkeypatch.setenv("MINISWE_REASONING_EFFORT", "high")
 
     model = build_model({"model": {"model_kwargs": {"drop_params": True}}})
 

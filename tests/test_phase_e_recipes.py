@@ -92,10 +92,10 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "agent: evolve_harbor_adapter:MiniSweSourceAgent" in config
             assert "image: evolve-meta-agent-app:ubuntu-latest" in config
             assert "task_scope: full" not in config
-            assert "evaluation_split: train" not in config
+            assert "evaluation_split: train" in config
             assert "tasks_per_round: 10" in config
-            assert "k: 2" in config
-            assert "n_concurrent: 4" in config
+            assert "k: 1" in config
+            assert "n_concurrent: 10" in config
             assert "\n  split:" in config
             assert "\n  anchor:" not in config
         elif name == "hyperagents":
@@ -117,10 +117,10 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "record: {variant: hyperagents}" in config
             assert "image: evolve-meta-agent-app:ubuntu-latest" in config
             assert "task_scope: full" not in config
-            assert "evaluation_split: train" not in config
+            assert "evaluation_split: train" in config
             assert "tasks_per_round: 10" in config
             assert "k: 1" in config
-            assert "n_concurrent: 4" in config
+            assert "n_concurrent: 10" in config
             assert "\n  split:" in config
             assert "\n  anchor:" not in config
             assert "budget_usd" not in config
@@ -155,10 +155,13 @@ def test_terminal_bench_method_recipes_use_local_partitioned_subset() -> None:
         assert evaluator["sampling"] == "static"
         assert evaluator["tasks_per_round"] == 10
         assert "task_scope" not in evaluator
-        assert "evaluation_split" not in evaluator
+        assert evaluator["evaluation_split"] == "train"
+        assert evaluator["k"] == 1
+        assert evaluator["n_concurrent"] == 10
 
     ahe = _parsed_config("ahe")
     assert ahe["operators"]["trace_analyzer"]["max_tasks"] == 10
+    assert ahe["operators"]["trace_analyzer"]["max_concurrent"] == 10
 
 
 def test_real_uv_recipes_enable_candidate_runtime_and_task_retry() -> None:
@@ -188,7 +191,8 @@ def test_meta_agent_image_provides_harbor_workspace_parent() -> None:
     dockerfile = ROOT / "containers" / "meta-agent" / "Dockerfile"
     contents = dockerfile.read_text()
     assert "WORKDIR /app" in contents
-    assert "python3 python-is-python3" in contents
+    assert "\n        python3 \\" in contents
+    assert "\n        python-is-python3 \\" in contents
     assert "uv tool install --python 3.13 --with fastapi --with orjson mini-swe-agent" in contents
     assert "COPY uv-wrapper /root/.local/bin/uv" in contents
 
@@ -216,9 +220,18 @@ def test_hyperagents_recipe_configures_reasoning_without_cost_caps() -> None:
     }
     assert "budget_usd" not in recipe["experiment"]
     assert recipe["evaluator"]["agent_env"] == {
-        "MINISWE_REASONING_EFFORT": "high",
         "MINISWE_COST_LIMIT": "0",
+        "MINISWE_ENV_TIMEOUT": "30",
+        "MINISWE_REASONING_EFFORT": "high",
+        "MINISWE_STEP_LIMIT": "100",
+        "OPENAI_BASE_URL": "https://aidp.bytedance.net/api/modelhub/online/responses/openai/responses",
     }
+
+
+def test_harbor_evaluator_accepts_validated_runtime_concurrency_override() -> None:
+    contents = (ROOT / "templates/evaluator/engines/harbor.sh").read_text()
+    assert "EVOLVE_HARBOR_N_CONCURRENT_OVERRIDE" in contents
+    assert "invalid EVOLVE_HARBOR_N_CONCURRENT_OVERRIDE" in contents
 
 
 def test_smoke_recipes_are_explicitly_named_and_deterministic() -> None:

@@ -105,8 +105,8 @@ def _write_archive(ctx: OperatorContext, rows: list[dict]) -> None:
     (ctx.workspace / "archive.jsonl").write_text("".join(json.dumps(row) + "\n" for row in rows))
 
 
-def _fake_debugger(checkout, prompt, ctx, *, output_dir, job_name, timeout_s):
-    del checkout, ctx, output_dir, job_name, timeout_s
+def _fake_debugger(checkout, prompt, ctx, *, output_dir, job_name, timeout_s, input_files=None):
+    del checkout, ctx, output_dir, job_name, timeout_s, input_files
     response = "ROOT CAUSE: retry policy" if "ROOT CAUSE:" in prompt else "KEY STRATEGY: inspect first"
     return AgentRunResult(response, "", response, 0, 0.1, {"usd": 0.25})
 
@@ -161,6 +161,38 @@ def test_ahe_miniswe_debugger_prompt_includes_submission_protocol() -> None:
     assert module._debugger_runner_prompt(job, {"agent": "codex"}) == module._debugger_prompt(job)
 
 
+def test_ahe_debugger_keeps_trace_evidence_out_of_prompt() -> None:
+    module = _module()
+    case = _case("task-a", "failed", 0)
+    case["instruction"] = "TRACE BODY MUST STAY ON DISK"
+    job = module._build_jobs([case], 90)[0]
+
+    prompt = module._debugger_prompt(job)
+    evidence = module._debugger_evidence(job)
+
+    assert "/app/task/inputs/trace-evidence.json" in prompt
+    assert "TRACE BODY MUST STAY ON DISK" not in prompt
+    assert "TRACE BODY MUST STAY ON DISK" in evidence
+
+
+def test_ahe_debugger_mounts_one_trace_evidence_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _module()
+    ctx = _ctx(tmp_path)
+    job = module._build_jobs([_case("task-a", "failed", 0)], 90)[0]
+    captured = {}
+
+    def capture(*args, **kwargs):
+        captured.update(kwargs)
+        return _fake_debugger(*args, **kwargs)
+
+    monkeypatch.setattr(module, "run_readonly_agent", capture)
+
+    module._run_debugger_job(ctx.checkout, ctx, job)
+
+    assert list(captured["input_files"]) == ["trace-evidence.json"]
+    assert '"task_name": "task-a"' in captured["input_files"]["trace-evidence.json"]
+
+
 def test_ahe_debugger_retries_and_fails_visibly(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     module = _module()
     ctx = _ctx(tmp_path)
@@ -185,6 +217,40 @@ def test_ahe_debugger_retries_and_fails_visibly(tmp_path: Path, monkeypatch: pyt
     )
     with pytest.raises(AgentCommandError, match="failed"):
         module._run_debugger_job(ctx.checkout, ctx, job)
+
+
+def test_ahe_debugger_stage_keeps_all_tasks_when_individual_jobs_fail(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _module()
+    ctx = _ctx(tmp_path)
+    jobs = module._build_jobs(
+        [
+            _case("fail-a", "failed", 0, task="task-a"),
+            _case("fail-b", "failed", 0, task="task-b"),
+            _case("pass-c", "passed", 1, task="task-c"),
+        ],
+        90,
+    )
+
+    def run_one(_checkout, _ctx, job):
+        if job.task_name in {"task-a", "task-c"}:
+            raise AgentCommandError(
+                f"debugger failed for {job.task_name}",
+                usage={"usd": 0.1, "wall_s": 2},
+            )
+        return module.DebuggerResult(job, "ROOT CAUSE: task-b diagnosis", {"usd": 0.2})
+
+    monkeypatch.setattr(module, "_run_debugger_job", run_one)
+
+    results = module._run_debugger_jobs(ctx.checkout, ctx, jobs)
+
+    assert [result.job.task_name for result in results] == ["task-a", "task-b", "task-c"]
+    assert results[0].error == "debugger failed for task-a"
+    assert results[1].error is None
+    assert results[2].error == "debugger failed for task-c"
+    assert results[0].response.startswith("ANALYSIS UNAVAILABLE:")
+    assert results[2].usage["usd"] == 0.1
 
 
 def test_ahe_analyzer_writes_official_reports_and_baseline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -214,6 +280,7 @@ def test_ahe_analyzer_writes_official_reports_and_baseline(tmp_path: Path, monke
     assert change["status"] == "baseline"
     assert result.summary["tasks"] == 2
     assert result.summary["debugger_usd"] == 0.5
+    assert result.summary["debugger_errors"] == 0
     assert "trace_analyzer/analysis/detail/task-a.md" in result.artifacts
 
 

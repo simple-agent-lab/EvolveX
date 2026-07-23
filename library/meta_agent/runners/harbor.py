@@ -758,6 +758,7 @@ def run_readonly_agent(
     output_dir: Path,
     job_name: str,
     timeout_s: float,
+    input_files: dict[str, str] | None = None,
 ) -> AgentRunResult:
     """Run one evidence-only Harbor agent and return its final response."""
     usage: dict[str, Any] = {"usd": 0, "wall_s": 0}
@@ -775,6 +776,13 @@ def run_readonly_agent(
         tasks_dir = output_dir / "tasks"
         task_root.mkdir(parents=True, exist_ok=False)
         (task_root / ".evolve-readonly").write_text("")
+        if input_files:
+            inputs = task_root / "inputs"
+            inputs.mkdir()
+            for name, content in input_files.items():
+                if Path(name).name != name or name in {".", ".."}:
+                    raise ValueError(f"read-only input name must be one relative filename: {name!r}")
+                (inputs / name).write_text(content)
         prompt_path.write_text(prompt.rstrip() + "\n")
         _write_json(
             output_dir / "instruction-transport.json",

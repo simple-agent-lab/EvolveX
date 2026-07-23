@@ -14,13 +14,19 @@ instead of always following the current best score.
 `meta_agent.variant: hyperagents` consumes that bundle through Harbor's installed MiniSWE agent while retaining self-referential editing.
 `gate.variant: parent_eligible` admits evaluated process variants.
 `evaluator.engine: harbor` runs the canonical black-box benchmark.
-`sampling: static` freezes 10 train, 10 gate, and 10 sealed task identities when the workspace is initialized from the project root.
+`sampling: static` freezes 10 train, 10 gate, and 10 sealed task identities when
+the workspace is initialized from the project root. The train partition is the
+shared optimization set; each candidate receives one trial on each of those 10
+tasks.
 
-The selected parent's retained gate evaluation is available before the child
-is produced, and every installable child is then immediately evaluated on the
-same frozen gate partition. Generation 0 and generations 1 through 10 therefore
-form a 10-task gate optimization curve. Sealed tasks remain isolated from
-meta-agent feedback.
+The selected parent's retained optimization evaluation is available before
+the child is produced, and every installable child is then immediately
+evaluated on the same frozen train partition. Generation 0 and generations 1
+through 10 therefore form a 10-task optimization curve. The configured gate
+partition is unused during evolution, and sealed tasks remain isolated from
+meta-agent feedback. The evaluator is frozen with capacity for 10 workers; set
+`EVOLVE_HARBOR_N_CONCURRENT_OVERRIDE=5` for a five-worker generation-1 smoke,
+then omit the override for the full run.
 
 Build the workspace image once before running:
 

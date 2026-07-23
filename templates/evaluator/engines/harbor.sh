@@ -1,5 +1,15 @@
 # harbor evaluator template
 . evaluator/eval.env
+if [ -n "${EVOLVE_HARBOR_N_CONCURRENT_OVERRIDE:-}" ]; then
+  case "$EVOLVE_HARBOR_N_CONCURRENT_OVERRIDE" in
+    *[!0-9]*|""|0)
+      printf 'invalid EVOLVE_HARBOR_N_CONCURRENT_OVERRIDE=%s\n' \
+        "$EVOLVE_HARBOR_N_CONCURRENT_OVERRIDE" >&2
+      exit 3
+      ;;
+  esac
+  EVOLVE_HARBOR_N_CONCURRENT=$EVOLVE_HARBOR_N_CONCURRENT_OVERRIDE
+fi
 : "${EVOLVE_WORKSPACE:=$PWD}"
 if [ -n "${EVOLVE_UV_BINARY:-}" ]; then UV=$EVOLVE_UV_BINARY; else UV=$(command -v uv || true); fi
 [ -n "$UV" ] && [ -x "$UV" ] || { printf 'uv is required; install uv or set EVOLVE_UV_BINARY\n' >&2; printf 'infra_failed\n' > "$EVOLVE_RUN_DIR/status"; exit 3; }

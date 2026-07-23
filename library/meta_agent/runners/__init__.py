@@ -39,6 +39,7 @@ def run_readonly_agent(
     output_dir: Path,
     job_name: str,
     timeout_s: float,
+    input_files: dict[str, str] | None = None,
 ) -> AgentRunResult:
     return harbor.run_readonly_agent(
         checkout,
@@ -47,4 +48,5 @@ def run_readonly_agent(
         output_dir=output_dir,
         job_name=job_name,
         timeout_s=timeout_s,
+        input_files=input_files,
     )

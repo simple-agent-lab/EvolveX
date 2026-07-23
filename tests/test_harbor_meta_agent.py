@@ -504,6 +504,32 @@ def test_harbor_readonly_agent_returns_response_without_candidate_artifact(
     assert not (checkout / "target" / "added.txt").exists()
 
 
+def test_harbor_readonly_agent_mounts_input_files_under_task_inputs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    checkout, run_dir = _checkout(tmp_path)
+    bin_dir = tmp_path / "bin"
+    _install_fake_harbor(bin_dir)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("FAKE_HARBOR_MODE", "readonly")
+    runner = _harbor_runner_module()
+    output_dir = run_dir / "trace_analyzer" / "debugger" / "task-a" / "attempt-1"
+
+    runner.run_readonly_agent(
+        checkout,
+        "Analyze the mounted trace evidence",
+        _ctx(checkout, run_dir),
+        output_dir=output_dir,
+        job_name="ahe-debug-task-a-attempt-1",
+        timeout_s=30,
+        input_files={"trace-evidence.json": '{"task_name":"task-a"}\n'},
+    )
+
+    assert (output_dir / "task" / "inputs" / "trace-evidence.json").read_text() == (
+        '{"task_name":"task-a"}\n'
+    )
+
+
 def test_harbor_meta_agent_does_not_pass_run_only_timeout_multiplier(tmp_path: Path) -> None:
     runner = _harbor_runner_module()
     command = runner._base_command(

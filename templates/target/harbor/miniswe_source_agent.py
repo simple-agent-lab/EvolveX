@@ -28,8 +28,11 @@ class EvolveRuntimeInfrastructureError(RuntimeError):
 
 
 MODEL_SETUP = r"""
+import json
 import os
+import uuid
 from minisweagent.models.litellm_model import LitellmModel, LitellmModelConfig
+from minisweagent.models.litellm_response_model import LitellmResponseModel
 
 VALID_REASONING_EFFORTS = ("none", "low", "medium", "high", "xhigh")
 
@@ -57,14 +60,23 @@ def build_model(config):
     model_kwargs["model_name"] = model_name
     model_kwargs["cost_tracking"] = "ignore_errors"
 
-    if model_name.startswith("openai/") and effort is not None:
+    if model_name.startswith("openai/"):
         nested_kwargs = dict(model_kwargs.get("model_kwargs") or {})
-        nested_kwargs.pop("reasoning", None)
+        nested_kwargs.setdefault("max_output_tokens", 64_000)
         nested_kwargs.pop("reasoning_effort", None)
-        extra_body = dict(nested_kwargs.get("extra_body") or {})
-        extra_body["reasoning_effort"] = effort
-        nested_kwargs["extra_body"] = extra_body
+        if effort is not None:
+            nested_kwargs["reasoning"] = {"effort": effort}
+        include = list(nested_kwargs.get("include") or [])
+        if "reasoning.encrypted_content" not in include:
+            include.append("reasoning.encrypted_content")
+        nested_kwargs["include"] = include
+        cache_key = f"evolve-{uuid.uuid4().hex}"
+        nested_kwargs["prompt_cache_key"] = cache_key
+        extra_headers = dict(nested_kwargs.get("extra_headers") or {})
+        extra_headers["extra"] = json.dumps({"session_id": cache_key}, separators=(",", ":"))
+        nested_kwargs["extra_headers"] = extra_headers
         model_kwargs["model_kwargs"] = nested_kwargs
+        return LitellmResponseModel(**model_kwargs)
 
     return LitellmModel(**model_kwargs)
 """.strip()

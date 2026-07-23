@@ -1,5 +1,6 @@
 import asyncio
 import importlib.util
+import json
 import shlex
 import sys
 import types
@@ -24,6 +25,8 @@ def _load(monkeypatch):
                 command=(
                     "source-env; mini-swe-agent --yolo --model=openai/test "
                     f"--task={shlex.quote(instruction)} --output=/logs/trajectory.json "
+                    "-c mini -c model.model_class=litellm_response "
+                    "-c model.model_kwargs.reasoning.effort=xhigh "
                     "--exit-immediately 2>&1 | tee /logs/agent.txt"
                 ),
                 env={"ROLE": "agent"},
@@ -72,5 +75,16 @@ def test_file_task_agent_externalizes_large_miniswe_instruction(monkeypatch) -> 
     assert module.TASK_PATH in runtime_command
     assert module.SHIM_PATH in runtime_command
     assert "--output=/logs/trajectory.json" in runtime_command
+    assert "model.model_class=litellm_response" in runtime_command
+    assert "model.model_kwargs.reasoning.effort=xhigh" in runtime_command
+    assert module.RESPONSES_CONFIG_PATH in runtime_command
+    responses_config = json.loads(uploaded[module.RESPONSES_CONFIG_PATH])
+    model_kwargs = responses_config["model"]["model_kwargs"]
+    assert model_kwargs["include"] == ["reasoning.encrypted_content"]
+    assert model_kwargs["prompt_cache_key"].startswith("evolve-")
+    assert json.loads(model_kwargs["extra_headers"]["extra"]) == {
+        "session_id": model_kwargs["prompt_cache_key"]
+    }
+    assert "store" not in model_kwargs
     assert "unset HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy;" in runtime_command
     assert environment.envs[-1] == {"ROLE": "agent"}

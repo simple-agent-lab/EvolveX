@@ -2,17 +2,21 @@
 
 from __future__ import annotations
 
+import json
 import shlex
 import tempfile
+import uuid
 from pathlib import Path
 
 from harbor.agents.installed.mini_swe_agent import MiniSweAgent
 
 TASK_PATH = "/tmp/evolve-miniswe-task.md"
 SHIM_PATH = "/tmp/evolve-miniswe-file-task.py"
+RESPONSES_CONFIG_PATH = "/tmp/evolve-miniswe-responses.yaml"
 _LAUNCH = "mini-swe-agent --yolo "
 _TASK = " --task="
 _OUTPUT = " --output="
+_EXIT = " --exit-immediately"
 
 _SHIM = """from pathlib import Path
 import runpy
@@ -40,6 +44,19 @@ class FileTaskMiniSweAgent(MiniSweAgent):
         if len(values) != 1:
             raise RuntimeError("unable to decode MiniSWE task argument")
 
+        uses_responses = "model.model_class=litellm_response" in command
+        cache_key = f"evolve-{uuid.uuid4().hex}"
+        responses_config = {
+            "model": {
+                "model_kwargs": {
+                    "include": ["reasoning.encrypted_content"],
+                    "prompt_cache_key": cache_key,
+                    "extra_headers": {
+                        "extra": json.dumps({"session_id": cache_key}, separators=(",", ":"))
+                    },
+                }
+            }
+        }
         with tempfile.TemporaryDirectory(prefix="evolve-miniswe-task-") as tempdir:
             root = Path(tempdir)
             task_file = root / "task.md"
@@ -48,10 +65,23 @@ class FileTaskMiniSweAgent(MiniSweAgent):
             shim_file.write_text(_SHIM)
             await environment.upload_file(task_file, TASK_PATH)
             await environment.upload_file(shim_file, SHIM_PATH)
+            if uses_responses:
+                config_file = root / "responses.yaml"
+                config_file.write_text(json.dumps(responses_config))
+                await environment.upload_file(config_file, RESPONSES_CONFIG_PATH)
 
         prefix = command[:launch]
         flags_before_task = command[launch + len("mini-swe-agent") : task]
         flags_after_task = command[output:]
+        if uses_responses:
+            exit_marker = flags_after_task.find(_EXIT)
+            if exit_marker < 0:
+                raise RuntimeError("unable to locate MiniSWE exit flag")
+            flags_after_task = (
+                flags_after_task[:exit_marker]
+                + f" -c {RESPONSES_CONFIG_PATH}"
+                + flags_after_task[exit_marker:]
+            )
         file_launch = (
             "unset HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy; "
             'MSWEA_BIN="$(command -v mini-swe-agent)"; '
