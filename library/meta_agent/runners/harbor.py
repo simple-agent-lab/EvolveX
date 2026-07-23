@@ -184,21 +184,25 @@ def _prepare_bundle(
             if source.name not in {".git", "runs", "archive.jsonl", _EVAL_RECEIPT}:
                 _copy_tree(source, workspace / source.name)
 
-        archive = ctx.workspace / "archive.jsonl"
-        if archive.is_file():
-            _copy_tree(archive, workspace / "archive.jsonl")
-        receipt = ctx.workspace / _EVAL_RECEIPT
-        if receipt.is_file():
-            _copy_tree(receipt, workspace / _EVAL_RECEIPT)
-        runs = ctx.workspace / "runs"
-        if runs.is_dir():
-            _copy_tree(runs, workspace / "runs", ignore=_runs_ignore(runs))
-        if ctx.run_dir.is_dir():
-            _copy_tree(
-                ctx.run_dir,
-                workspace / "runs" / f"gen-{ctx.genid}",
-                ignore=_runs_ignore(ctx.run_dir.parent),
-            )
+        # A-Evolve trajectory-only mode must not expose evaluator labels through
+        # filesystem discovery. The selected behavior summaries are already
+        # transported in the meta-agent prompt, so omit archive/run artifacts.
+        if not bool(ctx.config.get("trajectory_only", False)):
+            archive = ctx.workspace / "archive.jsonl"
+            if archive.is_file():
+                _copy_tree(archive, workspace / "archive.jsonl")
+            receipt = ctx.workspace / _EVAL_RECEIPT
+            if receipt.is_file():
+                _copy_tree(receipt, workspace / _EVAL_RECEIPT)
+            runs = ctx.workspace / "runs"
+            if runs.is_dir():
+                _copy_tree(runs, workspace / "runs", ignore=_runs_ignore(runs))
+            if ctx.run_dir.is_dir():
+                _copy_tree(
+                    ctx.run_dir,
+                    workspace / "runs" / f"gen-{ctx.genid}",
+                    ignore=_runs_ignore(ctx.run_dir.parent),
+                )
         return _WorkspaceBundle(staging, task_root, workspace, roots, _tree_manifest(workspace))
     except Exception:
         shutil.rmtree(staging, ignore_errors=True)

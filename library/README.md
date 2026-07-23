@@ -22,7 +22,7 @@ See `DESIGN.md` §7 for the full rationale. In short:
 library/
 ├─ select/   greedy · newest · pareto · random · score_weighted
 ├─ rollout/  failure_focused · harbor · noop
-├─ trace_analyzer/ failure_patterns · failed_traces · trace_browser · execution_records · gepa · utility_metrics
+├─ trace_analyzer/ failure_patterns · failed_traces · trace_browser · trajectory_only · execution_records · gepa · utility_metrics
 ├─ meta_agent/ aevolve · ahe · gepa · hyperagents
 │  ├─ support/  shared evidence loading
 │  └─ runners/ local · harbor

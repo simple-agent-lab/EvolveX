@@ -74,6 +74,9 @@ def test_gepa_meta_agent_edits_only_selected_component(tmp_path: Path, monkeypat
         assert "assertion" not in prompt
         assert "`prompt`" in prompt
         assert "{{ instruction }}" in prompt
+        assert "You CAN modify any file under `target/`" in prompt
+        assert "This method further restricts the current proposal to: `target/prompt.md`" in prompt
+        assert "Runtime prompt/config: `target/prompt.md`" in prompt
         (root / "target/prompt.md").write_text("Be systematic. Solve: {{ instruction }}\n")
         return SimpleNamespace(output="edited", usage={"usd": 0.1})
 

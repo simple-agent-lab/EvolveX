@@ -1,7 +1,31 @@
 FROM ubuntu:latest
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends build-essential ca-certificates curl git python3 python-is-python3 \
+    && apt-get install -y --no-install-recommends \
+        bash \
+        build-essential \
+        ca-certificates \
+        coreutils \
+        curl \
+        diffutils \
+        file \
+        findutils \
+        git \
+        jq \
+        less \
+        openssh-client \
+        patch \
+        procps \
+        python3 \
+        python3-pip \
+        python3-venv \
+        python-is-python3 \
+        ripgrep \
+        rsync \
+        sed \
+        tree \
+        unzip \
+        zip \
     && rm -rf /var/lib/apt/lists/*
 RUN curl -LsSf https://astral.sh/uv/0.7.13/install.sh | sh
 ENV PATH="/root/.local/bin:${PATH}"

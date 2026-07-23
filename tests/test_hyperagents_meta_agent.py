@@ -44,6 +44,7 @@ def _checkout(tmp_path: Path) -> tuple[Path, Path]:
     (checkout / "target").mkdir(parents=True)
     (checkout / "operators").mkdir()
     (checkout / "target" / "agent.py").write_text("print('parent')\n")
+    (checkout / "target" / "prompt.md").write_text("Solve carefully.\n")
     (checkout / "operators" / "meta_agent.py").write_text("# parent mutation operator\n")
     (checkout / "evolve.yaml").write_text((workspace / "evolve.yaml").read_text())
     _git(checkout, "init", "-q")
@@ -107,6 +108,11 @@ def test_hyperagents_prompt_points_to_evolvable_codebase_and_prior_artifacts(tmp
     assert "`operators/**` remains editable" in prompt
     assert "cosmetic target edits" in prompt
     assert "You are editing the MiniSWE source checkout under target/." not in prompt
+    assert "You CAN modify any file under `target/`" in prompt
+    assert "You CAN modify any file under `operators/`" in prompt
+    assert "Runtime prompt/config: `target/prompt.md`" in prompt
+    assert "Reusable skills: not configured or detected" in prompt
+    assert "This method does not impose a narrower per-proposal path scope" in prompt
 
 
 def test_hyperagents_prompt_bounds_inline_evidence(tmp_path: Path) -> None:

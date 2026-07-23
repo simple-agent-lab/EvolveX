@@ -14,6 +14,8 @@ def test_real_recipe_binds_harbor_rollout_trace_analyzer_and_hyperagents_meta_ag
     meta_agent = next(binding for binding in bindings if binding.kind == "meta_agent")
 
     assert rollout.source == "library/rollout/harbor.py"
+    assert '"target": "/opt/evolve/uv/cache"' in rollout.text
+    assert '"target": "/installed-agent/uv-cache"' not in rollout.text
     assert trace_analyzer.source == "library/trace_analyzer/failure_patterns.py"
     expected_source = (ROOT / "library" / "meta_agent" / "hyperagents.py").read_text()
     assert meta_agent.source == "library/meta_agent/hyperagents.py"

@@ -50,7 +50,8 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "dataset: swe-bench-lite" in config
             assert "seed: builtin-codex" in config
             assert "rollout: {variant: harbor" in config
-            assert "trace_analyzer: {variant: execution_records" in config
+            assert "trace_analyzer: {variant: trajectory_only" in config
+            assert "trajectory_only: true" in config
             assert "variant: aevolve" in config
             assert "runner: harbor" in config
             assert "agent: codex" in config
@@ -166,7 +167,8 @@ def test_meta_agent_image_provides_harbor_workspace_parent() -> None:
     dockerfile = ROOT / "containers" / "meta-agent" / "Dockerfile"
     contents = dockerfile.read_text()
     assert "WORKDIR /app" in contents
-    assert "python3 python-is-python3" in contents
+    for package in ("git", "jq", "python3", "python-is-python3", "ripgrep", "rsync"):
+        assert f"        {package} \\" in contents
     assert "uv tool install --python 3.13 --with fastapi --with orjson mini-swe-agent" in contents
     assert "COPY uv-wrapper /root/.local/bin/uv" in contents
 

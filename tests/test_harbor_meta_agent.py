@@ -607,6 +607,21 @@ def test_multi_root_install_rolls_back_when_second_replacement_fails(
         shutil.rmtree(bundle.staging, ignore_errors=True)
 
 
+def test_trajectory_only_bundle_omits_archive_and_run_evidence(tmp_path: Path) -> None:
+    checkout, run_dir = _checkout(tmp_path)
+    runner = _harbor_runner_module()
+    ctx = _ctx(checkout, run_dir)
+    ctx.config["trajectory_only"] = True
+    surface = runner.load_surface_policy(checkout)
+    bundle = runner._prepare_bundle(checkout, ctx, ["target"], surface)
+    try:
+        assert not (bundle.workspace / "archive.jsonl").exists()
+        assert not (bundle.workspace / "runs").exists()
+        assert (bundle.workspace / "target" / "agent.py").is_file()
+    finally:
+        shutil.rmtree(bundle.staging, ignore_errors=True)
+
+
 def test_harbor_trial_exception_does_not_modify_target(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     checkout, run_dir = _checkout(tmp_path)
     before = {

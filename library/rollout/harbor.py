@@ -22,6 +22,7 @@ from evolve.host_runtime import uv_run
 from evolve.splits import harbor_task_pattern, load_manifest, select_dataset_tasks
 
 _INFRA_EXCEPTION_MARKERS = (
+    "infrastructure",
     "verifier",
     "environment",
     "docker",
@@ -152,6 +153,7 @@ def _codex_session_details(trial_dir: Path, field_limit: int) -> dict[str, Any]:
     tool_calls: list[dict[str, str]] = []
     observations: list[str] = []
     events: list[dict[str, Any]] = []
+    trajectory_events: list[dict[str, Any]] = []
     sessions = trial_dir / "agent" / "sessions"
     paths = sorted(sessions.rglob("*.jsonl")) if sessions.exists() else []
     for path in paths:
@@ -187,6 +189,7 @@ def _codex_session_details(trial_dir: Path, field_limit: int) -> dict[str, Any]:
                             "message": clipped,
                         }
                     )
+                    trajectory_events.append(events[-1])
             elif outer_type == "event_msg" and event_type == "agent_message":
                 message = payload.get("message")
                 if isinstance(message, str) and message.strip():
@@ -201,6 +204,7 @@ def _codex_session_details(trial_dir: Path, field_limit: int) -> dict[str, Any]:
                             "message": clipped,
                         }
                     )
+                    trajectory_events.append(events[-1])
             elif outer_type == "response_item" and event_type in {"function_call", "custom_tool_call"}:
                 call = {
                     "name": str(payload.get("name") or "unknown"),
@@ -216,11 +220,14 @@ def _codex_session_details(trial_dir: Path, field_limit: int) -> dict[str, Any]:
                         **call,
                     }
                 )
+                trajectory_events.append(events[-1])
             elif outer_type == "response_item" and event_type in {
                 "function_call_output",
                 "custom_tool_call_output",
             }:
-                output = _clip(payload.get("output") or "", field_limit, tail=True)
+                raw_output = payload.get("output") or ""
+                output = _clip(raw_output, field_limit, tail=True)
+                trajectory_output = _clip(raw_output, field_limit)
                 observations.append(output)
                 events.append(
                     {
@@ -231,12 +238,14 @@ def _codex_session_details(trial_dir: Path, field_limit: int) -> dict[str, Any]:
                         "observation": output,
                     }
                 )
+                trajectory_events.append({**events[-1], "observation": trajectory_output})
     return {
         "instruction": instructions[-1] if instructions else "",
         "agent_messages": messages[-4:],
         "tool_calls": tool_calls[-8:],
         "observations": observations[-8:],
         "events": events[-_TRACE_EVENT_LIMIT:],
+        "trajectory_events": trajectory_events,
         "raw_agent_output": "",
     }
 
@@ -252,6 +261,7 @@ def _trajectory_details(trial_dir: Path, field_limit: int) -> dict[str, Any]:
     tool_calls: list[dict[str, str]] = []
     observations: list[str] = []
     events: list[dict[str, Any]] = []
+    trajectory_events: list[dict[str, Any]] = []
     for step_index, step in enumerate(steps):
         if not isinstance(step, dict):
             continue
@@ -275,14 +285,17 @@ def _trajectory_details(trial_dir: Path, field_limit: int) -> dict[str, Any]:
                 tool_calls.append(normalized_call)
                 step_calls.append(normalized_call)
         step_observations: list[str] = []
+        trajectory_observations: list[str] = []
         observation = step.get("observation")
         results = observation.get("results") if isinstance(observation, dict) else None
         if isinstance(results, list):
             for result in results:
                 if isinstance(result, dict) and result.get("content"):
-                    content = _clip(result["content"], field_limit, tail=True)
+                    raw_content = result["content"]
+                    content = _clip(raw_content, field_limit, tail=True)
                     observations.append(content)
                     step_observations.append(content)
+                    trajectory_observations.append(_clip(raw_content, field_limit))
         if not wrapper_message and (message or step_calls or step_observations):
             events.append(
                 {
@@ -291,6 +304,12 @@ def _trajectory_details(trial_dir: Path, field_limit: int) -> dict[str, Any]:
                     "message": _clip(message or "", field_limit),
                     "tool_calls": step_calls,
                     "observations": step_observations,
+                }
+            )
+            trajectory_events.append(
+                {
+                    **events[-1],
+                    "observations": trajectory_observations,
                 }
             )
 
@@ -309,6 +328,7 @@ def _trajectory_details(trial_dir: Path, field_limit: int) -> dict[str, Any]:
         "tool_calls": tool_calls[-8:],
         "observations": observations[-8:],
         "events": events[-_TRACE_EVENT_LIMIT:],
+        "trajectory_events": trajectory_events,
         "raw_agent_output": raw_agent_output,
     }
 
@@ -370,6 +390,7 @@ def collect_cases(jobs_dir: Path, field_limit: int = 2000, pass_threshold: float
                 "tool_calls": details["tool_calls"],
                 "observations": details["observations"],
                 "events": details["events"],
+                "trajectory_events": details["trajectory_events"],
                 "raw_agent_output": details["raw_agent_output"],
                 "verifier_output": _verifier_output(trial_dir, field_limit),
                 "verifier_rewards": {
@@ -396,6 +417,16 @@ def collect_cases(jobs_dir: Path, field_limit: int = 2000, pass_threshold: float
             }
         )
     return cases
+
+
+def require_usable_cases(cases: list[dict[str, Any]], *, returncode: int, harbor_log: Path) -> None:
+    if not cases:
+        raise SystemExit(f"harbor rollout produced no trial results (exit {returncode}); see {harbor_log}")
+    if all(case.get("outcome") in {"infra_error", "incomplete"} for case in cases):
+        raise SystemExit(
+            "harbor rollout produced only infrastructure failures; refusing to evolve the target from invalid "
+            f"evidence (exit {returncode}); see {harbor_log}"
+        )
 
 
 def _jobs_root(ctx: OperatorContext) -> Path:
@@ -518,13 +549,23 @@ def _select_train_tasks(
         or not all(isinstance(item, str) and item for item in requested)
     ):
         raise ValueError("task_names must be a non-empty list of task names")
-    if len(set(requested)) != len(requested):
-        raise ValueError("task_names must not contain duplicates")
     train_set = set(all_train)
-    unknown = [name for name in requested if name not in train_set]
+    normalized: list[str] = []
+    unknown: list[str] = []
+    for name in requested:
+        if name in train_set:
+            normalized.append(name)
+            continue
+        leaf = name.rsplit("/", 1)[-1] if "/" in name else ""
+        if leaf in train_set:
+            normalized.append(leaf)
+        else:
+            unknown.append(name)
     if unknown:
         raise ValueError("task_names must come from the frozen train split: " + ", ".join(unknown))
-    return list(requested)
+    if len(set(normalized)) != len(normalized):
+        raise ValueError("task_names must not contain duplicates")
+    return normalized
 
 
 class HarborRollout(RolloutOperator):
@@ -635,7 +676,7 @@ class HarborRollout(RolloutOperator):
             {
                 "type": "bind",
                 "source": str(uv_cache.resolve()),
-                "target": "/installed-agent/uv-cache",
+                "target": "/opt/evolve/uv/cache",
             }
         ]
         uv_python = os.environ.get("EVOLVE_UV_PYTHON_INSTALL_DIR")
@@ -656,6 +697,7 @@ class HarborRollout(RolloutOperator):
             ]
         )
         _append_agent_env(command, checkout, ctx.config)
+        command.extend(["--ae", "UV_CACHE_DIR=/opt/evolve/uv/cache"])
         if uv_python:
             command.extend(["--ae", "UV_PYTHON_INSTALL_DIR=/installed-agent/uv-python"])
         model = ctx.config.get("model") or eval_env.get("EVOLVE_HARBOR_MODEL") or os.environ.get("EVOLVE_HARBOR_MODEL")
@@ -674,10 +716,7 @@ class HarborRollout(RolloutOperator):
         returncode = _run_harbor(command, checkout, rollout_dir / "harbor.log", harbor_env)
         cases = collect_cases(jobs_dir, field_limit=field_limit, pass_threshold=pass_threshold)
         _write_json(rollout_dir / "cases.json", cases)
-        if not cases:
-            raise SystemExit(
-                f"harbor rollout produced no trial results (exit {returncode}); see {rollout_dir / 'harbor.log'}"
-            )
+        require_usable_cases(cases, returncode=returncode, harbor_log=rollout_dir / "harbor.log")
 
         rewards = [case["reward"] for case in cases if isinstance(case.get("reward"), (int, float))]
         counts = {name: sum(case["outcome"] == name for case in cases) for name in _OUTCOME_ORDER}

@@ -197,7 +197,7 @@ def test_harbor_rollout_uses_only_frozen_train_task_names(tmp_path: Path, monkey
         {
             "type": "bind",
             "source": str(tmp_path / "uv-cache"),
-            "target": "/installed-agent/uv-cache",
+            "target": "/opt/evolve/uv/cache",
         },
         {
             "type": "bind",
@@ -208,6 +208,7 @@ def test_harbor_rollout_uses_only_frozen_train_task_names(tmp_path: Path, monkey
     assert captured.count("--mounts") == 1
     assert not set(included) & set(manifest["tasks"]["gate"] + manifest["tasks"]["sealed"])
     assert ("--ae", f"EVOLVE_CANDIDATE_SOURCE={checkout / 'target'}") in zip(captured, captured[1:], strict=False)
+    assert ("--ae", "UV_CACHE_DIR=/opt/evolve/uv/cache") in zip(captured, captured[1:], strict=False)
     assert ("--ae", "UV_PYTHON_INSTALL_DIR=/installed-agent/uv-python") in zip(captured, captured[1:], strict=False)
     assert ("--ae", "UV_OFFLINE=1") in zip(captured, captured[1:], strict=False)
     assert ("--ae", "UV_PYTHON=3.12") in zip(captured, captured[1:], strict=False)
@@ -230,8 +231,28 @@ def test_harbor_rollout_exact_task_replay_is_limited_to_frozen_train_split(tmp_p
     selected = module._select_train_tasks(tmp_path / "splits.json", "dataset", 1, ["train-c", "train-a"])
 
     assert selected == ["train-c", "train-a"]
+    assert module._select_train_tasks(
+        tmp_path / "splits.json",
+        "dataset",
+        1,
+        ["terminal-bench/train-c", "terminal-bench/train-a"],
+    ) == ["train-c", "train-a"]
     with pytest.raises(ValueError, match="frozen train split"):
         module._select_train_tasks(tmp_path / "splits.json", "dataset", 1, ["gate-a"])
+    with pytest.raises(ValueError, match="frozen train split"):
+        module._select_train_tasks(
+            tmp_path / "splits.json",
+            "dataset",
+            1,
+            ["terminal-bench/gate-a"],
+        )
+    with pytest.raises(ValueError, match="duplicates"):
+        module._select_train_tasks(
+            tmp_path / "splits.json",
+            "dataset",
+            1,
+            ["train-c", "terminal-bench/train-c"],
+        )
 
 
 def test_harbor_rollout_can_shuffle_train_minibatches_by_generation(tmp_path: Path, monkeypatch) -> None:

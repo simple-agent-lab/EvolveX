@@ -425,7 +425,7 @@ def test_miniswe_external_dependency_sync_is_infrastructure_owned(tmp_path: Path
     with pytest.raises(module.EvolveRuntimeInfrastructureError) as raised:
         asyncio.run(module.MiniSweSourceAgent().install(Environment()))
 
-    assert str(raised.value) == "EVOLVE_RUNTIME_INFRASTRUCTURE: external_dependency_sync_failed"
+    assert str(raised.value) == ("EVOLVE_RUNTIME_INFRASTRUCTURE: external_dependency_sync_failed: offline cache miss")
 
 
 def test_miniswe_offline_runtime_never_downloads_uv(tmp_path: Path, monkeypatch) -> None:

@@ -14,6 +14,7 @@ from evolve.frozen.interfaces import MetaAgentOperator, MetaAgentResult, Operato
 from evolve.patching import create_candidate_patch, load_surface_policy, patch_parent_ref
 from library.gepa_support import component_paths, path_in_scopes, read_json, selected_component_names
 from library.meta_agent.runners import run_agent, runner_name
+from library.meta_agent.support.workspace import workspace_contract
 
 GEPA_PROMPT = """# GEPA Reflective Mutation
 
@@ -103,6 +104,7 @@ def build_prompt(checkout: Path, ctx: OperatorContext) -> tuple[str, dict[str, A
     )
     prompt = (
         f"{GEPA_PROMPT.rstrip()}\n\n"
+        f"{workspace_contract(checkout, ctx.config, action_paths=scopes)}\n\n"
         f"## Selected component\n\n{', '.join(f'`{name}`' for name in selected)}\n\n"
         f"Allowed paths: {', '.join(f'`{path}`' for path in scopes)}\n\n"
         f"{placeholder_rule}\n\n"

@@ -208,8 +208,8 @@ class MiniSweSourceAgent(MiniSweAgent):
     async def _runtime_phase(self, environment, command: str, code: str, *, env: dict[str, str]) -> None:
         try:
             await self.exec_as_agent(environment, command=command, env=env)
-        except Exception:
-            raise EvolveRuntimeInfrastructureError(f"EVOLVE_RUNTIME_INFRASTRUCTURE: {code}") from None
+        except Exception as error:
+            raise EvolveRuntimeInfrastructureError(f"EVOLVE_RUNTIME_INFRASTRUCTURE: {code}: {error}") from None
 
     def _preflight_command(self, marker: str, script: str) -> str:
         return (
