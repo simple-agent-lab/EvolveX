@@ -11,6 +11,10 @@ than a separate rollout run. Each task receives one required LLM debugger
 analysis using the same model configuration as the meta-agent. Failures stop
 the generation after three attempts; there is no silent deterministic fallback.
 
+The MiniSWE target is pinned to commit
+`388da74aad620a384ab47669b17c52133e30e7c3`, whose checked-in `uv.lock` is part
+of the candidate runtime contract.
+
 Canonical evaluation is deliberately different: the frozen
 `MiniSweSourceAgent` adapter installs the returned candidate source and invokes
 its Python API with evaluator-owned model and resource limits. The prompt asks

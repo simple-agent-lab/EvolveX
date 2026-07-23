@@ -42,6 +42,7 @@ _SEED_IGNORE_PATTERNS = (
     "node_modules",
 )
 _ENV_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_GIT_COMMIT = re.compile(r"[0-9a-fA-F]{40}")
 
 
 @dataclass(frozen=True)
@@ -71,10 +72,12 @@ def init_workspace(options: InitOptions) -> None:
     assert isinstance(target, dict)
     if options.seed:
         target["seed"] = options.seed
+        target.pop("revision", None)
     elif options.dataset:
         # Dataset-backed experiments should be self-contained and must not need
         # a network clone merely to freeze their evaluator split.
         target["seed"] = "builtin-codex"
+        target.pop("revision", None)
     if options.dataset:
         evaluator = config["evaluator"]
         assert isinstance(evaluator, dict)
@@ -419,6 +422,10 @@ def _write_target(workspace: Path, target_config: dict[str, Any]) -> None:
         raise ValueError(f"unsupported target.harbor_agent: {harbor_agent}")
     seed = target_config.get("seed")
     seed_text = str(seed) if seed else None
+    revision_value = target_config.get("revision")
+    revision = str(revision_value) if revision_value else None
+    if revision is not None and _GIT_COMMIT.fullmatch(revision) is None:
+        raise ValueError("target.revision must be a full 40-character git commit")
     if not seed_text or seed_text == "builtin-dummy":
         target = workspace / "target"
         target.mkdir(parents=True, exist_ok=True)
@@ -437,9 +444,11 @@ def _write_target(workspace: Path, target_config: dict[str, Any]) -> None:
     if _looks_like_git_url(seed_text):
         with tempfile.TemporaryDirectory(prefix="evolve-seed-") as tmp:
             checkout = Path(tmp) / "seed"
-            _git_clone(seed_text, checkout)
+            _git_clone(seed_text, checkout, revision=revision)
             _vendor_seed(workspace, checkout, seed_text)
         return
+    if revision is not None:
+        raise ValueError("target.revision requires a git URL seed")
     source = Path(seed_text).expanduser()
     if not source.is_dir():
         raise ValueError(f"seed is not a local directory or git URL: {seed_text}")
@@ -478,15 +487,24 @@ def _looks_like_git_url(seed: str) -> bool:
     )
 
 
-def _git_clone(url: str, destination: Path) -> None:
+def _git_clone(url: str, destination: Path, *, revision: str | None = None) -> None:
     git = shutil.which("git")
     if git is None:
         raise RuntimeError("git is required for evolve init")
-    result = subprocess.run(
-        [git, "clone", "--depth", "1", url, str(destination)], text=True, capture_output=True, check=False
+    commands = (
+        [[git, "clone", "--depth", "1", url, str(destination)]]
+        if revision is None
+        else [
+            [git, "init", str(destination)],
+            [git, "-C", str(destination), "remote", "add", "origin", url],
+            [git, "-C", str(destination), "fetch", "--depth", "1", "origin", revision],
+            [git, "-C", str(destination), "checkout", "--detach", "FETCH_HEAD"],
+        ]
     )
-    if result.returncode != 0:
-        raise RuntimeError(result.stderr.strip() or "git clone failed")
+    for command in commands:
+        result = subprocess.run(command, text=True, capture_output=True, check=False)
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr.strip() or "git clone failed")
 
 
 def _init_git(workspace: Path) -> None:

@@ -78,6 +78,7 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "max_generations: 10" in config
             assert "dataset: terminal-bench-2-10-10-10" in config
             assert "seed: https://github.com/SWE-agent/mini-swe-agent.git" in config
+            assert "revision: 388da74aad620a384ab47669b17c52133e30e7c3" in config
             assert "rollout: {variant: evaluation_replay" in config
             assert "trace_analyzer: {variant: ahe" in config
             assert "meta_agent: {variant: ahe, runner: harbor" in config
@@ -102,6 +103,7 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "max_generations: 10" in config
             assert "dataset: terminal-bench-2-10-10-10" in config
             assert "seed: https://github.com/SWE-agent/mini-swe-agent.git" in config
+            assert "revision: 388da74aad620a384ab47669b17c52133e30e7c3" in config
             assert "    - operators/**" in config
             assert "    - operators/meta_agent.py" not in config
             assert "select: {variant: score_child_prop" in config

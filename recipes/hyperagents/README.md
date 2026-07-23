@@ -6,6 +6,10 @@ can come from behavior, process, or memory. The population stays small but
 branchy, and parent choice is randomized to explore different process variants
 instead of always following the current best score.
 
+The MiniSWE target is pinned to commit
+`388da74aad620a384ab47669b17c52133e30e7c3`, whose checked-in `uv.lock` is part
+of the candidate runtime contract.
+
 `children_per_gen: 1` creates one candidate per round.
 `surface.include` exposes `target/**` plus `operators/**`.
 `select.variant: score_child_prop` balances score with child-proposal behavior.
