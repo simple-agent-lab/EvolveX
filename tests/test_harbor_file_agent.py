@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ADAPTER = ROOT / "templates" / "workspace" / "evolve_harbor_agent" / "__init__.py"
 
 
-def _load(monkeypatch):
+def _load(monkeypatch, max_output_tokens: int | None = None):
     harbor = types.ModuleType("harbor")
     agents = types.ModuleType("harbor.agents")
     installed = types.ModuleType("harbor.agents.installed")
@@ -18,8 +18,15 @@ def _load(monkeypatch):
 
     class MiniSweAgent:
         async def run(self, instruction, environment, context):
-            del context
             await self.exec_as_agent(environment, command="setup", env={"ROLE": "agent"})
+            output_budget = max_output_tokens
+            if output_budget is None:
+                output_budget = getattr(context, "max_output_tokens", None)
+            output_budget_config = (
+                f" -c model.model_kwargs.max_output_tokens={output_budget}"
+                if output_budget is not None
+                else ""
+            )
             await self.exec_as_agent(
                 environment,
                 command=(
@@ -27,6 +34,7 @@ def _load(monkeypatch):
                     f"--task={shlex.quote(instruction)} --output=/logs/trajectory.json "
                     "-c mini -c model.model_class=litellm_response "
                     "-c model.model_kwargs.reasoning.effort=xhigh "
+                    f"{output_budget_config} "
                     "--exit-immediately 2>&1 | tee /logs/agent.txt"
                 ),
                 env={"ROLE": "agent"},
@@ -80,6 +88,7 @@ def test_file_task_agent_externalizes_large_miniswe_instruction(monkeypatch) -> 
     assert module.RESPONSES_CONFIG_PATH in runtime_command
     responses_config = json.loads(uploaded[module.RESPONSES_CONFIG_PATH])
     model_kwargs = responses_config["model"]["model_kwargs"]
+    assert model_kwargs["max_output_tokens"] == 64_000
     assert model_kwargs["include"] == ["reasoning.encrypted_content"]
     assert model_kwargs["prompt_cache_key"].startswith("evolve-")
     assert json.loads(model_kwargs["extra_headers"]["extra"]) == {
@@ -88,3 +97,15 @@ def test_file_task_agent_externalizes_large_miniswe_instruction(monkeypatch) -> 
     assert "store" not in model_kwargs
     assert "unset HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy;" in runtime_command
     assert environment.envs[-1] == {"ROLE": "agent"}
+
+
+def test_file_task_agent_preserves_explicit_output_budget(monkeypatch) -> None:
+    module = _load(monkeypatch, max_output_tokens=12_345)
+    environment = Environment()
+
+    asyncio.run(module.FileTaskMiniSweAgent().run("Fix the constant.", environment, object()))
+
+    uploaded = dict(environment.uploads)
+    responses_config = json.loads(uploaded[module.RESPONSES_CONFIG_PATH])
+    assert "max_output_tokens" not in responses_config["model"]["model_kwargs"]
+    assert "model.model_kwargs.max_output_tokens=12345" in environment.commands[-1]

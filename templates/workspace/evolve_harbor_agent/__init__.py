@@ -46,15 +46,19 @@ class FileTaskMiniSweAgent(MiniSweAgent):
 
         uses_responses = "model.model_class=litellm_response" in command
         cache_key = f"evolve-{uuid.uuid4().hex}"
+        has_output_budget = "model.model_kwargs.max_output_tokens=" in command
+        model_kwargs = {
+            "include": ["reasoning.encrypted_content"],
+            "prompt_cache_key": cache_key,
+            "extra_headers": {
+                "extra": json.dumps({"session_id": cache_key}, separators=(",", ":"))
+            },
+        }
+        if not has_output_budget:
+            model_kwargs["max_output_tokens"] = 64_000
         responses_config = {
             "model": {
-                "model_kwargs": {
-                    "include": ["reasoning.encrypted_content"],
-                    "prompt_cache_key": cache_key,
-                    "extra_headers": {
-                        "extra": json.dumps({"session_id": cache_key}, separators=(",", ":"))
-                    },
-                }
+                "model_kwargs": model_kwargs
             }
         }
         with tempfile.TemporaryDirectory(prefix="evolve-miniswe-task-") as tempdir:
