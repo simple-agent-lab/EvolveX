@@ -560,11 +560,19 @@ def test_run_live_case_classifies_the_first_failed_protocol_boundary(tmp_path: P
     assert result["passed"] is False
     assert result["failure_boundary"] == boundary
     assert result["declared_miniswe_version"] == case.miniswe_version
-    assert result["observed_miniswe_version"] is None
-    assert result["protocol_evidence"]["tool_call_count"] == 0
-    assert result["artifact_contract"]["passed"] is False
-    assert result["verification"]["passed"] is False
-    assert result["changed_paths"] == []
+    reached_submission = boundary in {"artifact_import", "verification", "workspace_edit"}
+    assert result["observed_miniswe_version"] == (case.miniswe_version if reached_submission else None)
+    assert result["protocol_evidence"]["tool_call_count"] == (3 if reached_submission else 0)
+    assert result["agent_exit_status"] == ("Submitted" if reached_submission else None)
+    if boundary == "artifact_import":
+        assert result["artifact_contract"]["passed"] is False
+    elif boundary in {"verification", "workspace_edit"}:
+        assert result["artifact_contract"]["passed"] is True
+        assert result["changed_paths"] == ["target/value.py"]
+    if boundary == "workspace_edit":
+        assert result["verification"] == {"passed": True, "returncode": 0}
+    elif boundary == "verification" and outcome == "check.py failed":
+        assert result["verification"]["returncode"] != 0
     assert result["patch_bytes"] == 0
     assert (tmp_path / "out" / "cases" / case.name / "case.json").is_file()
 

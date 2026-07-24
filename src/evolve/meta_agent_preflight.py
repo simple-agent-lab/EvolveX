@@ -750,12 +750,20 @@ async def run_live_case(
         )
         (case_dir / "case.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
         return result
+    observed_details: dict[str, object] = {
+        "observed_miniswe_version": case.miniswe_version,
+        "agent_exit_status": "Submitted",
+        "protocol_evidence": protocol_evidence,
+        "effective_model_config": effective_model_config,
+        "tool_calls": tool_calls,
+    }
     try:
         changed_paths = _changed_paths(workspace)
     except ValueError as error:
         result = _live_result(
             case, container_name, case_dir, monotonic() - started,
             passed=False, failure_boundary="artifact_import", failures=[str(error)],
+            **observed_details,
         )
         (case_dir / "case.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
         return result
@@ -764,10 +772,18 @@ async def run_live_case(
             case, container_name, case_dir, monotonic() - started,
             passed=False, failure_boundary="artifact_import",
             failures=["changed.json must contain exactly target/value.py"],
+            artifact_contract={"passed": False, "changed_paths": changed_paths},
+            changed_paths=changed_paths,
+            **observed_details,
         )
         (case_dir / "case.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
         return result
 
+    artifact_details = {
+        **observed_details,
+        "artifact_contract": {"passed": True, "changed_paths": changed_paths},
+        "changed_paths": changed_paths,
+    }
     try:
         remaining_s = deadline - monotonic()
         if remaining_s <= 0:
@@ -778,6 +794,7 @@ async def run_live_case(
         result = _live_result(
             case, container_name, case_dir, monotonic() - started,
             passed=False, failure_boundary="verification", failures=[redact(failure, environment)],
+            **artifact_details,
         )
         (case_dir / "case.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
         return result
@@ -785,9 +802,15 @@ async def run_live_case(
         result = _live_result(
             case, container_name, case_dir, monotonic() - started,
             passed=False, failure_boundary="verification", failures=[_diagnostic(check, environment)],
+            verification={"passed": False, "returncode": check.returncode},
+            **artifact_details,
         )
         (case_dir / "case.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
         return result
+    verified_details = {
+        **artifact_details,
+        "verification": {"passed": True, "returncode": check.returncode},
+    }
     try:
         remaining_s = deadline - monotonic()
         if remaining_s <= 0:
@@ -797,6 +820,7 @@ async def run_live_case(
         result = _live_result(
             case, container_name, case_dir, monotonic() - started,
             passed=False, failure_boundary="workspace_edit", failures=[redact(str(error), environment)],
+            **verified_details,
         )
         (case_dir / "case.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
         return result
@@ -806,6 +830,7 @@ async def run_live_case(
         result = _live_result(
             case, container_name, case_dir, monotonic() - started,
             passed=False, failure_boundary="workspace_edit", failures=[_diagnostic(patch, environment) or "no git diff"],
+            **verified_details,
         )
         (case_dir / "case.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
         return result
@@ -814,15 +839,8 @@ async def run_live_case(
     result = _live_result(
         case, container_name, case_dir, monotonic() - started,
         passed=True, failure_boundary=None, failures=[],
-        observed_miniswe_version=case.miniswe_version,
-        agent_exit_status="Submitted",
-        protocol_evidence=protocol_evidence,
-        artifact_contract={"passed": True, "changed_paths": changed_paths},
-        verification={"passed": True, "returncode": check.returncode},
-        effective_model_config=effective_model_config,
-        tool_calls=tool_calls,
-        changed_paths=changed_paths,
         patch_bytes=len(patch_text.encode()),
+        **verified_details,
     )
     (case_dir / "case.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
     return result
