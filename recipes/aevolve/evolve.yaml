@@ -19,6 +19,7 @@ operators:
   meta_agent:
     variant: aevolve
     trajectory_only: true
+    expose_gate_data: false
     runner: harbor
     agent: codex
     model: gpt-5.4

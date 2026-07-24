@@ -18,15 +18,11 @@ from library.meta_agent.support.workspace import workspace_contract
 
 GEPA_PROMPT = """# GEPA Reflective Mutation
 
-Improve an agent component using the supplied execution examples. Each example
-contains the task input, the agent's generated messages and ordered tool
-trajectory, verifier feedback, and reward.
-
-Infer a concise, transferable lesson across examples, inspect the current
-component, and edit only the selected component paths. Preserve behavior that
-worked. Do not encode benchmark answers or change the evaluator, dataset,
-splits, Harbor adapter, mechanism, credentials, endpoint, model, or resource
-limits. Edit the checkout directly and run proportionate checks.
+Improve the live candidate using reflective feedback from its executions.
+Read the proposal inputs from the files listed below, inspect the candidate,
+and edit the checkout directly. Preserve behavior that worked. Do not encode
+benchmark answers or change the evaluator, dataset, splits, Harbor adapter,
+mechanism, credentials, endpoint, model, or resource limits.
 """
 
 
@@ -44,56 +40,45 @@ def _safe_usage(usage: object) -> dict[str, Any]:
     return normalized
 
 
-def _component_snapshot(checkout: Path, scopes: list[str], limit: int) -> str:
-    chunks: list[str] = []
-    remaining = limit
-    for scope in scopes:
-        root = checkout / scope
-        paths = (
-            [root]
-            if root.is_file()
-            else sorted(path for path in root.rglob("*") if path.is_file())
-            if root.is_dir()
-            else []
-        )
-        for path in paths:
-            if path.is_symlink():
-                continue
+def _agent_path(path: Path, ctx: OperatorContext) -> str:
+    if runner_name(ctx) == "harbor":
+        for root in (ctx.checkout, ctx.workspace):
             try:
-                text = path.read_text()
-            except (OSError, UnicodeDecodeError):
+                relative = path.relative_to(root).as_posix()
+            except ValueError:
                 continue
-            relative = path.relative_to(checkout).as_posix()
-            rendered = f"### `{relative}`\n\n```text\n{text}\n```\n"
-            chunks.append(rendered[:remaining])
-            remaining -= min(len(rendered), remaining)
-            if remaining <= 0:
-                return "\n".join(chunks) + "\n...[component snapshot truncated]...\n"
-    return "\n".join(chunks) or "(selected component does not currently exist)"
+            return f"/app/task/workspace/{relative}"
+        raise ValueError(f"GEPA agent input path is outside the candidate and workspace: {path}")
+    return str(path.resolve())
 
 
 def build_prompt(checkout: Path, ctx: OperatorContext) -> tuple[str, dict[str, Any]]:
     components = component_paths(ctx.config)
     selected = selected_component_names(ctx.config, ctx.genid)
-    dataset_path = ctx.run_dir / "trace_analyzer" / "evidence" / "reflective_dataset.json"
-    payload = read_json(dataset_path)
-    if not isinstance(payload, dict):
-        raise ValueError(f"missing GEPA reflective dataset: {dataset_path}")
-    selected_dataset = {name: payload.get(name, []) if isinstance(payload.get(name), list) else [] for name in selected}
-    max_examples = max(1, int(ctx.config.get("max_examples", 16)))
-    selected_dataset = {name: records[:max_examples] for name, records in selected_dataset.items()}
-    max_dataset_chars = max(1, int(ctx.config.get("dataset_chars", 60000)))
-    rendered_dataset = json.dumps(selected_dataset, indent=2, sort_keys=True)
-    if len(rendered_dataset) > max_dataset_chars:
-        rendered_dataset = rendered_dataset[:max_dataset_chars] + "\n...[reflective dataset truncated]..."
-    scopes = [path for name in selected for path in components[name]]
-    snapshot = _component_snapshot(checkout, scopes, max(1, int(ctx.config.get("component_chars", 30000))))
+    evidence_root = ctx.run_dir / "trace_analyzer" / "evidence"
+    manifest_path = evidence_root / "manifest.json"
+    manifest = read_json(manifest_path)
+    if not isinstance(manifest, dict) or not isinstance(manifest.get("component_evidence"), dict):
+        raise ValueError(f"missing GEPA component evidence manifest: {manifest_path}")
+    component_evidence = manifest["component_evidence"]
+    evidence_files: dict[str, str] = {}
+    example_counts: dict[str, int] = {}
+    for name in selected:
+        entry = component_evidence.get(name)
+        if not isinstance(entry, dict) or not isinstance(entry.get("file"), str):
+            raise ValueError(f"missing GEPA evidence for component {name!r}: {manifest_path}")
+        evidence_path = evidence_root / entry["file"]
+        if not evidence_path.is_file():
+            raise ValueError(f"missing GEPA component evidence: {evidence_path}")
+        evidence_files[name] = _agent_path(evidence_path, ctx)
+        example_counts[name] = int(entry.get("records") or 0)
+    focus_paths = [path for name in selected for path in components[name]]
     required_placeholders = ctx.config.get("required_placeholders") or []
     if not isinstance(required_placeholders, list) or not all(
         isinstance(value, str) and value for value in required_placeholders
     ):
         raise ValueError("required_placeholders must be a list of non-empty strings")
-    if path_in_scopes("target/prompt.md", scopes) and "{{ instruction }}" not in required_placeholders:
+    if path_in_scopes("target/prompt.md", focus_paths) and "{{ instruction }}" not in required_placeholders:
         required_placeholders.append("{{ instruction }}")
     placeholder_rule = (
         "Preserve these literal template expressions: "
@@ -102,26 +87,37 @@ def build_prompt(checkout: Path, ctx: OperatorContext) -> tuple[str, dict[str, A
         if required_placeholders
         else ""
     )
+    component_inputs = "\n".join(
+        f"- `{name}` evidence: `{evidence_files[name]}`\n"
+        f"  Candidate focus paths: {', '.join(f'`{path}`' for path in components[name])}"
+        for name in selected
+    )
     prompt = (
         f"{GEPA_PROMPT.rstrip()}\n\n"
-        f"{workspace_contract(checkout, ctx.config, action_paths=scopes)}\n\n"
-        f"## Selected component\n\n{', '.join(f'`{name}`' for name in selected)}\n\n"
-        f"Allowed paths: {', '.join(f'`{path}`' for path in scopes)}\n\n"
+        f"{workspace_contract(checkout, ctx.config)}\n\n"
+        "## Inputs\n\n"
+        "Read these files before deciding what to change:\n\n"
+        f"1. Evidence manifest: `{_agent_path(manifest_path, ctx)}`\n"
+        f"2. Selected component evidence:\n{component_inputs}\n"
+        f"3. Inspect the live candidate under `{_agent_path(checkout / 'target', ctx)}`. "
+        "Start with the candidate focus paths above, then inspect related target files when useful.\n\n"
         f"{placeholder_rule}\n\n"
-        f"## Current component\n\n{snapshot}\n\n"
-        f"## Reflective dataset\n\n```json\n{rendered_dataset}\n```\n\n"
         "## Required action\n\n"
         "1. Compare high- and low-reward trajectories and verifier feedback.\n"
-        "2. State a general lesson internally, then make one coherent component edit.\n"
-        "3. Do not edit paths outside the allowed paths.\n"
-        "4. Verify the diff and summarize the hypothesis and expected effect.\n"
+        "2. Infer a transferable lesson and make one coherent improvement to the live candidate.\n"
+        "3. You may modify any file allowed by the candidate workspace contract.\n"
+        "4. Run proportionate checks, verify the diff, and summarize the hypothesis and expected effect.\n"
     )
     proposal = {
         "parent": ctx.parent,
         "components": selected,
-        "paths": scopes,
-        "reflective_dataset": dataset_path.relative_to(ctx.workspace).as_posix(),
-        "example_counts": {name: len(records) for name, records in selected_dataset.items()},
+        "paths": focus_paths,
+        "evidence_manifest": manifest_path.relative_to(ctx.workspace).as_posix(),
+        "evidence_files": {
+            name: (evidence_root / component_evidence[name]["file"]).relative_to(ctx.workspace).as_posix()
+            for name in selected
+        },
+        "example_counts": example_counts,
     }
     return prompt, proposal
 
@@ -148,18 +144,16 @@ class GepaMetaAgent(MetaAgentOperator):
             surface=load_surface_policy(checkout),
             repair=False,
         )
-        scopes = list(proposal["paths"])
-        violations = [path for path in patch.changed_paths if not path_in_scopes(path, scopes)]
+        violations = list(patch.surface_report.get("violations") or [])
         usage = _safe_usage(agent_run.usage)
         (out / "model_patch.diff").write_text(patch.diff)
         (out / "patch.diff").write_text(patch.diff)
         (out / "output.txt").write_text(agent_run.output)
         _write_json(out / "changed.json", patch.changed_paths)
         _write_json(out / "surface-check.json", patch.surface_report)
-        _write_json(out / "component-scope-check.json", {"ok": not violations, "violations": violations})
         _write_json(out / "usage.json", usage)
         if violations:
-            raise SystemExit("GEPA meta-agent changed paths outside the selected component: " + ", ".join(violations))
+            raise SystemExit("GEPA meta-agent changed paths outside the mutable surface: " + ", ".join(violations))
         notes = [
             "variant: gepa",
             f"runner: {runner_name(ctx)}",

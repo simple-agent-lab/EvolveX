@@ -1,0 +1,97 @@
+experiment:
+  id: aevolve-tbench-bridge
+  max_generations: 10
+  target_score: null
+  budget_usd: 150
+  children_per_gen: 1
+  mode: driver
+  seed: 0
+target:
+  seed: builtin-codex
+  harbor_agent: miniswe-source
+surface:
+  include:
+    - target/**
+  exclude: []
+operators:
+  select: {variant: greedy, timeout_s: 600}
+  rollout:
+    variant: harbor
+    budget_tasks: 10
+    n_concurrent: 10
+    agent_setup_timeout_multiplier: 3
+    agent_timeout_multiplier: 4
+    max_retries: 15
+    timeout_s: 43200
+  trace_analyzer:
+    variant: trajectory_only
+    history_cycles: 2
+    max_observations: 30
+    max_chars: 60000
+    judge_max_concurrent: 10
+    judge_retry_attempts: 3
+    judge_timeout_s: 600
+    timeout_s: 7200
+  meta_agent:
+    variant: aevolve
+    trajectory_only: true
+    expose_gate_data: false
+    runner: harbor
+    agent: codex
+    model: gpt-5.4
+    environment: docker
+    image: evolve-meta-agent-app:ubuntu-latest
+    editable_roots: [target]
+    evolve_prompts: true
+    evolve_skills: true
+    evolve_memory: true
+    evolve_tools: false
+    prompt_path: target/src/minisweagent/config/mini.yaml
+    skills_dir: target/skills
+    memory_dir: target/memory
+    tools_dir: target/tools
+    history_cycles: 2
+    max_observations: 30
+    feedback_chars: 600
+    evidence_chars: 50000
+    max_retries: 2
+    timeout_s: 7200
+    agent_kwargs:
+      reasoning_effort: xhigh
+  gate: {variant: hillclimb, strict: true, timeout_s: 43200}
+  record: {variant: jsonl, timeout_s: 600}
+  timeout_s: 600
+evaluator:
+  engine: harbor
+  dataset: swe-bench-lite
+  model: openai/gpt-5.4-2026-03-05
+  agent: evolve_harbor_adapter:MiniSweSourceAgent
+  candidate_runtime:
+    variant: uv
+    project: target
+    python: "3.12"
+  agent_env:
+    OPENAI_BASE_URL: http://172.17.0.1:18788/v1
+    OPENAI_API_BASE: http://172.17.0.1:18788/v1
+    NO_PROXY: 172.17.0.1,127.0.0.1,localhost
+    no_proxy: 172.17.0.1,127.0.0.1,localhost
+    MINISWE_CONFIG: mini
+    MINISWE_REASONING_EFFORT: high
+    MINISWE_MAX_OUTPUT_LIMIT: "10000"
+    MINISWE_STEP_LIMIT: "100"
+    MINISWE_COST_LIMIT: "3.0"
+    MINISWE_ENV_TIMEOUT: "30"
+  split:
+    train: 0.3333333333333333
+    gate: 0.3333333333333333
+    sealed: 0.3333333333333333
+    seed: 0
+  sampling: static
+  tasks_per_round: 10
+  anchor: {final: true, every_rounds: 0}
+  k: 1
+  n_concurrent: 10
+  agent_setup_timeout_multiplier: 3
+  agent_timeout_multiplier: 4
+  max_retries: 15
+  partial_floor: 0.8

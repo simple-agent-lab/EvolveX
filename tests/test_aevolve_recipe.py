@@ -19,6 +19,7 @@ def test_aevolve_recipe_initializes_builtin_codex_workspace_contract(tmp_path: P
     assert "agent: target.agent:HarborAgent" in config
     assert "variant: trajectory_only" in config
     assert "trajectory_only: true" in config
+    assert "expose_gate_data: false" in config
     assert "runner: harbor" in config
     assert "evolve_memory: false" in config
     assert "evolve_tools: false" in config

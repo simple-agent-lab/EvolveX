@@ -4,7 +4,7 @@ from evolve.config import RECIPE_NAMES, load_config
 
 ROOT = Path(__file__).resolve().parents[1]
 RECIPES = ROOT / "recipes"
-REAL_RECIPES = {"aevolve", "ahe", "gepa", "hill_climb", "hyperagents"}
+REAL_RECIPES = {"aevolve", "aevolve_tbench_bridge", "ahe", "gepa", "hill_climb", "hyperagents"}
 UV_SOURCE_RECIPES = {"ahe", "hill_climb", "hyperagents"}
 SMOKE_RECIPES = {"hill_climb-smoke", "hyperagents-smoke"}
 
@@ -52,6 +52,7 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "rollout: {variant: harbor" in config
             assert "trace_analyzer: {variant: trajectory_only" in config
             assert "trajectory_only: true" in config
+            assert "expose_gate_data: false" in config
             assert "variant: aevolve" in config
             assert "runner: harbor" in config
             assert "agent: codex" in config
@@ -61,6 +62,28 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "evolve_memory: false" in config
             assert "evolve_tools: false" in config
             assert "agent: target.agent:HarborAgent" in config
+        elif name == "aevolve_tbench_bridge":
+            parsed = _parsed_config(name)
+            evaluator = parsed["evaluator"]
+            assert isinstance(evaluator, dict)
+            assert "max_generations: 10" in config
+            assert "seed: builtin-codex" in config
+            assert "harbor_agent: miniswe-source" in config
+            assert "rollout:\n    variant: harbor" in config
+            assert "variant: trajectory_only" in config
+            assert "trajectory_only: true" in config
+            assert "expose_gate_data: false" in config
+            assert "variant: aevolve" in config
+            assert "runner: harbor" in config
+            assert "agent: codex" in config
+            assert "editable_roots: [target]" in config
+            assert "evolve_prompts: true" in config
+            assert "evolve_skills: true" in config
+            assert "evolve_memory: true" in config
+            assert "evolve_tools: false" in config
+            assert "agent: evolve_harbor_adapter:MiniSweSourceAgent" in config
+            assert evaluator["candidate_runtime"] == {"variant": "uv", "project": "target", "python": "3.12"}
+            assert evaluator["max_retries"] == 15
         elif name == "gepa":
             assert "dataset: swe-bench-lite" in config
             assert "seed: builtin-codex" in config
@@ -68,6 +91,7 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "rollout: {variant: harbor" in config
             assert "task_sampling: generation_shuffle" in config
             assert "variant: gepa" in config
+            assert "expose_gate_data: false" in config
             assert "variant: minibatch_improvement" in config
             assert "criterion: strict" in config
             assert "runner: harbor" in config
@@ -82,6 +106,7 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "rollout: {variant: evaluation_replay" in config
             assert "trace_analyzer: {variant: ahe" in config
             assert "meta_agent: {variant: ahe, runner: harbor" in config
+            assert "expose_gate_data: true" in config
             assert "select: {variant: ahe_latest" in config
             assert "gate: {variant: ahe_artifact_valid" in config
             assert "max_tasks: 90" in config
@@ -109,6 +134,7 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "rollout: {variant: evaluation_replay" in config
             assert "trace_analyzer: {variant: trace_browser" in config
             assert "meta_agent: {variant: hyperagents" in config
+            assert "expose_gate_data: true" in config
             assert "runner: harbor" in config
             assert "agent: evolve_harbor_agent:FileTaskMiniSweAgent" in config
             assert "editable_roots: [target, operators]" in config
@@ -131,6 +157,7 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "rollout: {variant: harbor" in config
             assert "trace_analyzer: {variant: failure_patterns" in config
             assert "meta_agent: {variant: hyperagents, runner: harbor" in config
+            assert "expose_gate_data: false" in config
             assert "agent: codex" in config
             assert "variant: noop" not in config
         assert "mutate:" not in config
@@ -167,6 +194,7 @@ def test_meta_agent_image_provides_harbor_workspace_parent() -> None:
     dockerfile = ROOT / "containers" / "meta-agent" / "Dockerfile"
     contents = dockerfile.read_text()
     assert "WORKDIR /app" in contents
+    assert "git config --system --add safe.directory /app/task/workspace" in contents
     for package in ("git", "jq", "python3", "python-is-python3", "ripgrep", "rsync"):
         assert f"        {package} \\" in contents
     assert "uv tool install --python 3.13 --with fastapi --with orjson mini-swe-agent" in contents

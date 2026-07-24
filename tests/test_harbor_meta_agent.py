@@ -187,9 +187,11 @@ if not readonly:
     artifact.parent.mkdir(parents=True, exist_ok=True)
     workspace = source / "workspace"
     if not (workspace / ".git").exists():
-        raise SystemExit("workspace is missing Git history")
-    if not (workspace / "archive.jsonl").is_file():
-        raise SystemExit("workspace is missing archive evidence")
+        raise SystemExit("workspace is missing sanitized Git baseline")
+    if (workspace / "archive.jsonl").exists():
+        raise SystemExit("workspace exposes archive evidence")
+    if (workspace / "evaluator").exists():
+        raise SystemExit("workspace exposes evaluator data")
     if not (workspace / "runs" / "gen-1" / "trace_analyzer" / "evidence" / "raw_traces.jsonl").is_file():
         raise SystemExit("workspace is missing current trace evidence")
     shutil.copytree(workspace, artifact, symlinks=True)
@@ -340,6 +342,7 @@ def test_harbor_meta_agent_round_trips_target_and_writes_artifacts(
     assert "failure evidence" in prompt
     assert "/app/task/workspace" in prompt
     assert "remove generated virtual environments" in prompt
+    assert "gate/sealed evaluations are intentionally unavailable" in prompt
     assert "/app/candidate" not in prompt
     command = json.loads((meta_dir / "harbor" / "command.json").read_text())
     assert command[command.index("--artifact") + 1] == "/app/task/workspace"
@@ -607,19 +610,132 @@ def test_multi_root_install_rolls_back_when_second_replacement_fails(
         shutil.rmtree(bundle.staging, ignore_errors=True)
 
 
-def test_trajectory_only_bundle_omits_archive_and_run_evidence(tmp_path: Path) -> None:
+@pytest.mark.parametrize("trajectory_only", [None, False, True])
+def test_harbor_bundle_never_exposes_gate_or_sealed_data(tmp_path: Path, trajectory_only: bool | None) -> None:
     checkout, run_dir = _checkout(tmp_path)
+    evaluator = checkout / "evaluator"
+    evaluator.mkdir()
+    (evaluator / "splits.json").write_text(
+        json.dumps(
+            {
+                "tasks": {
+                    "train": ["train-task"],
+                    "gate": ["gate-secret-task"],
+                    "sealed": ["sealed-secret-task"],
+                }
+            }
+        )
+    )
+    _git(checkout, "add", "evaluator/splits.json")
+    _git(checkout, "commit", "-qm", "record private task partitions")
+    (checkout / ".evolve-eval-receipts.jsonl").write_text("private-receipt\n")
+    private_eval = checkout / "runs" / "evaluations" / "genesis"
+    private_eval.mkdir(parents=True)
+    (private_eval / "trajectory.json").write_text("gate-secret-task reward=1\n")
+    prior_evidence = checkout / "runs" / "gen-0" / "trace_analyzer" / "evidence"
+    prior_evidence.mkdir(parents=True)
+    (prior_evidence / "history.json").write_text('{"task_name":"train-task"}\n')
+    prior_gate = checkout / "runs" / "gen-0" / "gate"
+    prior_gate.mkdir()
+    (prior_gate / "result.json").write_text('{"gate-secret-task": 1}\n')
+    select = checkout / "runs" / "gen-1" / "select"
+    select.mkdir(parents=True)
+    (select / "pareto.json").write_text('{"gate-secret-task": 1}\n')
     runner = _harbor_runner_module()
     ctx = _ctx(checkout, run_dir)
-    ctx.config["trajectory_only"] = True
+    if trajectory_only is not None:
+        ctx.config["trajectory_only"] = trajectory_only
     surface = runner.load_surface_policy(checkout)
     bundle = runner._prepare_bundle(checkout, ctx, ["target"], surface)
     try:
         assert not (bundle.workspace / "archive.jsonl").exists()
-        assert not (bundle.workspace / "runs").exists()
+        assert not (bundle.workspace / ".evolve-eval-receipts.jsonl").exists()
+        assert not (bundle.workspace / "evaluator").exists()
+        assert not (bundle.workspace / "runs" / "evaluations").exists()
+        assert not (bundle.workspace / "runs" / "gen-1" / "select").exists()
+        assert not (bundle.workspace / "runs" / "gen-0" / "gate").exists()
+        assert (bundle.workspace / "runs" / "gen-0" / "trace_analyzer" / "evidence" / "history.json").is_file()
+        assert (bundle.workspace / "runs" / "gen-1" / "trace_analyzer" / "evidence" / "raw_traces.jsonl").is_file()
         assert (bundle.workspace / "target" / "agent.py").is_file()
+        assert _git(bundle.workspace, "status", "--short") == ""
+        assert _git(bundle.workspace, "log", "--all", "--", "evaluator/splits.json") == ""
+        assert "evaluator/splits.json" not in _git(bundle.workspace, "rev-list", "--all", "--objects")
+        visible = "\n".join(
+            path.read_text(errors="ignore")
+            for path in bundle.workspace.rglob("*")
+            if path.is_file() and ".git" not in path.relative_to(bundle.workspace).parts
+        )
+        assert "gate-secret-task" not in visible
+        assert "sealed-secret-task" not in visible
     finally:
         shutil.rmtree(bundle.staging, ignore_errors=True)
+
+
+@pytest.mark.parametrize("leak_source", ["prompt", "train-evidence"])
+def test_harbor_bundle_rejects_private_task_identifiers(tmp_path: Path, leak_source: str) -> None:
+    checkout, run_dir = _checkout(tmp_path)
+    evaluator = checkout / "evaluator"
+    evaluator.mkdir()
+    (evaluator / "splits.json").write_text(
+        json.dumps({"tasks": {"train": ["train-task"], "gate": ["gate-secret-task"], "sealed": []}})
+    )
+    prompt = "analyze gate-secret-task" if leak_source == "prompt" else "safe train evidence"
+    if leak_source == "train-evidence":
+        (run_dir / "trace_analyzer" / "evidence" / "raw_traces.jsonl").write_text('{"task_name":"gate-secret-task"}\n')
+    runner = _harbor_runner_module()
+    surface = runner.load_surface_policy(checkout)
+
+    with pytest.raises(RuntimeError, match="private gate/sealed task identifier"):
+        runner._prepare_bundle(
+            checkout,
+            _ctx(checkout, run_dir),
+            ["target"],
+            surface,
+            prompt=prompt,
+        )
+
+
+def test_harbor_bundle_exposes_gate_data_only_when_enabled(tmp_path: Path) -> None:
+    checkout, run_dir = _checkout(tmp_path)
+    evaluator = checkout / "evaluator"
+    evaluator.mkdir()
+    (evaluator / "splits.json").write_text(
+        json.dumps({"tasks": {"train": ["train-task"], "gate": ["gate-task"], "sealed": ["sealed-task"]}})
+    )
+    _git(checkout, "add", "evaluator/splits.json")
+    _git(checkout, "commit", "-qm", "record task partitions")
+    (checkout / ".evolve-eval-receipts.jsonl").write_text("receipt\n")
+    evaluation = checkout / "runs" / "evaluations" / "genesis"
+    evaluation.mkdir(parents=True)
+    (evaluation / "trajectory.json").write_text("gate-task reward=1\n")
+    ctx = _ctx(checkout, run_dir)
+    ctx.config["expose_gate_data"] = True
+    runner = _harbor_runner_module()
+    surface = runner.load_surface_policy(checkout)
+    bundle = runner._prepare_bundle(checkout, ctx, ["target"], surface, prompt="analyze gate-task")
+    try:
+        assert (bundle.workspace / "archive.jsonl").is_file()
+        assert (bundle.workspace / ".evolve-eval-receipts.jsonl").is_file()
+        assert (bundle.workspace / "evaluator" / "splits.json").is_file()
+        assert (bundle.workspace / "runs" / "evaluations" / "genesis" / "trajectory.json").is_file()
+        assert _git(bundle.workspace, "log", "--all", "--", "evaluator/splits.json")
+    finally:
+        shutil.rmtree(bundle.staging, ignore_errors=True)
+
+
+def test_harbor_bundle_rejects_non_boolean_gate_visibility(tmp_path: Path) -> None:
+    checkout, run_dir = _checkout(tmp_path)
+    ctx = _ctx(checkout, run_dir)
+    ctx.config["expose_gate_data"] = "false"
+    runner = _harbor_runner_module()
+
+    with pytest.raises(ValueError, match="expose_gate_data must be true or false"):
+        runner._prepare_bundle(
+            checkout,
+            ctx,
+            ["target"],
+            runner.load_surface_policy(checkout),
+        )
 
 
 def test_harbor_trial_exception_does_not_modify_target(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

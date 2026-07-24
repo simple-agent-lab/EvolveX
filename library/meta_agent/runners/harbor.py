@@ -30,6 +30,8 @@ _READONLY_REPORT = "ahe-debugger-response.md"
 _EVAL_RECEIPT = ".evolve-eval-receipts.jsonl"
 _FILE_TASK_AGENT = "evolve_harbor_agent:FileTaskMiniSweAgent"
 _SAFE_INLINE_INSTRUCTION_BYTES = 96 * 1024
+_VISIBLE_RUN_INPUTS = ("rollout", "trace_analyzer", "feedback")
+_HIDDEN_WORKSPACE_ROOTS = {".git", "runs", "archive.jsonl", _EVAL_RECEIPT, "evaluator"}
 _SECRET_ASSIGNMENT = re.compile(
     r"(?i)\b([a-z0-9_-]*(?:api[_-]?key|access[_-]?token|auth(?:orization)?|secret|password))\b"
     r"([\"']?)(\s*[:=]\s*)([^\s,;}]+)"
@@ -160,11 +162,119 @@ def _tree_manifest(root: Path) -> dict[str, tuple[str, str]]:
     return manifest
 
 
+def _initialize_sanitized_git(workspace: Path) -> None:
+    git(workspace, "init", "--quiet")
+    git(workspace, "config", "user.name", "Evolve Meta-Agent")
+    git(workspace, "config", "user.email", "meta-agent@evolve.invalid")
+    git(workspace, "add", "--all")
+    git(workspace, "commit", "--quiet", "--no-gpg-sign", "-m", "sanitized meta-agent baseline")
+
+
+def _copy_visible_generation_inputs(source: Path, destination: Path) -> None:
+    for name in _VISIBLE_RUN_INPUTS:
+        subtree = source / name
+        if subtree.exists():
+            _copy_tree(subtree, destination / name)
+
+
+def _copy_visible_run_inputs(ctx: OperatorContext, workspace: Path) -> None:
+    runs = ctx.workspace / "runs"
+    if runs.is_dir():
+        for generation in sorted(runs.glob("gen-*")):
+            if generation.is_dir() and not generation.is_symlink():
+                _copy_visible_generation_inputs(
+                    generation,
+                    workspace / "runs" / generation.name,
+                )
+    _copy_visible_generation_inputs(
+        ctx.run_dir,
+        workspace / "runs" / f"gen-{ctx.genid}",
+    )
+
+
+def _private_task_names(workspace: Path) -> tuple[str, ...]:
+    path = workspace / "evaluator" / "splits.json"
+    try:
+        payload = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return ()
+    tasks = payload.get("tasks") if isinstance(payload, dict) else None
+    if not isinstance(tasks, dict):
+        return ()
+    names: set[str] = set()
+    for split in ("gate", "sealed"):
+        values = tasks.get(split)
+        if isinstance(values, list):
+            names.update(name for name in values if isinstance(name, str) and name)
+    return tuple(sorted(names))
+
+
+def _contains_private_task_name(path: Path, encoded_names: tuple[bytes, ...]) -> bool:
+    overlap = max((len(name) for name in encoded_names), default=1) - 1
+    tail = b""
+    try:
+        with path.open("rb") as stream:
+            while chunk := stream.read(1024 * 1024):
+                content = tail + chunk
+                if any(name in content for name in encoded_names):
+                    return True
+                tail = content[-overlap:] if overlap else b""
+    except OSError:
+        return False
+    return False
+
+
+def _assert_private_tasks_absent(workspace: Path, prompt: str, private_names: tuple[str, ...]) -> None:
+    if not private_names:
+        return
+    if any(name in prompt for name in private_names):
+        raise RuntimeError("Harbor meta-agent prompt contains a private gate/sealed task identifier")
+    encoded_names = tuple(name.encode() for name in private_names)
+    for path in workspace.rglob("*"):
+        if not path.is_file() or ".git" in path.relative_to(workspace).parts:
+            continue
+        if _contains_private_task_name(path, encoded_names):
+            raise RuntimeError("Harbor meta-agent workspace contains a private gate/sealed task identifier")
+
+
+def _expose_gate_data(config: dict[str, Any]) -> bool:
+    value = config.get("expose_gate_data", False)
+    if not isinstance(value, bool):
+        raise ValueError("expose_gate_data must be true or false")
+    return value
+
+
+def _copy_full_workspace_inputs(checkout: Path, ctx: OperatorContext, workspace: Path) -> None:
+    for path in workspace.iterdir():
+        if path.name != ".git":
+            _remove(path)
+    for source in checkout.iterdir():
+        if source.name not in {".git", "runs", "archive.jsonl", _EVAL_RECEIPT}:
+            _copy_tree(source, workspace / source.name)
+    archive = ctx.workspace / "archive.jsonl"
+    if archive.is_file():
+        _copy_tree(archive, workspace / "archive.jsonl")
+    receipt = ctx.workspace / _EVAL_RECEIPT
+    if receipt.is_file():
+        _copy_tree(receipt, workspace / _EVAL_RECEIPT)
+    runs = ctx.workspace / "runs"
+    if runs.is_dir():
+        _copy_tree(runs, workspace / "runs", ignore=_runs_ignore(runs))
+    if ctx.run_dir.is_dir():
+        _copy_tree(
+            ctx.run_dir,
+            workspace / "runs" / f"gen-{ctx.genid}",
+            ignore=_runs_ignore(ctx.run_dir.parent),
+        )
+
+
 def _prepare_bundle(
     checkout: Path,
     ctx: OperatorContext,
     value: object,
     surface: SurfacePolicy,
+    *,
+    prompt: str = "",
 ) -> _WorkspaceBundle:
     roots = _editable_roots(value, surface)
     for root in roots:
@@ -174,35 +284,18 @@ def _prepare_bundle(
     workspace = task_root / "workspace"
     try:
         task_root.mkdir(parents=True)
-        git(checkout, "clone", "--quiet", "--no-hardlinks", str(checkout), str(workspace))
-        git(workspace, "checkout", "--quiet", "--detach", head_commit(checkout))
-
-        for path in workspace.iterdir():
-            if path.name != ".git":
-                _remove(path)
-        for source in checkout.iterdir():
-            if source.name not in {".git", "runs", "archive.jsonl", _EVAL_RECEIPT}:
-                _copy_tree(source, workspace / source.name)
-
-        # A-Evolve trajectory-only mode must not expose evaluator labels through
-        # filesystem discovery. The selected behavior summaries are already
-        # transported in the meta-agent prompt, so omit archive/run artifacts.
-        if not bool(ctx.config.get("trajectory_only", False)):
-            archive = ctx.workspace / "archive.jsonl"
-            if archive.is_file():
-                _copy_tree(archive, workspace / "archive.jsonl")
-            receipt = ctx.workspace / _EVAL_RECEIPT
-            if receipt.is_file():
-                _copy_tree(receipt, workspace / _EVAL_RECEIPT)
-            runs = ctx.workspace / "runs"
-            if runs.is_dir():
-                _copy_tree(runs, workspace / "runs", ignore=_runs_ignore(runs))
-            if ctx.run_dir.is_dir():
-                _copy_tree(
-                    ctx.run_dir,
-                    workspace / "runs" / f"gen-{ctx.genid}",
-                    ignore=_runs_ignore(ctx.run_dir.parent),
-                )
+        if _expose_gate_data(ctx.config):
+            git(checkout, "clone", "--quiet", "--no-hardlinks", str(checkout), str(workspace))
+            git(workspace, "checkout", "--quiet", "--detach", head_commit(checkout))
+            _copy_full_workspace_inputs(checkout, ctx, workspace)
+        else:
+            workspace.mkdir()
+            for source in checkout.iterdir():
+                if source.name not in _HIDDEN_WORKSPACE_ROOTS:
+                    _copy_tree(source, workspace / source.name)
+            _copy_visible_run_inputs(ctx, workspace)
+            _assert_private_tasks_absent(workspace, prompt, _private_task_names(ctx.workspace))
+            _initialize_sanitized_git(workspace)
         return _WorkspaceBundle(staging, task_root, workspace, roots, _tree_manifest(workspace))
     except Exception:
         shutil.rmtree(staging, ignore_errors=True)
@@ -801,16 +894,30 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
             raise ValueError(
                 "agent_pythonpath was removed; add the adapter to the workspace pyproject.toml and uv.lock"
             )
-        bundle = _prepare_bundle(checkout, ctx, ctx.config.get("editable_roots", ["target"]), surface)
+        bundle = _prepare_bundle(
+            checkout,
+            ctx,
+            ctx.config.get("editable_roots", ["target"]),
+            surface,
+            prompt=prompt,
+        )
         if (jobs_root / job_name).exists():
             raise RuntimeError(f"Harbor meta-agent job already exists: {jobs_root / job_name}")
         harbor, harbor_env = uv_run(ctx.workspace, "harbor")
         prompt_path.parent.mkdir(parents=True, exist_ok=True)
+        evidence_contract = (
+            "It contains the selected parent, full Git history, configuration, archive, evaluator, and complete "
+            "run evidence, including gate/sealed data."
+            if _expose_gate_data(ctx.config)
+            else "It contains the selected parent, a clean Git baseline, configuration, and current/prior "
+            "generations' train rollout, trace-analysis, and feedback evidence. Evaluator files, task partitions, "
+            "archive records, selection artifacts, and gate/sealed evaluations are intentionally unavailable."
+        )
         prompt_path.write_text(
             prompt.rstrip() + "\n\n# Harbor Runner Contract\n\n"
-            f"The disposable experiment workspace is at `{_ARTIFACT_SOURCE}`. It contains the selected parent, "
-            "Git history, configuration, archive, and run evidence. Work in that directory normally. Edit "
-            "only paths allowed by the supplied surface rules. Runtime evidence edits are discarded; only "
+            f"The disposable experiment workspace is at `{_ARTIFACT_SOURCE}`. {evidence_contract} "
+            "Work in that directory normally. "
+            "Edit only paths allowed by the supplied surface rules. Runtime evidence edits are discarded; only "
             "configured editable roots are imported after the complete workspace artifact passes the surface gate. "
             "Before finishing, remove generated virtual environments and caches inside editable roots (for example "
             "target/.venv, __pycache__, and .pytest_cache); returned editable roots must contain no symlinks.\n"

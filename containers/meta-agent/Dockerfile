@@ -33,5 +33,6 @@ RUN uv tool install --python 3.13 --with fastapi --with orjson mini-swe-agent
 RUN mv /root/.local/bin/uv /root/.local/bin/uv-real
 COPY uv-wrapper /root/.local/bin/uv
 RUN chmod 755 /root/.local/bin/uv
+RUN git config --system --add safe.directory /app/task/workspace
 
 WORKDIR /app
