@@ -4,12 +4,20 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 import pytest
 
-from evolve.meta_agent_preflight import CommandResult, PreflightCase, load_matrix, redact, run_static
+from evolve.meta_agent_preflight import (
+    STATIC_PROBE,
+    CommandResult,
+    PreflightCase,
+    inspect_image,
+    load_matrix,
+    redact,
+    run_static,
+)
 
 
 def _case(**overrides: object) -> dict[str, object]:
@@ -117,10 +125,10 @@ def test_redact_leaves_ordinary_diagnostics_unchanged():
 REQUIRED_TOOLS = (Path(__file__).parents[1] / "containers" / "meta-agent" / "required-tools.txt").read_text().splitlines()
 
 
-def _probe(case: PreflightCase, commands: list[str]) -> str:
+def _probe(case: PreflightCase, commands: Sequence[str], *, miniswe_version: str | None = None) -> str:
     return json.dumps(
         {
-            "miniswe_version": case.miniswe_version,
+            "miniswe_version": miniswe_version or case.miniswe_version,
             "python_version": "3.12.10",
             "uv_version": "0.7.13",
             "commands": commands,
@@ -135,6 +143,8 @@ class StaticRunner:
         self.cases = {case.image: case for case in cases}
         self.timeout_case = timeout_case
         self.calls: list[tuple[str, ...]] = []
+        self.timeouts: list[float] = []
+        self.environments: list[Mapping[str, str] | None] = []
         self.entered = 0
         self.both_started = asyncio.Event()
 
@@ -145,8 +155,9 @@ class StaticRunner:
         env: Mapping[str, str] | None = None,
     ) -> CommandResult:
         assert isinstance(argv, tuple)
-        assert env is None
         self.calls.append(argv)
+        self.timeouts.append(timeout_s)
+        self.environments.append(env)
         image = argv[3] if argv[:3] == ("docker", "image", "inspect") else argv[5]
         case = self.cases[image]
         if argv[:3] == ("docker", "image", "inspect"):
@@ -155,6 +166,7 @@ class StaticRunner:
                 self.both_started.set()
             await asyncio.wait_for(self.both_started.wait(), timeout=0.1)
             if case.name == self.timeout_case:
+                await asyncio.sleep(0.01)
                 raise TimeoutError("timed out")
             return CommandResult(
                 0,
@@ -168,6 +180,36 @@ class StaticRunner:
             else [tool for tool in REQUIRED_TOOLS if tool not in {"jq", "rg", "rsync", "tree"}]
         )
         return CommandResult(0, _probe(case, commands), "", 0.3)
+
+
+class FixedRunner:
+    def __init__(self, *results: CommandResult) -> None:
+        self.results = list(results)
+
+    async def __call__(
+        self,
+        argv: tuple[str, ...],
+        timeout_s: float,
+        env: Mapping[str, str] | None = None,
+    ) -> CommandResult:
+        assert isinstance(argv, tuple)
+        assert timeout_s == 15
+        return self.results.pop(0)
+
+
+class OSErrorStaticRunner(StaticRunner):
+    async def __call__(
+        self,
+        argv: tuple[str, ...],
+        timeout_s: float,
+        env: Mapping[str, str] | None = None,
+    ) -> CommandResult:
+        result = await super().__call__(argv, timeout_s, env)
+        image = argv[3] if argv[:3] == ("docker", "image", "inspect") else argv[5]
+        if image == "evolve/meta-agent:missing-docker":
+            await asyncio.sleep(0.01)
+            raise FileNotFoundError("docker diagnostic OPENAI_API_KEY=runner-secret")
+        return result
 
 
 def test_run_static_checks_image_contracts_concurrently_with_tuple_argv():
@@ -194,6 +236,7 @@ def test_run_static_checks_image_contracts_concurrently_with_tuple_argv():
     assert runner.calls[0] == ("docker", "image", "inspect", cases[0].image, "--format", "{{json .}}")
     assert runner.calls[1] == ("docker", "image", "inspect", cases[1].image, "--format", "{{json .}}")
     assert all(isinstance(call, tuple) for call in runner.calls)
+    assert runner.timeouts == [15, 15, 15, 15]
     assert any(
         call == ("docker", "run", "--rm", "--entrypoint", "bash", cases[0].image, "-lc", call[-1])
         for call in runner.calls
@@ -218,3 +261,62 @@ def test_run_static_reports_image_contract_failures_without_cancelling_siblings(
     assert result["images"][0]["passed"] is True
     assert result["images"][1]["failure_boundary"] == "image_contract"
     assert "timeout" in result["images"][1]["failures"][0]
+    assert result["images"][1]["elapsed_s"] >= 0.01
+
+
+def test_run_static_turns_os_errors_into_redacted_image_contract_failures_without_cancelling_siblings():
+    passing = PreflightCase(**_case())
+    missing = PreflightCase(
+        **_case(
+            name="missing-docker",
+            image="evolve/meta-agent:missing-docker",
+            expected_image_id="sha256:" + "d" * 64,
+        )
+    )
+    runner = OSErrorStaticRunner((passing, missing))
+
+    result = asyncio.run(run_static((passing, missing), runner, {"OPENAI_API_KEY": "runner-secret"}))
+
+    assert result["images"][0]["passed"] is True
+    assert result["images"][1]["failure_boundary"] == "image_contract"
+    assert "runner-secret" not in result["images"][1]["failures"][0]
+    assert result["images"][1]["elapsed_s"] >= 0.01
+
+
+def test_inspect_image_redacts_configured_secrets_from_nonzero_stdout_and_stderr():
+    case = PreflightCase(**_case())
+    runner = FixedRunner(CommandResult(1, "stdout secret-value", "stderr secret-value", 0.2))
+
+    result = asyncio.run(inspect_image(case, runner, {"OPENAI_API_KEY": "secret-value"}))
+
+    assert result["failure_boundary"] == "image_contract"
+    assert "secret-value" not in result["failures"][0]
+    assert "[REDACTED]" in result["failures"][0]
+
+
+def test_inspect_image_preserves_the_observed_miniswe_version_on_mismatch():
+    case = PreflightCase(**_case())
+    runner = FixedRunner(
+        CommandResult(0, json.dumps({"Id": case.expected_image_id}), "", 0.2),
+        CommandResult(0, _probe(case, REQUIRED_TOOLS, miniswe_version="2.4.6"), "", 0.3),
+    )
+
+    result = asyncio.run(inspect_image(case, runner))
+
+    assert result["failure_boundary"] == "image_contract"
+    assert result["observed_miniswe_version"] == "2.4.6"
+
+
+def test_inspect_image_rejects_missing_required_tool_malformed_probe_and_nonzero_probe():
+    case = PreflightCase(**_case())
+    inspection = CommandResult(0, json.dumps({"Id": case.expected_image_id}), "", 0.2)
+    missing_tool = asyncio.run(
+        inspect_image(case, FixedRunner(inspection, CommandResult(0, _probe(case, REQUIRED_TOOLS[:-1]), "", 0.3)))
+    )
+    malformed = asyncio.run(inspect_image(case, FixedRunner(inspection, CommandResult(0, "not-json", "", 0.3))))
+    nonzero = asyncio.run(inspect_image(case, FixedRunner(inspection, CommandResult(1, "stdout", "stderr", 0.3))))
+
+    assert "mini-swe-agent" in missing_tool["failures"][0]
+    assert "JSON object" in malformed["failures"][0]
+    assert "static probe failed: stdout\nstderr" == nonzero["failures"][0]
+    assert all(tool in STATIC_PROBE for tool in REQUIRED_TOOLS)

@@ -28,8 +28,10 @@ _REQUIRED_TOOLS = tuple(
     if tool
 )
 _MINIMAL_EXCLUDED_TOOLS = frozenset({"jq", "rg", "rsync", "tree"})
+_STATIC_TIMEOUT_S = 15.0
 
-STATIC_PROBE = r"""python - <<'PY'
+STATIC_PROBE = (
+    r"""python - <<'PY'
 import json
 import os
 import re
@@ -45,7 +47,9 @@ def version(command):
         raise SystemExit("semantic version missing from " + " ".join(command))
     return match.group(0)
 
-commands = ("bash", "git", "curl", "diff", "file", "find", "jq", "patch", "python", "rg", "rsync", "sed", "tree", "uv", "mini-swe-agent")
+commands = """
+    + repr(_REQUIRED_TOOLS)
+    + r"""
 print(json.dumps({
     "miniswe_version": version(("mini-swe-agent", "--version")),
     "python_version": version(("python", "--version")),
@@ -55,6 +59,7 @@ print(json.dumps({
     "app_writable": os.access("/app", os.W_OK),
 }))
 PY"""
+)
 
 
 @dataclass(frozen=True)
@@ -178,13 +183,21 @@ def _failure(message: str, elapsed_s: float, *, observed_image_id: str | None = 
     }
 
 
+def _diagnostic(result: CommandResult, environment: Mapping[str, str]) -> str:
+    return redact("\n".join(part for part in (result.stdout, result.stderr) if part), environment)
+
+
 def _required_tools(case: PreflightCase) -> tuple[str, ...]:
     if case.expanded_tools:
         return _REQUIRED_TOOLS
     return tuple(tool for tool in _REQUIRED_TOOLS if tool not in _MINIMAL_EXCLUDED_TOOLS)
 
 
-async def inspect_image(case: PreflightCase, runner: CommandRunner) -> dict[str, object]:
+async def inspect_image(
+    case: PreflightCase,
+    runner: CommandRunner,
+    environment: Mapping[str, str] | None = None,
+) -> dict[str, object]:
     """Inspect one image and return an image-contract result, never raising expected failures."""
     result: dict[str, object] = {
         "name": case.name,
@@ -192,45 +205,64 @@ async def inspect_image(case: PreflightCase, runner: CommandRunner) -> dict[str,
         "expected_image_id": case.expected_image_id,
         "declared_miniswe_version": case.miniswe_version,
     }
+    started = time.monotonic()
+    redaction_environment = environment or {}
     elapsed_s = 0.0
     observed_image_id: str | None = None
+
+    def finish() -> dict[str, object]:
+        result["elapsed_s"] = max(float(result.get("elapsed_s", 0.0)), time.monotonic() - started)
+        return result
+
     try:
         inspection = await runner(
-            ("docker", "image", "inspect", case.image, "--format", "{{json .}}"), case.timeout_s
+            ("docker", "image", "inspect", case.image, "--format", "{{json .}}"),
+            _STATIC_TIMEOUT_S,
+            env=environment,
         )
         elapsed_s += inspection.elapsed_s
         if inspection.returncode:
-            result.update(_failure(f"docker image inspect failed: {redact(inspection.stderr, {})}", elapsed_s))
-            return result
+            result.update(_failure(f"docker image inspect failed: {_diagnostic(inspection, redaction_environment)}", elapsed_s))
+            return finish()
         image_data = _json_object(inspection.stdout, "docker image inspect")
         image_id = image_data.get("Id")
         if not isinstance(image_id, str):
             result.update(_failure("docker image inspect omitted Id", elapsed_s))
-            return result
+            return finish()
         observed_image_id = image_id
         result["observed_image_id"] = image_id
         if image_id != case.expected_image_id:
             result.update(_failure("image ID does not match expected_image_id", elapsed_s, observed_image_id=image_id))
-            return result
+            return finish()
 
         probe = await runner(
-            ("docker", "run", "--rm", "--entrypoint", "bash", case.image, "-lc", STATIC_PROBE), case.timeout_s
+            ("docker", "run", "--rm", "--entrypoint", "bash", case.image, "-lc", STATIC_PROBE),
+            _STATIC_TIMEOUT_S,
+            env=environment,
         )
         elapsed_s += probe.elapsed_s
         if probe.returncode:
-            result.update(_failure(f"static probe failed: {redact(probe.stderr, {})}", elapsed_s, observed_image_id=image_id))
-            return result
+            result.update(
+                _failure(
+                    f"static probe failed: {_diagnostic(probe, redaction_environment)}",
+                    elapsed_s,
+                    observed_image_id=image_id,
+                )
+            )
+            return finish()
         observed = _json_object(probe.stdout, "static probe")
         miniswe_version = observed.get("miniswe_version")
+        if isinstance(miniswe_version, str):
+            result["observed_miniswe_version"] = miniswe_version
         if miniswe_version != case.miniswe_version:
             result.update(
                 _failure("MiniSWE version does not match declared version", elapsed_s, observed_image_id=image_id)
             )
-            return result
+            return finish()
         commands = observed.get("commands")
         if not isinstance(commands, list) or not all(isinstance(command, str) for command in commands):
             result.update(_failure("static probe emitted invalid commands", elapsed_s, observed_image_id=image_id))
-            return result
+            return finish()
         missing_tools = [tool for tool in _required_tools(case) if tool not in commands]
         if missing_tools:
             result.update(
@@ -240,19 +272,19 @@ async def inspect_image(case: PreflightCase, runner: CommandRunner) -> dict[str,
                     observed_image_id=image_id,
                 )
             )
-            return result
+            return finish()
         if not isinstance(observed.get("python_version"), str) or not isinstance(observed.get("uv_version"), str):
             result.update(_failure("static probe omitted Python or uv version", elapsed_s, observed_image_id=image_id))
-            return result
+            return finish()
         if observed.get("app_exists") is not True or observed.get("app_writable") is not True:
             result.update(_failure("/app must exist and be writable", elapsed_s, observed_image_id=image_id))
-            return result
+            return finish()
     except TimeoutError:
         result.update(_failure("timeout while inspecting image", elapsed_s, observed_image_id=observed_image_id))
-        return result
-    except (TypeError, ValueError) as error:
-        result.update(_failure(redact(str(error), {}), elapsed_s, observed_image_id=observed_image_id))
-        return result
+        return finish()
+    except (OSError, TypeError, ValueError) as error:
+        result.update(_failure(redact(str(error), redaction_environment), elapsed_s, observed_image_id=observed_image_id))
+        return finish()
 
     result.update(
         {
@@ -263,13 +295,17 @@ async def inspect_image(case: PreflightCase, runner: CommandRunner) -> dict[str,
             "observed_miniswe_version": miniswe_version,
         }
     )
-    return result
+    return finish()
 
 
-async def run_static(cases: Sequence[PreflightCase], runner: CommandRunner) -> dict[str, object]:
+async def run_static(
+    cases: Sequence[PreflightCase],
+    runner: CommandRunner,
+    environment: Mapping[str, str] | None = None,
+) -> dict[str, object]:
     """Run independent image checks concurrently and preserve matrix order."""
     started = time.monotonic()
-    images = list(await asyncio.gather(*(inspect_image(case, runner) for case in cases)))
+    images = list(await asyncio.gather(*(inspect_image(case, runner, environment) for case in cases)))
     elapsed_s = max((float(image["elapsed_s"]) for image in images), default=0.0)
     return {
         "passed": all(image["passed"] is True for image in images),
