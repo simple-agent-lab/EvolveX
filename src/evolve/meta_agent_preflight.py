@@ -554,7 +554,7 @@ def _live_result(
             "stderr": str(case_dir / "stderr.log"),
             "trajectory": str(case_dir / "trajectory.json"),
             "patch": str(case_dir / "patch.diff"),
-            "config": str(case_dir / "responses.json"),
+            "config": str(case_dir / "responses.yaml"),
         },
     }
     result.update(details)
@@ -579,7 +579,7 @@ async def run_live_case(
         create_synthetic_workspace, case_dir / "workspace", require_rg=case.expanded_tools
     )
     config = _live_config(case)
-    (case_dir / "responses.json").write_text(json.dumps(config, indent=2, sort_keys=True) + "\n")
+    (case_dir / "responses.yaml").write_text(json.dumps(config, indent=2, sort_keys=True) + "\n")
     _write_text(case_dir / "runner.py", _MINISWE_SHIM)
     nonce = uuid.uuid4().hex
     container_name = f"evolve-preflight-{case.name}-{nonce}"
@@ -615,7 +615,7 @@ async def run_live_case(
         "-c",
         "model.model_kwargs.reasoning.effort=low",
         "-c",
-        "/app/task/output/responses.json",
+        "/app/task/output/responses.yaml",
         "--exit-immediately",
     )
     docker_result = CommandResult(0, "", "", 0.0)

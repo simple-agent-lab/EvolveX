@@ -553,13 +553,13 @@ def test_run_live_case_retains_a_valid_redacted_submission(tmp_path: Path):
         "-c",
         "model.model_kwargs.reasoning.effort=low",
         "-c",
-        "/app/task/output/responses.json",
+        "/app/task/output/responses.yaml",
         "--exit-immediately",
     )
     assert "do-not-retain" not in " ".join(command)
     assert any(part.startswith("evolve-preflight-valid-live-") for part in command)
     case_dir = tmp_path / "out" / "cases" / case.name
-    config = json.loads((case_dir / "responses.json").read_text())
+    config = json.loads((case_dir / "responses.yaml").read_text())
     assert config == {
         "model": {
             "model_kwargs": {
