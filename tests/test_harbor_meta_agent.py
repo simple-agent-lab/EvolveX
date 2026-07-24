@@ -165,7 +165,6 @@ if "--config" in sys.argv:
     readonly = "/app/task/workspace" not in compile_config.get("artifacts", [])
     miniswe = True
 else:
-    miniswe = False
     if "--no-scan" not in sys.argv:
         raise SystemExit("expected --no-scan")
     readonly = os.environ.get("FAKE_HARBOR_MODE") == "readonly"
@@ -176,8 +175,10 @@ else:
         raise SystemExit("expected /app/task/workspace artifact")
     if option("--workdir") != "/app":
         raise SystemExit("expected /app workdir")
-    if option("--agent") != "mini-swe-agent":
+    agent_name = option("--agent")
+    if agent_name not in ("mini-swe-agent", "evolve_harbor_agent:FileTaskMiniSweAgent"):
         raise SystemExit("unexpected agent")
+    miniswe = agent_name in ("mini-swe-agent", "evolve_harbor_agent:FileTaskMiniSweAgent")
     if option("--model") != "gpt-test":
         raise SystemExit("expected gpt-test model")
     source = Path(option("--path", "-p"))
@@ -437,14 +438,25 @@ def test_harbor_meta_agent_injects_staged_miniswe_candidate_source(
     ]
 
 
-def test_harbor_meta_agent_rejects_unsuccessful_miniswe_exit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize(
+    "agent",
+    [
+        "evolve_harbor_adapter:MiniSweSourceAgent",
+        "evolve_harbor_agent:FileTaskMiniSweAgent",
+    ],
+)
+def test_harbor_meta_agent_rejects_unsuccessful_miniswe_exit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    agent: str,
+) -> None:
     checkout, run_dir = _checkout(tmp_path)
     bin_dir = tmp_path / "bin"
     _install_fake_harbor(bin_dir)
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
     monkeypatch.setenv("FAKE_HARBOR_MODE", "miniswe-exit-error")
     ctx = _ctx(checkout, run_dir)
-    ctx.config["agent"] = "evolve_harbor_adapter:MiniSweSourceAgent"
+    ctx.config["agent"] = agent
 
     with pytest.raises(AgentCommandError, match="exit_status=RepeatedFormatError"):
         _harbor_runner_module().run_agent(checkout, "failure evidence", ctx)
@@ -525,9 +537,7 @@ def test_harbor_readonly_agent_mounts_input_files_under_task_inputs(
         input_files={"trace-evidence.json": '{"task_name":"task-a"}\n'},
     )
 
-    assert (output_dir / "task" / "inputs" / "trace-evidence.json").read_text() == (
-        '{"task_name":"task-a"}\n'
-    )
+    assert (output_dir / "task" / "inputs" / "trace-evidence.json").read_text() == ('{"task_name":"task-a"}\n')
 
 
 def test_harbor_meta_agent_does_not_pass_run_only_timeout_multiplier(tmp_path: Path) -> None:

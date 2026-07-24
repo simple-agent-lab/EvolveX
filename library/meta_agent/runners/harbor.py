@@ -912,7 +912,9 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
             raise RuntimeError(f"harbor exec exited {returncode}; see {harbor_root / 'harbor.log'}")
         if trial.get("exception_info") not in (None, {}):
             raise RuntimeError(f"Harbor meta-agent trial failed: {_redact(str(trial.get('exception_info')))}")
-        if str(ctx.config.get("agent") or "").endswith(":MiniSweSourceAgent"):
+        if str(ctx.config.get("agent") or "").endswith(":MiniSweSourceAgent") or _uses_miniswe_artifact(
+            ctx.config.get("agent")
+        ):
             exit_status = _miniswe_exit_status(trial_dir)
             if exit_status != "Submitted":
                 raise RuntimeError(
