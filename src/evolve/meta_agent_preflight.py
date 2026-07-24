@@ -481,9 +481,12 @@ def _trajectory_details(trajectory: Mapping[str, object]) -> tuple[dict[str, obj
     effective = model.get("model_kwargs")
     if not isinstance(effective, dict):
         raise ValueError("trajectory omitted effective model configuration")
+    reasoning = effective.get("reasoning")
     if (
         effective.get("max_output_tokens") != _LIVE_MAX_OUTPUT_TOKENS
         or effective.get("include") != ["reasoning.encrypted_content"]
+        or not isinstance(reasoning, dict)
+        or reasoning.get("effort") != "low"
     ):
         raise ValueError("trajectory effective model configuration does not match Responses config")
     messages = trajectory.get("messages")
@@ -554,6 +557,7 @@ async def run_live_case(
 ) -> dict[str, object]:
     """Run one isolated model protocol smoke and retain redacted local evidence."""
     started = monotonic()
+    deadline = started + case.timeout_s
     case_dir = output / "cases" / case.name
     case_dir.mkdir(parents=True, exist_ok=False)
     _write_text(case_dir / "stdout.log", "")
@@ -604,7 +608,13 @@ async def run_live_case(
     )
     docker_result = CommandResult(0, "", "", 0.0)
     try:
-        docker_result = await asyncio.wait_for(runner(command, case.timeout_s, env=child_environment), case.timeout_s)
+        remaining_s = deadline - monotonic()
+        if remaining_s <= 0:
+            raise TimeoutError
+        docker_result = await asyncio.wait_for(
+            runner(command, remaining_s, env=child_environment),
+            remaining_s,
+        )
         _write_text(case_dir / "stdout.log", redact(docker_result.stdout, environment))
         _write_text(case_dir / "stderr.log", redact(docker_result.stderr, environment))
         if docker_result.returncode:
@@ -660,13 +670,25 @@ async def run_live_case(
         )
         (case_dir / "case.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
         return result
-
-    try:
-        check = await _host_command(("python", "check.py"), workspace, float(case.timeout_s))
-    except (OSError, TimeoutError) as error:
+    if changed_paths != ["target/value.py"]:
         result = _live_result(
             case, container_name, case_dir, monotonic() - started,
-            passed=False, failure_boundary="verification", failures=[redact(str(error), environment)],
+            passed=False, failure_boundary="artifact_import",
+            failures=["changed.json must contain exactly target/value.py"],
+        )
+        (case_dir / "case.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+        return result
+
+    try:
+        remaining_s = deadline - monotonic()
+        if remaining_s <= 0:
+            raise TimeoutError
+        check = await _host_command(("python", "check.py"), workspace, remaining_s)
+    except (OSError, TimeoutError) as error:
+        failure = "verification timeout" if isinstance(error, TimeoutError) else str(error)
+        result = _live_result(
+            case, container_name, case_dir, monotonic() - started,
+            passed=False, failure_boundary="verification", failures=[redact(failure, environment)],
         )
         (case_dir / "case.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
         return result
@@ -678,7 +700,10 @@ async def run_live_case(
         (case_dir / "case.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
         return result
     try:
-        patch = await _host_command(("git", "diff", "--binary"), workspace, float(case.timeout_s))
+        remaining_s = deadline - monotonic()
+        if remaining_s <= 0:
+            raise TimeoutError
+        patch = await _host_command(("git", "diff", "--binary"), workspace, remaining_s)
     except (OSError, TimeoutError) as error:
         result = _live_result(
             case, container_name, case_dir, monotonic() - started,

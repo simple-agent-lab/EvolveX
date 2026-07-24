@@ -467,6 +467,7 @@ class LiveRunner:
                                 "model_kwargs": {
                                     "max_output_tokens": 64000,
                                     "include": ["reasoning.encrypted_content"],
+                                    "reasoning": {"effort": "low"},
                                 }
                             }
                         }
@@ -583,3 +584,26 @@ def test_run_live_runs_cases_concurrently_and_keeps_siblings_after_a_timeout(tmp
     assert preflight.monotonic() - started < 0.35
     assert result["passed"] is False
     assert [case_result["passed"] for case_result in result["cases"]] == [True, False, True]
+
+
+def test_run_live_case_shares_one_deadline_with_local_verification(tmp_path: Path, monkeypatch):
+    case = PreflightCase(**_case(name="deadline", timeout_s=1))
+    clock = DeadlineClock()
+    runner = LiveRunner()
+
+    async def advance_deadline(argv, timeout_s, env=None):
+        result = await runner(argv, timeout_s, env)
+        clock.value = 1.0
+        return result
+
+    async def unexpected_host_command(argv, cwd, timeout_s):
+        raise AssertionError(f"host command started after deadline: {argv}")
+
+    monkeypatch.setattr(preflight, "monotonic", clock)
+    monkeypatch.setattr(preflight, "_host_command", unexpected_host_command)
+
+    result = asyncio.run(run_live_case(case, tmp_path / "out", advance_deadline, {}))
+
+    assert result["passed"] is False
+    assert result["failure_boundary"] == "verification"
+    assert "timeout" in result["failures"][0].lower()
