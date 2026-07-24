@@ -92,7 +92,7 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "editable_roots: [target]" in config
             assert "max_retries: 2" in config
             assert "agent: evolve_harbor_adapter:MiniSweSourceAgent" in config
-            assert "image: evolve-meta-agent-app:20260723-pr15" in config
+            assert "image: evolve-meta-agent-app:20260724-tools-mswe245" in config
             assert "task_scope: full" not in config
             assert "evaluation_split: train" in config
             assert "tasks_per_round: 10" in config
@@ -119,7 +119,7 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "validate: {variant: hyperagents" in config
             assert "gate: {variant: parent_eligible}" in config
             assert "record: {variant: hyperagents}" in config
-            assert "image: evolve-meta-agent-app:ubuntu-latest" in config
+            assert "image: evolve-meta-agent-app:20260724-tools-mswe245" in config
             assert "task_scope: full" not in config
             assert "evaluation_split: train" in config
             assert "tasks_per_round: 10" in config
@@ -141,6 +141,12 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "agent: evolve_harbor_adapter:MiniSweSourceAgent" in config
             assert "harbor_agent: miniswe-source" in config
         assert "variant: fixed" not in config
+
+
+def test_ahe_and_hyperagents_share_the_pinned_meta_agent_image() -> None:
+    expected = "evolve-meta-agent-app:20260724-tools-mswe245"
+    for name in ("ahe", "hyperagents"):
+        assert _parsed_config(name)["operators"]["meta_agent"]["image"] == expected
 
 
 def test_terminal_bench_method_recipes_use_local_partitioned_subset() -> None:
