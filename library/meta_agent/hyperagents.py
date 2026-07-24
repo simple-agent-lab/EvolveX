@@ -11,6 +11,7 @@ from evolve.frozen import sdk
 from evolve.frozen.interfaces import MetaAgentOperator, MetaAgentResult
 from evolve.patching import create_candidate_patch, load_surface_policy, patch_parent_ref
 from library.meta_agent.runners import run_agent, runner_name
+from library.meta_agent.support.workspace import workspace_contract
 
 MAX_INLINE_EVIDENCE_CHARS = 50_000
 LATEST_DIFF_CHARS = 5_000
@@ -114,6 +115,7 @@ def build_prompt(checkout: Path, observation: str, ctx) -> str:
         experiment = ctx.workspace
     return (
         f"{PROMPT.rstrip()}\n\n"
+        f"{workspace_contract(checkout, ctx.config)}\n\n"
         f"{_prompt_evidence(observation, ctx)}\n\n"
         f"Repository: {repository}\n"
         f"Feedback bundle: {current_run / 'feedback'}\n"

@@ -12,6 +12,7 @@ from evolve.frozen import sdk
 from evolve.frozen.interfaces import MetaAgentOperator, MetaAgentResult, OperatorContext
 from evolve.patching import create_candidate_patch, load_surface_policy, patch_parent_ref
 from library.meta_agent.runners import run_agent, runner_name
+from library.meta_agent.support.workspace import workspace_contract
 
 MANIFEST_START = "<AHE_CHANGE_MANIFEST>"
 MANIFEST_END = "</AHE_CHANGE_MANIFEST>"
@@ -78,11 +79,6 @@ def _safe_usage(usage: object) -> dict[str, Any]:
     usd = normalized.get("usd", 0)
     normalized["usd"] = usd if isinstance(usd, (int, float)) and not isinstance(usd, bool) else 0
     return normalized
-
-
-def _surface_rules(checkout: Path) -> str:
-    surface = load_surface_policy(checkout)
-    return f"- Surface include: {surface.include}\n- Surface exclude: {surface.exclude}"
 
 
 def _required_text(path: Path, label: str) -> str:
@@ -191,7 +187,7 @@ def build_prompt(checkout: Path, observation: str, ctx: OperatorContext) -> str:
         f"Archive: {experiment / 'archive.jsonl'}\n"
         f"Current generation artifacts: {current_run}\n"
         f"Raw trace evidence: {current_run / 'trace_analyzer' / 'evidence'}\n\n"
-        f"# Surface Rules\n\n{_surface_rules(checkout)}\n\n"
+        f"{workspace_contract(checkout, ctx.config, action_paths=['target'])}\n\n"
         "# Required Final Output\n\nEdit the candidate directly. After checks and before the submission action, "
         f"write the following JSON object to `{MANIFEST_FILE}`. Write JSON only; this control file is removed "
         "before the candidate patch is created. Then submit normally.\n\n"

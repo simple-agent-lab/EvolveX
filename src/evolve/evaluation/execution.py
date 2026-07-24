@@ -10,7 +10,7 @@ from typing import Any
 
 from ..config import evaluator_boolean, evaluator_sampling, experiment_id, load_config
 from ..git import evaluator_tree, git, git_stdout
-from ..host_runtime import clean_python_env, workspace_temp_dir
+from ..host_runtime import clean_python_env
 from ..runtime import OwnedResult, attempt_dir, next_attempt, owned_attempt_id, run_owned
 from ..splits import harbor_task_pattern
 from ..uv_runtime import CandidateRuntimeResult, prepare_candidate_runtime
@@ -41,7 +41,7 @@ def evaluate(
     evaluator_fingerprint = evaluator_tree(workspace, tag)
     if evaluator_fingerprint != evaluator_tree(workspace, "gen/0"):
         raise RuntimeError(f"evaluator tree for {tag} differs from gen/0")
-    with tempfile.TemporaryDirectory(prefix="evolve-eval-", dir=workspace_temp_dir(workspace)) as tempdir:
+    with tempfile.TemporaryDirectory(prefix="evolve-eval-") as tempdir:
         checkout = Path(tempdir) / "checkout"
         git(workspace, "worktree", "add", "--detach", str(checkout), candidate_commit)
         cleanup_needed = True
@@ -296,7 +296,6 @@ def _run_eval_script(
         "EVOLVE_WORKSPACE": str(runs_dir.parent.resolve()),
     }
     env["EVOLVE_EVAL_SPLIT"] = evaluation_split
-    env["TMPDIR"] = str(workspace_temp_dir(runs_dir.parent))
     if runtime.variant is not None:
         env["EVOLVE_CANDIDATE_RUNTIME_ENV_JSON"] = runtime.environment_json()
         env["EVOLVE_CANDIDATE_RUNTIME_MOUNTS_JSON"] = runtime.mounts_json()

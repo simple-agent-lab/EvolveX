@@ -17,7 +17,7 @@ operators:
   select: {variant: score_child_prop, seed: 0}
   rollout: {variant: evaluation_replay, field_limit: 2000, timeout_s: 600}
   trace_analyzer: {variant: trace_browser, max_chars: 30000, timeout_s: 600}
-  meta_agent: {variant: hyperagents, runner: harbor, agent: evolve_harbor_agent:FileTaskMiniSweAgent, model: openai/gpt-5.4-2026-03-05, environment: docker, image: evolve-meta-agent-app:ubuntu-latest, editable_roots: [target, operators], agent_kwargs: {reasoning_effort: high, cost_limit: 0}, max_retries: 2, timeout_s: 21600}
+  meta_agent: {variant: hyperagents, runner: harbor, expose_gate_data: true, agent: evolve_harbor_agent:FileTaskMiniSweAgent, model: openai/gpt-5.4-2026-03-05, environment: docker, image: evolve-meta-agent-app:ubuntu-latest, editable_roots: [target, operators], prompt_path: target/src/minisweagent/config/mini.yaml, skills_dir: target/skills, memory_dir: target/memory, tools_dir: target/tools, agent_kwargs: {reasoning_effort: high, cost_limit: 0}, max_retries: 2, timeout_s: 21600}
   validate: {variant: hyperagents, timeout_s: 300}
   gate: {variant: parent_eligible}
   record: {variant: hyperagents}

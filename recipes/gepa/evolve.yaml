@@ -25,6 +25,7 @@ operators:
     timeout_s: 600
   meta_agent:
     variant: gepa
+    expose_gate_data: false
     runner: harbor
     agent: codex
     model: gpt-5.4

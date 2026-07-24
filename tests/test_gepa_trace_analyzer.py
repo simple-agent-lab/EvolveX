@@ -29,7 +29,11 @@ def test_gepa_trace_analyzer_builds_component_reflective_dataset(tmp_path: Path)
             "outcome": "failed",
             "instruction": "Fix A",
             "agent_messages": ["trying"],
-            "events": [{"type": "tool_call", "name": "exec"}],
+            "events": [{"type": "tool_call", "name": "legacy"}],
+            "trajectory_events": [
+                {"type": "agent_message", "message": "start"},
+                {"type": "tool_call", "name": "exec"},
+            ],
             "tool_calls": [{"name": "exec", "arguments": "pytest"}],
             "observations": ["failed"],
             "verifier_output": "assertion failed",
@@ -58,7 +62,18 @@ def test_gepa_trace_analyzer_builds_component_reflective_dataset(tmp_path: Path)
     assert len(dataset["prompt"]) == len(dataset["skill"]) == 1
     record = dataset["prompt"][0]
     assert record["Inputs"] == {"instruction": "Fix A", "task_id": "task-a"}
-    assert record["Generated Outputs"]["ordered_events"][0]["name"] == "exec"
+    assert record["Generated Outputs"]["ordered_events"] == [
+        {"message": "start", "type": "agent_message"},
+        {"name": "exec", "type": "tool_call"},
+    ]
     assert record["Feedback"]["verifier_output"] == "assertion failed"
     assert record["Scores (Higher is Better)"] == {"reward": 0.0}
+    manifest = json.loads((run_dir / "trace_analyzer/evidence/manifest.json").read_text())
+    assert manifest["component_evidence"] == {
+        "prompt": {"file": "reflection/00-prompt.json", "paths": ["target/prompt.md"], "records": 1},
+        "skill": {"file": "reflection/01-skill.json", "paths": ["target/skills/task/SKILL.md"], "records": 1},
+    }
+    prompt_records = json.loads((run_dir / "trace_analyzer/evidence/reflection/00-prompt.json").read_text())
+    assert prompt_records == dataset["prompt"]
+    assert "trace_analyzer/evidence/reflection/00-prompt.json" in result.artifacts
     assert result.summary["usable_cases"] == 1

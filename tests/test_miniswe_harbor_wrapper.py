@@ -1,5 +1,6 @@
 import asyncio
 import importlib.util
+import json
 import os
 import sys
 import types
@@ -192,6 +193,72 @@ def test_miniswe_wrapper_reuses_model_setup_for_runner_and_preflight(adapter_pat
     assert module.MODEL_PREFLIGHT.startswith(module.MODEL_SETUP)
     assert "model = build_model(config)" in module.RUNNER
     assert "build_model(config)" in module.MODEL_PREFLIGHT
+    compile(module.RUNNER, "<miniswe-runner>", "exec")
+    compile(module.MINISWE_PREFLIGHT, "<miniswe-preflight>", "exec")
+
+
+def test_miniswe_wrapper_loads_evolved_skills_and_memory_into_system_prompt(
+    adapter_path: Path,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _install_fake_harbor(monkeypatch)
+    module = _load(adapter_path)
+    source = tmp_path / "candidate"
+    skill = source / "skills" / "artifact-verification" / "SKILL.md"
+    skill.parent.mkdir(parents=True)
+    skill.write_text(
+        "---\n"
+        "name: artifact-verification\n"
+        "description: Verify generated artifacts before submitting\n"
+        "---\n\n"
+        "Check the exact output path and inspect the resulting file.\n"
+    )
+    draft = source / "skills" / "_drafts" / "SKILL.md"
+    draft.parent.mkdir()
+    draft.write_text("---\nname: ignored-draft\ndescription: not runtime context\n---\n")
+    memory = source / "memory" / "semantic.jsonl"
+    memory.parent.mkdir()
+    memory.write_text(
+        '{"insight":"Inspect exact output paths before submission","source":"trajectory"}\n'
+        '{"insight":"Run the task-specific verifier when available","source":"trajectory"}\n'
+    )
+    namespace = {}
+    exec(module.EVOLVED_CONTEXT_SETUP, namespace)
+
+    context, stats = namespace["_load_evolved_context"](source)
+    agent_kwargs = {"system_template": "Base MiniSwe system prompt."}
+    applied_stats = namespace["_apply_evolved_context"](agent_kwargs, source)
+
+    assert stats == {"skills_loaded": 1, "memories_loaded": 2}
+    assert applied_stats == stats
+    assert "## Available Skills" in context
+    assert "**artifact-verification**: Verify generated artifacts before submitting" in context
+    assert str(skill) in context
+    assert "ignored-draft" not in context
+    assert "## Evolved Memory" in context
+    assert "Inspect exact output paths before submission" in context
+    assert "Run the task-specific verifier when available" in context
+    assert agent_kwargs["system_template"].startswith("Base MiniSwe system prompt.")
+    assert context in agent_kwargs["system_template"]
+    assert '_apply_evolved_context(agent_kwargs, "/installed-agent/miniswe-source")' in module.RUNNER
+
+
+def test_miniswe_wrapper_rejects_invalid_evolved_memory(
+    adapter_path: Path,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _install_fake_harbor(monkeypatch)
+    module = _load(adapter_path)
+    memory = tmp_path / "candidate" / "memory" / "semantic.jsonl"
+    memory.parent.mkdir(parents=True)
+    memory.write_text("not-json\n")
+    namespace = {}
+    exec(module.EVOLVED_CONTEXT_SETUP, namespace)
+
+    with pytest.raises(json.JSONDecodeError):
+        namespace["_load_evolved_context"](tmp_path / "candidate")
 
 
 def test_miniswe_wrapper_subclasses_harbor_miniswe_and_installs_candidate_source(
@@ -269,6 +336,9 @@ def test_miniswe_wrapper_subclasses_harbor_miniswe_and_installs_candidate_source
     assert '"frozen_sync": true' in environment.commands[evidence_index]
     assert '"miniswe_import": true' in environment.commands[evidence_index]
     assert '"model_path_init": true' in environment.commands[evidence_index]
+    assert "skills_loaded" in environment.commands[evidence_index]
+    assert "memories_loaded" in environment.commands[evidence_index]
+    assert "context_chars" in environment.commands[evidence_index]
     proxy_names = {
         "HTTP_PROXY",
         "HTTPS_PROXY",
@@ -425,7 +495,7 @@ def test_miniswe_external_dependency_sync_is_infrastructure_owned(tmp_path: Path
     with pytest.raises(module.EvolveRuntimeInfrastructureError) as raised:
         asyncio.run(module.MiniSweSourceAgent().install(Environment()))
 
-    assert str(raised.value) == "EVOLVE_RUNTIME_INFRASTRUCTURE: external_dependency_sync_failed"
+    assert str(raised.value) == ("EVOLVE_RUNTIME_INFRASTRUCTURE: external_dependency_sync_failed: offline cache miss")
 
 
 def test_miniswe_offline_runtime_never_downloads_uv(tmp_path: Path, monkeypatch) -> None:

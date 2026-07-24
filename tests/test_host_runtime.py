@@ -28,6 +28,7 @@ def test_uv_run_uses_locked_workspace_and_cleans_python_environment(tmp_path: Pa
         "PYTHONHOME": "/wrong",
         "VIRTUAL_ENV": "/other",
         "OPENAI_API_KEY": "secret",
+        "TMPDIR": "/tmp/custom",
     }
 
     command, env = uv_run(tmp_path, "harbor", "run", env=source)
@@ -35,6 +36,7 @@ def test_uv_run_uses_locked_workspace_and_cleans_python_environment(tmp_path: Pa
     assert command == [str(uv), "run", "--project", str(tmp_path.resolve()), "--frozen", "harbor", "run"]
     assert not {"PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV"} & env.keys()
     assert env["OPENAI_API_KEY"] == "secret"
+    assert env["TMPDIR"] == "/tmp/custom"
     assert source["PYTHONPATH"] == "/unsafe"
 
 
@@ -42,6 +44,16 @@ def test_uv_executable_falls_back_to_path(tmp_path: Path) -> None:
     uv = _executable(tmp_path / "uv")
 
     assert uv_executable({"PATH": str(tmp_path)}) == str(uv)
+
+
+def test_uv_run_does_not_redirect_temp_root_into_workspace(tmp_path: Path) -> None:
+    _project(tmp_path)
+    uv = _executable(tmp_path / "uv")
+
+    _command, env = uv_run(tmp_path, "python", env={"EVOLVE_UV_BINARY": str(uv)})
+
+    assert "TMPDIR" not in env
+    assert not (tmp_path / "runs" / ".tmp").exists()
 
 
 def test_uv_run_reports_missing_runtime_inputs(tmp_path: Path) -> None:

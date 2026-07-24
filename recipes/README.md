@@ -11,6 +11,7 @@ file is `library/gate/parent_eligible.py`.
 - [Hill Climb](hill_climb/README.md)
 - `hill_climb-smoke` — deterministic local counterpart
 - [A-Evolve](aevolve/README.md)
+- [A-Evolve Terminal-Bench Bridge](aevolve_tbench_bridge/README.md)
 - [Agentic Harness Engineering](ahe/README.md)
 - [GEPA](gepa/README.md)
 - [HyperAgents](hyperagents/README.md)

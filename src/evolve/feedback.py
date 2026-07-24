@@ -80,6 +80,7 @@ def _copy_trace_evidence(run_dir: Path, destination: Path) -> list[str]:
     for name in (
         "manifest.json",
         "selected.md",
+        "trajectory_only.json",
         "metrics.json",
         "failure_patterns.json",
         "passing_behaviors.json",

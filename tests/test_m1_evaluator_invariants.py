@@ -22,7 +22,6 @@ from evolve.evaluation.execution import (
 )
 from evolve.evaluation.identity import effective_task_set_identity
 from evolve.frozen.interfaces import ArchiveView
-from evolve.host_runtime import workspace_temp_dir
 from evolve.runtime import OwnedResult
 from evolve.uv_runtime import CandidateRuntimeResult, RuntimeMount
 
@@ -30,29 +29,6 @@ from evolve.uv_runtime import CandidateRuntimeResult, RuntimeMount
 def make_eval_script(path: Path, body: str) -> None:
     path.write_text(body)
     path.chmod(path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-
-
-def test_evaluation_temp_root_defaults_to_workspace_volume(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.delenv("EVOLVE_TMPDIR", raising=False)
-    workspace = tmp_path / "workspace"
-
-    root = workspace_temp_dir(workspace)
-
-    assert root == workspace / "runs" / ".tmp"
-    assert root.is_dir()
-
-
-def test_evaluation_temp_root_accepts_configured_relative_path(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    workspace = tmp_path / "workspace"
-    monkeypatch.setenv("EVOLVE_TMPDIR", "scratch")
-
-    assert workspace_temp_dir(workspace) == workspace / "scratch"
 
 
 def configure_outcome_evaluator(
@@ -167,7 +143,6 @@ def test_eval_script_receives_persistent_workspace_uv_cache(tmp_path: Path) -> N
         "set -eu\n"
         'mkdir -p "$EVOLVE_RUN_DIR"\n'
         'printf "%s\\n" "$EVOLVE_UV_CACHE_DIR" > cache-path\n'
-        'printf "%s\\n" "$TMPDIR" > tmp-path\n'
         'printf "complete\\n" > "$EVOLVE_RUN_DIR/status"\n'
         'printf "1.0\\n" > "$EVOLVE_RUN_DIR/score"\n',
     )
@@ -188,7 +163,6 @@ def test_eval_script_receives_persistent_workspace_uv_cache(tmp_path: Path) -> N
     expected = workspace / "runs" / "runtime" / "uv-cache"
     assert (checkout / "cache-path").read_text() == f"{expected}\n"
     assert expected.is_dir()
-    assert (checkout / "tmp-path").read_text() == f"{workspace / 'runs' / '.tmp'}\n"
 
 
 def test_eval_script_preserves_explicit_shared_uv_cache(tmp_path: Path, monkeypatch) -> None:
