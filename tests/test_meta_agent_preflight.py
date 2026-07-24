@@ -159,7 +159,12 @@ def _probe(case: PreflightCase, commands: Sequence[str], *, miniswe_version: str
 
 class StaticRunner:
     def __init__(self, cases: tuple[PreflightCase, ...], *, timeout_case: str | None = None) -> None:
-        self.cases = {case.image: case for case in cases}
+        self.expected_entries = len(cases)
+        self.cases = {
+            identity: case
+            for case in cases
+            for identity in (case.image, case.expected_image_id)
+        }
         self.timeout_case = timeout_case
         self.calls: list[tuple[str, ...]] = []
         self.timeouts: list[float] = []
@@ -181,7 +186,7 @@ class StaticRunner:
         case = self.cases[image]
         if argv[:3] == ("docker", "image", "inspect"):
             self.entered += 1
-            if self.entered == len(self.cases):
+            if self.entered == self.expected_entries:
                 self.both_started.set()
             await asyncio.wait_for(self.both_started.wait(), timeout=0.1)
             if case.name == self.timeout_case:
@@ -285,7 +290,7 @@ def test_run_static_checks_image_contracts_concurrently_with_tuple_argv():
     assert all(isinstance(call, tuple) for call in runner.calls)
     assert all(0 < timeout <= 15 for timeout in runner.timeouts)
     assert any(
-        call == ("docker", "run", "--rm", "--entrypoint", "bash", cases[0].image, "-lc", call[-1])
+        call == ("docker", "run", "--rm", "--entrypoint", "bash", cases[0].expected_image_id, "-lc", call[-1])
         for call in runner.calls
         if call[:3] == ("docker", "run", "--rm")
     )
@@ -477,7 +482,26 @@ class LiveRunner:
                     "messages": [
                         {
                             "role": "assistant",
-                            "output": [{"type": "function_call", "name": "shell"}],
+                            "output": [
+                                {
+                                    "type": "function_call",
+                                    "name": "bash",
+                                    "status": "completed",
+                                    "arguments": '{"command":"rg --files"}',
+                                },
+                                {
+                                    "type": "function_call",
+                                    "name": "bash",
+                                    "status": "completed",
+                                    "arguments": '{"command":"python check.py"}',
+                                },
+                                {
+                                    "type": "function_call",
+                                    "name": "bash",
+                                    "status": "completed",
+                                    "arguments": '{"command":"echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"}',
+                                },
+                            ],
                         },
                         {"role": "exit", "extra": {"exit_status": "Submitted"}},
                     ],
@@ -485,6 +509,21 @@ class LiveRunner:
             )
         )
         return CommandResult(0, "model output", "", self.delay_s)
+
+
+@pytest.mark.parametrize(
+    ("command", "missing"),
+    [
+        ("python check.py", "rg tool call"),
+        ("rg --files", "python tool call"),
+        ("rg --files && python check.py", "exact submission command"),
+    ],
+)
+def test_protocol_evidence_rejects_missing_required_calls(command: str, missing: str):
+    calls = [{"type": "function_call", "name": "bash", "arguments": json.dumps({"command": command})}]
+
+    with pytest.raises(ValueError, match=missing):
+        preflight._protocol_evidence(calls, require_rg=True)
 
 
 @pytest.mark.parametrize(
@@ -524,7 +563,16 @@ def test_run_live_case_retains_a_valid_redacted_submission(tmp_path: Path):
     assert result["passed"] is True
     assert result["image_id"] == case.expected_image_id
     assert result["effective_model_config"]["max_output_tokens"] == 64000
-    assert result["tool_calls"] == [{"type": "function_call", "name": "shell"}]
+    assert result["protocol_evidence"] == {
+        "tool_call_count": 3,
+        "used_python": True,
+        "used_rg": True,
+        "submission_command": "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT",
+        "submitted": True,
+    }
+    assert result["agent_exit_status"] == "Submitted"
+    assert result["verification"] == {"passed": True, "returncode": 0}
+    assert result["artifact_contract"]["passed"] is True
     assert result["changed_paths"] == ["target/value.py"]
     assert result["patch_bytes"] > 0
     assert set(result["logs"]) == {"stdout", "stderr", "trajectory", "patch", "config"}
@@ -536,6 +584,8 @@ def test_run_live_case_retains_a_valid_redacted_submission(tmp_path: Path):
     }
     command = runner.calls[0]
     assert command[0:2] == ("docker", "run")
+    assert case.expected_image_id in command
+    assert case.image not in command
     assert "-w" in command and command[command.index("-w") + 1] == "/app/task/workspace"
     assert command[-17:] == (
         "python",
@@ -645,6 +695,8 @@ def test_run_preflight_static_failure_skips_live_and_writes_redacted_report(tmp_
     assert code == 1
     assert live_called is False
     assert report["schema_version"] == 1
+    assert report["started_at"].endswith("+00:00")
+    assert report["elapsed_s"] >= 0
     assert report["budget_s"] == 300
     assert report["tiers"]["static"]["elapsed_s"] == 1.235
     assert [item["name"] for item in report["tiers"]["static"]["images"]] == ["a-case", "z-case"]

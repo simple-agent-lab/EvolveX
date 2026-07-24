@@ -12,6 +12,7 @@ import sys
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from time import monotonic
 from typing import Protocol
@@ -323,7 +324,7 @@ async def inspect_image(
             result.update(_failure("static image timeout exhausted before probe", elapsed_s, observed_image_id=image_id))
             return finish()
         probe = await runner(
-            ("docker", "run", "--rm", "--entrypoint", "bash", case.image, "-lc", STATIC_PROBE),
+            ("docker", "run", "--rm", "--entrypoint", "bash", case.expected_image_id, "-lc", STATIC_PROBE),
             probe_timeout_s,
             env=environment,
         )
@@ -530,6 +531,42 @@ def _trajectory_details(trajectory: Mapping[str, object]) -> tuple[dict[str, obj
     return dict(effective), tool_calls
 
 
+def _protocol_evidence(tool_calls: Sequence[Mapping[str, object]], *, require_rg: bool) -> dict[str, object]:
+    commands: list[str] = []
+    for call in tool_calls:
+        arguments = call.get("arguments")
+        if not isinstance(arguments, str):
+            continue
+        try:
+            decoded = json.loads(arguments)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(decoded, dict) and isinstance(decoded.get("command"), str):
+            commands.append(decoded["command"])
+    used_python = any(re.search(r"(?:^|[\s;&|])python(?:3(?:\.\d+)*)?(?=\s|$)", command) for command in commands)
+    used_rg = any(re.search(r"(?:^|[\s;&|])rg(?=\s|$)", command) for command in commands)
+    submission_command = "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"
+    submitted = any(command.strip() == submission_command for command in commands)
+    missing = [
+        label
+        for label, present in (
+            ("python tool call", used_python),
+            ("rg tool call", used_rg or not require_rg),
+            ("exact submission command", submitted),
+        )
+        if not present
+    ]
+    if missing:
+        raise ValueError("trajectory omitted required protocol evidence: " + ", ".join(missing))
+    return {
+        "tool_call_count": len(tool_calls),
+        "used_python": used_python,
+        "used_rg": used_rg,
+        "submission_command": submission_command,
+        "submitted": submitted,
+    }
+
+
 def _live_result(
     case: PreflightCase,
     container_name: str,
@@ -545,6 +582,9 @@ def _live_result(
         "name": case.name,
         "image": case.image,
         "image_id": case.expected_image_id,
+        "declared_miniswe_version": case.miniswe_version,
+        "requested_max_output_tokens": _LIVE_MAX_OUTPUT_TOKENS,
+        "requested_reasoning_effort": "low",
         "container_name": container_name,
         "passed": passed,
         "failure_boundary": failure_boundary,
@@ -600,7 +640,7 @@ async def run_live_case(
         "-v",
         f"{case_dir}:/app/task/output",
         *env_arguments,
-        case.image,
+        case.expected_image_id,
         "python",
         "/app/task/output/runner.py",
         "--yolo",
@@ -667,6 +707,7 @@ async def run_live_case(
     try:
         trajectory = _read_trajectory(case_dir / "trajectory.json")
         effective_model_config, tool_calls = _trajectory_details(trajectory)
+        protocol_evidence = _protocol_evidence(tool_calls, require_rg=case.expanded_tools)
     except ValueError as error:
         result = _live_result(
             case, container_name, case_dir, monotonic() - started,
@@ -738,6 +779,11 @@ async def run_live_case(
     result = _live_result(
         case, container_name, case_dir, monotonic() - started,
         passed=True, failure_boundary=None, failures=[],
+        observed_miniswe_version=case.miniswe_version,
+        agent_exit_status="Submitted",
+        protocol_evidence=protocol_evidence,
+        artifact_contract={"passed": True, "changed_paths": changed_paths},
+        verification={"passed": True, "returncode": check.returncode},
         effective_model_config=effective_model_config,
         tool_calls=tool_calls,
         changed_paths=changed_paths,
@@ -856,6 +902,8 @@ async def run_preflight(
     selected_case: str | None,
 ) -> tuple[int, dict[str, object]]:
     """Run the selected static and live tiers, then atomically retain one report."""
+    started = monotonic()
+    started_at = datetime.now(UTC).isoformat()
     cases = load_matrix(matrix)
     if selected_case is not None:
         cases = tuple(case for case in cases if case.name == selected_case)
@@ -880,6 +928,8 @@ async def run_preflight(
     report = _report_value(
         {
             "schema_version": 1,
+            "started_at": started_at,
+            "elapsed_s": monotonic() - started,
             "budget_s": 300,
             "static_only": static_only,
             "selected_case": selected_case,
