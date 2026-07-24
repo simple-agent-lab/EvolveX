@@ -36,7 +36,8 @@ then omit the override for the full run.
 Build the workspace image once before running:
 
 ```bash
-docker build -t evolve-meta-agent-app:ubuntu-latest containers/meta-agent
+docker build --build-arg MINISWE_VERSION=2.4.5 \
+  -t evolve-meta-agent-app:20260724-tools-mswe245 containers/meta-agent
 ```
 
 ## Operator Routing

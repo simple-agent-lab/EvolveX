@@ -44,7 +44,8 @@ Live runs need Docker, Harbor, model credentials, and an immutable evaluator
 runtime. Build the small workspace image once before running:
 
 ```bash
-docker build -t evolve-meta-agent-app:ubuntu-latest containers/meta-agent
+docker build --build-arg MINISWE_VERSION=2.4.5 \
+  -t evolve-meta-agent-app:20260724-tools-mswe245 containers/meta-agent
 ```
 
 The recipe never requires a local Codex command.

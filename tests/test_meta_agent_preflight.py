@@ -21,6 +21,7 @@ from evolve.meta_agent_preflight import (
     redact,
     run_live,
     run_live_case,
+    run_preflight,
     run_static,
 )
 
@@ -388,6 +389,7 @@ def test_inspect_image_rejects_missing_required_tool_malformed_probe_and_nonzero
     assert "JSON object" in malformed["failures"][0]
     assert "static probe failed: stdout\nstderr" == nonzero["failures"][0]
     assert all(tool in STATIC_PROBE for tool in REQUIRED_TOOLS)
+    assert "if completed.returncode and not match:" in STATIC_PROBE
 
 
 class LiveRunner:
@@ -607,3 +609,108 @@ def test_run_live_case_shares_one_deadline_with_local_verification(tmp_path: Pat
     assert result["passed"] is False
     assert result["failure_boundary"] == "verification"
     assert "timeout" in result["failures"][0].lower()
+
+
+def test_run_preflight_static_failure_skips_live_and_writes_redacted_report(tmp_path: Path, monkeypatch):
+    matrix = tmp_path / "matrix.json"
+    matrix.write_text(json.dumps({"cases": [_case(name="z-case"), _case(name="a-case")]}))
+    live_called = False
+
+    async def fake_static(cases, runner, environment=None):
+        return {
+            "passed": False,
+            "elapsed_s": 1.23456,
+            "images": [
+                {
+                    "name": case.name,
+                    "passed": case.name != "z-case",
+                    "failures": ["secret-value"],
+                }
+                for case in cases
+            ],
+        }
+
+    async def fake_live(*args, **kwargs):
+        nonlocal live_called
+        live_called = True
+        raise AssertionError("live tier must be skipped")
+
+    monkeypatch.setattr(preflight, "run_static", fake_static)
+    monkeypatch.setattr(preflight, "run_live", fake_live)
+    monkeypatch.setenv("OPENAI_API_KEY", "secret-value")
+
+    code, report = asyncio.run(run_preflight(matrix, tmp_path / "out", static_only=False, selected_case=None))
+
+    assert code == 1
+    assert live_called is False
+    assert report["schema_version"] == 1
+    assert report["budget_s"] == 300
+    assert report["tiers"]["static"]["elapsed_s"] == 1.235
+    assert [item["name"] for item in report["tiers"]["static"]["images"]] == ["a-case", "z-case"]
+    report_text = (tmp_path / "out" / "report.json").read_text()
+    assert "secret-value" not in report_text
+    assert not (tmp_path / "out" / "report.json.tmp").exists()
+
+
+@pytest.mark.parametrize(
+    ("static_only", "live_cases", "expected_code"),
+    [(True, None, 0), (False, [True, False], 0), (False, [False, False], 1)],
+)
+def test_run_preflight_aggregates_static_and_live_results(
+    tmp_path: Path, monkeypatch, static_only: bool, live_cases: list[bool] | None, expected_code: int
+):
+    matrix = tmp_path / "matrix.json"
+    matrix.write_text(json.dumps({"cases": [_case(name="b-case"), _case(name="a-case")]}))
+
+    async def fake_static(cases, runner, environment=None):
+        return {"passed": True, "elapsed_s": 0.1, "images": [{"name": case.name, "passed": True} for case in cases]}
+
+    async def fake_live(cases, output, runner, environment):
+        assert live_cases is not None
+        return {
+            "passed": all(live_cases),
+            "elapsed_s": 2.34567,
+            "cases": [
+                {"name": case.name, "passed": passed, "failures": []}
+                for case, passed in zip(cases, live_cases, strict=True)
+            ],
+        }
+
+    monkeypatch.setattr(preflight, "run_static", fake_static)
+    monkeypatch.setattr(preflight, "run_live", fake_live)
+
+    code, report = asyncio.run(
+        run_preflight(matrix, tmp_path / f"out-{static_only}", static_only=static_only, selected_case=None)
+    )
+
+    assert code == expected_code
+    assert report["passed"] is (expected_code == 0)
+    assert [item["name"] for item in report["tiers"]["static"]["images"]] == ["a-case", "b-case"]
+    if static_only:
+        assert "live" not in report["tiers"]
+    else:
+        assert report["tiers"]["live"]["elapsed_s"] == 2.346
+        assert [item["name"] for item in report["tiers"]["live"]["cases"]] == ["a-case", "b-case"]
+
+
+def test_run_preflight_case_selection_and_unknown_case_fail_before_docker(tmp_path: Path, monkeypatch):
+    matrix = tmp_path / "matrix.json"
+    matrix.write_text(json.dumps({"cases": [_case(name="first"), _case(name="second")]}))
+    selected: list[str] = []
+
+    async def fake_static(cases, runner, environment=None):
+        selected.extend(case.name for case in cases)
+        return {"passed": True, "elapsed_s": 0.1, "images": [{"name": case.name, "passed": True} for case in cases]}
+
+    monkeypatch.setattr(preflight, "run_static", fake_static)
+
+    code, _ = asyncio.run(
+        run_preflight(matrix, tmp_path / "selected", static_only=True, selected_case="second")
+    )
+    assert code == 0
+    assert selected == ["second"]
+
+    selected.clear()
+    with pytest.raises(ValueError, match="unknown case"):
+        asyncio.run(run_preflight(matrix, tmp_path / "unknown", static_only=True, selected_case="missing"))
+    assert selected == []

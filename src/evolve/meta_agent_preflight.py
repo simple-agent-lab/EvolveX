@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import json
+import os
 import re
 import subprocess
 import uuid
@@ -78,9 +80,9 @@ import subprocess
 
 def version(command):
     completed = subprocess.run(command, text=True, capture_output=True, check=False)
-    if completed.returncode:
-        raise SystemExit(completed.stderr or completed.stdout or "version command failed")
     match = re.search(r"\d+\.\d+\.\d+", completed.stdout + completed.stderr)
+    if completed.returncode and not match:
+        raise SystemExit(completed.stderr or completed.stdout or "version command failed")
     if not match:
         raise SystemExit("semantic version missing from " + " ".join(command))
     return match.group(0)
@@ -415,6 +417,15 @@ def _live_config(case: PreflightCase) -> dict[str, object]:
 
 def _child_environment(environment: Mapping[str, str]) -> dict[str, str]:
     return {name: value for name, value in environment.items() if name in _LIVE_ENVIRONMENT and value}
+
+
+def _sensitive_environment(environment: Mapping[str, str]) -> dict[str, str]:
+    markers = ("KEY", "TOKEN", "AUTH", "SECRET", "PASSWORD", "PROXY")
+    return {
+        name: value
+        for name, value in environment.items()
+        if value and any(marker in name.upper() for marker in markers)
+    }
 
 
 async def _host_command(argv: tuple[str, ...], cwd: Path, timeout_s: float) -> CommandResult:
@@ -769,3 +780,143 @@ async def run_live(
         "elapsed_s": monotonic() - started,
         "cases": completed,
     }
+
+
+async def _command_runner(
+    argv: tuple[str, ...],
+    timeout_s: float,
+    env: Mapping[str, str] | None = None,
+) -> CommandResult:
+    """Run an argv-only process for the preflight CLI."""
+    started = monotonic()
+    process_environment = os.environ.copy()
+    if env is not None:
+        process_environment.update(env)
+    process = await asyncio.create_subprocess_exec(
+        *argv,
+        env=process_environment,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    try:
+        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout_s)
+    except TimeoutError:
+        process.kill()
+        await process.communicate()
+        raise
+    return CommandResult(
+        process.returncode,
+        stdout.decode(errors="replace"),
+        stderr.decode(errors="replace"),
+        monotonic() - started,
+    )
+
+
+def _report_value(value: object, environment: Mapping[str, str], key: str = "") -> object:
+    if isinstance(value, str):
+        return redact(value, environment)
+    if isinstance(value, float) and key == "elapsed_s":
+        return round(value, 3)
+    if isinstance(value, list):
+        return [_report_value(item, environment) for item in value]
+    if isinstance(value, dict):
+        return {
+            str(item_key): _report_value(item_value, environment, str(item_key))
+            for item_key, item_value in value.items()
+        }
+    return value
+
+
+def _sort_results(tier: dict[str, object], key: str) -> None:
+    results = tier.get(key)
+    if isinstance(results, list):
+        results.sort(key=lambda item: str(item.get("name", "")) if isinstance(item, dict) else "")
+
+
+def _write_report(output: Path, report: Mapping[str, object]) -> Path:
+    output.mkdir(parents=True, exist_ok=True)
+    temporary = output / "report.json.tmp"
+    destination = output / "report.json"
+    with temporary.open("w") as stream:
+        json.dump(report, stream, indent=2, sort_keys=True)
+        stream.write("\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+    temporary.replace(destination)
+    return destination
+
+
+async def run_preflight(
+    matrix: Path,
+    output: Path,
+    *,
+    static_only: bool,
+    selected_case: str | None,
+) -> tuple[int, dict[str, object]]:
+    """Run the selected static and live tiers, then atomically retain one report."""
+    cases = load_matrix(matrix)
+    if selected_case is not None:
+        cases = tuple(case for case in cases if case.name == selected_case)
+        if not cases:
+            raise ValueError(f"unknown case: {selected_case}")
+
+    environment = dict(os.environ)
+    redaction_environment = _sensitive_environment(environment)
+    static = await run_static(cases, _command_runner, redaction_environment)
+    _sort_results(static, "images")
+    tiers: dict[str, object] = {"static": static}
+    passed = bool(static["passed"])
+    if passed and not static_only:
+        live = await run_live(cases, output, _command_runner, environment)
+        _sort_results(live, "cases")
+        tiers["live"] = live
+        live_cases = live.get("cases")
+        passed = isinstance(live_cases, list) and any(
+            isinstance(case, dict) and case.get("passed") is True for case in live_cases
+        )
+
+    report = _report_value(
+        {
+            "schema_version": 1,
+            "budget_s": 300,
+            "static_only": static_only,
+            "selected_case": selected_case,
+            "passed": passed,
+            "tiers": tiers,
+        },
+        redaction_environment,
+    )
+    assert isinstance(report, dict)
+    report_path = _write_report(output, report)
+    for tier_name, result_key in (("static", "images"), ("live", "cases")):
+        tier = report["tiers"].get(tier_name)
+        if not isinstance(tier, dict):
+            continue
+        for result in tier.get(result_key, []):
+            if isinstance(result, dict):
+                state = "PASS" if result.get("passed") is True else "FAIL"
+                print(f"{tier_name} {result.get('name', 'unknown')}: {state}")
+    print(f"report: {report_path}")
+    return (0 if passed else 1), report
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """CLI entry point for the parallel meta-agent preflight."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--matrix", type=Path, required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--static-only", action="store_true")
+    parser.add_argument("--case", dest="selected_case")
+    arguments = parser.parse_args(argv)
+    try:
+        code, _ = asyncio.run(
+            run_preflight(
+                arguments.matrix,
+                arguments.output,
+                static_only=arguments.static_only,
+                selected_case=arguments.selected_case,
+            )
+        )
+    except ValueError as error:
+        parser.error(str(error))
+    return code
