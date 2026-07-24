@@ -134,12 +134,17 @@ def test_ahe_groups_all_rollouts_per_task_and_prioritizes_failures() -> None:
 def test_ahe_debugger_reuses_only_allowlisted_meta_agent_config(tmp_path: Path) -> None:
     module = _module()
     ctx = _ctx(tmp_path)
-    config = module._debugger_runner_config(ctx.checkout)
+    ctx.config["debugger_agent_kwargs"] = {
+        "reasoning_effort": "high",
+        "max_tokens": 64000,
+    }
+    config = module._debugger_runner_config(ctx.checkout, ctx.config)
 
     assert config == {
         "agent": "evolve_harbor_agent:FileTaskMiniSweAgent",
         "model": "gpt-test",
         "environment": "docker",
+        "agent_kwargs": {"reasoning_effort": "high", "max_tokens": 64000},
         "max_retries": 0,
     }
     assert "editable_roots" not in config

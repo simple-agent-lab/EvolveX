@@ -12,9 +12,14 @@
 
 - Work directly on local `main` because the user explicitly requested local consolidation and the July 23 changes already share this working tree.
 - Both recipes use dataset `terminal-bench-2-10-10-10`, split seed `0`, `evaluation_split: train`, `tasks_per_round: 10`, and `k: 1`.
-- Candidate settings are reasoning `high`, step limit `100`, environment timeout `30`, cost limit `0`, and default Responses output budget `64000`.
+- Candidate settings are reasoning `high`, step limit `100`, environment timeout
+  `30`, Harbor agent timeout multiplier `2`, cost limit `0`, and default
+  Responses output budget `64000`.
 - Smoke uses five evaluator workers; healthy full runs use ten from the same workspace.
-- AHE trace analysis uses ten workers and must produce ten detail reports with `debugger_errors == 0`.
+- AHE trace analysis uses ten workers, debugger reasoning `high`, and must
+  produce ten detail reports with `debugger_errors == 0`; the AHE
+  change-producing meta-agent uses `high`, and HyperAgents mutation uses
+  `medium`, following observed response-budget exhaustion at higher settings.
 - Sealed tasks are neither selected nor evaluated.
 - Prefer the newly built expanded image; preserve evidence and fall back to image ID `sha256:61b800306be7032671455fe02b60002dad7853ef2e8de1e3e772f91dcb059998` only if the new image cannot be made healthy promptly.
 - Before stopping remote work, enumerate exact experiment controllers, process paths, tmux sessions, and task containers; do not touch unrelated services.
@@ -383,6 +388,7 @@ n_concurrent=10
 candidate reasoning=high
 candidate step limit=100
 candidate environment timeout=30
+candidate agent timeout multiplier=2
 candidate cost limit=0
 same ordered train task list
 same ordered sealed task list

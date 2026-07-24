@@ -348,11 +348,22 @@ _DEBUGGER_RUNNER_KEYS = (
 )
 
 
-def _debugger_runner_config(checkout: Path) -> dict[str, Any]:
+def _debugger_runner_config(checkout: Path, analyzer_config: dict[str, Any]) -> dict[str, Any]:
     meta = operator_blocks(checkout).get("meta_agent")
     if not isinstance(meta, dict):
         raise RuntimeError("AHE debugger requires operators.meta_agent configuration")
     config = {key: meta[key] for key in _DEBUGGER_RUNNER_KEYS if key in meta}
+    debugger_agent_kwargs = analyzer_config.get("debugger_agent_kwargs")
+    if debugger_agent_kwargs is not None:
+        if not isinstance(debugger_agent_kwargs, dict):
+            raise RuntimeError("AHE debugger_agent_kwargs must be a mapping")
+        inherited_agent_kwargs = config.get("agent_kwargs")
+        if inherited_agent_kwargs is not None and not isinstance(inherited_agent_kwargs, dict):
+            raise RuntimeError("AHE meta-agent agent_kwargs must be a mapping")
+        config["agent_kwargs"] = {
+            **(inherited_agent_kwargs or {}),
+            **debugger_agent_kwargs,
+        }
     config["max_retries"] = 0
     if not config.get("agent") or not config.get("model"):
         raise RuntimeError("AHE debugger requires meta-agent agent and model")
@@ -368,7 +379,7 @@ def _safe_task_name(task_name: str) -> str:
 def _run_debugger_job(checkout: Path, ctx: OperatorContext, job: TaskAnalysisJob) -> DebuggerResult:
     attempts = _positive_int(ctx.config.get("retry_attempts"), 3)
     timeout_s = float(ctx.config.get("timeout_per_task") or 600)
-    runner_config = _debugger_runner_config(checkout)
+    runner_config = _debugger_runner_config(checkout, ctx.config)
     runner_ctx = replace(ctx, config=runner_config)
     slug = _safe_task_name(job.task_name)
     last_error: AgentCommandError | None = None

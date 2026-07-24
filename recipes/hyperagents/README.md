@@ -17,6 +17,9 @@ workspace initialization generates and freezes it explicitly.
 `rollout.variant: evaluation_replay` exposes the selected parent's certified gate evaluation to the trace browser without launching a second task run.
 `trace_analyzer.variant: trace_browser` exposes current traces, metrics, and history through the normalized feedback bundle.
 `meta_agent.variant: hyperagents` consumes that bundle through Harbor's installed MiniSWE agent while retaining self-referential editing.
+The mutation agent uses `high` reasoning with an explicit 64k output budget.
+The explicit `max_tokens` value is required because mini-swe-agent otherwise
+uses its 1,000-token default.
 `gate.variant: parent_eligible` admits evaluated process variants.
 `evaluator.engine: harbor` runs the canonical black-box benchmark.
 `sampling: static` freezes 10 train, 10 gate, and 10 sealed task identities when
@@ -32,6 +35,8 @@ partition is unused during evolution, and sealed tasks remain isolated from
 meta-agent feedback. The evaluator is frozen with capacity for 10 workers; set
 `EVOLVE_HARBOR_N_CONCURRENT_OVERRIDE=5` for a five-worker generation-1 smoke,
 then omit the override for the full run.
+Candidate execution uses Harbor's `agent_timeout_multiplier: 2`, giving the
+100-step budget up to twice each task's declared agent timeout.
 
 Build the workspace image once before running:
 

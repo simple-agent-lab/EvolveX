@@ -92,7 +92,7 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "editable_roots: [target]" in config
             assert "max_retries: 2" in config
             assert "agent: evolve_harbor_adapter:MiniSweSourceAgent" in config
-            assert "image: evolve-meta-agent-app:ubuntu-latest" in config
+            assert "image: evolve-meta-agent-app:20260723-pr15" in config
             assert "task_scope: full" not in config
             assert "evaluation_split: train" in config
             assert "tasks_per_round: 10" in config
@@ -177,6 +177,13 @@ def test_real_uv_recipes_enable_candidate_runtime_and_task_retry() -> None:
         assert evaluator["benchmark_timeout_is_zero"] is True
 
 
+def test_shared_optimization_recipes_double_candidate_agent_timeout() -> None:
+    for name in ("ahe", "hyperagents"):
+        evaluator = _parsed_config(name)["evaluator"]
+        assert isinstance(evaluator, dict)
+        assert evaluator["agent_timeout_multiplier"] == 2
+
+
 def test_miniswe_method_agents_use_the_rollout_model_version() -> None:
     expected_model = "openai/gpt-5.4-2026-03-05"
     for name in ("ahe", "hyperagents"):
@@ -217,16 +224,30 @@ def test_meta_agent_image_provides_harbor_workspace_parent() -> None:
 def test_meta_agent_required_tools_match_tier_zero_contract() -> None:
     tools = (ROOT / "containers" / "meta-agent" / "required-tools.txt").read_text().splitlines()
     assert tools == [
-        "bash", "git", "curl", "diff", "file", "find", "jq", "patch",
-        "python", "rg", "rsync", "sed", "tree", "uv", "mini-swe-agent",
+        "bash",
+        "git",
+        "curl",
+        "diff",
+        "file",
+        "find",
+        "jq",
+        "patch",
+        "python",
+        "rg",
+        "rsync",
+        "sed",
+        "tree",
+        "uv",
+        "mini-swe-agent",
     ]
 
 
 def test_ahe_recipe_configures_reasoning_without_cost_caps() -> None:
     recipe = _parsed_config("ahe")
     assert recipe["operators"]["meta_agent"]["agent_kwargs"] == {
-        "reasoning_effort": "xhigh",
+        "reasoning_effort": "high",
         "cost_limit": 0,
+        "max_tokens": 64_000,
     }
     assert recipe["evaluator"]["agent_env"]["MINISWE_REASONING_EFFORT"] == "high"
     assert recipe["evaluator"]["agent_env"]["MINISWE_COST_LIMIT"] == "0"
@@ -237,6 +258,7 @@ def test_hyperagents_recipe_configures_reasoning_without_cost_caps() -> None:
     assert recipe["operators"]["meta_agent"]["agent_kwargs"] == {
         "reasoning_effort": "high",
         "cost_limit": 0,
+        "max_tokens": 64_000,
     }
     assert "budget_usd" not in recipe["experiment"]
     assert recipe["evaluator"]["agent_env"] == {

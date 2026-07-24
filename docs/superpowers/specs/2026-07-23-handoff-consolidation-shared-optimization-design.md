@@ -53,12 +53,17 @@ the full pass/fail rollout set from the mounted file.
   `extra.session_id` routing value.
 - Both recipes explicitly route candidate and meta-agent calls through the
   configured Responses endpoint.
-- Candidate reasoning remains `high`; AHE meta-agent reasoning remains
-  `xhigh`; HyperAgents meta-agent reasoning remains `high`.
+- Candidate and change-producing meta-agent reasoning remain `high`. Both
+  meta-agent recipes explicitly set Harbor's `max_tokens=64000` constructor
+  field, which Harbor maps to Responses `max_output_tokens`. Without it,
+  mini-swe-agent uses its 1,000-token default. AHE's short-protocol debugger
+  also inherits the explicit budget.
 
-The July 23 smokes observed clean tool calls, no truncation, and no
-`RepeatedFormatError`. The previous failures were caused by the wrong
-Responses route/payload rather than the Docker image.
+The July 23 synthetic smokes observed clean tool calls after the 64k Responses
+fix. The real shared-optimization smokes later exposed that the fix had not
+reached the `FileTaskMiniSweAgent` command path: trajectory usage proved each
+failed response was capped at 1,000 output tokens. The runner correctly
+rejected those empty candidates, and the recipes now set 64k explicitly.
 
 ### 4. Experiment capacity and lifecycle
 
@@ -156,6 +161,8 @@ Both recipes use the same candidate-agent limits:
 - reasoning effort `high`;
 - step limit `100`;
 - environment command timeout `30`;
+- Harbor agent timeout multiplier `2` so the 100-step budget is not cut off by
+  short task-level defaults;
 - cost limit `0` (unlimited);
 - Responses output default `64000`.
 
