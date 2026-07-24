@@ -23,6 +23,7 @@ operators:
 | `failure_patterns` | Aggregate metrics, verifier-grounded failure signatures, representatives, and passing behavior to preserve. |
 | `failed_traces` | Aggregate metrics plus detailed failed/agent-error execution records. |
 | `trace_browser` | A small metrics summary and filesystem instructions for raw traces, source, and prior generations. |
+| `trajectory_only` | A-Evolve-style behavior-only signals, failure-focused compression, and LLM proxy verdicts; no evaluator labels, task text, or raw-case paths. |
 | `execution_records` | Complete per-case input/output, ordered actions, tool results, verifier feedback, metrics, and history pointers. |
 | `utility_metrics` | Per-task downstream utility and the current editable source; trajectories are not emphasized. |
 
@@ -51,7 +52,7 @@ The analyzer reads:
 - prior run metrics and lineage through the feedback history generated after
   analysis.
 
-Every variant writes the same auditable base files:
+Most variants write the same auditable base files:
 
 - `trace_analyzer/evidence/raw_traces.jsonl`;
 - `trace_analyzer/evidence/failure_records.json`;
@@ -62,14 +63,28 @@ Every variant writes the same auditable base files:
 - `trace_analyzer/evidence/manifest.json`;
 - `trace_analyzer/evidence/selected.md`.
 
+`trajectory_only` is deliberately narrower. It first asks an isolated,
+read-only LLM judge to estimate each trajectory's score, category, outcome, and
+failure reason using the compressed behavior alone. It then writes only
+`manifest.json`, `trajectory_only.json`, and `selected.md`; it does not
+place reward, outcome, verifier output, task input, or `raw_traces.jsonl` in
+the meta-agent evidence directory.
+
 `selected.md` is copied into `feedback/evidence/selected.md` and its body is
 injected into the meta-agent prompt. Raw files remain available through
 `$EVOLVE_RUN_DIR/trace_analyzer/evidence/`.
 
+For `trajectory_only`, the A-Evolve meta-agent receives only the selected
+behavior view. Its Harbor workspace bundle omits `archive.jsonl` and `runs/`,
+so evaluator labels cannot be recovered by filesystem discovery.
+
 ## Fidelity boundary
 
-The analyzer is deterministic: it parses, filters, clusters, serializes, and
-truncates existing rollout facts without another model call. The later meta-agent
-model performs reflection and editing. These variants define trace-retention
-interfaces; they do not reproduce the full search algorithms of the papers that
-motivated the former profiles.
+All variants except `trajectory_only` are deterministic: they parse, filter,
+cluster, serialize, and truncate existing rollout facts without another model
+call. `trajectory_only` intentionally adds the same separate behavior-only
+proxy-judge stage used by the official A-Evolve path. The judge may use the
+configured meta-agent model but runs in an empty read-only Harbor task and
+cannot inspect evaluator labels or the candidate workspace. These variants
+define trace-retention interfaces; they do not reproduce every surrounding
+search capability of the papers that motivated the former profiles.

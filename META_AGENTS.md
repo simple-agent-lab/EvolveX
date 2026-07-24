@@ -54,14 +54,34 @@ repair only constrains observable candidate changes; it is not a host sandbox.
 ## `runner: harbor`: isolated agent with artifact return
 
 The Harbor runner builds a disposable writable experiment workspace at
-`/app/task/workspace`. It contains the selected parent, self-contained Git history,
-configuration, archive, and prior/current run evidence, so the agent can inspect
-and edit it like a local checkout. The real host workspace is never mounted.
+`/app/task/workspace`. Gate visibility is controlled by
+`operators.meta_agent.expose_gate_data`, which must be a boolean and defaults to
+`false`.
+
+With `expose_gate_data: false`, the task receives the selected parent,
+configuration, a clean Git baseline, and the `rollout`, `trace_analyzer`, and
+`feedback` inputs from current and prior generations. Evaluator files, task
+partitions, archive/receipt records, selection artifacts, gate/record
+directories, and gate/sealed evaluations are not copied. The clean Git baseline
+supports normal `git diff` and `git status` use without retaining sensitive
+paths in object history.
+
+With `expose_gate_data: true`, the task instead receives the full Git history,
+evaluator and split files, archive/receipt records, and the retained run tree,
+including gate/sealed evaluations. Enable this only for methods whose intended
+feedback contract includes those results. The real host workspace is never
+mounted in either mode.
+
+The bundled recipes make this choice explicitly: A-Evolve, GEPA, and hill
+climb use `false` because gate is held out from mutation; AHE and HyperAgents
+use `true` because their recipe definitions optimize on retained
+full-benchmark evaluations rather than a held-out gate.
 Harbor returns the complete disposable workspace; the runner compares it with a
 trusted pre-run manifest, rejects protected changes, symlinks, and special files,
 then transactionally imports configured `editable_roots` and the current
-generation's durable artifact namespace. Changes to Git
-metadata, archive/runtime evidence, and evaluation receipts are discarded.
+generation's durable artifact namespace. Changes to Git metadata and runtime
+evidence are discarded; durable user and prior-generation artifacts are
+read-only from the runner's perspective.
 AHE imports only `target`; HyperAgents imports `target` and `operators`.
 
 ## Durable meta-agent artifacts and handoffs
@@ -87,6 +107,7 @@ normal and non-fatal. Artifact files never become part of a candidate patch.
 meta_agent:
   variant: hyperagents
   runner: harbor
+  expose_gate_data: false
   agent: mini-swe-agent
   model: openai/gpt-5.4
   environment: docker
@@ -99,6 +120,7 @@ meta_agent:
 Useful optional keys are:
 
 - `agent`: Harbor built-in name, `module.path:ClassName`, or supported ACP shorthand;
+- `expose_gate_data`: expose full evaluator/archive/run history, including gate/sealed data (defaults to `false`);
 - `editable_roots`: top-level repository trees eligible for transactional import (defaults to `[target]`);
 - `model`: model identifier expected by that Harbor adapter;
 - `agent_kwargs`: mapping converted to repeated Harbor `--agent-kwarg key=value` flags;

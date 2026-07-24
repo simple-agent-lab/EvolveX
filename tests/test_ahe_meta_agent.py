@@ -35,6 +35,9 @@ def _case(tmp_path: Path, *, genid: str = "1", parent: str = "0"):
     source = checkout / "target/src/minisweagent/agents/default.py"
     source.parent.mkdir(parents=True)
     source.write_text("STEP_LIMIT = 10\n")
+    prompt = checkout / "target/src/minisweagent/config/mini.yaml"
+    prompt.parent.mkdir(parents=True)
+    prompt.write_text("agent:\n  system_template: helpful\n")
     (checkout / "evolve.yaml").write_text(
         "experiment:\n  id: ahe\n"
         "surface:\n  include:\n    - target/**\n  exclude: []\n"
@@ -141,6 +144,9 @@ def test_ahe_prompt_uses_official_decisions_and_required_manifest(tmp_path: Path
         "runs the target's `DefaultAgent` with the `mini` configuration",
         "Benchmark-specific configurations are inactive",
         "Do not refer to debuggers",
+        "You CAN modify any file under `target/`",
+        "Runtime prompt/config: `target/src/minisweagent/config/mini.yaml`",
+        "This method further restricts the current proposal to: `target`",
     ):
         assert required in prompt
     assert "Evidence reading order" in prompt

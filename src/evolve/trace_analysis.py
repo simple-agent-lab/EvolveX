@@ -16,6 +16,7 @@ VARIANTS = (
     "failure_patterns",
     "failed_traces",
     "trace_browser",
+    "trajectory_only",
     "execution_records",
     "utility_metrics",
 )
@@ -235,6 +236,212 @@ def reflective_records(cases: list[Case]) -> list[Case]:
     ]
 
 
+def _tool_arguments(value: object) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return {str(key): item for key, item in value.items()}
+    if not isinstance(value, str):
+        return {}
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _ordered_behavior_events(case: Case) -> list[Case]:
+    """Normalize Harbor's two ordered-event shapes without using labels."""
+    normalized: list[Case] = []
+    for event in case.get("trajectory_events") or case.get("events") or []:
+        if not isinstance(event, dict):
+            continue
+        event_type = str(event.get("type") or "")
+        source = str(event.get("source") or "")
+        if event_type == "message":
+            if source == "agent":
+                normalized.append({"type": "turn"})
+            continue
+        if event_type == "tool_call":
+            normalized.append(
+                {
+                    "type": "tool_call",
+                    "name": str(event.get("name") or "unknown"),
+                    "arguments": event.get("arguments") or {},
+                }
+            )
+            continue
+        if event_type == "tool_result":
+            normalized.append(
+                {
+                    "type": "tool_result",
+                    "observation": str(event.get("observation") or ""),
+                }
+            )
+            continue
+
+        # Harbor trajectory.json steps keep calls and results together.
+        if source == "agent":
+            normalized.append({"type": "turn"})
+        for call in event.get("tool_calls") or []:
+            if isinstance(call, dict):
+                normalized.append(
+                    {
+                        "type": "tool_call",
+                        "name": str(call.get("name") or "unknown"),
+                        "arguments": call.get("arguments") or {},
+                    }
+                )
+        for observation in event.get("observations") or []:
+            normalized.append({"type": "tool_result", "observation": str(observation)})
+    return normalized
+
+
+def _trajectory_signals(case: Case) -> dict[str, Any]:
+    n_turns = 0
+    n_tool_calls = 0
+    n_errors = 0
+    n_timeouts = 0
+    tools_used: dict[str, int] = {}
+    commands_run: list[str] = []
+    submitted = False
+    submit_value = ""
+    error_messages: list[str] = []
+
+    for event in _ordered_behavior_events(case):
+        if event["type"] == "turn":
+            n_turns += 1
+        elif event["type"] == "tool_call":
+            n_tool_calls += 1
+            name = str(event.get("name") or "")
+            tools_used[name] = tools_used.get(name, 0) + 1
+            arguments = _tool_arguments(event.get("arguments"))
+            command = arguments.get("cmd") or arguments.get("command")
+            if command:
+                commands_run.append(str(command)[:80])
+            if name in {"submit", "task_submit"}:
+                submitted = True
+                submit_value = str(arguments.get("answer") or "")
+        elif event["type"] == "tool_result":
+            content = str(event.get("observation") or "")
+            lowered = content.lower()
+            if "ERROR:" in content or "error:" in lowered[:50]:
+                n_errors += 1
+                error_messages.append(content[:100])
+            if "timed out" in lowered or "timeout" in lowered:
+                n_timeouts += 1
+
+    command_counts = Counter(commands_run)
+    return {
+        "n_turns": n_turns,
+        "n_tool_calls": n_tool_calls,
+        "n_errors": n_errors,
+        "n_timeouts": n_timeouts,
+        "tools_used": tools_used,
+        "submitted": submitted,
+        "submit_value": submit_value,
+        "repeated_commands": [command for command, count in command_counts.items() if count >= 3],
+        "error_snippets": error_messages[:5],
+    }
+
+
+def _compress_trajectory(case: Case) -> str:
+    """Mirror A-Evolve's failure-focused trajectory-only compression."""
+    events: list[Case] = []
+    previous_command = ""
+    for event in _ordered_behavior_events(case):
+        if event["type"] == "tool_call":
+            name = str(event.get("name") or "")
+            arguments = _tool_arguments(event.get("arguments"))
+            command = arguments.get("cmd") or arguments.get("command") or arguments.get("code")
+            if name in {"submit", "task_submit"}:
+                events.append({"type": "submit", "value": str(arguments.get("answer") or "")})
+            elif command:
+                previous_command = str(command)[:200]
+                events.append(
+                    {
+                        "type": "cmd",
+                        "name": name,
+                        "command": previous_command,
+                    }
+                )
+        elif event["type"] == "tool_result":
+            content = str(event.get("observation") or "").strip()
+            lowered = content.lower()
+            is_error = (
+                "ERROR:" in content
+                or "error:" in lowered[:80]
+                or "Traceback" in content[:200]
+                or "TIMEOUT" in content.upper()[:50]
+                or "timed out" in lowered[:80]
+                or "No such file" in content[:100]
+                or "command not found" in content[:100]
+            )
+            if is_error:
+                events.append(
+                    {
+                        "type": "error",
+                        "command": previous_command,
+                        "output": content[:300],
+                    }
+                )
+
+    commands = [event for event in events if event["type"] == "cmd"]
+    errors = [event for event in events if event["type"] == "error"]
+    submissions = [event for event in events if event["type"] == "submit"]
+    parts = [f"Commands: {len(commands)}, Errors: {len(errors)}, Submitted: {bool(submissions)}"]
+    for event in commands[:3]:
+        parts.append(f"[start] {event['name']}({event['command']})")
+    if errors:
+        parts.append(f"\n--- Errors ({len(errors)}) ---")
+        for event in errors:
+            parts.append(f"  cmd: {event.get('command') or '?'}")
+            parts.append(f"  err: {str(event['output'])[:200]}")
+
+    command_counts = Counter(str(event["command"]) for event in commands)
+    repeated = [(command, count) for command, count in command_counts.items() if count >= 3]
+    if repeated:
+        parts.append("\n--- Repeated commands ---")
+        for command, count in repeated:
+            parts.append(f"  {command} (x{count})")
+    if commands:
+        parts.append("\n--- Final commands ---")
+        for event in commands[-3:]:
+            parts.append(f"  {event['name']}({event['command']})")
+    if submissions:
+        parts.append(f"\n[submitted] {submissions[-1].get('value') or ''}")
+    return "\n".join(parts)
+
+
+def trajectory_signal_records(cases: list[Case]) -> list[Case]:
+    """Return the exact evidence fields exposed by A-Evolve trajectory-only mode."""
+    return [
+        {
+            "task_id": case.get("task_name") or case.get("trial_name") or "",
+            "signals": _trajectory_signals(case),
+            "compressed_trajectory": _compress_trajectory(case),
+        }
+        for case in cases
+        if case.get("outcome") not in {"infra_error", "incomplete"}
+    ]
+
+
+def attach_judge_verdicts(records: list[Case], verdicts: list[Case]) -> list[Case]:
+    """Attach only valid official-style proxy verdicts, preserving record order."""
+    judged: list[Case] = []
+    for index, record in enumerate(records):
+        enriched = dict(record)
+        verdict = verdicts[index] if index < len(verdicts) else {}
+        score = verdict.get("score") if isinstance(verdict, dict) else None
+        if isinstance(score, (int, float)) and not isinstance(score, bool) and score >= 0:
+            enriched["judge_verdict"] = {
+                "score": max(0, min(10, score)),
+                "category": str(verdict.get("category") or "unknown"),
+                "outcome": str(verdict.get("outcome") or ""),
+                "failure_reason": str(verdict.get("failure_reason") or ""),
+            }
+        judged.append(enriched)
+    return judged
+
+
 def _metrics(cases: list[Case]) -> Case:
     outcomes = Counter(str(case.get("outcome") or "unknown") for case in cases)
     rewards = [float(case["reward"]) for case in cases if isinstance(case.get("reward"), (int, float))]
@@ -259,6 +466,7 @@ _VARIANT_GUIDANCE = {
     "failure_patterns": "Prioritize recurring, actionable failure signatures. Preserve passing behaviors and propose a narrow edit tied to one agent mechanism.",
     "failed_traces": "Diagnose concrete capability weaknesses from failed executions and make a change that generalizes beyond one task.",
     "trace_browser": "Use filesystem tools to inspect raw traces, metrics, source, and prior generations instead of relying only on this bounded summary.",
+    "trajectory_only": "Infer improvement opportunities from agent behavior alone. No pass/fail labels, rewards, verifier feedback, task text, or raw-case paths are exposed.",
     "execution_records": "Reflect across complete per-case inputs, outputs, ordered actions, tool results, verifier feedback, metrics, and history.",
     "utility_metrics": "Treat per-task reward as downstream utility and improve the editable component for average utility across tasks.",
 }
@@ -271,7 +479,27 @@ def _render_selected(
     passes: list[Case],
     reflections: list[Case],
     max_chars: int,
+    trajectory_records: list[Case] | None = None,
 ) -> str:
+    if variant == "trajectory_only":
+        rendered = (
+            "### Agent Behavior Analysis (this batch)\n\n"
+            "You can ONLY see the agent's actions. You do NOT have access to actual test results.\n\n"
+            "Each task includes:\n"
+            "- `signals`: automated behavioral metrics (turns, errors, timeouts, submission status, loops)\n"
+            "- `compressed_trajectory`: failure-focused summary (approach, errors, loops, final actions)\n"
+            "- `judge_verdict`: a behavior-only LLM estimate with score (0-10), category, outcome, "
+            "and failure_reason; it is not evaluator ground truth\n\n"
+            "Sort tasks by judge score. Prioritize scores 0-3, inspect scores 4-6 as partial progress, "
+            "and normally skip scores 7-10. Group recurring categories and failure reasons before editing.\n\n"
+            "```json\n"
+            f"{json.dumps(trajectory_records or [], indent=2, sort_keys=True)}\n"
+            "```\n"
+        )
+        if len(rendered) <= max_chars:
+            return rendered
+        return rendered[:max_chars] + f"\n...[behavior evidence truncated {len(rendered) - max_chars} chars]...\n"
+
     lines = [
         "# Trace Analysis Feedback",
         "",
@@ -331,6 +559,7 @@ def write_evidence_bundle(
     *,
     variant: object = "failure_patterns",
     max_chars: int = 30000,
+    judge_verdicts: list[Case] | None = None,
 ) -> tuple[str, list[str]]:
     """Persist method-neutral evidence once and render a bounded selected view."""
     selected = normalize_variant(variant)
@@ -340,6 +569,38 @@ def write_evidence_bundle(
     passes = passing_behaviors(cases)
     reflections = reflective_records(cases)
     metrics = _metrics(cases)
+    trajectory_records = trajectory_signal_records(cases)
+    if judge_verdicts is not None:
+        trajectory_records = attach_judge_verdicts(trajectory_records, judge_verdicts)
+
+    if selected == "trajectory_only":
+        _write_json(root / "trajectory_only.json", trajectory_records)
+        manifest = {
+            "selected_variant": selected,
+            "cases": len(trajectory_records),
+            "evidence_policy": "trajectory_only",
+            "ground_truth_exposed": False,
+            "case_paths_exposed": False,
+            "variants": {
+                "trajectory_only": ["trajectory_only.json", "selected.md"],
+            },
+        }
+        _write_json(root / "manifest.json", manifest)
+        selected_md = _render_selected(
+            selected,
+            {},
+            [],
+            [],
+            [],
+            max_chars,
+            trajectory_records=trajectory_records,
+        )
+        (root / "selected.md").write_text(selected_md)
+        return selected_md, [
+            "trace_analyzer/evidence/manifest.json",
+            "trace_analyzer/evidence/trajectory_only.json",
+            "trace_analyzer/evidence/selected.md",
+        ]
 
     _write_jsonl(root / "raw_traces.jsonl", cases)
     _write_json(root / "failure_records.json", records)
@@ -381,6 +642,41 @@ def _load_cases(path: Path) -> list[Case]:
     return [row for row in payload if isinstance(row, dict)] if isinstance(payload, list) else []
 
 
+def _positive_int(value: object, default: int) -> int:
+    try:
+        return max(1, int(str(value)))
+    except (TypeError, ValueError):
+        return default
+
+
+def _trajectory_only_cases(ctx: OperatorContext, current: list[Case]) -> list[Case]:
+    """Follow the selected lineage and mirror AEvolveEngine's recent-log window."""
+    history_cycles = _positive_int(ctx.config.get("history_cycles"), 2)
+    maximum = _positive_int(ctx.config.get("max_observations"), 30)
+    prior: list[list[Case]] = []
+    parent = str(ctx.parent or "")
+    rows: dict[str, dict[str, Any]] = {}
+    try:
+        from evolve.archive import rows_by_genid
+
+        rows = rows_by_genid(ctx.workspace)
+    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+        rows = {}
+
+    seen: set[str] = set()
+    while parent and parent not in seen and len(prior) < history_cycles - 1:
+        seen.add(parent)
+        cases = _load_cases(ctx.workspace / "runs" / f"gen-{parent}" / "rollout" / "cases.json")
+        if cases:
+            prior.append(cases)
+        row = rows.get(parent) or {}
+        parent = str(row.get("parent") or "")
+
+    combined = [case for batch in reversed(prior) for case in batch]
+    combined.extend(current)
+    return combined[-maximum:]
+
+
 class TraceAnalyzerBase(TraceAnalyzerOperator):
     variant = "failure_patterns"
 
@@ -389,15 +685,16 @@ class TraceAnalyzerBase(TraceAnalyzerOperator):
         selected = normalize_variant(self.variant)
         cases_path = ctx.run_dir / "rollout" / "cases.json"
         cases = _load_cases(cases_path)
+        analysis_cases = _trajectory_only_cases(ctx, cases) if selected == "trajectory_only" else cases
         max_chars = max(1, int(ctx.config.get("max_chars", 30000)))
         feedback, artifacts = write_evidence_bundle(
             ctx.run_dir,
-            cases,
+            analysis_cases,
             variant=selected,
             max_chars=max_chars,
         )
         (ctx.run_dir / "trace_analyzer" / "feedback.md").write_text(feedback)
         return TraceAnalyzerResult(
-            summary={"variant": selected, "cases": len(cases), "source": str(cases_path)},
+            summary={"variant": selected, "cases": len(analysis_cases), "source": str(cases_path)},
             artifacts=["trace_analyzer/feedback.md", *artifacts],
         )

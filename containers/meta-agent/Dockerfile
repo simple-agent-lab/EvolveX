@@ -44,5 +44,6 @@ RUN mv /root/.local/bin/uv /root/.local/bin/uv-real
 COPY uv-wrapper /root/.local/bin/uv
 RUN chmod 755 /root/.local/bin/uv
 COPY required-tools.txt /opt/evolve/required-tools.txt
+RUN git config --system --add safe.directory /app/task/workspace
 
 WORKDIR /app

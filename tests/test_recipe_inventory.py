@@ -10,6 +10,7 @@ def test_repository_contains_only_supported_recipes() -> None:
 
     assert recipe_names == {
         "aevolve",
+        "aevolve_tbench_bridge",
         "ahe",
         "gepa",
         "hill_climb",

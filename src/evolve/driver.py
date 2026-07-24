@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO
 
 from .archive import (
     EVALUATION_FIELDS,
@@ -98,8 +100,40 @@ class OperatorOutputError:
     detail: str
 
 
+@contextmanager
+def workspace_run_lock(workspace: Path) -> Iterator[None]:
+    lock_path = workspace / "runs" / ".driver.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    handle: TextIO = lock_path.open("a+", encoding="utf-8")
+    try:
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            handle.seek(0)
+            owner = handle.read().strip() or "unknown"
+            raise RuntimeError(
+                f"another evolve run already owns workspace {workspace} (pid {owner}); "
+                "stop it before starting a second run"
+            ) from exc
+        handle.seek(0)
+        handle.truncate()
+        handle.write(f"{os.getpid()}\n")
+        handle.flush()
+        yield
+    finally:
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        finally:
+            handle.close()
+
+
 def run(options: RunOptions) -> None:
     workspace = options.workspace.resolve()
+    with workspace_run_lock(workspace):
+        _run_locked(options, workspace)
+
+
+def _run_locked(options: RunOptions, workspace: Path) -> None:
     if options.children_per_gen < 1:
         raise RuntimeError("children_per_gen must be at least 1")
     exp_id = experiment_id(workspace)

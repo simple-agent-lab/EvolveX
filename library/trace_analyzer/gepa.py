@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -29,6 +30,11 @@ def _clip(value: object, limit: int) -> object:
     return value
 
 
+def _component_filename(index: int, name: str) -> str:
+    stem = re.sub(r"[^A-Za-z0-9_.-]", "_", name).strip("._-") or "component"
+    return f"{index:02d}-{stem}.json"
+
+
 def reflective_record(case: dict[str, Any], field_limit: int) -> dict[str, Any]:
     reward = case.get("reward")
     score = float(reward) if isinstance(reward, (int, float)) and not isinstance(reward, bool) else 0.0
@@ -39,7 +45,7 @@ def reflective_record(case: dict[str, Any], field_limit: int) -> dict[str, Any]:
         },
         "Generated Outputs": {
             "agent_messages": _clip(case.get("agent_messages") or [], field_limit),
-            "ordered_events": _clip(case.get("events") or [], field_limit),
+            "ordered_events": _clip(case.get("trajectory_events") or case.get("events") or [], field_limit),
             "tool_calls": _clip(case.get("tool_calls") or [], field_limit),
             "tool_results": _clip(case.get("observations") or [], field_limit),
             "raw_agent_output": _clip(case.get("raw_agent_output") or "", field_limit),
@@ -68,6 +74,17 @@ class GepaTraceAnalyzer(TraceAnalyzerOperator):
         root = ctx.run_dir / "trace_analyzer" / "evidence"
         _write_json(root / "reflective_dataset.json", dataset)
         _write_json(root / "raw_traces.json", usable)
+        component_evidence: dict[str, dict[str, Any]] = {}
+        component_artifacts: list[str] = []
+        for index, (name, paths) in enumerate(components.items()):
+            relative = Path("reflection") / _component_filename(index, name)
+            _write_json(root / relative, records)
+            component_evidence[name] = {
+                "paths": paths,
+                "records": len(records),
+                "file": relative.as_posix(),
+            }
+            component_artifacts.append(f"trace_analyzer/evidence/{relative.as_posix()}")
         outcomes = Counter(str(case.get("outcome") or "unknown") for case in cases)
         metrics = {
             "trials": len(cases),
@@ -88,6 +105,7 @@ class GepaTraceAnalyzer(TraceAnalyzerOperator):
             "selected_variant": "gepa",
             "source": "rollout/cases.json",
             "components": components,
+            "component_evidence": component_evidence,
             "reflective_dataset": "reflective_dataset.json",
             "excluded_outcomes": ["infra_error", "incomplete"],
         }
@@ -114,6 +132,7 @@ class GepaTraceAnalyzer(TraceAnalyzerOperator):
             "trace_analyzer/evidence/raw_traces.json",
             "trace_analyzer/evidence/metrics.json",
             "trace_analyzer/evidence/selected.md",
+            *component_artifacts,
         ]
         return TraceAnalyzerResult(
             summary={

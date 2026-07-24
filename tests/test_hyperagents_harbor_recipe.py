@@ -21,6 +21,7 @@ def test_hyperagents_recipe_initializes_broad_harbor_bundle(tmp_path: Path) -> N
     config = (workspace / "evolve.yaml").read_text()
     assert "variant: hyperagents" in config
     assert "runner: harbor" in config
+    assert "expose_gate_data: true" in config
     assert "agent: evolve_harbor_agent:FileTaskMiniSweAgent" in config
     assert "editable_roots:" in config
     assert "- target" in config and "- operators" in config

@@ -82,8 +82,88 @@ def build_model(config):
 """.strip()
 
 
+EVOLVED_CONTEXT_SETUP = r"""
+import json
+from pathlib import Path
+
+import yaml
+
+
+def _load_evolved_context(source_dir):
+    source_root = Path(source_dir)
+    skills = []
+    skills_dir = source_root / "skills"
+    if skills_dir.is_dir():
+        for skill_file in sorted(skills_dir.glob("*/SKILL.md")):
+            if skill_file.parent.name.startswith("_"):
+                continue
+            text = skill_file.read_text()
+            metadata = {}
+            if text.startswith("---"):
+                parts = text.split("---", 2)
+                if len(parts) == 3:
+                    metadata = yaml.safe_load(parts[1]) or {}
+                    if not isinstance(metadata, dict):
+                        raise ValueError(f"Skill frontmatter must be a mapping: {skill_file}")
+            skills.append(
+                {
+                    "name": str(metadata.get("name") or skill_file.parent.name),
+                    "description": str(metadata.get("description") or "").strip(),
+                    "path": skill_file,
+                }
+            )
+
+    memories = []
+    memory_dir = source_root / "memory"
+    if memory_dir.is_dir():
+        for memory_file in sorted(memory_dir.glob("*.jsonl")):
+            for line_number, line in enumerate(memory_file.read_text().splitlines(), 1):
+                if not line.strip():
+                    continue
+                entry = json.loads(line)
+                if not isinstance(entry, dict):
+                    raise ValueError(f"Memory entry must be an object: {memory_file}:{line_number}")
+                memories.append(entry)
+    memories = memories[-100:]
+
+    sections = []
+    if skills:
+        lines = [
+            "## Available Skills",
+            "",
+            "Reusable procedures are available below. Before a relevant task, use the bash tool to read the "
+            "referenced `SKILL.md` file and follow its full procedure.",
+        ]
+        for skill in skills:
+            description = f": {skill['description']}" if skill["description"] else ""
+            lines.append(f"- **{skill['name']}**{description} (file: `{skill['path']}`)")
+        sections.append("\n".join(lines))
+    if memories:
+        lines = [
+            "## Evolved Memory",
+            "",
+            "These are transferable observations retained from earlier task trajectories. Apply them only when "
+            "relevant to the current task.",
+        ]
+        lines.extend(f"- {json.dumps(entry, ensure_ascii=False, sort_keys=True)}" for entry in memories)
+        sections.append("\n".join(lines))
+    text = "\n\n".join(sections)
+    return text, {"skills_loaded": len(skills), "memories_loaded": len(memories)}
+
+
+def _apply_evolved_context(agent_kwargs, source_dir):
+    context, stats = _load_evolved_context(source_dir)
+    if context:
+        system_template = str(agent_kwargs.get("system_template") or "").rstrip()
+        agent_kwargs["system_template"] = f"{system_template}\n\n{context}\n"
+    return stats
+""".strip()
+
+
 RUNNER = (
     MODEL_SETUP
+    + "\n\n"
+    + EVOLVED_CONTEXT_SETUP
     + r"""
 import json
 from pathlib import Path
@@ -96,6 +176,7 @@ from minisweagent.environments.local import LocalEnvironment, LocalEnvironmentCo
 task = Path(os.environ["MINISWE_TASK_PATH"]).read_text()
 config = get_config_from_spec(os.environ.get("MINISWE_CONFIG", "mini"))
 agent_kwargs = _filtered(config.get("agent"), AgentConfig.model_fields)
+_apply_evolved_context(agent_kwargs, "/installed-agent/miniswe-source")
 env_kwargs = _filtered(config.get("environment"), LocalEnvironmentConfig.model_fields)
 env_kwargs["cwd"] = os.environ.get("MINISWE_CWD") or os.getcwd()
 env_kwargs["timeout"] = int(os.environ.get("MINISWE_ENV_TIMEOUT", env_kwargs.get("timeout") or 30))
@@ -109,14 +190,19 @@ print(json.dumps(agent.run(task), default=str))
 ).strip()
 
 
-MINISWE_PREFLIGHT = r"""
+MINISWE_PREFLIGHT = (
+    EVOLVED_CONTEXT_SETUP
+    + "\n\n"
+    + r"""
 from minisweagent.agents.default import DefaultAgent
 from minisweagent.config import get_config_from_spec
 from minisweagent.environments.local import LocalEnvironment
 
 assert DefaultAgent and LocalEnvironment and get_config_from_spec
+_load_evolved_context("/installed-agent/miniswe-source")
 print("EVOLVE_PREFLIGHT: miniswe_import_ok")
-""".strip()
+"""
+).strip()
 
 
 MODEL_PREFLIGHT = (
@@ -223,8 +309,8 @@ class MiniSweSourceAgent(MiniSweAgent):
     async def _runtime_phase(self, environment, command: str, code: str, *, env: dict[str, str]) -> None:
         try:
             await self.exec_as_agent(environment, command=command, env=env)
-        except Exception:
-            raise EvolveRuntimeInfrastructureError(f"EVOLVE_RUNTIME_INFRASTRUCTURE: {code}") from None
+        except Exception as error:
+            raise EvolveRuntimeInfrastructureError(f"EVOLVE_RUNTIME_INFRASTRUCTURE: {code}: {error}") from None
 
     def _preflight_command(self, marker: str, script: str) -> str:
         return (
@@ -236,20 +322,25 @@ class MiniSweSourceAgent(MiniSweAgent):
 
     def _runtime_evidence_command(self) -> str:
         mode = self._get_env("EVOLVE_CANDIDATE_SMOKE_MODE") or "normal"
-        payload = (
-            json.dumps(
-                {
-                    "schema_version": 1,
-                    "mode": mode,
-                    "frozen_sync": True,
-                    "miniswe_import": True,
-                    "model_path_init": mode != "container",
-                },
-                sort_keys=True,
-            )
-            + "\n"
+        payload = json.dumps(
+            {
+                "schema_version": 1,
+                "mode": mode,
+                "frozen_sync": True,
+                "miniswe_import": True,
+                "model_path_init": mode != "container",
+            },
+            sort_keys=True,
         )
-        script = f"from pathlib import Path; Path({RUNTIME_EVIDENCE_PATH!r}).write_text({payload!r})"
+        script = (
+            EVOLVED_CONTEXT_SETUP
+            + "\n"
+            + f"context, stats = _load_evolved_context({SOURCE_DIR!r})\n"
+            + f"payload = json.loads({payload!r})\n"
+            + "payload.update(stats)\n"
+            + "payload['context_chars'] = len(context)\n"
+            + f"Path({RUNTIME_EVIDENCE_PATH!r}).write_text(json.dumps(payload, sort_keys=True) + '\\n')"
+        )
         return f"mkdir -p /logs/agent; {VENV_PYTHON} -c {shlex.quote(script)}"
 
     def _host_uv_binary(self) -> Path | None:

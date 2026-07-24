@@ -84,6 +84,15 @@ def _case(tmp_path: Path):
     evidence = run_dir / "feedback" / "evidence"
     evidence.mkdir(parents=True)
     (evidence / "history.json").write_text(json.dumps([{"genid": "1"}]))
+    (evidence / "selected.md").write_text(
+        "# Selected execution evidence\n\n"
+        "Across failed tasks, the agent stopped after producing an approximation and did not verify exact output paths.\n"
+    )
+    (run_dir / "feedback" / "index.md").write_text(
+        "# Feedback Bundle\n\n"
+        "- [selected trace evidence](evidence/selected.md)\n"
+        "- [rollout and edit history](evidence/history.json)\n"
+    )
     workspace.mkdir(exist_ok=True)
     (workspace / "archive.jsonl").write_text('{"genid":"1","score":1}\n')
     handoff = workspace / "artifacts" / "generations" / "1" / "handoff.md"
@@ -126,9 +135,16 @@ def test_aevolve_reproduces_recent_summary_draft_and_workspace_mutation_cycle(
         assert "infra-noise" not in prompt
         assert "A draft about verifying generated artifacts" in prompt
         assert "Current Skills (1)" in prompt and "- existing" in prompt
-        assert "You CAN modify `target/prompt.md`" in prompt
-        assert "target/memory" in prompt and "You CAN add or prune" not in prompt
+        assert "You CAN modify any file under `target/`" in prompt
+        assert "Runtime prompt/config: `target/prompt.md`" in prompt
+        assert "Skills evolution: enabled" in prompt
+        assert "Memory evolution: disabled" in prompt
+        assert "target/memory" in prompt
         assert "x" * 300 not in prompt
+        assert "Selected execution evidence" in prompt
+        assert "did not verify exact output paths" in prompt
+        assert "runs/gen-2/feedback/evidence/selected.md" in prompt
+        assert "runs/gen-2/trace_analyzer/evidence/" in prompt
         assert "Preserve the `{{ instruction }}` placeholder" in prompt
         assert "selected parent's handoff" in prompt
         assert "/app/task/workspace/artifacts/generations/1/handoff.md" in prompt
@@ -182,3 +198,104 @@ def test_aevolve_runner_failure_keeps_drafts_and_usage(tmp_path: Path, monkeypat
     assert (checkout / "target" / "skills" / "_drafts" / "candidate.md").is_file()
     assert (run_dir / "meta_agent" / "output.txt").read_text() == "runner output"
     assert json.loads((run_dir / "meta_agent" / "usage.json").read_text()) == {"usd": 0.2}
+
+
+def test_aevolve_prompt_path_is_a_component_location_not_a_permission_boundary(tmp_path: Path) -> None:
+    module = _module()
+    checkout, _run_dir, ctx = _case(tmp_path)
+    ctx.config.update({"evolve_skills": False, "editable_roots": ["target"]})
+
+    prompt, _state = module.build_prompt(checkout, ctx)
+
+    assert "You CAN modify any file under `target/`" in prompt
+    assert "Runtime prompt/config: `target/prompt.md`" in prompt
+    assert "Skills evolution: disabled" in prompt
+    assert "Review draft skills" not in prompt
+    assert "Do not add standalone files to a disabled context layer" in prompt
+
+
+def test_aevolve_rejects_directory_as_prompt_path(tmp_path: Path) -> None:
+    module = _module()
+    checkout, _run_dir, ctx = _case(tmp_path)
+    ctx.config["prompt_path"] = "target"
+
+    with pytest.raises(ValueError, match="prompt_path must reference an existing file"):
+        module.build_prompt(checkout, ctx)
+
+
+def test_aevolve_bounds_inline_evidence_and_keeps_complete_path(tmp_path: Path) -> None:
+    module = _module()
+    checkout, run_dir, ctx = _case(tmp_path)
+    selected = run_dir / "feedback" / "evidence" / "selected.md"
+    selected.write_text("distinctive evidence prefix\n" + "z" * 2_000 + "\ndistinctive evidence suffix\n")
+    ctx.config["evidence_chars"] = 400
+
+    prompt, _state = module.build_prompt(checkout, ctx)
+
+    assert "distinctive evidence prefix" in prompt
+    assert "distinctive evidence suffix" not in prompt
+    assert "inline evidence truncated" in prompt
+    assert "runs/gen-2/feedback/" in prompt
+
+
+def test_aevolve_uses_operator_observation_when_feedback_bundle_is_missing(tmp_path: Path) -> None:
+    module = _module()
+    checkout, run_dir, ctx = _case(tmp_path)
+    (run_dir / "feedback" / "index.md").unlink()
+
+    prompt, _state = module.build_prompt(checkout, ctx, "fallback analyzer observation")
+
+    assert "fallback analyzer observation" in prompt
+
+
+def test_aevolve_trajectory_only_prompt_has_one_behavior_evidence_section_and_no_labels(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _module()
+    checkout, run_dir, ctx = _case(tmp_path)
+    trace_evidence = run_dir / "trace_analyzer" / "evidence"
+    trace_evidence.mkdir(parents=True)
+    (trace_evidence / "manifest.json").write_text(
+        json.dumps(
+            {
+                "selected_variant": "trajectory_only",
+                "evidence_policy": "trajectory_only",
+                "ground_truth_exposed": False,
+                "cases": 1,
+            }
+        )
+    )
+    selected = (
+        "### Agent Behavior Analysis (this batch)\n\n"
+        "You can ONLY see the agent's actions. You do NOT have access to actual test results.\n\n"
+        "```json\n"
+        '[{"task_id":"task-current","signals":{"n_tool_calls":2},'
+        '"compressed_trajectory":"Commands: 2, Errors: 1, Submitted: false",'
+        '"judge_verdict":{"score":2,"category":"debug","outcome":"likely failed",'
+        '"failure_reason":"stopped after an error"}}]\n'
+        "```\n"
+    )
+    (run_dir / "feedback" / "evidence" / "selected.md").write_text(selected)
+    ctx.config["trajectory_only"] = True
+    monkeypatch.setattr(
+        module,
+        "_case_summaries",
+        lambda _ctx: (_ for _ in ()).throw(AssertionError("trajectory-only must not read labeled cases")),
+    )
+
+    prompt, state = module.build_prompt(checkout, ctx)
+
+    assert state["trajectory_only"] is True
+    assert state["tasks_analyzed"] == 1
+    assert prompt.count("### Agent Behavior Analysis (this batch)") == 1
+    assert "### Task Summaries" not in prompt
+    assert "Trace-Analyzer Feedback" not in prompt
+    assert "feedback/index.md" not in prompt
+    assert '"success":' not in prompt
+    assert '"reward":' not in prompt
+    assert '"score":2' in prompt
+    assert "all checks passed" not in prompt
+    assert "missing output artifact" not in prompt
+    assert "Raw trace evidence:" not in prompt
+    assert "runs/gen-2/" not in prompt
+    assert "do not search for evaluator labels or test feedback" in prompt

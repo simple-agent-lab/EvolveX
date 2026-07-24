@@ -13,6 +13,7 @@ from evolve.frozen.interfaces import MetaAgentOperator, MetaAgentResult, Operato
 from evolve.patching import create_candidate_patch, load_surface_policy, patch_parent_ref
 from library.meta_agent.runners import run_agent, runner_name
 from library.meta_agent.support.artifacts import render_artifact_guidance
+from library.meta_agent.support.workspace import workspace_contract
 
 MANIFEST_START = "<AHE_CHANGE_MANIFEST>"
 MANIFEST_END = "</AHE_CHANGE_MANIFEST>"
@@ -81,9 +82,55 @@ def _safe_usage(usage: object) -> dict[str, Any]:
     return normalized
 
 
-def _surface_rules(checkout: Path) -> str:
-    surface = load_surface_policy(checkout)
-    return f"- Surface include: {surface.include}\n- Surface exclude: {surface.exclude}"
+def _required_text(path: Path, label: str) -> str:
+    try:
+        text = path.read_text().strip()
+    except OSError as exc:
+        raise RuntimeError(f"missing {label}: {path}") from exc
+    if not text:
+        raise RuntimeError(f"empty {label}: {path}")
+    return text
+
+
+def _prior_change_context(ctx: OperatorContext) -> str:
+    if ctx.parent in (None, "0"):
+        return "No prior change context (baseline generation)."
+    root = ctx.workspace / "runs" / f"gen-{ctx.parent}" / "meta_agent"
+    sections = []
+    for name in ("change_manifest.json", "output.txt", "changed.json", "patch.diff"):
+        path = root / name
+        try:
+            content = path.read_text().strip()
+        except OSError:
+            continue
+        if content:
+            sections.append(f"## {name}\n\n{content[:20000]}")
+    return "\n\n".join(sections) or "No prior change artifacts were preserved."
+
+
+def _overview(ctx: OperatorContext) -> str:
+    return _required_text(
+        ctx.run_dir / "trace_analyzer" / "analysis" / "overview.md",
+        "AHE debugger overview",
+    )
+
+
+def _evidence_paths(ctx: OperatorContext) -> str:
+    root = f"runs/gen-{ctx.genid}"
+    return "\n".join(
+        [
+            f"- Per-task details: `{root}/trace_analyzer/analysis/detail/`",
+            f"- Bounded cases: `{root}/trace_analyzer/evidence/cases.jsonl`",
+            f"- Raw rollout artifacts: `{root}/rollout/`",
+        ]
+    )
+
+
+def _recent_archive(ctx: OperatorContext) -> str:
+    path = ctx.workspace / "archive.jsonl"
+    if not path.is_file():
+        return "(archive not created yet)"
+    return "\n".join(path.read_text().splitlines()[-20:])
 
 
 def _extract_manifest(output: str, genid: str) -> dict[str, Any]:
@@ -154,7 +201,7 @@ def build_prompt(checkout: Path, observation: str, ctx: OperatorContext) -> str:
         f"Current generation artifacts: {current_run}\n"
         f"Raw trace evidence: {current_run / 'trace_analyzer' / 'evidence'}\n\n"
         f"{render_artifact_guidance(ctx, experiment)}\n\n"
-        f"# Surface Rules\n\n{_surface_rules(checkout)}\n\n"
+        f"{workspace_contract(checkout, ctx.config, action_paths=['target'])}\n\n"
         "# Required Final Output\n\nEdit the candidate directly. After checks and before the submission action, "
         f"write the following JSON object to `{MANIFEST_FILE}`. Write JSON only; this control file is removed "
         "before the candidate patch is created. Then submit normally.\n\n"

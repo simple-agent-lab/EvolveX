@@ -34,6 +34,7 @@ def _case(tmp_path: Path):
     skill.parent.mkdir(parents=True)
     (checkout / "target/prompt.md").write_text("Solve: {{ instruction }}\n")
     skill.write_text("Inspect, edit, test.\n")
+    (checkout / "program.md").write_text("protected\n")
     (checkout / "evolve.yaml").write_text(
         "experiment:\n  id: gepa\n"
         "surface:\n  include:\n    - target/**\n  exclude: []\n"
@@ -47,6 +48,33 @@ def _case(tmp_path: Path):
             {
                 "prompt": [{"Inputs": {"task_id": "a"}, "Feedback": {"outcome": "failed"}}],
                 "skill": [{"Inputs": {"task_id": "a"}, "Feedback": {"outcome": "failed"}}],
+            }
+        )
+    )
+    reflection = evidence / "reflection"
+    reflection.mkdir()
+    reflection.joinpath("00-prompt.json").write_text(
+        json.dumps([{"Inputs": {"task_id": "a"}, "Feedback": {"outcome": "failed"}}])
+    )
+    reflection.joinpath("01-skill.json").write_text(
+        json.dumps([{"Inputs": {"task_id": "a"}, "Feedback": {"outcome": "failed"}}])
+    )
+    evidence.joinpath("manifest.json").write_text(
+        json.dumps(
+            {
+                "selected_variant": "gepa",
+                "component_evidence": {
+                    "prompt": {
+                        "file": "reflection/00-prompt.json",
+                        "paths": ["target/prompt.md"],
+                        "records": 1,
+                    },
+                    "skill": {
+                        "file": "reflection/01-skill.json",
+                        "paths": ["target/skills/task-execution/SKILL.md"],
+                        "records": 1,
+                    },
+                },
             }
         )
     )
@@ -69,7 +97,9 @@ def _case(tmp_path: Path):
     return checkout, run_dir, ctx
 
 
-def test_gepa_meta_agent_edits_only_selected_component(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_gepa_meta_agent_reads_file_evidence_and_edits_live_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     module = _module()
     checkout, run_dir, ctx = _case(tmp_path)
 
@@ -81,6 +111,13 @@ def test_gepa_meta_agent_edits_only_selected_component(tmp_path: Path, monkeypat
         assert "/app/task/workspace/artifacts/generations/0/handoff.md" in prompt
         assert "/app/task/workspace/artifacts/generations/1" in prompt
         assert "GEPA HANDOFF BODY MUST STAY ON DISK" not in prompt
+        assert "You CAN modify any file under `target/`" in prompt
+        assert "This method does not impose a narrower per-proposal path scope." in prompt
+        assert "Runtime prompt/config: `target/prompt.md`" in prompt
+        assert "/app/task/workspace/runs/gen-1/trace_analyzer/evidence/manifest.json" in prompt
+        assert "/app/task/workspace/runs/gen-1/trace_analyzer/evidence/reflection/00-prompt.json" in prompt
+        assert '"task_id": "a"' not in prompt
+        assert "Solve: {{ instruction }}" not in prompt
         (root / "target/prompt.md").write_text("Be systematic. Solve: {{ instruction }}\n")
         return SimpleNamespace(output="edited", usage={"usd": 0.1})
 
@@ -91,13 +128,12 @@ def test_gepa_meta_agent_edits_only_selected_component(tmp_path: Path, monkeypat
     proposal = json.loads((run_dir / "meta_agent/proposal.json").read_text())
     assert proposal["components"] == ["prompt"]
     assert proposal["example_counts"] == {"prompt": 1}
-    assert json.loads((run_dir / "meta_agent/component-scope-check.json").read_text()) == {
-        "ok": True,
-        "violations": [],
-    }
+    assert proposal["evidence_files"] == {"prompt": "runs/gen-1/trace_analyzer/evidence/reflection/00-prompt.json"}
 
 
-def test_gepa_meta_agent_rejects_changes_outside_component(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_gepa_meta_agent_allows_changes_outside_focus_within_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     module = _module()
     checkout, _run_dir, ctx = _case(tmp_path)
 
@@ -106,5 +142,21 @@ def test_gepa_meta_agent_rejects_changes_outside_component(tmp_path: Path, monke
         return SimpleNamespace(output="edited", usage={"usd": 0})
 
     monkeypatch.setattr(module, "run_agent", fake_run)
-    with pytest.raises(SystemExit, match="outside the selected component"):
+    result = module.GepaMetaAgent().run(checkout, "unused", ctx)
+
+    assert result.changed == ["target/skills/task-execution/SKILL.md"]
+
+
+def test_gepa_meta_agent_rejects_changes_outside_mutable_surface(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _module()
+    checkout, _run_dir, ctx = _case(tmp_path)
+
+    def fake_run(root: Path, _prompt: str, _ctx: OperatorContext):
+        (root / "program.md").write_text("changed\n")
+        return SimpleNamespace(output="edited", usage={"usd": 0})
+
+    monkeypatch.setattr(module, "run_agent", fake_run)
+    with pytest.raises(SystemExit, match="outside the mutable surface"):
         module.GepaMetaAgent().run(checkout, "unused", ctx)

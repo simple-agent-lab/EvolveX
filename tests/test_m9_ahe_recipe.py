@@ -57,6 +57,7 @@ def test_ahe_recipe_initializes_harbor_miniswe_composition(tmp_path: Path) -> No
     config = (workspace / "evolve.yaml").read_text()
     assert "variant: ahe" in config
     assert "runner: harbor" in config
+    assert "expose_gate_data: true" in config
     assert "agent: evolve_harbor_agent:FileTaskMiniSweAgent" in config
     assert "editable_roots:" in config
     operators = operator_blocks(workspace)
