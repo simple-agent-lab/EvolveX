@@ -415,7 +415,9 @@ def _live_config(case: PreflightCase) -> dict[str, object]:
 
 
 def _child_environment(environment: Mapping[str, str]) -> dict[str, str]:
-    return {name: value for name, value in environment.items() if name in _LIVE_ENVIRONMENT and value}
+    child = {name: value for name, value in environment.items() if name in _LIVE_ENVIRONMENT and value}
+    child["MSWEA_CONFIGURED"] = "true"
+    return child
 
 
 def _sensitive_environment(environment: Mapping[str, str]) -> dict[str, str]:

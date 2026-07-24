@@ -530,6 +530,7 @@ def test_run_live_case_retains_a_valid_redacted_submission(tmp_path: Path):
     assert set(result["logs"]) == {"stdout", "stderr", "trajectory", "patch", "config"}
     assert "do-not-retain" not in (tmp_path / "out" / "cases" / case.name / "stdout.log").read_text()
     assert runner.environments[0] == {
+        "MSWEA_CONFIGURED": "true",
         "OPENAI_API_KEY": "do-not-retain",
         "OPENAI_BASE_URL": "https://model.test",
     }
