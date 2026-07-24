@@ -7,6 +7,7 @@ import asyncio
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 import uuid
@@ -531,6 +532,26 @@ def _trajectory_details(trajectory: Mapping[str, object]) -> tuple[dict[str, obj
     return dict(effective), tool_calls
 
 
+def _executed_programs(command: str) -> set[str]:
+    lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|")
+    lexer.whitespace_split = True
+    programs: set[str] = set()
+    at_command_start = True
+    for token in lexer:
+        if token and all(character in ";&|" for character in token):
+            at_command_start = True
+            continue
+        if not at_command_start:
+            continue
+        if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", token):
+            continue
+        if token in {"if", "then", "else", "elif", "fi", "for", "while", "until", "do", "done", "{"}:
+            continue
+        programs.add(Path(token).name)
+        at_command_start = False
+    return programs
+
+
 def _protocol_evidence(tool_calls: Sequence[Mapping[str, object]], *, require_rg: bool) -> dict[str, object]:
     commands: list[str] = []
     for call in tool_calls:
@@ -543,8 +564,9 @@ def _protocol_evidence(tool_calls: Sequence[Mapping[str, object]], *, require_rg
             continue
         if isinstance(decoded, dict) and isinstance(decoded.get("command"), str):
             commands.append(decoded["command"])
-    used_python = any(re.search(r"(?:^|[\s;&|])python(?:3(?:\.\d+)*)?(?=\s|$)", command) for command in commands)
-    used_rg = any(re.search(r"(?:^|[\s;&|])rg(?=\s|$)", command) for command in commands)
+    programs = set().union(*(_executed_programs(command) for command in commands), set())
+    used_python = any(re.fullmatch(r"python(?:3(?:\.\d+)*)?", program) for program in programs)
+    used_rg = "rg" in programs
     submission_command = "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"
     submitted = any(command.strip() == submission_command for command in commands)
     missing = [
@@ -585,6 +607,19 @@ def _live_result(
         "declared_miniswe_version": case.miniswe_version,
         "requested_max_output_tokens": _LIVE_MAX_OUTPUT_TOKENS,
         "requested_reasoning_effort": "low",
+        "observed_miniswe_version": None,
+        "agent_exit_status": None,
+        "protocol_evidence": {
+            "tool_call_count": 0,
+            "used_python": False,
+            "used_rg": False,
+            "submission_command": "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT",
+            "submitted": False,
+        },
+        "artifact_contract": {"passed": False, "changed_paths": []},
+        "verification": {"passed": False, "returncode": None},
+        "changed_paths": [],
+        "patch_bytes": 0,
         "container_name": container_name,
         "passed": passed,
         "failure_boundary": failure_boundary,
@@ -813,6 +848,22 @@ async def run_live(
                 "name": case.name,
                 "image": case.image,
                 "image_id": case.expected_image_id,
+                "declared_miniswe_version": case.miniswe_version,
+                "requested_max_output_tokens": _LIVE_MAX_OUTPUT_TOKENS,
+                "requested_reasoning_effort": "low",
+                "observed_miniswe_version": None,
+                "agent_exit_status": None,
+                "protocol_evidence": {
+                    "tool_call_count": 0,
+                    "used_python": False,
+                    "used_rg": False,
+                    "submission_command": "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT",
+                    "submitted": False,
+                },
+                "artifact_contract": {"passed": False, "changed_paths": []},
+                "verification": {"passed": False, "returncode": None},
+                "changed_paths": [],
+                "patch_bytes": 0,
                 "passed": False,
                 "failure_boundary": "agent_startup",
                 "failures": [redact(str(error), environment)],

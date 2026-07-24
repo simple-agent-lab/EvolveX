@@ -526,6 +526,21 @@ def test_protocol_evidence_rejects_missing_required_calls(command: str, missing:
         preflight._protocol_evidence(calls, require_rg=True)
 
 
+def test_protocol_evidence_does_not_treat_echoed_tool_names_as_execution():
+    calls = [
+        {
+            "type": "function_call",
+            "name": "bash",
+            "arguments": json.dumps(
+                {"command": "echo rg; echo python; echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT"}
+            ),
+        }
+    ]
+
+    with pytest.raises(ValueError, match="python tool call, rg tool call"):
+        preflight._protocol_evidence(calls, require_rg=True)
+
+
 @pytest.mark.parametrize(
     ("outcome", "boundary"),
     [
@@ -544,6 +559,13 @@ def test_run_live_case_classifies_the_first_failed_protocol_boundary(tmp_path: P
 
     assert result["passed"] is False
     assert result["failure_boundary"] == boundary
+    assert result["declared_miniswe_version"] == case.miniswe_version
+    assert result["observed_miniswe_version"] is None
+    assert result["protocol_evidence"]["tool_call_count"] == 0
+    assert result["artifact_contract"]["passed"] is False
+    assert result["verification"]["passed"] is False
+    assert result["changed_paths"] == []
+    assert result["patch_bytes"] == 0
     assert (tmp_path / "out" / "cases" / case.name / "case.json").is_file()
 
 
