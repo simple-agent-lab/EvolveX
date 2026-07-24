@@ -219,10 +219,15 @@ shape, and evaluator template.
 Example:
 
 ```bash
-evolve init /tmp/evolve-ahe --recipe ahe --dataset /absolute/path/to/harbor/tasks
+cd /path/to/simple-evolve-agent
+evolve init /tmp/evolve-ahe --recipe ahe
 evolve run /tmp/evolve-ahe --max-generations 1
 evolve status /tmp/evolve-ahe
 ```
+
+The AHE and HyperAgents defaults resolve `terminal-bench-2-10-10-10`
+relative to the project root and freeze all 30 curated instances as one
+optimization set during initialization.
 
 ## CLI Verbs
 

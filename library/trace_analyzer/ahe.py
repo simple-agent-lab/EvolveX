@@ -31,6 +31,7 @@ COLLECTION_LIMIT = 32
 MAX_NESTING = 6
 EXPANSION_FACTOR = 8
 TRUNCATION_KEY = "__ahe_truncated__"
+DEBUGGER_EVIDENCE_PATH = "/app/task/inputs/trace-evidence.json"
 _SECRET_NAME = r"[a-z0-9_-]*(?:api[_-]?key|access[_-]?token|auth(?:orization)?|secret|password)"
 _SECRET_DOUBLE_QUOTED = re.compile(rf'(?i)\b({_SECRET_NAME})\b(["\']?)(\s*[:=]\s*)"(?:\\.|[^"\\\r\n])*"')
 _SECRET_SINGLE_QUOTED = re.compile(rf"(?i)\b({_SECRET_NAME})\b([\"']?)(\s*[:=]\s*)'(?:\\.|[^'\\\r\n])*'")
@@ -217,6 +218,7 @@ class DebuggerResult:
     job: TaskAnalysisJob
     response: str
     usage: dict[str, Any]
+    error: str | None = None
 
 
 def _build_jobs(cases: list[Case], max_tasks: int) -> list[TaskAnalysisJob]:
@@ -276,8 +278,8 @@ FRAGILITY RISK:
 Identify the common harness behavior across traces."""
 
 
-def _debugger_prompt(job: TaskAnalysisJob) -> str:
-    trace_labels = ", ".join(
+def _trace_labels(job: TaskAnalysisJob) -> str:
+    return ", ".join(
         f"trace{index:02d}="
         + (
             "PASS"
@@ -288,22 +290,36 @@ def _debugger_prompt(job: TaskAnalysisJob) -> str:
         )
         for index, case in enumerate(job.cases, start=1)
     )
+
+
+def _debugger_evidence(job: TaskAnalysisJob) -> str:
+    return (
+        json.dumps(
+            {
+                "task_name": job.task_name,
+                "trace_labels": _trace_labels(job),
+                "traces": list(job.cases),
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n"
+    )
+
+
+def _debugger_prompt(job: TaskAnalysisJob) -> str:
     if job.mode == "debug":
         template = _DEBUG_K1 if len(job.cases) == 1 else _DEBUG_KN
     else:
         template = _SUMMARY_K1 if len(job.cases) == 1 else _SUMMARY_KN
-    evidence = "\n\n".join(
-        f"## trace{index:02d}\n```json\n{json.dumps(case, indent=2, sort_keys=True)}\n```"
-        for index, case in enumerate(job.cases, start=1)
-    )
     return (
         template.format(
             task_name=job.task_name,
             n_total=len(job.cases),
-            trace_labels=trace_labels,
+            trace_labels=_trace_labels(job),
         )
-        + "\n\n# Bounded trace evidence\n\n"
-        + evidence
+        + "\n\n# Trace evidence\n\n"
+        + f"Read the complete bounded trace evidence from `{DEBUGGER_EVIDENCE_PATH}` before writing the report."
     )
 
 
@@ -332,11 +348,22 @@ _DEBUGGER_RUNNER_KEYS = (
 )
 
 
-def _debugger_runner_config(checkout: Path) -> dict[str, Any]:
+def _debugger_runner_config(checkout: Path, analyzer_config: dict[str, Any]) -> dict[str, Any]:
     meta = operator_blocks(checkout).get("meta_agent")
     if not isinstance(meta, dict):
         raise RuntimeError("AHE debugger requires operators.meta_agent configuration")
     config = {key: meta[key] for key in _DEBUGGER_RUNNER_KEYS if key in meta}
+    debugger_agent_kwargs = analyzer_config.get("debugger_agent_kwargs")
+    if debugger_agent_kwargs is not None:
+        if not isinstance(debugger_agent_kwargs, dict):
+            raise RuntimeError("AHE debugger_agent_kwargs must be a mapping")
+        inherited_agent_kwargs = config.get("agent_kwargs")
+        if inherited_agent_kwargs is not None and not isinstance(inherited_agent_kwargs, dict):
+            raise RuntimeError("AHE meta-agent agent_kwargs must be a mapping")
+        config["agent_kwargs"] = {
+            **(inherited_agent_kwargs or {}),
+            **debugger_agent_kwargs,
+        }
     config["max_retries"] = 0
     if not config.get("agent") or not config.get("model"):
         raise RuntimeError("AHE debugger requires meta-agent agent and model")
@@ -352,7 +379,7 @@ def _safe_task_name(task_name: str) -> str:
 def _run_debugger_job(checkout: Path, ctx: OperatorContext, job: TaskAnalysisJob) -> DebuggerResult:
     attempts = _positive_int(ctx.config.get("retry_attempts"), 3)
     timeout_s = float(ctx.config.get("timeout_per_task") or 600)
-    runner_config = _debugger_runner_config(checkout)
+    runner_config = _debugger_runner_config(checkout, ctx.config)
     runner_ctx = replace(ctx, config=runner_config)
     slug = _safe_task_name(job.task_name)
     last_error: AgentCommandError | None = None
@@ -365,6 +392,7 @@ def _run_debugger_job(checkout: Path, ctx: OperatorContext, job: TaskAnalysisJob
                 output_dir=ctx.run_dir / "trace_analyzer" / "debugger" / slug / f"attempt-{attempt}",
                 job_name=f"ahe-debug-{slug}-attempt-{attempt}",
                 timeout_s=timeout_s,
+                input_files={"trace-evidence.json": _debugger_evidence(job)},
             )
             return DebuggerResult(job, result.output.strip(), dict(result.usage))
         except AgentCommandError as exc:
@@ -373,13 +401,28 @@ def _run_debugger_job(checkout: Path, ctx: OperatorContext, job: TaskAnalysisJob
     raise last_error
 
 
+def _run_debugger_job_safe(checkout: Path, ctx: OperatorContext, job: TaskAnalysisJob) -> DebuggerResult:
+    try:
+        return _run_debugger_job(checkout, ctx, job)
+    except AgentCommandError as exc:
+        error = _clip(str(exc), 500)
+        response = (
+            f"ANALYSIS UNAVAILABLE: The debugger failed after its configured attempts: {error}\n\n"
+            f"TRACE EVIDENCE: All {len(job.cases)} bounded trace(s) remain available in the task detail and "
+            "evidence files.\n\n"
+            "NEXT ACTION: Do not infer a harness change from this missing analysis; inspect the preserved traces "
+            "or rely on the other completed task reports."
+        )
+        return DebuggerResult(job, response, dict(exc.usage), error=error)
+
+
 def _run_debugger_jobs(checkout: Path, ctx: OperatorContext, jobs: list[TaskAnalysisJob]) -> list[DebuggerResult]:
     if not jobs:
         raise RuntimeError("AHE debugger found no rollout tasks")
-    completed = [_run_debugger_job(checkout, ctx, jobs[0])]
+    completed = [_run_debugger_job_safe(checkout, ctx, jobs[0])]
     workers = _positive_int(ctx.config.get("max_concurrent"), 16)
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = [pool.submit(_run_debugger_job, checkout, ctx, job) for job in jobs[1:]]
+        futures = [pool.submit(_run_debugger_job_safe, checkout, ctx, job) for job in jobs[1:]]
         completed.extend(future.result() for future in concurrent.futures.as_completed(futures))
     by_task = {result.job.task_name: result for result in completed}
     return [by_task[job.task_name] for job in jobs]
@@ -696,6 +739,7 @@ class AheTraceAnalyzer(TraceAnalyzerOperator):
         _write_json(root / "analysis" / "change_evaluation.json", change_evaluation)
         summary = {key: value for key, value in overview.items() if key != "cases"}
         summary["debugger_usd"] = round(sum(float(result.usage.get("usd") or 0) for result in results), 6)
+        summary["debugger_errors"] = sum(result.error is not None for result in results)
         return TraceAnalyzerResult(summary=summary, artifacts=[*ARTIFACTS, *detail_artifacts])
 
 

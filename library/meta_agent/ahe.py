@@ -12,6 +12,7 @@ from evolve.frozen import sdk
 from evolve.frozen.interfaces import MetaAgentOperator, MetaAgentResult, OperatorContext
 from evolve.patching import create_candidate_patch, load_surface_policy, patch_parent_ref
 from library.meta_agent.runners import run_agent, runner_name
+from library.meta_agent.support.artifacts import render_artifact_guidance
 from library.meta_agent.support.workspace import workspace_contract
 
 MANIFEST_START = "<AHE_CHANGE_MANIFEST>"
@@ -161,10 +162,6 @@ def _read_manifest_file(checkout: Path, genid: str) -> dict[str, Any]:
 
 def build_prompt(checkout: Path, observation: str, ctx: OperatorContext) -> str:
     del observation
-    attribution = _required_text(
-        ctx.run_dir / "trace_analyzer" / "analysis" / "change_evaluation.json",
-        "AHE change evaluation",
-    )
     template = dict(MANIFEST_TEMPLATE)
     template["iteration"] = int(ctx.genid)
     if runner_name(ctx) == "harbor":
@@ -175,18 +172,35 @@ def build_prompt(checkout: Path, observation: str, ctx: OperatorContext) -> str:
         repository = checkout
         current_run = ctx.run_dir
         experiment = ctx.workspace
+    analysis = current_run / "trace_analyzer" / "analysis"
+    overview = analysis / "overview.md"
+    attribution = analysis / "change_evaluation.json"
+    details = analysis / "detail"
+    cases = current_run / "trace_analyzer" / "evidence" / "cases.jsonl"
+    rollout = current_run / "rollout"
+    if ctx.parent in (None, "0"):
+        prior_change = "No selected-parent meta-agent change exists for this baseline generation."
+    else:
+        parent_meta_agent = experiment / "runs" / f"gen-{ctx.parent}" / "meta_agent"
+        prior_change = (
+            "Inspect the selected parent manifest and patch. "
+            f"Selected parent meta-agent artifacts: `{parent_meta_agent}`"
+        )
     return (
         f"{AHE_PROMPT.rstrip()}\n\n"
-        f"# Current Debugger Overview\n\n{_overview(ctx)}\n\n"
-        f"# Evidence Paths\n\n{_evidence_paths(ctx)}\n\n"
-        f"# Change Attribution\n\n```json\n{attribution}\n```\n\n"
-        f"# Previous Change Context\n\n{_prior_change_context(ctx)}\n\n"
-        f"# Recent Archive Outcomes\n\n```jsonl\n{_recent_archive(ctx)}\n```\n\n"
+        "# Evidence reading order\n\n"
+        f"1. Read `{overview}`.\n"
+        f"2. Read `{attribution}` and decide KEEP, REVISE, or ROLLBACK + PIVOT.\n"
+        f"3. Read only the relevant per-task reports under `{details}`.\n"
+        f"4. {prior_change}\n"
+        f"5. Use `{cases}` and raw rollout artifacts under `{rollout}` only to resolve missing or conflicting evidence.\n"
+        "6. Edit the candidate and write the required AHE change manifest.\n\n"
         "# Evidence Locations\n\n"
         f"Repository: {repository}\n"
         f"Archive: {experiment / 'archive.jsonl'}\n"
         f"Current generation artifacts: {current_run}\n"
         f"Raw trace evidence: {current_run / 'trace_analyzer' / 'evidence'}\n\n"
+        f"{render_artifact_guidance(ctx, experiment)}\n\n"
         f"{workspace_contract(checkout, ctx.config, action_paths=['target'])}\n\n"
         "# Required Final Output\n\nEdit the candidate directly. After checks and before the submission action, "
         f"write the following JSON object to `{MANIFEST_FILE}`. Write JSON only; this control file is removed "

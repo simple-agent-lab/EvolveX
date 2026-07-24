@@ -34,6 +34,23 @@ def test_codex_meta_agent_always_uses_host_auth_json(monkeypatch: pytest.MonkeyP
     assert "CODEX_FORCE_AUTH_JSON" not in module._agent_env({"agent": "mini-swe-agent"})
 
 
+def test_harbor_meta_agent_forwards_openai_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _harbor_runner_module()
+    monkeypatch.setenv("OPENAI_API_KEY", "workspace-key")
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://workspace.example/v1")
+
+    assert module._agent_env({"agent": "mini-swe-agent"}) == {
+        "OPENAI_API_KEY": "workspace-key",
+        "OPENAI_BASE_URL": "https://workspace.example/v1",
+    }
+    assert module._agent_env(
+        {
+            "agent": "mini-swe-agent",
+            "agent_env": {"OPENAI_BASE_URL": "https://configured.example/v1"},
+        }
+    )["OPENAI_BASE_URL"] == "https://configured.example/v1"
+
+
 def test_harbor_rejects_oversized_instruction_with_unsafe_agent(tmp_path: Path) -> None:
     runner = _harbor_runner_module()
     prompt = tmp_path / "prompt.md"
@@ -74,6 +91,7 @@ def _checkout(tmp_path: Path) -> tuple[Path, Path]:
     (checkout / "target" / "agent.py").write_text("print('parent')\n")
     (checkout / "pyproject.toml").write_text("[project]\nname='test'\nversion='0'\n")
     (checkout / "uv.lock").write_text("version = 1\n")
+    (checkout / ".gitignore").write_text("artifacts/\n")
     (checkout / "target" / "obsolete.txt").write_text("remove me\n")
     (checkout / "operators" / "meta_agent.md").write_text(
         "# Meta-Agent\n\nImprove the target from the supplied failure evidence.\n"
@@ -93,6 +111,11 @@ def _checkout(tmp_path: Path) -> tuple[Path, Path]:
     _git(checkout, "commit", "-qm", "parent")
     _git(checkout, "tag", "gen/0")
     (checkout / "archive.jsonl").write_text('{"genid":"0"}\n')
+    (checkout / "artifacts" / "user").mkdir(parents=True)
+    (checkout / "artifacts" / "user" / "brief.md").write_text("USER CONTEXT\n")
+    parent_artifacts = checkout / "artifacts" / "generations" / "0"
+    parent_artifacts.mkdir(parents=True)
+    (parent_artifacts / "handoff.md").write_text("PARENT HANDOFF\n")
     evidence = run_dir / "trace_analyzer" / "evidence"
     evidence.mkdir(parents=True)
     (evidence / "raw_traces.jsonl").write_text('{"task_name":"task-a"}\n')
@@ -159,7 +182,6 @@ if "--config" in sys.argv:
     readonly = "/app/task/workspace" not in compile_config.get("artifacts", [])
     miniswe = True
 else:
-    miniswe = False
     if "--no-scan" not in sys.argv:
         raise SystemExit("expected --no-scan")
     readonly = os.environ.get("FAKE_HARBOR_MODE") == "readonly"
@@ -170,8 +192,10 @@ else:
         raise SystemExit("expected /app/task/workspace artifact")
     if option("--workdir") != "/app":
         raise SystemExit("expected /app workdir")
-    if option("--agent") != "mini-swe-agent":
+    agent_name = option("--agent")
+    if agent_name not in ("mini-swe-agent", "evolve_harbor_agent:FileTaskMiniSweAgent"):
         raise SystemExit("unexpected agent")
+    miniswe = agent_name in ("mini-swe-agent", "evolve_harbor_agent:FileTaskMiniSweAgent")
     if option("--model") != "gpt-test":
         raise SystemExit("expected gpt-test model")
     source = Path(option("--path", "-p"))
@@ -194,6 +218,12 @@ if not readonly:
         raise SystemExit("workspace exposes evaluator data")
     if not (workspace / "runs" / "gen-1" / "trace_analyzer" / "evidence" / "raw_traces.jsonl").is_file():
         raise SystemExit("workspace is missing current trace evidence")
+    if (workspace / "artifacts" / "user" / "brief.md").read_text() != "USER CONTEXT\\n":
+        raise SystemExit("workspace is missing user artifacts")
+    if (workspace / "artifacts" / "generations" / "0" / "handoff.md").read_text() != "PARENT HANDOFF\\n":
+        raise SystemExit("workspace is missing selected-parent artifacts")
+    if not (workspace / "artifacts" / "generations" / "1").is_dir():
+        raise SystemExit("workspace is missing current generation artifact directory")
     shutil.copytree(workspace, artifact, symlinks=True)
 
     (artifact / "target" / "agent.py").write_text("print('child')\\n")
@@ -201,6 +231,19 @@ if not readonly:
     (artifact / "target" / "obsolete.txt").unlink()
     if (artifact / "operators").exists():
         (artifact / "operators" / "meta_agent.md").write_text("# Changed by Harbor\\n")
+    current_artifacts = artifact / "artifacts" / "generations" / "1"
+    (current_artifacts / "handoff.md").write_text("NEXT HANDOFF\\n")
+    (current_artifacts / "notes.txt").write_text("DURABLE NOTE\\n")
+    if os.environ.get("FAKE_HARBOR_MODE") == "artifact-protected-edit":
+        (artifact / "artifacts" / "user" / "brief.md").write_text("COMPROMISED\\n")
+        (artifact / "artifacts" / "generations" / "0" / "handoff.md").write_text("COMPROMISED\\n")
+    if os.environ.get("FAKE_HARBOR_MODE") == "artifact-ancestor-symlink":
+        shutil.rmtree(artifact / "artifacts" / "generations")
+        escaped = artifact.parent / "outside-artifacts" / "1"
+        escaped.mkdir(parents=True)
+        (escaped / "handoff.md").write_text("ESCAPED\\n")
+        target = os.path.relpath(escaped.parent, artifact / "artifacts")
+        (artifact / "artifacts" / "generations").symlink_to(target, target_is_directory=True)
     if os.environ.get("FAKE_HARBOR_MODE") == "artifact-symlink":
         (artifact / "target" / "link.txt").symlink_to("agent.py")
     if os.environ.get("FAKE_HARBOR_MODE") == "protected-edit":
@@ -331,6 +374,8 @@ def test_harbor_meta_agent_round_trips_target_and_writes_artifacts(
     assert (checkout / "target" / "agent.py").read_text() == "print('child')\n"
     assert (checkout / "target" / "added.txt").read_text() == "created in Harbor\n"
     assert not (checkout / "target" / "obsolete.txt").exists()
+    assert (checkout / "artifacts" / "generations" / "1" / "handoff.md").read_text() == "NEXT HANDOFF\n"
+    assert (checkout / "artifacts" / "generations" / "1" / "notes.txt").read_text() == "DURABLE NOTE\n"
     meta_dir = run_dir / "meta_agent"
     usage = result.usage
     assert usage["usd"] == 0.25
@@ -349,6 +394,38 @@ def test_harbor_meta_agent_round_trips_target_and_writes_artifacts(
     assert command[command.index("--workdir") + 1] == "/app"
     assert list((meta_dir / "harbor" / "jobs").glob("*/*/result.json"))
     assert marker.read_text() == "called"
+
+
+def test_harbor_discards_returned_edits_to_user_and_prior_artifacts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    checkout, run_dir = _checkout(tmp_path)
+    bin_dir = tmp_path / "bin"
+    _install_fake_harbor(bin_dir)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("FAKE_HARBOR_MODE", "artifact-protected-edit")
+
+    _harbor_runner_module().run_agent(checkout, "failure evidence", _ctx(checkout, run_dir))
+
+    assert (checkout / "artifacts" / "user" / "brief.md").read_text() == "USER CONTEXT\n"
+    assert (checkout / "artifacts" / "generations" / "0" / "handoff.md").read_text() == "PARENT HANDOFF\n"
+    assert (checkout / "artifacts" / "generations" / "1" / "handoff.md").read_text() == "NEXT HANDOFF\n"
+
+
+def test_harbor_rejects_symlinked_artifact_ancestor_before_install(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    checkout, run_dir = _checkout(tmp_path)
+    bin_dir = tmp_path / "bin"
+    _install_fake_harbor(bin_dir)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("FAKE_HARBOR_MODE", "artifact-ancestor-symlink")
+
+    with pytest.raises(AgentCommandError, match="symlink"):
+        _harbor_runner_module().run_agent(checkout, "failure evidence", _ctx(checkout, run_dir))
+
+    assert (checkout / "target" / "agent.py").read_text() == "print('parent')\n"
+    assert not (checkout / "artifacts" / "generations" / "1" / "handoff.md").exists()
 
 
 def test_harbor_meta_agent_injects_staged_miniswe_candidate_source(
@@ -381,14 +458,25 @@ def test_harbor_meta_agent_injects_staged_miniswe_candidate_source(
     ]
 
 
-def test_harbor_meta_agent_rejects_unsuccessful_miniswe_exit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize(
+    "agent",
+    [
+        "evolve_harbor_adapter:MiniSweSourceAgent",
+        "evolve_harbor_agent:FileTaskMiniSweAgent",
+    ],
+)
+def test_harbor_meta_agent_rejects_unsuccessful_miniswe_exit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    agent: str,
+) -> None:
     checkout, run_dir = _checkout(tmp_path)
     bin_dir = tmp_path / "bin"
     _install_fake_harbor(bin_dir)
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
     monkeypatch.setenv("FAKE_HARBOR_MODE", "miniswe-exit-error")
     ctx = _ctx(checkout, run_dir)
-    ctx.config["agent"] = "evolve_harbor_adapter:MiniSweSourceAgent"
+    ctx.config["agent"] = agent
 
     with pytest.raises(AgentCommandError, match="exit_status=RepeatedFormatError"):
         _harbor_runner_module().run_agent(checkout, "failure evidence", ctx)
@@ -446,6 +534,30 @@ def test_harbor_readonly_agent_returns_response_without_candidate_artifact(
     command = json.loads((output_dir / "command.json").read_text())
     assert "--artifact" not in command
     assert not (checkout / "target" / "added.txt").exists()
+
+
+def test_harbor_readonly_agent_mounts_input_files_under_task_inputs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    checkout, run_dir = _checkout(tmp_path)
+    bin_dir = tmp_path / "bin"
+    _install_fake_harbor(bin_dir)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("FAKE_HARBOR_MODE", "readonly")
+    runner = _harbor_runner_module()
+    output_dir = run_dir / "trace_analyzer" / "debugger" / "task-a" / "attempt-1"
+
+    runner.run_readonly_agent(
+        checkout,
+        "Analyze the mounted trace evidence",
+        _ctx(checkout, run_dir),
+        output_dir=output_dir,
+        job_name="ahe-debug-task-a-attempt-1",
+        timeout_s=30,
+        input_files={"trace-evidence.json": '{"task_name":"task-a"}\n'},
+    )
+
+    assert (output_dir / "task" / "inputs" / "trace-evidence.json").read_text() == ('{"task_name":"task-a"}\n')
 
 
 def test_harbor_meta_agent_does_not_pass_run_only_timeout_multiplier(tmp_path: Path) -> None:

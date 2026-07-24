@@ -1,13 +1,74 @@
 import json
+import subprocess
 from pathlib import Path
 
 from conftest import git, run_evolve, write_locked_miniswe_seed
 
 from evolve.config import surface_lists
+from evolve.workspace import _write_target
 
 
 def _miniswe_seed(root: Path) -> Path:
     return write_locked_miniswe_seed(root / "miniswe")
+
+
+def test_git_seed_revision_freezes_exact_commit(tmp_path: Path) -> None:
+    seed = tmp_path / "seed"
+    seed.mkdir()
+    subprocess.run(["git", "init", str(seed)], check=True, capture_output=True, text=True)
+    git(seed, "config", "user.name", "Seed Test")
+    git(seed, "config", "user.email", "seed@example.invalid")
+    (seed / "uv.lock").write_text("version = 1\nrevision = 3\nrequires-python = '>=3.11'\n")
+    git(seed, "add", "uv.lock")
+    git(seed, "commit", "-m", "locked seed")
+    locked_commit = git(seed, "rev-parse", "HEAD")
+    (seed / "uv.lock").unlink()
+    (seed / "pyproject.toml").write_text("[project]\nname='unlocked'\nversion='0'\n")
+    git(seed, "add", "-A")
+    git(seed, "commit", "-m", "remove lock")
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    _write_target(
+        workspace,
+        {
+            "seed": seed.as_uri(),
+            "revision": locked_commit,
+            "harbor_agent": "miniswe-source",
+        },
+    )
+
+    assert (workspace / "target" / "uv.lock").is_file()
+    upstream = json.loads((workspace / "target" / "UPSTREAM.json").read_text())
+    assert upstream == {"commit": locked_commit, "remote": seed.as_uri()}
+
+
+def test_git_seed_can_explicitly_generate_missing_lock(tmp_path: Path) -> None:
+    seed = tmp_path / "seed"
+    seed.mkdir()
+    subprocess.run(["git", "init", str(seed)], check=True, capture_output=True, text=True)
+    git(seed, "config", "user.name", "Seed Test")
+    git(seed, "config", "user.email", "seed@example.invalid")
+    (seed / "pyproject.toml").write_text(
+        "[project]\nname='unlocked-seed'\nversion='0'\nrequires-python='>=3.11'\ndependencies=[]\n"
+    )
+    git(seed, "add", "pyproject.toml")
+    git(seed, "commit", "-m", "unlocked seed")
+    seed_commit = git(seed, "rev-parse", "HEAD")
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    _write_target(
+        workspace,
+        {
+            "seed": seed.as_uri(),
+            "revision": seed_commit,
+            "generate_lock": True,
+            "harbor_agent": "miniswe-source",
+        },
+    )
+
+    assert (workspace / "target" / "uv.lock").is_file()
 
 
 def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
@@ -56,11 +117,14 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
         "evaluator/parse_score.py",
         "evaluator/engines/local.sh",
         "runs",
+        "artifacts/user",
+        "artifacts/generations",
         ".gitignore",
         "archive.jsonl",
     ]
     for relative_path in expected_paths:
         assert (workspace / relative_path).exists(), relative_path
+    assert "artifacts/" in (workspace / ".gitignore").read_text().splitlines()
     assert not (workspace / "operators" / "mutate.py").exists()
     assert not (workspace / "operators" / "mutate.md").exists()
     assert not (workspace / "operators" / "mutation_brief.md").exists()

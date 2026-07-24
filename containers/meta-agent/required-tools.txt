@@ -1,0 +1,15 @@
+bash
+git
+curl
+diff
+file
+find
+jq
+patch
+python
+rg
+rsync
+sed
+tree
+uv
+mini-swe-agent

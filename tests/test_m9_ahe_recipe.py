@@ -51,7 +51,8 @@ def test_ahe_recipe_initializes_harbor_miniswe_composition(tmp_path: Path) -> No
     assert not (workspace / "target/harbor_agent.py").exists()
     assert not (workspace / "library/meta_agent/support/ahe_manifest.py").exists()
     assert (workspace / "evaluator/agent.env").read_text() == (
-        "MINISWE_COST_LIMIT=0\nMINISWE_ENV_TIMEOUT=30\nMINISWE_REASONING_EFFORT=high\nMINISWE_STEP_LIMIT=100\n"
+        "MINISWE_COST_LIMIT=0\nMINISWE_ENV_TIMEOUT=30\nMINISWE_REASONING_EFFORT=high\n"
+        "MINISWE_STEP_LIMIT=100\n"
     )
     config = (workspace / "evolve.yaml").read_text()
     assert "variant: ahe" in config
@@ -60,6 +61,7 @@ def test_ahe_recipe_initializes_harbor_miniswe_composition(tmp_path: Path) -> No
     assert "agent: evolve_harbor_agent:FileTaskMiniSweAgent" in config
     assert "editable_roots:" in config
     operators = operator_blocks(workspace)
+    assert "agent_env" not in operators["meta_agent"]
     assert {name: operator_timeout(operators, name) for name in ("rollout", "trace_analyzer", "meta_agent")} == {
         "rollout": 600,
         "trace_analyzer": 3600,
@@ -67,14 +69,20 @@ def test_ahe_recipe_initializes_harbor_miniswe_composition(tmp_path: Path) -> No
     }
     assert operators["trace_analyzer"] == {
         "variant": "ahe",
-        "max_tasks": 90,
-        "max_concurrent": 4,
+        "max_tasks": 30,
+        "max_concurrent": 10,
         "timeout_per_task": 600,
         "retry_attempts": 3,
+        "debugger_agent_kwargs": {"reasoning_effort": "high", "max_tokens": 64000},
         "field_limit": 2000,
         "timeout_s": 3600,
     }
     config = (workspace / "evolve.yaml").read_text()
     assert "budget_usd" not in config
     assert "max_cases" not in config
-    assert "  k: 2" in config
+    assert "  task_scope: full" in config
+    assert "  evaluation_split: train" in config
+    assert "  tasks_per_round: 30" in config
+    assert "\n  split:" not in config
+    assert "  k: 1" in config
+    assert "  n_concurrent: 10" in config

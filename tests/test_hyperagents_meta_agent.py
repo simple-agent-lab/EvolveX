@@ -34,6 +34,9 @@ def _checkout(tmp_path: Path) -> tuple[Path, Path]:
     (workspace / "runs" / "gen-0" / "eval").mkdir(parents=True)
     (workspace / "archive.jsonl").write_text(json.dumps({"genid": "0", "score": 0.1}) + "\n")
     (workspace / "runs" / "gen-0" / "eval" / "summary.json").write_text('{"score": 0.1}\n')
+    handoff = workspace / "artifacts" / "generations" / "0" / "handoff.md"
+    handoff.parent.mkdir(parents=True)
+    handoff.write_text("PARENT HANDOFF BODY MUST STAY ON DISK\n")
     (workspace / "evolve.yaml").write_text(
         "experiment:\n  id: test\n  max_generations: 4\n"
         "target:\n  seed: builtin-dummy\n"
@@ -96,9 +99,20 @@ def test_hyperagents_prompt_points_to_evolvable_codebase_and_prior_artifacts(tmp
     assert "Feedback bundle: /app/task/workspace/runs/gen-1/feedback" in prompt
     assert "Complete history: /app/task/workspace/runs/gen-1/feedback/evidence/history.json" in prompt
     assert "Raw trace evidence: /app/task/workspace/runs/gen-1/trace_analyzer/evidence" in prompt
-    assert "SELECTED TRACE EVIDENCE" in prompt
+    assert "selected parent's handoff" in prompt
+    assert "/app/task/workspace/artifacts/generations/0/handoff.md" in prompt
+    assert "/app/task/workspace/artifacts/generations/1" in prompt
+    assert "PARENT HANDOFF BODY MUST STAY ON DISK" not in prompt
+    assert "Evidence reading order" in prompt
+    assert "1. Read `/app/task/workspace/runs/gen-1/feedback/index.md`" in prompt
+    assert "/app/task/workspace/runs/gen-1/feedback/evidence/selected.md" in prompt
+    assert "/app/task/workspace/runs/gen-1/feedback/last_accepted.diff" in prompt
+    assert "/app/task/workspace/runs/gen-1/trace_analyzer/evidence" in prompt
+    assert "/app/task/workspace/runs/gen-1/rollout" in prompt
+    assert "SELECTED TRACE EVIDENCE" not in prompt
     assert "HISTORY MUST NOT BE INLINED" not in prompt
-    assert "LATEST ACCEPTED DIFF" in prompt
+    assert "LATEST ACCEPTED DIFF" not in prompt
+    assert "COMPACT ATTEMPTS FALLBACK" not in prompt
     assert "fallback observation" not in prompt
     assert "Iterations remaining after this proposal: 3" in prompt
     assert "Modify any part of the allowed codebase" in prompt
@@ -115,32 +129,35 @@ def test_hyperagents_prompt_points_to_evolvable_codebase_and_prior_artifacts(tmp
     assert "This method does not impose a narrower per-proposal path scope" in prompt
 
 
-def test_hyperagents_prompt_bounds_inline_evidence(tmp_path: Path) -> None:
+def test_hyperagents_prompt_does_not_read_large_evidence_bodies(tmp_path: Path) -> None:
     module = _load_hyperagents_meta_agent()
     checkout, run_dir = _checkout(tmp_path)
     ctx = _ctx(run_dir.parents[1], checkout, run_dir)
     evidence = run_dir / "feedback" / "evidence"
     evidence.mkdir(parents=True)
-    (evidence / "selected.md").write_text("x" * (module.MAX_INLINE_EVIDENCE_CHARS + 1000))
+    (evidence / "selected.md").write_text("LARGE SELECTED BODY " * 10_000)
+    (run_dir / "feedback" / "last_accepted.diff").write_text("LARGE DIFF BODY " * 10_000)
 
-    prompt = module.build_prompt(checkout, "fallback", ctx)
+    prompt = module.build_prompt(checkout, "OBSERVATION BODY", ctx)
 
-    assert "[inline evidence truncated; complete artifact:" in prompt
-    assert len(prompt) < module.MAX_INLINE_EVIDENCE_CHARS + 15_000
+    assert "LARGE SELECTED BODY" not in prompt
+    assert "LARGE DIFF BODY" not in prompt
+    assert "OBSERVATION BODY" not in prompt
+    assert len(prompt) < 10_000
 
 
-def test_hyperagents_prompt_uses_attempts_fallback(tmp_path: Path) -> None:
+def test_hyperagents_local_prompt_uses_existing_workspace_paths(tmp_path: Path) -> None:
     module = _load_hyperagents_meta_agent()
     checkout, run_dir = _checkout(tmp_path)
     ctx = _ctx(run_dir.parents[1], checkout, run_dir)
-    feedback = run_dir / "feedback"
-    feedback.mkdir(parents=True)
-    (feedback / "attempts.md").write_text("COMPACT ATTEMPTS")
 
     prompt = module.build_prompt(checkout, "fallback", ctx)
 
-    assert "COMPACT ATTEMPTS" in prompt
-    assert "fallback" not in prompt
+    assert f"Repository: {checkout}" in prompt
+    assert f"1. Read `{run_dir / 'feedback/index.md'}`" in prompt
+    assert f"`{run_dir / 'feedback/evidence/selected.md'}`" in prompt
+    assert f"`{run_dir / 'feedback/last_accepted.diff'}`" in prompt
+    assert f"`{run_dir / 'rollout'}`" in prompt
 
 
 def test_hyperagents_meta_agent_records_complete_patch_for_target_and_workflow_edits(
@@ -154,7 +171,8 @@ def test_hyperagents_meta_agent_records_complete_patch_for_target_and_workflow_e
         assert workspace == checkout
         assert ctx.config["runner"] == "local"
         assert "Modify any part of the allowed codebase" in prompt
-        assert "observation" in prompt
+        assert "Evidence reading order" in prompt
+        assert "observation" not in prompt
         (workspace / "target" / "agent.py").write_text("print('child')\n")
         (workspace / "operators" / "meta_agent.py").write_text("# improved mutation operator\n")
         return SimpleNamespace(output="edited target and workflow", usage={"usd": 0.02})

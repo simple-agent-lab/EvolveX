@@ -14,6 +14,7 @@ from evolve.frozen import sdk
 from evolve.frozen.interfaces import MetaAgentOperator, MetaAgentResult, OperatorContext
 from evolve.patching import create_candidate_patch, load_surface_policy, patch_parent_ref
 from library.meta_agent.runners import run_agent, runner_name
+from library.meta_agent.support.artifacts import render_artifact_guidance
 from library.meta_agent.support.evidence import load_feedback
 from library.meta_agent.support.workspace import workspace_contract
 
@@ -304,6 +305,7 @@ def build_prompt(
     drafts = _drafts(skills_dir)
     skill_names = _skills(skills_dir)
     template_rule = _placeholder_rule(ctx.config, prompt_relative)
+    experiment = Path("/app/task/workspace") if runner_name(ctx) == "harbor" else ctx.workspace
     prompt = (
         f"{AEVOLVE_SYSTEM_PROMPT.rstrip()}\n\n"
         f"## Evolution Cycle #{ctx.genid}\n\n"
@@ -333,6 +335,7 @@ def build_prompt(
         + f"### Draft Skills\n{_draft_section(drafts)}\n\n"
         f"### Current Skills ({len(skill_names)})\n"
         f"{chr(10).join(f'- {name}' for name in skill_names) if skill_names else 'No skills yet.'}\n\n"
+        f"{render_artifact_guidance(ctx, experiment)}\n\n"
         f"### Instructions\n{_instructions(ctx.config, template_rule, trajectory_only=trajectory_only)}\n\n"
         "Edit the candidate checkout directly. Do not merely print a patch. When done, summarize what you changed and why.\n"
     )

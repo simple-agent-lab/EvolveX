@@ -22,6 +22,7 @@ from evolve.git import git, head_commit, working_tree_changed_paths
 from evolve.host_runtime import uv_run
 from evolve.patching import SurfacePolicy, load_surface_policy, patch_parent_ref
 from evolve.surface import check_paths
+from library.meta_agent.support.artifacts import ensure_artifact_layout
 
 _HARBOR_WORKDIR = "/app"
 _ARTIFACT_SOURCE = "/app/task/workspace"
@@ -31,7 +32,7 @@ _EVAL_RECEIPT = ".evolve-eval-receipts.jsonl"
 _FILE_TASK_AGENT = "evolve_harbor_agent:FileTaskMiniSweAgent"
 _SAFE_INLINE_INSTRUCTION_BYTES = 96 * 1024
 _VISIBLE_RUN_INPUTS = ("rollout", "trace_analyzer", "feedback")
-_HIDDEN_WORKSPACE_ROOTS = {".git", "runs", "archive.jsonl", _EVAL_RECEIPT, "evaluator"}
+_HIDDEN_WORKSPACE_ROOTS = {".git", "runs", "artifacts", "archive.jsonl", _EVAL_RECEIPT, "evaluator"}
 _SECRET_ASSIGNMENT = re.compile(
     r"(?i)\b([a-z0-9_-]*(?:api[_-]?key|access[_-]?token|auth(?:orization)?|secret|password))\b"
     r"([\"']?)(\s*[:=]\s*)([^\s,;}]+)"
@@ -42,6 +43,7 @@ _PROXY_ENV = (
     ("EVOLVE_HARBOR_HTTPS_PROXY", "https_proxy", "HTTPS_PROXY"),
     ("EVOLVE_HARBOR_NO_PROXY", "no_proxy", "NO_PROXY"),
 )
+_CREDENTIAL_ENV = ("OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_API_BASE")
 
 
 class _WorkspaceBundle:
@@ -123,7 +125,7 @@ def _runs_ignore(runs_root: Path):
 def _manifest_ignored(relative: Path) -> bool:
     if not relative.parts:
         return False
-    return relative.parts[0] in {".git", "runs"} or relative.as_posix() in {
+    return relative.parts[0] in {".git", "runs", "artifacts"} or relative.as_posix() in {
         "archive.jsonl",
         _EVAL_RECEIPT,
     }
@@ -268,6 +270,16 @@ def _copy_full_workspace_inputs(checkout: Path, ctx: OperatorContext, workspace:
         )
 
 
+def _copy_artifact_inputs(ctx: OperatorContext, workspace: Path) -> None:
+    ensure_artifact_layout(ctx.workspace, ctx.genid)
+    artifacts = ctx.workspace / "artifacts"
+    if artifacts.exists():
+        _validate_tree(artifacts)
+        _copy_tree(artifacts, workspace / "artifacts")
+    (workspace / "artifacts" / "user").mkdir(parents=True, exist_ok=True)
+    (workspace / "artifacts" / "generations" / ctx.genid).mkdir(parents=True, exist_ok=True)
+
+
 def _prepare_bundle(
     checkout: Path,
     ctx: OperatorContext,
@@ -294,6 +306,8 @@ def _prepare_bundle(
                 if source.name not in _HIDDEN_WORKSPACE_ROOTS:
                     _copy_tree(source, workspace / source.name)
             _copy_visible_run_inputs(ctx, workspace)
+        _copy_artifact_inputs(ctx, workspace)
+        if not _expose_gate_data(ctx.config):
             _assert_private_tasks_absent(workspace, prompt, _private_task_names(ctx.workspace))
             _initialize_sanitized_git(workspace)
         return _WorkspaceBundle(staging, task_root, workspace, roots, _tree_manifest(workspace))
@@ -329,15 +343,43 @@ def _copy_returned_tree(checkout: Path, source: Path, destination: Path, relativ
             raise RuntimeError(f"Harbor meta-agent does not accept special files: {child}")
 
 
+def _copy_regular_tree(source: Path, destination: Path) -> None:
+    """Copy only regular files/directories, treating a deleted namespace as empty."""
+    if source.is_symlink():
+        raise RuntimeError(f"Harbor meta-agent does not accept symlinks: {source}")
+    if not source.exists():
+        destination.mkdir(parents=True)
+        return
+    if not source.is_dir():
+        raise RuntimeError(f"returned artifact namespace must be a real directory: {source}")
+    destination.mkdir(parents=True)
+    for child in source.iterdir():
+        mode = child.lstat().st_mode
+        if stat.S_ISLNK(mode):
+            raise RuntimeError(f"Harbor meta-agent does not accept symlinks: {child}")
+        if stat.S_ISDIR(mode):
+            _copy_regular_tree(child, destination / child.name)
+        elif stat.S_ISREG(mode):
+            shutil.copy2(child, destination / child.name)
+        else:
+            raise RuntimeError(f"Harbor meta-agent does not accept special files: {child}")
+
+
 def _install_bundle(
     checkout: Path,
     returned: Path,
     bundle: _WorkspaceBundle,
     parent_ref: str,
     surface: SurfacePolicy,
+    *,
+    artifact_workspace: Path | None = None,
+    genid: str | None = None,
 ) -> list[str]:
     if not returned.is_dir() or returned.is_symlink():
         raise RuntimeError("returned workspace must be a real directory")
+    returned_artifacts = returned / "artifacts"
+    if returned_artifacts.exists() or returned_artifacts.is_symlink():
+        _validate_tree(returned_artifacts)
     after = _tree_manifest(returned)
     changed_workspace = sorted(
         path for path in set(bundle.before) | set(after) if bundle.before.get(path) != after.get(path)
@@ -353,14 +395,31 @@ def _install_bundle(
     backups.mkdir()
     moved: list[str] = []
     installed: list[str] = []
+    artifact_destination: Path | None = None
+    artifact_backup = backups / "artifact-generation"
+    artifact_installed = False
+    artifact_moved = False
     try:
         for root in bundle.roots:
             _copy_returned_tree(checkout, returned / root, replacements / root, Path(root))
+        if artifact_workspace is not None and genid is not None:
+            if not genid or genid in {".", ".."} or "/" in genid or "\\" in genid:
+                raise ValueError(f"invalid generation id for artifact path: {genid!r}")
+            artifact_relative = Path("artifacts") / "generations" / genid
+            artifact_destination = artifact_workspace / artifact_relative
+            _copy_regular_tree(returned / artifact_relative, replacements / "artifact-generation")
         for root in bundle.roots:
             (checkout / root).rename(backups / root)
             moved.append(root)
             (replacements / root).rename(checkout / root)
             installed.append(root)
+        if artifact_destination is not None:
+            artifact_destination.parent.mkdir(parents=True, exist_ok=True)
+            if artifact_destination.exists():
+                artifact_destination.rename(artifact_backup)
+                artifact_moved = True
+            (replacements / "artifact-generation").rename(artifact_destination)
+            artifact_installed = True
 
         changed = [
             path
@@ -376,6 +435,10 @@ def _install_bundle(
         shutil.rmtree(transaction)
         return changed
     except Exception:
+        if artifact_installed and artifact_destination is not None:
+            _remove(artifact_destination)
+        if artifact_moved and artifact_destination is not None:
+            artifact_backup.rename(artifact_destination)
         for root in reversed(installed):
             _remove(checkout / root)
         for root in reversed(moved):
@@ -433,6 +496,10 @@ def _agent_env(config: dict[str, Any]) -> dict[str, str]:
         if value:
             values[lower] = value
             values[upper] = value
+    for name in _CREDENTIAL_ENV:
+        value = os.environ.get(name)
+        if value:
+            values[name] = value
     configured = config.get("agent_env")
     if isinstance(configured, dict):
         values.update({str(key): str(value) for key, value in configured.items()})
@@ -798,6 +865,7 @@ def run_readonly_agent(
     output_dir: Path,
     job_name: str,
     timeout_s: float,
+    input_files: dict[str, str] | None = None,
 ) -> AgentRunResult:
     """Run one evidence-only Harbor agent and return its final response."""
     usage: dict[str, Any] = {"usd": 0, "wall_s": 0}
@@ -815,6 +883,13 @@ def run_readonly_agent(
         tasks_dir = output_dir / "tasks"
         task_root.mkdir(parents=True, exist_ok=False)
         (task_root / ".evolve-readonly").write_text("")
+        if input_files:
+            inputs = task_root / "inputs"
+            inputs.mkdir()
+            for name, content in input_files.items():
+                if Path(name).name != name or name in {".", ".."}:
+                    raise ValueError(f"read-only input name must be one relative filename: {name!r}")
+                (inputs / name).write_text(content)
         prompt_path.write_text(prompt.rstrip() + "\n")
         _write_json(
             output_dir / "instruction-transport.json",
@@ -918,7 +993,9 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
             f"The disposable experiment workspace is at `{_ARTIFACT_SOURCE}`. {evidence_contract} "
             "Work in that directory normally. "
             "Edit only paths allowed by the supplied surface rules. Runtime evidence edits are discarded; only "
-            "configured editable roots are imported after the complete workspace artifact passes the surface gate. "
+            "configured editable roots and the current generation's durable artifact directory are imported after "
+            "the complete workspace artifact passes the surface gate. User and prior-generation durable artifacts "
+            "are read-only from the runner's perspective. "
             "Before finishing, remove generated virtual environments and caches inside editable roots (for example "
             "target/.venv, __pycache__, and .pytest_cache); returned editable roots must contain no symlinks.\n"
         )
@@ -956,7 +1033,9 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
             raise RuntimeError(f"harbor exec exited {returncode}; see {harbor_root / 'harbor.log'}")
         if trial.get("exception_info") not in (None, {}):
             raise RuntimeError(f"Harbor meta-agent trial failed: {_redact(str(trial.get('exception_info')))}")
-        if str(ctx.config.get("agent") or "").endswith(":MiniSweSourceAgent"):
+        if str(ctx.config.get("agent") or "").endswith(":MiniSweSourceAgent") or _uses_miniswe_artifact(
+            ctx.config.get("agent")
+        ):
             exit_status = _miniswe_exit_status(trial_dir)
             if exit_status != "Submitted":
                 raise RuntimeError(
@@ -966,7 +1045,15 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
         artifact, manifest = _artifact_candidate(trial_dir)
         _write_json(harbor_root / "artifact-manifest.json", manifest)
         output = _agent_output(trial_dir)
-        _install_bundle(checkout, artifact, bundle, parent_ref, surface)
+        _install_bundle(
+            checkout,
+            artifact,
+            bundle,
+            parent_ref,
+            surface,
+            artifact_workspace=ctx.workspace,
+            genid=ctx.genid,
+        )
         return AgentRunResult(
             stdout=output,
             stderr="",

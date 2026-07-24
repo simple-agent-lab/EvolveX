@@ -71,8 +71,6 @@ evaluator:
     project: target
     python: "3.12"
   agent_env:
-    OPENAI_BASE_URL: http://172.17.0.1:18788/v1
-    OPENAI_API_BASE: http://172.17.0.1:18788/v1
     NO_PROXY: 172.17.0.1,127.0.0.1,localhost
     no_proxy: 172.17.0.1,127.0.0.1,localhost
     MINISWE_CONFIG: mini

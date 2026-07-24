@@ -39,11 +39,18 @@ archive.jsonl
 .evolve-eval-receipts.jsonl
 .local-archive/
 
+# Local Terminal-Bench experiment artifacts and tooling
+/tb2_experiment_report.xml
+/terminal-bench-2-10-10-10/
+/tests/test_render_meta_agent_traces.py
+/tools/render_meta_agent_traces.py
+
 # Local agent/tooling state
 .superpowers/
 .worktrees/
 /docs/superpowers/
 /docs/guides/
+/handoff-*/
 doc/
 
 # Editor, OS, and logs

@@ -390,6 +390,9 @@ def test_trajectory_only_follows_recent_parent_lineage(tmp_path: Path) -> None:
 
 def test_feedback_bundle_copies_selected_evidence_and_history(tmp_path: Path) -> None:
     workspace, _ = init_workspace(tmp_path)
+    historical = workspace / "runs" / "gen-0" / "trace_analyzer" / "evidence"
+    historical.mkdir(parents=True)
+    (historical / "metrics.json").write_text(json.dumps({"trials": 2}))
     run_dir = workspace / "runs" / "gen-1"
     evidence = run_dir / "trace_analyzer" / "evidence"
     evidence.mkdir(parents=True)
@@ -402,6 +405,8 @@ def test_feedback_bundle_copies_selected_evidence_and_history(tmp_path: Path) ->
 
     assert (run_dir / "feedback" / "evidence" / "selected.md").read_text().startswith("# selected")
     assert "feedback/evidence/history.json" in manifest
+    history = json.loads((run_dir / "feedback" / "evidence" / "history.json").read_text())
+    assert history[0]["raw_evidence_dir"] == "runs/gen-0/trace_analyzer/evidence"
     index = (run_dir / "feedback" / "index.md").read_text()
     assert "[selected trace evidence](evidence/selected.md)" in index
     assert "[current trace analysis]" not in index

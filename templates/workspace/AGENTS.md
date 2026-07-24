@@ -22,5 +22,7 @@ Harbor trials run from the locked workspace environment: never rely on a package
 installed globally, injected through `PYTHONPATH`, or installed ad hoc during a
 trial.
 
-Repo-local `.env` values supply live meta-agent/evaluator keys and endpoints;
-load them locally, never commit secrets.
+Workspace-local `.env` values are loaded automatically for run, eval, and
+candidate smoke commands and supply live meta-agent/evaluator keys and
+endpoints. The caller repository's `.env` is used as a fallback for a separate
+workspace. Exported environment variables take precedence; never commit secrets.

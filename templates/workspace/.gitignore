@@ -1,4 +1,5 @@
 runs/
+artifacts/
 archive.jsonl
 insights/
 .evolve-eval-receipts.jsonl

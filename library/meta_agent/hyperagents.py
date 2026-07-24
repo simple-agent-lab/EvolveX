@@ -11,6 +11,7 @@ from evolve.frozen import sdk
 from evolve.frozen.interfaces import MetaAgentOperator, MetaAgentResult
 from evolve.patching import create_candidate_patch, load_surface_policy, patch_parent_ref
 from library.meta_agent.runners import run_agent, runner_name
+from library.meta_agent.support.artifacts import render_artifact_guidance
 from library.meta_agent.support.workspace import workspace_contract
 
 MAX_INLINE_EVIDENCE_CHARS = 50_000
@@ -105,6 +106,7 @@ def _prompt_evidence(observation: str, ctx) -> str:
 
 
 def build_prompt(checkout: Path, observation: str, ctx) -> str:
+    del observation
     if runner_name(ctx) == "harbor":
         repository = Path("/app/task/workspace")
         current_run = repository / "runs" / f"gen-{ctx.genid}"
@@ -113,17 +115,28 @@ def build_prompt(checkout: Path, observation: str, ctx) -> str:
         repository = checkout
         current_run = ctx.run_dir
         experiment = ctx.workspace
+    feedback = current_run / "feedback"
+    selected = feedback / "evidence" / "selected.md"
+    latest_diff = feedback / "last_accepted.diff"
+    trace_evidence = current_run / "trace_analyzer" / "evidence"
+    rollout = current_run / "rollout"
     return (
         f"{PROMPT.rstrip()}\n\n"
         f"{workspace_contract(checkout, ctx.config)}\n\n"
-        f"{_prompt_evidence(observation, ctx)}\n\n"
+        "# Evidence reading order\n\n"
+        f"1. Read `{feedback / 'index.md'}` for the evidence map.\n"
+        f"2. Read `{selected}` and `{latest_diff}` for selected findings and the latest accepted change.\n"
+        f"3. Inspect relevant files under `{trace_evidence}`.\n"
+        f"4. Open raw rollout artifacts under `{rollout}` only when analyzed evidence is insufficient.\n"
+        "5. Edit the candidate only after reviewing the relevant evidence.\n\n"
         f"Repository: {repository}\n"
-        f"Feedback bundle: {current_run / 'feedback'}\n"
-        f"Complete history: {current_run / 'feedback' / 'evidence' / 'history.json'}\n"
-        f"Raw trace evidence: {current_run / 'trace_analyzer' / 'evidence'}\n"
+        f"Feedback bundle: {feedback}\n"
+        f"Complete history: {feedback / 'evidence' / 'history.json'}\n"
+        f"Raw trace evidence: {trace_evidence}\n"
         f"Archive: {experiment / 'archive.jsonl'}\n"
         f"Prior generation artifacts: {experiment / 'runs'}\n"
         f"Current generation artifacts: {current_run}\n"
+        f"\n{render_artifact_guidance(ctx, experiment)}\n\n"
         f"Iterations remaining after this proposal: {_remaining_iterations(ctx)}\n\n"
         "Edit the checkout directly. Do not print a patch instead of editing files.\n"
     )

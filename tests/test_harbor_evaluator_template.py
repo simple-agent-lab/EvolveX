@@ -47,6 +47,13 @@ def test_harbor_evaluator_passes_agent_timeout_multiplier() -> None:
     assert '--agent-timeout-multiplier "$EVOLVE_HARBOR_AGENT_TIMEOUT_MULTIPLIER"' in text
 
 
+def test_harbor_evaluator_forwards_workspace_openai_environment() -> None:
+    text = _eval_sh("harbor", "fixture")
+
+    assert "OPENAI_API_KEY OPENAI_BASE_URL OPENAI_API_BASE" in text
+    assert 'set -- "$@" --ae "$credential_name=$credential_value"' in text
+
+
 def test_harbor_evaluator_prefers_failed_task_repair_selection() -> None:
     text = _eval_sh("harbor", "fixture")
 

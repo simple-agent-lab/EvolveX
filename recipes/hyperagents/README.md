@@ -6,26 +6,42 @@ can come from behavior, process, or memory. The population stays small but
 branchy, and parent choice is randomized to explore different process variants
 instead of always following the current best score.
 
+The MiniSWE target is pinned to commit
+`388da74aad620a384ab47669b17c52133e30e7c3`, whose checked-in `uv.lock` is part
+of the candidate runtime contract. Because upstream does not track that lock,
+workspace initialization generates and freezes it explicitly.
+
 `children_per_gen: 1` creates one candidate per round.
 `surface.include` exposes `target/**` plus `operators/**`.
 `select.variant: score_child_prop` balances score with child-proposal behavior.
-`rollout.variant: evaluation_replay` exposes the selected parent's certified full-benchmark evaluation to the trace browser without launching a second task run.
+`rollout.variant: evaluation_replay` exposes the selected parent's certified gate evaluation to the trace browser without launching a second task run.
 `trace_analyzer.variant: trace_browser` exposes current traces, metrics, and history through the normalized feedback bundle.
 `meta_agent.variant: hyperagents` consumes that bundle through Harbor's installed MiniSWE agent while retaining self-referential editing.
+The mutation agent uses `high` reasoning with an explicit 64k output budget.
+The explicit `max_tokens` value is required because mini-swe-agent otherwise
+uses its 1,000-token default.
 `gate.variant: parent_eligible` admits evaluated process variants.
 `evaluator.engine: harbor` runs the canonical black-box benchmark.
-`sampling: static` freezes all 89 task identities when the workspace is initialized.
+`task_scope: full` freezes all 30 curated task identities as one shared
+optimization set when the workspace is initialized from the project root.
+Each candidate receives one trial on every task.
 
-The selected parent's retained evaluation is available before the child is
-produced, and every installable child is then immediately evaluated once on the
-complete benchmark. Generation 0 and generations 1 through 10 therefore form a
-full-benchmark optimization curve. It is not a held-out generalization result
-and has no final sealed anchor.
+The selected parent's retained optimization evaluation is available before
+the child is produced, and every installable child is then immediately
+evaluated on the same frozen optimization set. Generation 0 and generations 1
+through 10 therefore form a 30-task optimization curve. The gate operator
+decides parent eligibility from that evaluation rather than invoking a separate
+task partition. The evaluator is frozen with capacity for 10 workers; set
+`EVOLVE_HARBOR_N_CONCURRENT_OVERRIDE=5` for a five-worker generation-1 smoke,
+then omit the override for the full run.
+Candidate execution uses Harbor's `agent_timeout_multiplier: 2`, giving the
+100-step budget up to twice each task's declared agent timeout.
 
 Build the workspace image once before running:
 
 ```bash
-docker build -t evolve-meta-agent-app:ubuntu-latest containers/meta-agent
+docker build --build-arg MINISWE_VERSION=2.4.5 \
+  -t evolve-meta-agent-app:20260724-tools-mswe245 containers/meta-agent
 ```
 
 ## Operator Routing

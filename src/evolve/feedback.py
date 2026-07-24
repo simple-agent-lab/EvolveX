@@ -122,7 +122,9 @@ def _rollout_history(workspace: Path, rows: list[Row], history_k: int) -> list[R
                 "mutated": row.get("mutated"),
                 "trace_analyzer_variant": manifest.get("selected_variant"),
                 "rollout_metrics": metrics,
-                "raw_evidence_dir": str(evidence_root) if evidence_root.is_dir() else None,
+                "raw_evidence_dir": evidence_root.relative_to(workspace).as_posix()
+                if evidence_root.is_dir()
+                else None,
                 "source_tag": row.get("tag"),
             }
         )

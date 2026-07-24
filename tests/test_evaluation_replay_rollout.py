@@ -85,6 +85,93 @@ def test_replay_uses_selected_parent_certified_evaluation(tmp_path: Path, monkey
     assert result.summary["mean_observed_reward"] == 1.0
 
 
+def test_replay_merges_base_and_repair_artifacts_for_composite_evaluation(tmp_path: Path, monkeypatch) -> None:
+    module = _replay_module()
+    workspace = tmp_path / "workspace"
+    base_jobs, base_reference = _artifact(workspace, generation="3")
+    repair_attempt = workspace / "runs" / "evaluations" / "candidate" / "gen-3" / "attempt-2"
+    repair_jobs = repair_attempt / "jobs"
+    repair_jobs.mkdir(parents=True)
+    repair_artifact = repair_attempt / "evaluation_artifacts.json"
+    repair_artifact.write_text(json.dumps({"jobs_dir": str(repair_jobs), "trials": []}))
+    repair_reference = {
+        "path": repair_artifact.relative_to(workspace).as_posix(),
+        "sha256": hashlib.sha256(repair_artifact.read_bytes()).hexdigest(),
+    }
+    composite = repair_attempt / "composite_evaluation_artifacts.json"
+    composite.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "kind": "failed_task_repair",
+                "base_artifacts": base_reference,
+                "repair_artifacts": repair_reference,
+                "replaced_slots": [
+                    {
+                        "task_id": "task-c",
+                        "trial": 0,
+                        "from_attempt": 1,
+                        "to_attempt": 2,
+                    }
+                ],
+            }
+        )
+    )
+    composite_reference = {
+        "path": composite.relative_to(workspace).as_posix(),
+        "sha256": hashlib.sha256(composite.read_bytes()).hexdigest(),
+    }
+    rows = {"3": {"genid": "3", "artifacts": composite_reference, "score": 2 / 3}}
+
+    def collect(selected_jobs: Path, **_options):
+        if selected_jobs == base_jobs:
+            return [
+                {
+                    "task_name": "task-a",
+                    "trial_name": "task-a__base",
+                    "reward": 1.0,
+                    "outcome": "passed",
+                },
+                {
+                    "task_name": "task-b",
+                    "trial_name": "task-b__base",
+                    "reward": 0.0,
+                    "outcome": "failed",
+                },
+                {
+                    "task_name": "task-c",
+                    "trial_name": "task-c__base",
+                    "reward": None,
+                    "outcome": "infra_error",
+                },
+            ]
+        assert selected_jobs == repair_jobs
+        return [
+            {
+                "task_name": "task-c",
+                "trial_name": "task-c__repair",
+                "reward": 1.0,
+                "outcome": "passed",
+            }
+        ]
+
+    monkeypatch.setattr(module, "ArchiveView", lambda _workspace: _Archive(rows))
+    monkeypatch.setattr(module, "_load_collect_cases", lambda _checkout: collect)
+    ctx = _context(workspace, parent="3")
+
+    result = module.EvaluationReplayRollout().rollout(ctx.checkout, ctx)
+
+    cases = json.loads((ctx.run_dir / "rollout" / "cases.json").read_text())
+    assert [(case["task_name"], case["trial_name"]) for case in cases] == [
+        ("task-a", "task-a__base"),
+        ("task-b", "task-b__base"),
+        ("task-c", "task-c__repair"),
+    ]
+    assert result.summary["tasks_observed"] == 3
+    assert result.summary["trials_observed"] == 3
+    assert result.summary["mean_observed_reward"] == pytest.approx(2 / 3)
+
+
 def test_replay_loads_collector_from_vendored_workspace_library(tmp_path: Path) -> None:
     module = _replay_module()
     checkout = tmp_path / "checkout"

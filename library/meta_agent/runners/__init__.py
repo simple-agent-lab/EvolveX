@@ -7,6 +7,7 @@ from pathlib import Path
 from evolve.agent import AgentCommandError, AgentRunResult
 from evolve.frozen.interfaces import OperatorContext
 from library.meta_agent.runners import harbor, local
+from library.meta_agent.support.artifacts import ensure_artifact_layout
 
 RUNNERS = ("local", "harbor")
 
@@ -18,6 +19,7 @@ def runner_name(ctx: OperatorContext) -> str:
 
 
 def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResult:
+    ensure_artifact_layout(ctx.workspace, ctx.genid)
     name = runner_name(ctx)
     if name == "local":
         return local.run_agent(checkout, prompt, ctx)
@@ -37,6 +39,7 @@ def run_readonly_agent(
     output_dir: Path,
     job_name: str,
     timeout_s: float,
+    input_files: dict[str, str] | None = None,
 ) -> AgentRunResult:
     return harbor.run_readonly_agent(
         checkout,
@@ -45,4 +48,5 @@ def run_readonly_agent(
         output_dir=output_dir,
         job_name=job_name,
         timeout_s=timeout_s,
+        input_files=input_files,
     )

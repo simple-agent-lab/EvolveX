@@ -7,6 +7,7 @@ license-files = ["LICENSE", "NOTICE"]
 requires-python = ">=3.12"
 dependencies = [
     "harbor==0.18.0",
+    "python-dotenv>=1.0",
     "PyYAML>=6.0",
     "typer>=0.12",
 ]

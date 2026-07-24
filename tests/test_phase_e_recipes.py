@@ -101,33 +101,37 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "record: {variant: gepa" in config
         elif name == "ahe":
             assert "max_generations: 10" in config
-            assert "dataset: terminal-bench@2.0" in config
+            assert "dataset: terminal-bench-2-10-10-10" in config
             assert "seed: https://github.com/SWE-agent/mini-swe-agent.git" in config
+            assert "revision: 388da74aad620a384ab47669b17c52133e30e7c3" in config
+            assert "generate_lock: true" in config
             assert "rollout: {variant: evaluation_replay" in config
             assert "trace_analyzer: {variant: ahe" in config
             assert "meta_agent: {variant: ahe, runner: harbor" in config
             assert "expose_gate_data: true" in config
             assert "select: {variant: ahe_latest" in config
             assert "gate: {variant: ahe_artifact_valid" in config
-            assert "max_tasks: 90" in config
+            assert "max_tasks: 30" in config
             assert "max_cases" not in config
             assert "budget_usd" not in config
             assert "agent: evolve_harbor_agent:FileTaskMiniSweAgent" in config
             assert "editable_roots: [target]" in config
             assert "max_retries: 2" in config
             assert "agent: evolve_harbor_adapter:MiniSweSourceAgent" in config
-            assert "image: evolve-meta-agent-app:ubuntu-latest" in config
+            assert "image: evolve-meta-agent-app:20260724-tools-mswe245" in config
             assert "task_scope: full" in config
             assert "evaluation_split: train" in config
-            assert "tasks_per_round: 89" in config
-            assert "k: 2" in config
-            assert "n_concurrent: 4" in config
+            assert "tasks_per_round: 30" in config
+            assert "k: 1" in config
+            assert "n_concurrent: 10" in config
             assert "\n  split:" not in config
             assert "\n  anchor:" not in config
         elif name == "hyperagents":
             assert "max_generations: 10" in config
-            assert "dataset: terminal-bench@2.0" in config
+            assert "dataset: terminal-bench-2-10-10-10" in config
             assert "seed: https://github.com/SWE-agent/mini-swe-agent.git" in config
+            assert "revision: 388da74aad620a384ab47669b17c52133e30e7c3" in config
+            assert "generate_lock: true" in config
             assert "    - operators/**" in config
             assert "    - operators/meta_agent.py" not in config
             assert "select: {variant: score_child_prop" in config
@@ -142,12 +146,12 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "validate: {variant: hyperagents" in config
             assert "gate: {variant: parent_eligible}" in config
             assert "record: {variant: hyperagents}" in config
-            assert "image: evolve-meta-agent-app:ubuntu-latest" in config
+            assert "image: evolve-meta-agent-app:20260724-tools-mswe245" in config
             assert "task_scope: full" in config
             assert "evaluation_split: train" in config
-            assert "tasks_per_round: 89" in config
+            assert "tasks_per_round: 30" in config
             assert "k: 1" in config
-            assert "n_concurrent: 4" in config
+            assert "n_concurrent: 10" in config
             assert "\n  split:" not in config
             assert "\n  anchor:" not in config
             assert "budget_usd" not in config
@@ -167,6 +171,31 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
         assert "variant: fixed" not in config
 
 
+def test_ahe_and_hyperagents_share_the_pinned_meta_agent_image() -> None:
+    expected = "evolve-meta-agent-app:20260724-tools-mswe245"
+    for name in ("ahe", "hyperagents"):
+        assert _parsed_config(name)["operators"]["meta_agent"]["image"] == expected
+
+
+def test_terminal_bench_method_recipes_use_full_curated_dataset() -> None:
+    for name in ("ahe", "hyperagents"):
+        recipe = _parsed_config(name)
+        evaluator = recipe["evaluator"]
+        assert isinstance(evaluator, dict)
+        assert evaluator["dataset"] == "terminal-bench-2-10-10-10"
+        assert "split" not in evaluator
+        assert evaluator["sampling"] == "static"
+        assert evaluator["tasks_per_round"] == 30
+        assert evaluator["task_scope"] == "full"
+        assert evaluator["evaluation_split"] == "train"
+        assert evaluator["k"] == 1
+        assert evaluator["n_concurrent"] == 10
+
+    ahe = _parsed_config("ahe")
+    assert ahe["operators"]["trace_analyzer"]["max_tasks"] == 30
+    assert ahe["operators"]["trace_analyzer"]["max_concurrent"] == 10
+
+
 def test_real_uv_recipes_enable_candidate_runtime_and_task_retry() -> None:
     for name in UV_SOURCE_RECIPES:
         evaluator = _parsed_config(name)["evaluator"]
@@ -174,6 +203,13 @@ def test_real_uv_recipes_enable_candidate_runtime_and_task_retry() -> None:
         assert evaluator["candidate_runtime"] == {"variant": "uv", "project": "target", "python": "3.12"}
         assert evaluator["max_retries"] == 1
         assert evaluator["benchmark_timeout_is_zero"] is True
+
+
+def test_shared_optimization_recipes_double_candidate_agent_timeout() -> None:
+    for name in ("ahe", "hyperagents"):
+        evaluator = _parsed_config(name)["evaluator"]
+        assert isinstance(evaluator, dict)
+        assert evaluator["agent_timeout_multiplier"] == 2
 
 
 def test_miniswe_method_agents_use_the_rollout_model_version() -> None:
@@ -190,27 +226,65 @@ def test_miniswe_method_agents_use_the_rollout_model_version() -> None:
         assert evaluator["model"] == expected_model
 
 
+def test_recipes_do_not_hardcode_openai_endpoint() -> None:
+    for name in RECIPE_NAMES:
+        assert "OPENAI_BASE_URL" not in _config(name)
+
+
 def test_meta_agent_image_provides_harbor_workspace_parent() -> None:
     dockerfile = ROOT / "containers" / "meta-agent" / "Dockerfile"
     contents = dockerfile.read_text()
+    assert contents.startswith(
+        "FROM ubuntu:24.04@sha256:4fbb8e6a8395de5a7550b33509421a2bafbc0aab6c06ba2cef9ebffbc7092d90"
+    )
+    assert "ARG MINISWE_VERSION=2.4.5" in contents
+    assert "ARG SOURCE_REVISION=unknown" in contents
     assert "WORKDIR /app" in contents
+    assert "\n        python3 \\" in contents
+    assert "\n        python-is-python3 \\" in contents
+    assert '"mini-swe-agent==${MINISWE_VERSION}"' in contents
+    assert 'io.evolve.miniswe.version="${MINISWE_VERSION}"' in contents
+    assert 'org.opencontainers.image.revision="${SOURCE_REVISION}"' in contents
     assert "git config --system --add safe.directory /app/task/workspace" in contents
     for package in ("git", "jq", "python3", "python-is-python3", "ripgrep", "rsync"):
         assert f"        {package} \\" in contents
-    assert "uv tool install --python 3.13 --with fastapi --with orjson mini-swe-agent" in contents
+    assert 'uv tool install --python 3.13 --with fastapi --with orjson "mini-swe-agent==${MINISWE_VERSION}"' in contents
     assert "COPY uv-wrapper /root/.local/bin/uv" in contents
 
     wrapper = (dockerfile.parent / "uv-wrapper").read_text()
     assert '"$1" = "tool"' in wrapper
     assert '"$2" = "install"' in wrapper
-    assert 'uv-real tool install --python 3.13 --with fastapi --with orjson "$@"' in wrapper
+    assert 'version="${EVOLVE_MINISWE_VERSION:-2.4.5}"' in wrapper
+    assert 'uv-real tool install --python 3.13 --with fastapi --with orjson "mini-swe-agent==$version"' in wrapper
+
+
+def test_meta_agent_required_tools_match_tier_zero_contract() -> None:
+    tools = (ROOT / "containers" / "meta-agent" / "required-tools.txt").read_text().splitlines()
+    assert tools == [
+        "bash",
+        "git",
+        "curl",
+        "diff",
+        "file",
+        "find",
+        "jq",
+        "patch",
+        "python",
+        "rg",
+        "rsync",
+        "sed",
+        "tree",
+        "uv",
+        "mini-swe-agent",
+    ]
 
 
 def test_ahe_recipe_configures_reasoning_without_cost_caps() -> None:
     recipe = _parsed_config("ahe")
     assert recipe["operators"]["meta_agent"]["agent_kwargs"] == {
-        "reasoning_effort": "xhigh",
+        "reasoning_effort": "high",
         "cost_limit": 0,
+        "max_tokens": 64_000,
     }
     assert recipe["evaluator"]["agent_env"]["MINISWE_REASONING_EFFORT"] == "high"
     assert recipe["evaluator"]["agent_env"]["MINISWE_COST_LIMIT"] == "0"
@@ -221,12 +295,21 @@ def test_hyperagents_recipe_configures_reasoning_without_cost_caps() -> None:
     assert recipe["operators"]["meta_agent"]["agent_kwargs"] == {
         "reasoning_effort": "high",
         "cost_limit": 0,
+        "max_tokens": 64_000,
     }
     assert "budget_usd" not in recipe["experiment"]
     assert recipe["evaluator"]["agent_env"] == {
-        "MINISWE_REASONING_EFFORT": "high",
         "MINISWE_COST_LIMIT": "0",
+        "MINISWE_ENV_TIMEOUT": "30",
+        "MINISWE_REASONING_EFFORT": "high",
+        "MINISWE_STEP_LIMIT": "100",
     }
+
+
+def test_harbor_evaluator_accepts_validated_runtime_concurrency_override() -> None:
+    contents = (ROOT / "templates/evaluator/engines/harbor.sh").read_text()
+    assert "EVOLVE_HARBOR_N_CONCURRENT_OVERRIDE" in contents
+    assert "invalid EVOLVE_HARBOR_N_CONCURRENT_OVERRIDE" in contents
 
 
 def test_smoke_recipes_are_explicitly_named_and_deterministic() -> None:

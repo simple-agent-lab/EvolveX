@@ -78,9 +78,30 @@ use `true` because their recipe definitions optimize on retained
 full-benchmark evaluations rather than a held-out gate.
 Harbor returns the complete disposable workspace; the runner compares it with a
 trusted pre-run manifest, rejects protected changes, symlinks, and special files,
-then transactionally imports only configured `editable_roots`. Changes to Git
-metadata and runtime evidence are discarded.
+then transactionally imports configured `editable_roots` and the current
+generation's durable artifact namespace. Changes to Git metadata and runtime
+evidence are discarded; durable user and prior-generation artifacts are
+read-only from the runner's perspective.
 AHE imports only `target`; HyperAgents imports `target` and `operators`.
+
+## Durable meta-agent artifacts and handoffs
+
+Every workspace has a gitignored durable area:
+
+```text
+artifacts/
+├── user/                       # user-supplied context
+└── generations/
+    └── <genid>/                # arbitrary files from that generation
+        └── handoff.md          # optional free-form convention
+```
+
+Meta-agents may read the whole tree, but a generation may persist writes only
+under `artifacts/generations/<genid>/`. The runner copies the tree into Harbor
+and imports only that current namespace; attempted returned edits to `user/` or
+prior generations are discarded. Prompts identify `handoff.md` from the selected
+parent, when present, as orientation rather than proof. A missing handoff is
+normal and non-fatal. Artifact files never become part of a candidate patch.
 
 ```yaml
 meta_agent:

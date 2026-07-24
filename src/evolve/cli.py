@@ -4,9 +4,12 @@ import functools
 import json
 import os
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import typer
+from dotenv import dotenv_values
 
 from .archive import archive_path, merged_rows, verify_integrity
 from .candidate.smoke import run_candidate_smoke
@@ -26,6 +29,23 @@ app = typer.Typer(add_completion=False, no_args_is_help=True, help="evolve mecha
 def _enable_live_output(enabled: bool) -> None:
     if enabled:
         os.environ["EVOLVE_LIVE_OUTPUT"] = "1"
+
+
+@contextmanager
+def _workspace_environment(workspace: Path) -> Iterator[None]:
+    workspace_env = workspace.resolve() / ".env"
+    caller_env = Path.cwd().resolve() / ".env"
+    added: list[str] = []
+    try:
+        for path in dict.fromkeys((workspace_env, caller_env)):
+            for name, value in dotenv_values(path).items():
+                if value is not None and name not in os.environ:
+                    os.environ[name] = value
+                    added.append(name)
+        yield
+    finally:
+        for name in reversed(added):
+            os.environ.pop(name, None)
 
 
 def _guard(fn):
@@ -78,7 +98,8 @@ def run(
     gens = max_generations if max_generations is not None else experiment_int(workspace, "max_generations", 40)
     children = children_per_gen if children_per_gen is not None else experiment_int(workspace, "children_per_gen", 1)
     _enable_live_output(verbose)
-    driver_run(RunOptions(workspace=workspace, max_generations=gens, children_per_gen=children))
+    with _workspace_environment(workspace):
+        driver_run(RunOptions(workspace=workspace, max_generations=gens, children_per_gen=children))
     print(f"Ran evolve loop through generation {gens}")
 
 
@@ -111,7 +132,8 @@ def eval_cmd(
     force: bool = typer.Option(False, "--force", help="re-run evaluation even when a scored row already exists"),
 ) -> None:
     """Evaluate a tagged child version."""
-    eval_child(workspace, genid, force=force)
+    with _workspace_environment(workspace):
+        eval_child(workspace, genid, force=force)
     print(f"Evaluated gen/{genid}")
 
 
@@ -154,7 +176,8 @@ def candidate_smoke(
         raise typer.BadParameter("--full is required", param_hint="--full")
     checkout = checkout.resolve()
     workspace = Path(os.environ.get("EVOLVE_WORKSPACE", checkout)).resolve()
-    result = run_candidate_smoke(checkout, workspace=workspace)
+    with _workspace_environment(workspace):
+        result = run_candidate_smoke(checkout, workspace=workspace)
     tail = result.stderr_path.read_text().splitlines()[-200:]
     if tail:
         print("\n".join(tail), file=sys.stderr)

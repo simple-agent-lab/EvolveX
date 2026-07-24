@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import inspect
 import re
+import subprocess
 from pathlib import Path
 
 from evolve.frozen import interfaces
@@ -86,6 +87,17 @@ def test_no_test_hooks_in_mechanism() -> None:
         text = path.read_text()
         for pattern in ("EVOLVE_FAKE", "MUTATE_FAKE"):
             assert pattern not in text, f"test hook {pattern!r} in {path}"
+
+
+def test_local_superpowers_artifacts_are_not_tracked() -> None:
+    result = subprocess.run(
+        ["git", "ls-files", "--", "docs/superpowers"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert result.stdout == ""
 
 
 def test_stamped_fields_defined_once() -> None:

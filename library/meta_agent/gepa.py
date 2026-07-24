@@ -14,6 +14,7 @@ from evolve.frozen.interfaces import MetaAgentOperator, MetaAgentResult, Operato
 from evolve.patching import create_candidate_patch, load_surface_policy, patch_parent_ref
 from library.gepa_support import component_paths, path_in_scopes, read_json, selected_component_names
 from library.meta_agent.runners import run_agent, runner_name
+from library.meta_agent.support.artifacts import render_artifact_guidance
 from library.meta_agent.support.workspace import workspace_contract
 
 GEPA_PROMPT = """# GEPA Reflective Mutation
@@ -87,6 +88,7 @@ def build_prompt(checkout: Path, ctx: OperatorContext) -> tuple[str, dict[str, A
         if required_placeholders
         else ""
     )
+    experiment = Path("/app/task/workspace") if runner_name(ctx) == "harbor" else ctx.workspace
     component_inputs = "\n".join(
         f"- `{name}` evidence: `{evidence_files[name]}`\n"
         f"  Candidate focus paths: {', '.join(f'`{path}`' for path in components[name])}"
@@ -102,6 +104,7 @@ def build_prompt(checkout: Path, ctx: OperatorContext) -> tuple[str, dict[str, A
         f"3. Inspect the live candidate under `{_agent_path(checkout / 'target', ctx)}`. "
         "Start with the candidate focus paths above, then inspect related target files when useful.\n\n"
         f"{placeholder_rule}\n\n"
+        f"{render_artifact_guidance(ctx, experiment)}\n\n"
         "## Required action\n\n"
         "1. Compare high- and low-reward trajectories and verifier feedback.\n"
         "2. Infer a transferable lesson and make one coherent improvement to the live candidate.\n"

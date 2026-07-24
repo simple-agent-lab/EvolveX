@@ -1,7 +1,10 @@
+import os
 from pathlib import Path
 
+import pytest
 from conftest import git, init_workspace, run_evolve
 
+from evolve import cli
 from evolve.archive import merged_rows as mechanism_merged_rows
 
 
@@ -43,3 +46,54 @@ def test_stub_run_produces_lineage_and_mirror(tmp_path: Path) -> None:
     mirror_rows = mechanism_merged_rows(mirror)
     assert [row["genid"] for row in mirror_rows] == ["0", "1"]
     assert mirror.read_text() == (workspace / "archive.jsonl").read_text()
+
+
+def test_run_loads_workspace_dotenv_without_overriding_explicit_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / ".env").write_text(
+        "OPENAI_BASE_URL=https://dotenv.example/v1\n"
+        "OPENAI_API_KEY=dotenv-key\n"
+    )
+    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", "explicit-key")
+    captured: dict[str, str | None] = {}
+
+    def fake_run(_options) -> None:
+        captured["base_url"] = os.environ.get("OPENAI_BASE_URL")
+        captured["api_key"] = os.environ.get("OPENAI_API_KEY")
+
+    monkeypatch.setattr(cli, "driver_run", fake_run)
+
+    cli.run(workspace, max_generations=0)
+
+    assert captured == {
+        "base_url": "https://dotenv.example/v1",
+        "api_key": "explicit-key",
+    }
+    assert os.environ.get("OPENAI_BASE_URL") is None
+    assert os.environ["OPENAI_API_KEY"] == "explicit-key"
+
+
+def test_run_uses_caller_dotenv_as_fallback_for_separate_workspace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    caller = tmp_path / "framework"
+    caller.mkdir()
+    (caller / ".env").write_text("OPENAI_BASE_URL=https://caller.example/v1\n")
+    workspace = tmp_path / "experiment"
+    workspace.mkdir()
+    monkeypatch.chdir(caller)
+    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+    captured: dict[str, str | None] = {}
+
+    def fake_run(_options) -> None:
+        captured["base_url"] = os.environ.get("OPENAI_BASE_URL")
+
+    monkeypatch.setattr(cli, "driver_run", fake_run)
+
+    cli.run(workspace, max_generations=0)
+
+    assert captured["base_url"] == "https://caller.example/v1"
