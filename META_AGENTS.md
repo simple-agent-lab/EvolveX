@@ -72,10 +72,10 @@ including gate/sealed evaluations. Enable this only for methods whose intended
 feedback contract includes those results. The real host workspace is never
 mounted in either mode.
 
-The bundled recipes make this choice explicitly: A-Evolve, GEPA, and hill
-climb use `false` because gate is held out from mutation; AHE and HyperAgents
-use `true` because their recipe definitions optimize on retained
-full-benchmark evaluations rather than a held-out gate.
+The bundled recipes make this choice explicitly. All real recipes use `false`
+so gate and sealed data remain held out from mutation. AHE and HyperAgents
+still receive their retained training evaluations through the normalized
+rollout, trace-analyzer, and feedback inputs.
 Harbor returns the complete disposable workspace; the runner compares it with a
 trusted pre-run manifest, rejects protected changes, symlinks, and special files,
 then transactionally imports configured `editable_roots` and the current

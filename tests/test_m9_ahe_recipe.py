@@ -57,7 +57,7 @@ def test_ahe_recipe_initializes_harbor_miniswe_composition(tmp_path: Path) -> No
     config = (workspace / "evolve.yaml").read_text()
     assert "variant: ahe" in config
     assert "runner: harbor" in config
-    assert "expose_gate_data: true" in config
+    assert "expose_gate_data: false" in config
     assert "agent: evolve_harbor_agent:FileTaskMiniSweAgent" in config
     assert "editable_roots:" in config
     operators = operator_blocks(workspace)
@@ -69,8 +69,8 @@ def test_ahe_recipe_initializes_harbor_miniswe_composition(tmp_path: Path) -> No
     }
     assert operators["trace_analyzer"] == {
         "variant": "ahe",
-        "max_tasks": 30,
-        "max_concurrent": 10,
+        "max_tasks": 50,
+        "max_concurrent": 25,
         "timeout_per_task": 600,
         "retry_attempts": 3,
         "debugger_agent_kwargs": {"reasoning_effort": "high", "max_tokens": 64000},
@@ -80,9 +80,9 @@ def test_ahe_recipe_initializes_harbor_miniswe_composition(tmp_path: Path) -> No
     config = (workspace / "evolve.yaml").read_text()
     assert "budget_usd" not in config
     assert "max_cases" not in config
-    assert "  task_scope: full" in config
+    assert "  task_scope: full" not in config
     assert "  evaluation_split: train" in config
-    assert "  tasks_per_round: 30" in config
-    assert "\n  split:" not in config
+    assert "  tasks_per_round: 50" in config
+    assert "\n  split:\n    train: 0.562\n    gate: 0.213\n    sealed: 0.225\n    seed: 0" in config
     assert "  k: 1" in config
-    assert "  n_concurrent: 10" in config
+    assert "  n_concurrent: 25" in config

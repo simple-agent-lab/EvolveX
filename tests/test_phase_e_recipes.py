@@ -1,9 +1,14 @@
+import json
 from pathlib import Path
 
+import pytest
+
 from evolve.config import RECIPE_NAMES, load_config
+from evolve.splits import build_manifest
 
 ROOT = Path(__file__).resolve().parents[1]
 RECIPES = ROOT / "recipes"
+TERMINAL_BENCH_DATASET = ROOT / "terminal-bench-2-50-19-20"
 REAL_RECIPES = {"aevolve", "aevolve_tbench_bridge", "ahe", "gepa", "hill_climb", "hyperagents"}
 UV_SOURCE_RECIPES = {"ahe", "hill_climb", "hyperagents"}
 SMOKE_RECIPES = {"hill_climb-smoke", "hyperagents-smoke"}
@@ -101,17 +106,17 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "record: {variant: gepa" in config
         elif name == "ahe":
             assert "max_generations: 10" in config
-            assert "dataset: terminal-bench-2-10-10-10" in config
+            assert "dataset: terminal-bench-2-50-19-20" in config
             assert "seed: https://github.com/SWE-agent/mini-swe-agent.git" in config
             assert "revision: 388da74aad620a384ab47669b17c52133e30e7c3" in config
             assert "generate_lock: true" in config
             assert "rollout: {variant: evaluation_replay" in config
             assert "trace_analyzer: {variant: ahe" in config
             assert "meta_agent: {variant: ahe, runner: harbor" in config
-            assert "expose_gate_data: true" in config
+            assert "expose_gate_data: false" in config
             assert "select: {variant: ahe_latest" in config
             assert "gate: {variant: ahe_artifact_valid" in config
-            assert "max_tasks: 30" in config
+            assert "max_tasks: 50" in config
             assert "max_cases" not in config
             assert "budget_usd" not in config
             assert "agent: evolve_harbor_agent:FileTaskMiniSweAgent" in config
@@ -119,16 +124,16 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "max_retries: 2" in config
             assert "agent: evolve_harbor_adapter:MiniSweSourceAgent" in config
             assert "image: evolve-meta-agent-app:20260724-tools-mswe245" in config
-            assert "task_scope: full" in config
+            assert "task_scope: full" not in config
             assert "evaluation_split: train" in config
-            assert "tasks_per_round: 30" in config
+            assert "tasks_per_round: 50" in config
             assert "k: 1" in config
-            assert "n_concurrent: 10" in config
-            assert "\n  split:" not in config
+            assert "n_concurrent: 25" in config
+            assert "\n  split: {train: 0.562, gate: 0.213, sealed: 0.225, seed: 0}" in config
             assert "\n  anchor:" not in config
         elif name == "hyperagents":
             assert "max_generations: 10" in config
-            assert "dataset: terminal-bench-2-10-10-10" in config
+            assert "dataset: terminal-bench-2-50-19-20" in config
             assert "seed: https://github.com/SWE-agent/mini-swe-agent.git" in config
             assert "revision: 388da74aad620a384ab47669b17c52133e30e7c3" in config
             assert "generate_lock: true" in config
@@ -138,7 +143,7 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "rollout: {variant: evaluation_replay" in config
             assert "trace_analyzer: {variant: trace_browser" in config
             assert "meta_agent: {variant: hyperagents" in config
-            assert "expose_gate_data: true" in config
+            assert "expose_gate_data: false" in config
             assert "runner: harbor" in config
             assert "agent: evolve_harbor_agent:FileTaskMiniSweAgent" in config
             assert "editable_roots: [target, operators]" in config
@@ -147,12 +152,12 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "gate: {variant: parent_eligible}" in config
             assert "record: {variant: hyperagents}" in config
             assert "image: evolve-meta-agent-app:20260724-tools-mswe245" in config
-            assert "task_scope: full" in config
+            assert "task_scope: full" not in config
             assert "evaluation_split: train" in config
-            assert "tasks_per_round: 30" in config
+            assert "tasks_per_round: 50" in config
             assert "k: 1" in config
-            assert "n_concurrent: 10" in config
-            assert "\n  split:" not in config
+            assert "n_concurrent: 25" in config
+            assert "\n  split: {train: 0.562, gate: 0.213, sealed: 0.225, seed: 0}" in config
             assert "\n  anchor:" not in config
             assert "budget_usd" not in config
         else:
@@ -177,23 +182,40 @@ def test_ahe_and_hyperagents_share_the_pinned_meta_agent_image() -> None:
         assert _parsed_config(name)["operators"]["meta_agent"]["image"] == expected
 
 
-def test_terminal_bench_method_recipes_use_full_curated_dataset() -> None:
+def test_terminal_bench_method_recipes_use_frozen_training_partition() -> None:
     for name in ("ahe", "hyperagents"):
         recipe = _parsed_config(name)
         evaluator = recipe["evaluator"]
         assert isinstance(evaluator, dict)
-        assert evaluator["dataset"] == "terminal-bench-2-10-10-10"
-        assert "split" not in evaluator
+        assert evaluator["dataset"] == "terminal-bench-2-50-19-20"
+        assert evaluator["split"] == {"train": 0.562, "gate": 0.213, "sealed": 0.225, "seed": 0}
         assert evaluator["sampling"] == "static"
-        assert evaluator["tasks_per_round"] == 30
-        assert evaluator["task_scope"] == "full"
+        assert evaluator["tasks_per_round"] == 50
+        assert "task_scope" not in evaluator
         assert evaluator["evaluation_split"] == "train"
         assert evaluator["k"] == 1
-        assert evaluator["n_concurrent"] == 10
+        assert evaluator["n_concurrent"] == 25
+        assert recipe["operators"]["meta_agent"]["expose_gate_data"] is False
 
     ahe = _parsed_config("ahe")
-    assert ahe["operators"]["trace_analyzer"]["max_tasks"] == 30
-    assert ahe["operators"]["trace_analyzer"]["max_concurrent"] == 10
+    assert ahe["operators"]["trace_analyzer"]["max_tasks"] == 50
+    assert ahe["operators"]["trace_analyzer"]["max_concurrent"] == 25
+
+
+@pytest.mark.skipif(not TERMINAL_BENCH_DATASET.is_dir(), reason="local Terminal-Bench dataset is unavailable")
+def test_terminal_bench_recipe_split_matches_frozen_membership() -> None:
+    expected = json.loads((TERMINAL_BENCH_DATASET / "expected-splits.json").read_text())
+    evaluator = _parsed_config("ahe")["evaluator"]
+    manifest = build_manifest(
+        str(TERMINAL_BENCH_DATASET),
+        evaluator["split"],
+        base_dir=ROOT,
+        sampling=evaluator["sampling"],
+        gate_limit=evaluator["tasks_per_round"],
+    )
+    assert {name: manifest["tasks"][name] for name in ("train", "gate", "sealed")} == {
+        name: expected[name] for name in ("train", "gate", "sealed")
+    }
 
 
 def test_real_uv_recipes_enable_candidate_runtime_and_task_retry() -> None:
