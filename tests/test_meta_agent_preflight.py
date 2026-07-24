@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+import evolve.meta_agent_preflight as preflight
 from evolve.meta_agent_preflight import (
     STATIC_PROBE,
     CommandResult,
@@ -193,7 +194,7 @@ class FixedRunner:
         env: Mapping[str, str] | None = None,
     ) -> CommandResult:
         assert isinstance(argv, tuple)
-        assert timeout_s == 15
+        assert 0 < timeout_s <= 15
         return self.results.pop(0)
 
 
@@ -210,6 +211,34 @@ class OSErrorStaticRunner(StaticRunner):
             await asyncio.sleep(0.01)
             raise FileNotFoundError("docker diagnostic OPENAI_API_KEY=runner-secret")
         return result
+
+
+class DeadlineClock:
+    def __init__(self) -> None:
+        self.value = 0.0
+
+    def __call__(self) -> float:
+        return self.value
+
+
+class DeadlineRunner:
+    def __init__(self, case: PreflightCase, clock: DeadlineClock, inspection_elapsed_s: float) -> None:
+        self.case = case
+        self.clock = clock
+        self.inspection_elapsed_s = inspection_elapsed_s
+        self.calls: list[tuple[tuple[str, ...], float]] = []
+
+    async def __call__(
+        self,
+        argv: tuple[str, ...],
+        timeout_s: float,
+        env: Mapping[str, str] | None = None,
+    ) -> CommandResult:
+        self.calls.append((argv, timeout_s))
+        if argv[:3] == ("docker", "image", "inspect"):
+            self.clock.value += self.inspection_elapsed_s
+            return CommandResult(0, json.dumps({"Id": self.case.expected_image_id}), "", self.inspection_elapsed_s)
+        return CommandResult(0, _probe(self.case, REQUIRED_TOOLS), "", 0.1)
 
 
 def test_run_static_checks_image_contracts_concurrently_with_tuple_argv():
@@ -236,12 +265,34 @@ def test_run_static_checks_image_contracts_concurrently_with_tuple_argv():
     assert runner.calls[0] == ("docker", "image", "inspect", cases[0].image, "--format", "{{json .}}")
     assert runner.calls[1] == ("docker", "image", "inspect", cases[1].image, "--format", "{{json .}}")
     assert all(isinstance(call, tuple) for call in runner.calls)
-    assert runner.timeouts == [15, 15, 15, 15]
+    assert all(0 < timeout <= 15 for timeout in runner.timeouts)
     assert any(
         call == ("docker", "run", "--rm", "--entrypoint", "bash", cases[0].image, "-lc", call[-1])
         for call in runner.calls
         if call[:3] == ("docker", "run", "--rm")
     )
+
+
+def test_inspect_image_uses_one_deadline_and_skips_the_probe_after_it_expires(monkeypatch):
+    case = PreflightCase(**_case())
+    remaining_clock = DeadlineClock()
+    monkeypatch.setattr(preflight, "monotonic", remaining_clock)
+    remaining_runner = DeadlineRunner(case, remaining_clock, inspection_elapsed_s=11)
+
+    remaining = asyncio.run(inspect_image(case, remaining_runner))
+
+    assert remaining["passed"] is True
+    assert [timeout for _, timeout in remaining_runner.calls] == [15, 4]
+
+    expired_clock = DeadlineClock()
+    monkeypatch.setattr(preflight, "monotonic", expired_clock)
+    expired_runner = DeadlineRunner(case, expired_clock, inspection_elapsed_s=15)
+
+    expired = asyncio.run(inspect_image(case, expired_runner))
+
+    assert expired["failure_boundary"] == "image_contract"
+    assert "timeout" in expired["failures"][0]
+    assert len(expired_runner.calls) == 1
 
 
 def test_run_static_reports_image_contract_failures_without_cancelling_siblings():

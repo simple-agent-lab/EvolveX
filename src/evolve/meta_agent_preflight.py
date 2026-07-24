@@ -5,10 +5,10 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from time import monotonic
 from typing import Protocol
 
 _CASE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
@@ -205,19 +205,24 @@ async def inspect_image(
         "expected_image_id": case.expected_image_id,
         "declared_miniswe_version": case.miniswe_version,
     }
-    started = time.monotonic()
+    started = monotonic()
+    deadline = started + _STATIC_TIMEOUT_S
     redaction_environment = environment or {}
     elapsed_s = 0.0
     observed_image_id: str | None = None
 
     def finish() -> dict[str, object]:
-        result["elapsed_s"] = max(float(result.get("elapsed_s", 0.0)), time.monotonic() - started)
+        result["elapsed_s"] = max(float(result.get("elapsed_s", 0.0)), monotonic() - started)
         return result
 
     try:
+        inspect_timeout_s = deadline - monotonic()
+        if inspect_timeout_s <= 0:
+            result.update(_failure("static image timeout exhausted before inspection", elapsed_s))
+            return finish()
         inspection = await runner(
             ("docker", "image", "inspect", case.image, "--format", "{{json .}}"),
-            _STATIC_TIMEOUT_S,
+            inspect_timeout_s,
             env=environment,
         )
         elapsed_s += inspection.elapsed_s
@@ -235,9 +240,13 @@ async def inspect_image(
             result.update(_failure("image ID does not match expected_image_id", elapsed_s, observed_image_id=image_id))
             return finish()
 
+        probe_timeout_s = deadline - monotonic()
+        if probe_timeout_s <= 0:
+            result.update(_failure("static image timeout exhausted before probe", elapsed_s, observed_image_id=image_id))
+            return finish()
         probe = await runner(
             ("docker", "run", "--rm", "--entrypoint", "bash", case.image, "-lc", STATIC_PROBE),
-            _STATIC_TIMEOUT_S,
+            probe_timeout_s,
             env=environment,
         )
         elapsed_s += probe.elapsed_s
@@ -304,11 +313,11 @@ async def run_static(
     environment: Mapping[str, str] | None = None,
 ) -> dict[str, object]:
     """Run independent image checks concurrently and preserve matrix order."""
-    started = time.monotonic()
+    started = monotonic()
     images = list(await asyncio.gather(*(inspect_image(case, runner, environment) for case in cases)))
     elapsed_s = max((float(image["elapsed_s"]) for image in images), default=0.0)
     return {
         "passed": all(image["passed"] is True for image in images),
-        "elapsed_s": elapsed_s if images else time.monotonic() - started,
+        "elapsed_s": elapsed_s if images else monotonic() - started,
         "images": images,
     }
