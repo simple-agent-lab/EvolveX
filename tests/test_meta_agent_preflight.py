@@ -572,7 +572,7 @@ def test_run_live_case_retains_a_valid_redacted_submission(tmp_path: Path):
     shim = (case_dir / "runner.py").read_text()
     assert "mini-swe-agent" in shim
     assert "--task-file=" in shim
-    assert "runpy.run_path" in shim
+    assert "os.execv" in shim
 
 
 def test_run_live_runs_cases_concurrently_and_keeps_siblings_after_a_timeout(tmp_path: Path):

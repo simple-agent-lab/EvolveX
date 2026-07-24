@@ -51,7 +51,7 @@ _LIVE_ENVIRONMENT = frozenset(
     }
 )
 _MINISWE_SHIM = """\
-import runpy
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -66,8 +66,7 @@ for argument in sys.argv[1:]:
         arguments.append("--task=" + Path(argument.removeprefix("--task-file=")).read_text())
     else:
         arguments.append(argument)
-sys.argv = [entrypoint, *arguments]
-runpy.run_path(entrypoint, run_name="__main__")
+os.execv(entrypoint, [entrypoint, *arguments])
 """
 
 STATIC_PROBE = (
