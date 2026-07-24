@@ -194,16 +194,32 @@ def test_miniswe_method_agents_use_the_rollout_model_version() -> None:
 def test_meta_agent_image_provides_harbor_workspace_parent() -> None:
     dockerfile = ROOT / "containers" / "meta-agent" / "Dockerfile"
     contents = dockerfile.read_text()
+    assert contents.startswith(
+        "FROM ubuntu:24.04@sha256:4fbb8e6a8395de5a7550b33509421a2bafbc0aab6c06ba2cef9ebffbc7092d90"
+    )
+    assert "ARG MINISWE_VERSION=2.4.5" in contents
+    assert "ARG SOURCE_REVISION=unknown" in contents
     assert "WORKDIR /app" in contents
     assert "\n        python3 \\" in contents
     assert "\n        python-is-python3 \\" in contents
-    assert "uv tool install --python 3.13 --with fastapi --with orjson mini-swe-agent" in contents
+    assert '"mini-swe-agent==${MINISWE_VERSION}"' in contents
+    assert 'io.evolve.miniswe.version="${MINISWE_VERSION}"' in contents
+    assert 'org.opencontainers.image.revision="${SOURCE_REVISION}"' in contents
     assert "COPY uv-wrapper /root/.local/bin/uv" in contents
 
     wrapper = (dockerfile.parent / "uv-wrapper").read_text()
     assert '"$1" = "tool"' in wrapper
     assert '"$2" = "install"' in wrapper
-    assert 'uv-real tool install --python 3.13 --with fastapi --with orjson "$@"' in wrapper
+    assert 'version="${EVOLVE_MINISWE_VERSION:-2.4.5}"' in wrapper
+    assert 'uv-real tool install --python 3.13 --with fastapi --with orjson "mini-swe-agent==$version"' in wrapper
+
+
+def test_meta_agent_required_tools_match_tier_zero_contract() -> None:
+    tools = (ROOT / "containers" / "meta-agent" / "required-tools.txt").read_text().splitlines()
+    assert tools == [
+        "bash", "git", "curl", "diff", "file", "find", "jq", "patch",
+        "python", "rg", "rsync", "sed", "tree", "uv", "mini-swe-agent",
+    ]
 
 
 def test_ahe_recipe_configures_reasoning_without_cost_caps() -> None:

@@ -2,8 +2,8 @@
 set -eu
 
 if [ "$#" -eq 3 ] && [ "$1" = "tool" ] && [ "$2" = "install" ] && [ "$3" = "mini-swe-agent" ]; then
-    shift 2
-    exec /root/.local/bin/uv-real tool install --python 3.13 --with fastapi --with orjson "$@"
+    version="${EVOLVE_MINISWE_VERSION:-2.4.5}"
+    exec /root/.local/bin/uv-real tool install --python 3.13 --with fastapi --with orjson "mini-swe-agent==$version"
 fi
 
 exec /root/.local/bin/uv-real "$@"
