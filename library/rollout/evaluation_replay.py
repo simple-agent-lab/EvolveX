@@ -28,14 +28,13 @@ def _load_collect_cases(checkout: Path) -> Callable[..., list[dict[str, Any]]]:
     return collector
 
 
-def _certified_artifact(workspace: Path, parent: str, row: dict[str, Any]) -> Path:
-    reference = row.get("artifacts")
+def _verified_artifact_reference(workspace: Path, reference: object, *, description: str) -> Path:
     if not isinstance(reference, dict):
-        raise SystemExit(f"selected parent {parent} has no certified evaluation artifacts")
+        raise SystemExit(f"{description} has no certified evaluation artifacts")
     relative = reference.get("path")
     expected = reference.get("sha256")
     if not isinstance(relative, str) or not isinstance(expected, str):
-        raise SystemExit(f"selected parent {parent} has malformed evaluation artifacts")
+        raise SystemExit(f"{description} has malformed evaluation artifacts")
     path = (workspace / relative).resolve()
     try:
         path.relative_to(workspace.resolve())
@@ -48,6 +47,47 @@ def _certified_artifact(workspace: Path, parent: str, row: dict[str, Any]) -> Pa
     return path
 
 
+def _certified_artifact(workspace: Path, parent: str, row: dict[str, Any]) -> Path:
+    return _verified_artifact_reference(
+        workspace,
+        row.get("artifacts"),
+        description=f"selected parent {parent}",
+    )
+
+
+def _artifact_sources(workspace: Path, parent: str, artifact: Path) -> list[tuple[Path, set[str] | None, bool]]:
+    """Return artifact, repaired-task filter, and whether the filter is inclusive."""
+    try:
+        manifest = json.loads(artifact.read_text())
+    except (OSError, json.JSONDecodeError):
+        manifest = None
+    if not isinstance(manifest, dict) or manifest.get("kind") != "failed_task_repair":
+        return [(artifact, None, True)]
+
+    replaced = manifest.get("replaced_slots")
+    if not isinstance(replaced, list):
+        raise SystemExit(f"selected parent {parent} has malformed repair artifact slots")
+    repaired_tasks = {
+        str(slot["task_id"]) for slot in replaced if isinstance(slot, dict) and isinstance(slot.get("task_id"), str)
+    }
+    if not repaired_tasks:
+        raise SystemExit(f"selected parent {parent} repair artifact has no replaced tasks")
+    base = _verified_artifact_reference(
+        workspace,
+        manifest.get("base_artifacts"),
+        description=f"selected parent {parent} base attempt",
+    )
+    repair = _verified_artifact_reference(
+        workspace,
+        manifest.get("repair_artifacts"),
+        description=f"selected parent {parent} repair attempt",
+    )
+    return [
+        (base, repaired_tasks, False),
+        (repair, repaired_tasks, True),
+    ]
+
+
 class EvaluationReplayRollout(RolloutOperator):
     def rollout(self, checkout: Path, ctx: OperatorContext) -> RolloutResult:
         if ctx.parent is None:
@@ -56,12 +96,22 @@ class EvaluationReplayRollout(RolloutOperator):
         if row is None:
             raise SystemExit(f"selected parent {ctx.parent} is missing from archive")
         artifact = _certified_artifact(ctx.workspace, ctx.parent, row)
-        jobs_dir = artifact.parent / "jobs"
-        cases = _load_collect_cases(checkout)(
-            jobs_dir,
-            field_limit=int(ctx.config.get("field_limit", 2000)),
-            pass_threshold=float(ctx.config.get("pass_threshold", 1.0)),
-        )
+        collector = _load_collect_cases(checkout)
+        cases: list[dict[str, Any]] = []
+        jobs_dirs: list[Path] = []
+        for source, task_filter, inclusive in _artifact_sources(ctx.workspace, ctx.parent, artifact):
+            jobs_dir = source.parent / "jobs"
+            jobs_dirs.append(jobs_dir)
+            source_cases = collector(
+                jobs_dir,
+                field_limit=int(ctx.config.get("field_limit", 2000)),
+                pass_threshold=float(ctx.config.get("pass_threshold", 1.0)),
+            )
+            if task_filter is not None:
+                source_cases = [
+                    case for case in source_cases if (str(case.get("task_name")) in task_filter) is inclusive
+                ]
+            cases.extend(source_cases)
         if not cases:
             raise SystemExit("evaluation replay produced no trial results")
 
@@ -90,7 +140,8 @@ class EvaluationReplayRollout(RolloutOperator):
                 "agent_errors": counts["agent_error"],
                 "infra_errors": counts["infra_error"] + counts["incomplete"],
                 "mean_observed_reward": round(sum(rewards) / len(rewards), 6) if rewards else None,
-                "jobs_dir": str(jobs_dir),
+                "jobs_dir": str(jobs_dirs[-1]),
+                "jobs_dirs": [str(path) for path in jobs_dirs],
             },
             artifacts=[
                 "rollout/cases.json",
