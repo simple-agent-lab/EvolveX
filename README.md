@@ -226,8 +226,8 @@ evolve status /tmp/evolve-ahe
 ```
 
 The AHE and HyperAgents defaults resolve `terminal-bench-2-10-10-10`
-relative to the project root and freeze its 10/10/10 split during
-initialization.
+relative to the project root and freeze all 30 curated instances as one
+optimization set during initialization.
 
 ## CLI Verbs
 

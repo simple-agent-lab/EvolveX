@@ -24,15 +24,15 @@ def test_hyperagents_recipe_initializes_broad_harbor_bundle(tmp_path: Path) -> N
     assert "agent: evolve_harbor_agent:FileTaskMiniSweAgent" in config
     assert "editable_roots:" in config
     assert "- target" in config and "- operators" in config
-    assert operator_blocks(workspace)["meta_agent"]["agent_env"] == {
-        "OPENAI_BASE_URL": "https://aidp.bytedance.net/api/modelhub/online/responses/openai/responses"
-    }
+    assert "agent_env" not in operator_blocks(workspace)["meta_agent"]
     assert (workspace / "evaluator/agent.env").read_text() == (
         "MINISWE_COST_LIMIT=0\nMINISWE_ENV_TIMEOUT=30\nMINISWE_REASONING_EFFORT=high\n"
         "MINISWE_STEP_LIMIT=100\n"
-        "OPENAI_BASE_URL=https://aidp.bytedance.net/api/modelhub/online/responses/openai/responses\n"
     )
+    assert "task_scope: full" in config
     assert "evaluation_split: train" in config
+    assert "tasks_per_round: 30" in config
+    assert "\n  split:" not in config
     assert "k: 1" in config
     assert "n_concurrent: 10" in config
     prompt = (workspace / "operators/meta_agent.py").read_text()

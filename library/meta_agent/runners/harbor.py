@@ -41,6 +41,7 @@ _PROXY_ENV = (
     ("EVOLVE_HARBOR_HTTPS_PROXY", "https_proxy", "HTTPS_PROXY"),
     ("EVOLVE_HARBOR_NO_PROXY", "no_proxy", "NO_PROXY"),
 )
+_CREDENTIAL_ENV = ("OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_API_BASE")
 
 
 class _WorkspaceBundle:
@@ -393,6 +394,10 @@ def _agent_env(config: dict[str, Any]) -> dict[str, str]:
         if value:
             values[lower] = value
             values[upper] = value
+    for name in _CREDENTIAL_ENV:
+        value = os.environ.get(name)
+        if value:
+            values[name] = value
     configured = config.get("agent_env")
     if isinstance(configured, dict):
         values.update({str(key): str(value) for key, value in configured.items()})

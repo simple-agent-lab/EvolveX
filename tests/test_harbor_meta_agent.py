@@ -34,6 +34,23 @@ def test_codex_meta_agent_always_uses_host_auth_json(monkeypatch: pytest.MonkeyP
     assert "CODEX_FORCE_AUTH_JSON" not in module._agent_env({"agent": "mini-swe-agent"})
 
 
+def test_harbor_meta_agent_forwards_openai_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _harbor_runner_module()
+    monkeypatch.setenv("OPENAI_API_KEY", "workspace-key")
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://workspace.example/v1")
+
+    assert module._agent_env({"agent": "mini-swe-agent"}) == {
+        "OPENAI_API_KEY": "workspace-key",
+        "OPENAI_BASE_URL": "https://workspace.example/v1",
+    }
+    assert module._agent_env(
+        {
+            "agent": "mini-swe-agent",
+            "agent_env": {"OPENAI_BASE_URL": "https://configured.example/v1"},
+        }
+    )["OPENAI_BASE_URL"] == "https://configured.example/v1"
+
+
 def test_harbor_rejects_oversized_instruction_with_unsafe_agent(tmp_path: Path) -> None:
     runner = _harbor_runner_module()
     prompt = tmp_path / "prompt.md"

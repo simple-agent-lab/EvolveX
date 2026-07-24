@@ -158,6 +158,12 @@ if [ -f evaluator/environment.kwargs ]; then
 fi
 set -- "$@" --ae "EVOLVE_CANDIDATE_SOURCE=$PWD/target"
 set -- "$@" --mounts "$runtime_mounts"
+for credential_name in OPENAI_API_KEY OPENAI_BASE_URL OPENAI_API_BASE; do
+  eval "credential_value=\${$credential_name-}"
+  if [ -n "$credential_value" ]; then
+    set -- "$@" --ae "$credential_name=$credential_value"
+  fi
+done
 if [ -f evaluator/agent.env ]; then
   while IFS= read -r agent_entry || [ -n "$agent_entry" ]; do
     [ -n "$agent_entry" ] && set -- "$@" --ae "$agent_entry"

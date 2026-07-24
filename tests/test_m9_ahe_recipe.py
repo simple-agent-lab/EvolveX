@@ -53,7 +53,6 @@ def test_ahe_recipe_initializes_harbor_miniswe_composition(tmp_path: Path) -> No
     assert (workspace / "evaluator/agent.env").read_text() == (
         "MINISWE_COST_LIMIT=0\nMINISWE_ENV_TIMEOUT=30\nMINISWE_REASONING_EFFORT=high\n"
         "MINISWE_STEP_LIMIT=100\n"
-        "OPENAI_BASE_URL=https://aidp.bytedance.net/api/modelhub/online/responses/openai/responses\n"
     )
     config = (workspace / "evolve.yaml").read_text()
     assert "variant: ahe" in config
@@ -61,9 +60,7 @@ def test_ahe_recipe_initializes_harbor_miniswe_composition(tmp_path: Path) -> No
     assert "agent: evolve_harbor_agent:FileTaskMiniSweAgent" in config
     assert "editable_roots:" in config
     operators = operator_blocks(workspace)
-    assert operators["meta_agent"]["agent_env"] == {
-        "OPENAI_BASE_URL": "https://aidp.bytedance.net/api/modelhub/online/responses/openai/responses"
-    }
+    assert "agent_env" not in operators["meta_agent"]
     assert {name: operator_timeout(operators, name) for name in ("rollout", "trace_analyzer", "meta_agent")} == {
         "rollout": 600,
         "trace_analyzer": 3600,
@@ -71,7 +68,7 @@ def test_ahe_recipe_initializes_harbor_miniswe_composition(tmp_path: Path) -> No
     }
     assert operators["trace_analyzer"] == {
         "variant": "ahe",
-        "max_tasks": 10,
+        "max_tasks": 30,
         "max_concurrent": 10,
         "timeout_per_task": 600,
         "retry_attempts": 3,
@@ -82,6 +79,9 @@ def test_ahe_recipe_initializes_harbor_miniswe_composition(tmp_path: Path) -> No
     config = (workspace / "evolve.yaml").read_text()
     assert "budget_usd" not in config
     assert "max_cases" not in config
+    assert "  task_scope: full" in config
     assert "  evaluation_split: train" in config
+    assert "  tasks_per_round: 30" in config
+    assert "\n  split:" not in config
     assert "  k: 1" in config
     assert "  n_concurrent: 10" in config

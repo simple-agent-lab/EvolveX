@@ -85,7 +85,7 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "meta_agent: {variant: ahe, runner: harbor" in config
             assert "select: {variant: ahe_latest" in config
             assert "gate: {variant: ahe_artifact_valid" in config
-            assert "max_tasks: 10" in config
+            assert "max_tasks: 30" in config
             assert "max_cases" not in config
             assert "budget_usd" not in config
             assert "agent: evolve_harbor_agent:FileTaskMiniSweAgent" in config
@@ -93,12 +93,12 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "max_retries: 2" in config
             assert "agent: evolve_harbor_adapter:MiniSweSourceAgent" in config
             assert "image: evolve-meta-agent-app:20260724-tools-mswe245" in config
-            assert "task_scope: full" not in config
+            assert "task_scope: full" in config
             assert "evaluation_split: train" in config
-            assert "tasks_per_round: 10" in config
+            assert "tasks_per_round: 30" in config
             assert "k: 1" in config
             assert "n_concurrent: 10" in config
-            assert "\n  split:" in config
+            assert "\n  split:" not in config
             assert "\n  anchor:" not in config
         elif name == "hyperagents":
             assert "max_generations: 10" in config
@@ -120,12 +120,12 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "gate: {variant: parent_eligible}" in config
             assert "record: {variant: hyperagents}" in config
             assert "image: evolve-meta-agent-app:20260724-tools-mswe245" in config
-            assert "task_scope: full" not in config
+            assert "task_scope: full" in config
             assert "evaluation_split: train" in config
-            assert "tasks_per_round: 10" in config
+            assert "tasks_per_round: 30" in config
             assert "k: 1" in config
             assert "n_concurrent: 10" in config
-            assert "\n  split:" in config
+            assert "\n  split:" not in config
             assert "\n  anchor:" not in config
             assert "budget_usd" not in config
         else:
@@ -149,28 +149,22 @@ def test_ahe_and_hyperagents_share_the_pinned_meta_agent_image() -> None:
         assert _parsed_config(name)["operators"]["meta_agent"]["image"] == expected
 
 
-def test_terminal_bench_method_recipes_use_local_partitioned_subset() -> None:
-    expected_split = {
-        "train": 0.3333333333333333,
-        "gate": 0.3333333333333333,
-        "sealed": 0.3333333333333333,
-        "seed": 0,
-    }
+def test_terminal_bench_method_recipes_use_full_curated_dataset() -> None:
     for name in ("ahe", "hyperagents"):
         recipe = _parsed_config(name)
         evaluator = recipe["evaluator"]
         assert isinstance(evaluator, dict)
         assert evaluator["dataset"] == "terminal-bench-2-10-10-10"
-        assert evaluator["split"] == expected_split
+        assert "split" not in evaluator
         assert evaluator["sampling"] == "static"
-        assert evaluator["tasks_per_round"] == 10
-        assert "task_scope" not in evaluator
+        assert evaluator["tasks_per_round"] == 30
+        assert evaluator["task_scope"] == "full"
         assert evaluator["evaluation_split"] == "train"
         assert evaluator["k"] == 1
         assert evaluator["n_concurrent"] == 10
 
     ahe = _parsed_config("ahe")
-    assert ahe["operators"]["trace_analyzer"]["max_tasks"] == 10
+    assert ahe["operators"]["trace_analyzer"]["max_tasks"] == 30
     assert ahe["operators"]["trace_analyzer"]["max_concurrent"] == 10
 
 
@@ -202,6 +196,11 @@ def test_miniswe_method_agents_use_the_rollout_model_version() -> None:
         evaluator = config["evaluator"]
         assert isinstance(evaluator, dict)
         assert evaluator["model"] == expected_model
+
+
+def test_recipes_do_not_hardcode_openai_endpoint() -> None:
+    for name in RECIPE_NAMES:
+        assert "OPENAI_BASE_URL" not in _config(name)
 
 
 def test_meta_agent_image_provides_harbor_workspace_parent() -> None:
@@ -272,7 +271,6 @@ def test_hyperagents_recipe_configures_reasoning_without_cost_caps() -> None:
         "MINISWE_ENV_TIMEOUT": "30",
         "MINISWE_REASONING_EFFORT": "high",
         "MINISWE_STEP_LIMIT": "100",
-        "OPENAI_BASE_URL": "https://aidp.bytedance.net/api/modelhub/online/responses/openai/responses",
     }
 
 
