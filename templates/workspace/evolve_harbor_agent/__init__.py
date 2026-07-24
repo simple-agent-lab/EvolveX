@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shlex
 import tempfile
 import uuid
@@ -46,7 +47,12 @@ class FileTaskMiniSweAgent(MiniSweAgent):
 
         uses_responses = "model.model_class=litellm_response" in command
         cache_key = f"evolve-{uuid.uuid4().hex}"
-        has_output_budget = "model.model_kwargs.max_output_tokens=" in command
+        command_tokens = shlex.split(command)
+        has_output_budget = any(
+            flag == "-c"
+            and re.fullmatch(r"model\.model_kwargs\.max_output_tokens=\d+", value)
+            for flag, value in zip(command_tokens, command_tokens[1:], strict=False)
+        )
         model_kwargs = {
             "include": ["reasoning.encrypted_content"],
             "prompt_cache_key": cache_key,

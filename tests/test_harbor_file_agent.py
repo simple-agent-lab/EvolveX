@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ADAPTER = ROOT / "templates" / "workspace" / "evolve_harbor_agent" / "__init__.py"
 
 
-def _load(monkeypatch, max_output_tokens: int | None = None):
+def _load(monkeypatch, max_output_tokens: int | str | None = None):
     harbor = types.ModuleType("harbor")
     agents = types.ModuleType("harbor.agents")
     installed = types.ModuleType("harbor.agents.installed")
@@ -109,3 +109,15 @@ def test_file_task_agent_preserves_explicit_output_budget(monkeypatch) -> None:
     responses_config = json.loads(uploaded[module.RESPONSES_CONFIG_PATH])
     assert "max_output_tokens" not in responses_config["model"]["model_kwargs"]
     assert "model.model_kwargs.max_output_tokens=12345" in environment.commands[-1]
+
+
+def test_file_task_agent_defaults_for_malformed_output_budget_override(monkeypatch) -> None:
+    for output_budget in ("not-an-integer", "12345suffix"):
+        module = _load(monkeypatch, max_output_tokens=output_budget)
+        environment = Environment()
+
+        asyncio.run(module.FileTaskMiniSweAgent().run("Fix the constant.", environment, object()))
+
+        uploaded = dict(environment.uploads)
+        responses_config = json.loads(uploaded[module.RESPONSES_CONFIG_PATH])
+        assert responses_config["model"]["model_kwargs"]["max_output_tokens"] == 64_000
