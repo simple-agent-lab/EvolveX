@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import subprocess
+import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -29,6 +31,42 @@ _REQUIRED_TOOLS = tuple(
 )
 _MINIMAL_EXCLUDED_TOOLS = frozenset({"jq", "rg", "rsync", "tree"})
 _STATIC_TIMEOUT_S = 15.0
+_LIVE_MAX_OUTPUT_TOKENS = 64000
+_LIVE_MODEL = "openai/gpt-5.4-2026-03-05"
+_LIVE_ENVIRONMENT = frozenset(
+    {
+        "OPENAI_API_KEY",
+        "OPENAI_BASE_URL",
+        "OPENAI_API_BASE",
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "ALL_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "all_proxy",
+        "NO_PROXY",
+        "no_proxy",
+    }
+)
+_MINISWE_SHIM = """\
+import runpy
+import shutil
+import sys
+from pathlib import Path
+
+entrypoint = shutil.which("mini-swe-agent")
+if entrypoint is None:
+    raise SystemExit("mini-swe-agent is not on PATH")
+
+arguments = []
+for argument in sys.argv[1:]:
+    if argument.startswith("--task-file="):
+        arguments.append("--task=" + Path(argument.removeprefix("--task-file=")).read_text())
+    else:
+        arguments.append(argument)
+sys.argv = [entrypoint, *arguments]
+runpy.run_path(entrypoint, run_name="__main__")
+"""
 
 STATIC_PROBE = (
     r"""python - <<'PY'
@@ -125,6 +163,44 @@ class PreflightCase:
         if isinstance(timeout_s, bool) or not isinstance(timeout_s, int) or not 1 <= timeout_s <= 120:
             raise ValueError("timeout_s must be between 1 and 120")
         return cls(name, image, image_id, miniswe_version, expanded_tools, timeout_s)
+
+
+def create_synthetic_workspace(root: Path, *, require_rg: bool) -> Path:
+    """Create a small committed edit task that needs no network dependencies."""
+    root.mkdir(parents=True, exist_ok=False)
+    target = root / "target"
+    target.mkdir()
+    (target / "value.py").write_text("VALUE = 1\n")
+    (root / "check.py").write_text(
+        "from target.value import VALUE\n\n"
+        "if VALUE != 2:\n"
+        "    raise SystemExit('VALUE == 2 is required')\n"
+    )
+    tools = "Python and rg" if require_rg else "Python"
+    (root / "prompt.md").write_text(
+        "Update target/value.py so the verification passes.\n\n"
+        f"This task requires {tools}.\n"
+        "Run python check.py. After it succeeds, write [\"target/value.py\"] to changed.json.\n"
+        "Your exact final command must be:\n"
+        "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\n"
+    )
+    for argv in (
+        ("git", "init", "--quiet"),
+        ("git", "add", "target/value.py", "check.py", "prompt.md"),
+        (
+            "git",
+            "-c",
+            "user.name=Evolve Preflight",
+            "-c",
+            "user.email=preflight@example.invalid",
+            "commit",
+            "--quiet",
+            "-m",
+            "synthetic workspace baseline",
+        ),
+    ):
+        subprocess.run(argv, cwd=root, check=True, capture_output=True, text=True)
+    return root
 
 
 def load_matrix(path: Path) -> tuple[PreflightCase, ...]:
@@ -320,4 +396,351 @@ async def run_static(
         "passed": all(image["passed"] is True for image in images),
         "elapsed_s": elapsed_s if images else monotonic() - started,
         "images": images,
+    }
+
+
+def _live_config(case: PreflightCase) -> dict[str, object]:
+    cache_key = f"evolve-preflight-{case.name}"
+    return {
+        "model": {
+            "model_kwargs": {
+                "max_output_tokens": _LIVE_MAX_OUTPUT_TOKENS,
+                "include": ["reasoning.encrypted_content"],
+                "prompt_cache_key": cache_key,
+                "extra_headers": {"extra": json.dumps({"session_id": cache_key}, sort_keys=True)},
+            }
+        }
+    }
+
+
+def _child_environment(environment: Mapping[str, str]) -> dict[str, str]:
+    return {name: value for name, value in environment.items() if name in _LIVE_ENVIRONMENT and value}
+
+
+async def _host_command(argv: tuple[str, ...], cwd: Path, timeout_s: float) -> CommandResult:
+    """Run a local verifier command with a hard asynchronous deadline."""
+    started = monotonic()
+    process = await asyncio.create_subprocess_exec(
+        *argv,
+        cwd=str(cwd),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    try:
+        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout_s)
+    except TimeoutError:
+        process.kill()
+        await process.communicate()
+        raise
+    return CommandResult(
+        process.returncode,
+        stdout.decode(errors="replace"),
+        stderr.decode(errors="replace"),
+        monotonic() - started,
+    )
+
+
+def _write_text(path: Path, value: str) -> None:
+    path.write_text(value)
+
+
+def _read_trajectory(path: Path) -> dict[str, object]:
+    try:
+        value = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError(f"invalid trajectory: {error}") from error
+    if not isinstance(value, dict):
+        raise ValueError("trajectory must be a JSON object")
+    return value
+
+
+def _changed_paths(workspace: Path) -> list[str]:
+    try:
+        value = json.loads((workspace / "changed.json").read_text())
+    except FileNotFoundError as error:
+        raise ValueError("Submitted without changed.json") from error
+    except json.JSONDecodeError as error:
+        raise ValueError("changed.json is not valid JSON") from error
+    if not isinstance(value, list) or not value or not all(isinstance(item, str) and item for item in value):
+        raise ValueError("changed.json must contain changed paths")
+    if any(Path(item).is_absolute() or ".." in Path(item).parts for item in value):
+        raise ValueError("changed.json contains an unsafe path")
+    return value
+
+
+def _trajectory_details(trajectory: Mapping[str, object]) -> tuple[dict[str, object], list[dict[str, object]]]:
+    info = trajectory.get("info")
+    if not isinstance(info, dict):
+        raise ValueError("trajectory omitted info")
+    config = info.get("config")
+    if not isinstance(config, dict):
+        raise ValueError("trajectory omitted effective configuration")
+    model = config.get("model")
+    if not isinstance(model, dict):
+        raise ValueError("trajectory omitted effective model configuration")
+    effective = model.get("model_kwargs")
+    if not isinstance(effective, dict):
+        raise ValueError("trajectory omitted effective model configuration")
+    if (
+        effective.get("max_output_tokens") != _LIVE_MAX_OUTPUT_TOKENS
+        or effective.get("include") != ["reasoning.encrypted_content"]
+    ):
+        raise ValueError("trajectory effective model configuration does not match Responses config")
+    messages = trajectory.get("messages")
+    if not isinstance(messages, list) or not messages or not isinstance(messages[-1], dict):
+        raise ValueError("trajectory omitted exit message")
+    exit_message = messages[-1]
+    extra = exit_message.get("extra")
+    status = extra.get("exit_status") if isinstance(extra, dict) else None
+    if exit_message.get("role") != "exit" or status != "Submitted":
+        detail = json.dumps(exit_message, sort_keys=True)
+        if "RepeatedFormatError" in detail or "finish_reason=length" in detail:
+            raise ValueError(f"model protocol exit: {detail}")
+        raise ValueError(f"unexpected trajectory exit status: {detail}")
+
+    tool_calls: list[dict[str, object]] = []
+
+    def collect_calls(value: object) -> None:
+        if isinstance(value, dict):
+            if value.get("type") == "function_call":
+                tool_calls.append(dict(value))
+            for child in value.values():
+                collect_calls(child)
+        elif isinstance(value, list):
+            for child in value:
+                collect_calls(child)
+
+    collect_calls(messages)
+    return dict(effective), tool_calls
+
+
+def _live_result(
+    case: PreflightCase,
+    container_name: str,
+    case_dir: Path,
+    elapsed_s: float,
+    *,
+    passed: bool,
+    failure_boundary: str | None,
+    failures: list[str],
+    **details: object,
+) -> dict[str, object]:
+    result: dict[str, object] = {
+        "name": case.name,
+        "image": case.image,
+        "image_id": case.expected_image_id,
+        "container_name": container_name,
+        "passed": passed,
+        "failure_boundary": failure_boundary,
+        "failures": failures,
+        "elapsed_s": elapsed_s,
+        "logs": {
+            "stdout": str(case_dir / "stdout.log"),
+            "stderr": str(case_dir / "stderr.log"),
+            "trajectory": str(case_dir / "trajectory.json"),
+            "patch": str(case_dir / "patch.diff"),
+            "config": str(case_dir / "responses.json"),
+        },
+    }
+    result.update(details)
+    return result
+
+
+async def run_live_case(
+    case: PreflightCase,
+    output: Path,
+    runner: CommandRunner,
+    environment: Mapping[str, str],
+) -> dict[str, object]:
+    """Run one isolated model protocol smoke and retain redacted local evidence."""
+    started = monotonic()
+    case_dir = output / "cases" / case.name
+    case_dir.mkdir(parents=True, exist_ok=False)
+    _write_text(case_dir / "stdout.log", "")
+    _write_text(case_dir / "stderr.log", "")
+    _write_text(case_dir / "patch.diff", "")
+    workspace = await asyncio.to_thread(
+        create_synthetic_workspace, case_dir / "workspace", require_rg=case.expanded_tools
+    )
+    config = _live_config(case)
+    (case_dir / "responses.json").write_text(json.dumps(config, indent=2, sort_keys=True) + "\n")
+    _write_text(case_dir / "runner.py", _MINISWE_SHIM)
+    nonce = uuid.uuid4().hex
+    container_name = f"evolve-preflight-{case.name}-{nonce}"
+    child_environment = _child_environment(environment)
+    env_arguments = tuple(item for name in child_environment for item in ("--env", name))
+    model = environment.get("EVOLVE_PREFLIGHT_MODEL", _LIVE_MODEL)
+    command = (
+        "docker",
+        "run",
+        "--rm",
+        "--name",
+        container_name,
+        "-w",
+        "/app/task/workspace",
+        "-v",
+        f"{workspace}:/app/task/workspace",
+        "-v",
+        f"{case_dir}:/app/task/output",
+        *env_arguments,
+        case.image,
+        "python",
+        "/app/task/output/runner.py",
+        "--yolo",
+        f"--model={model}",
+        "--task-file=/app/task/workspace/prompt.md",
+        "--output=/app/task/output/trajectory.json",
+        "--cost-limit",
+        "0",
+        "-c",
+        "mini",
+        "-c",
+        "model.model_class=litellm_response",
+        "-c",
+        "model.model_kwargs.reasoning.effort=low",
+        "-c",
+        "/app/task/output/responses.json",
+        "--exit-immediately",
+    )
+    docker_result = CommandResult(0, "", "", 0.0)
+    try:
+        docker_result = await asyncio.wait_for(runner(command, case.timeout_s, env=child_environment), case.timeout_s)
+        _write_text(case_dir / "stdout.log", redact(docker_result.stdout, environment))
+        _write_text(case_dir / "stderr.log", redact(docker_result.stderr, environment))
+        if docker_result.returncode:
+            diagnostic = _diagnostic(docker_result, environment)
+            boundary = "model_protocol" if (
+                "RepeatedFormatError" in diagnostic or "finish_reason=length" in diagnostic
+            ) else "agent_startup"
+            result = _live_result(
+                case, container_name, case_dir, monotonic() - started,
+                passed=False, failure_boundary=boundary, failures=[diagnostic or "agent process failed"],
+            )
+            (case_dir / "case.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+            return result
+    except TimeoutError:
+        try:
+            await runner(("docker", "stop", container_name), min(5.0, float(case.timeout_s)), env=child_environment)
+        except (OSError, TimeoutError):
+            pass
+        _write_text(case_dir / "stdout.log", "")
+        _write_text(case_dir / "stderr.log", "agent process timeout\n")
+        result = _live_result(
+            case, container_name, case_dir, monotonic() - started,
+            passed=False, failure_boundary="agent_startup", failures=["agent process timeout"],
+        )
+        (case_dir / "case.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+        return result
+    except (OSError, TypeError) as error:
+        _write_text(case_dir / "stdout.log", "")
+        _write_text(case_dir / "stderr.log", redact(str(error), environment))
+        result = _live_result(
+            case, container_name, case_dir, monotonic() - started,
+            passed=False, failure_boundary="agent_startup", failures=[redact(str(error), environment)],
+        )
+        (case_dir / "case.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+        return result
+
+    try:
+        trajectory = _read_trajectory(case_dir / "trajectory.json")
+        effective_model_config, tool_calls = _trajectory_details(trajectory)
+    except ValueError as error:
+        result = _live_result(
+            case, container_name, case_dir, monotonic() - started,
+            passed=False, failure_boundary="model_protocol", failures=[redact(str(error), environment)],
+        )
+        (case_dir / "case.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+        return result
+    try:
+        changed_paths = _changed_paths(workspace)
+    except ValueError as error:
+        result = _live_result(
+            case, container_name, case_dir, monotonic() - started,
+            passed=False, failure_boundary="artifact_import", failures=[str(error)],
+        )
+        (case_dir / "case.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+        return result
+
+    try:
+        check = await _host_command(("python", "check.py"), workspace, float(case.timeout_s))
+    except (OSError, TimeoutError) as error:
+        result = _live_result(
+            case, container_name, case_dir, monotonic() - started,
+            passed=False, failure_boundary="verification", failures=[redact(str(error), environment)],
+        )
+        (case_dir / "case.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+        return result
+    if check.returncode:
+        result = _live_result(
+            case, container_name, case_dir, monotonic() - started,
+            passed=False, failure_boundary="verification", failures=[_diagnostic(check, environment)],
+        )
+        (case_dir / "case.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+        return result
+    try:
+        patch = await _host_command(("git", "diff", "--binary"), workspace, float(case.timeout_s))
+    except (OSError, TimeoutError) as error:
+        result = _live_result(
+            case, container_name, case_dir, monotonic() - started,
+            passed=False, failure_boundary="workspace_edit", failures=[redact(str(error), environment)],
+        )
+        (case_dir / "case.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+        return result
+    patch_text = redact(patch.stdout, environment)
+    _write_text(case_dir / "patch.diff", patch_text)
+    if patch.returncode or not patch_text:
+        result = _live_result(
+            case, container_name, case_dir, monotonic() - started,
+            passed=False, failure_boundary="workspace_edit", failures=[_diagnostic(patch, environment) or "no git diff"],
+        )
+        (case_dir / "case.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+        return result
+
+    (case_dir / "changed.json").write_text(json.dumps(changed_paths) + "\n")
+    result = _live_result(
+        case, container_name, case_dir, monotonic() - started,
+        passed=True, failure_boundary=None, failures=[],
+        effective_model_config=effective_model_config,
+        tool_calls=tool_calls,
+        changed_paths=changed_paths,
+        patch_bytes=len(patch_text.encode()),
+    )
+    (case_dir / "case.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    return result
+
+
+async def run_live(
+    cases: Sequence[PreflightCase],
+    output: Path,
+    runner: CommandRunner,
+    environment: Mapping[str, str],
+) -> dict[str, object]:
+    """Run independent live cases concurrently without sibling cancellation."""
+    if len({case.name for case in cases}) != len(cases):
+        raise ValueError("live cases must have unique names")
+    started = monotonic()
+    results: list[dict[str, object] | None] = [None] * len(cases)
+
+    async def collect(index: int, case: PreflightCase) -> None:
+        try:
+            results[index] = await run_live_case(case, output, runner, environment)
+        except Exception as error:  # Expected case failures must not cancel siblings.
+            results[index] = {
+                "name": case.name,
+                "image": case.image,
+                "image_id": case.expected_image_id,
+                "passed": False,
+                "failure_boundary": "agent_startup",
+                "failures": [redact(str(error), environment)],
+                "elapsed_s": 0.0,
+            }
+
+    async with asyncio.TaskGroup() as group:
+        for index, case in enumerate(cases):
+            group.create_task(collect(index, case))
+    completed = [result for result in results if result is not None]
+    return {
+        "passed": all(result["passed"] is True for result in completed),
+        "elapsed_s": monotonic() - started,
+        "cases": completed,
     }

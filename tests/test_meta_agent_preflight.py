@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import subprocess
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
@@ -14,9 +15,12 @@ from evolve.meta_agent_preflight import (
     STATIC_PROBE,
     CommandResult,
     PreflightCase,
+    create_synthetic_workspace,
     inspect_image,
     load_matrix,
     redact,
+    run_live,
+    run_live_case,
     run_static,
 )
 
@@ -121,6 +125,19 @@ def test_redact_removes_environment_secrets_and_common_credentials():
 
 def test_redact_leaves_ordinary_diagnostics_unchanged():
     assert redact("missing executable: rg", {}) == "missing executable: rg"
+
+
+@pytest.mark.parametrize(("require_rg", "expects_rg"), [(False, False), (True, True)])
+def test_create_synthetic_workspace(tmp_path: Path, require_rg: bool, expects_rg: bool):
+    workspace = create_synthetic_workspace(tmp_path / ("expanded" if require_rg else "minimal"), require_rg=require_rg)
+
+    assert (workspace / "target" / "value.py").read_text() == "VALUE = 1\n"
+    assert "VALUE == 2" in (workspace / "check.py").read_text()
+    prompt = (workspace / "prompt.md").read_text()
+    assert "Python" in prompt
+    assert ("This task requires Python and rg." in prompt) is expects_rg
+    assert "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT" in prompt
+    assert not (workspace / "changed.json").exists()
 
 
 REQUIRED_TOOLS = (Path(__file__).parents[1] / "containers" / "meta-agent" / "required-tools.txt").read_text().splitlines()
@@ -371,3 +388,198 @@ def test_inspect_image_rejects_missing_required_tool_malformed_probe_and_nonzero
     assert "JSON object" in malformed["failures"][0]
     assert "static probe failed: stdout\nstderr" == nonzero["failures"][0]
     assert all(tool in STATIC_PROBE for tool in REQUIRED_TOOLS)
+
+
+class LiveRunner:
+    def __init__(
+        self,
+        outcome: str = "valid",
+        *,
+        outcomes_by_case: Mapping[str, str] | None = None,
+        delay_s: float = 0.0,
+    ) -> None:
+        self.outcome = outcome
+        self.outcomes_by_case = outcomes_by_case or {}
+        self.delay_s = delay_s
+        self.calls: list[tuple[str, ...]] = []
+        self.environments: list[Mapping[str, str] | None] = []
+        self.entered = 0
+        self.all_entered = asyncio.Event()
+        self.expected_entries = 1
+
+    async def __call__(
+        self,
+        argv: tuple[str, ...],
+        timeout_s: float,
+        env: Mapping[str, str] | None = None,
+    ) -> CommandResult:
+        self.calls.append(argv)
+        self.environments.append(env)
+        if argv[:2] == ("docker", "stop"):
+            return CommandResult(0, "", "", 0.0)
+        assert argv[:2] == ("docker", "run")
+        container_name = next(part for part in argv if part.startswith("evolve-preflight-"))
+        outcome = next(
+            (value for name, value in self.outcomes_by_case.items() if f"evolve-preflight-{name}-" in container_name),
+            self.outcome,
+        )
+        self.entered += 1
+        if self.entered == self.expected_entries:
+            self.all_entered.set()
+        await self.all_entered.wait()
+        if self.delay_s:
+            await asyncio.sleep(self.delay_s)
+        if outcome == "RepeatedFormatError":
+            return CommandResult(1, "RepeatedFormatError", "", self.delay_s)
+        if outcome == "finish_reason=length":
+            return CommandResult(1, "finish_reason=length", "", self.delay_s)
+        if outcome == "agent process timeout":
+            raise TimeoutError("agent process timeout")
+
+        mounts = [part for part in argv if part.endswith(":/app/task/workspace") or part.endswith(":/app/task/output")]
+        workspace = Path(next(part for part in mounts if part.endswith(":/app/task/workspace")).removesuffix(":/app/task/workspace"))
+        case_dir = Path(next(part for part in mounts if part.endswith(":/app/task/output")).removesuffix(":/app/task/output"))
+        if outcome != "Submitted without changed.json":
+            (workspace / "changed.json").write_text('["target/value.py"]')
+        if outcome not in {"check.py failed", "no git diff"}:
+            (workspace / "target" / "value.py").write_text("VALUE = 2\n")
+        if outcome == "no git diff":
+            (workspace / "target" / "value.py").write_text("VALUE = 2\n")
+            subprocess.run(
+                ("git", "add", "target/value.py"), cwd=workspace, check=True, capture_output=True, text=True
+            )
+            subprocess.run(
+                (
+                    "git", "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+                    "commit", "--quiet", "-m", "agent committed unexpectedly",
+                ),
+                cwd=workspace,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        (case_dir / "trajectory.json").write_text(
+            json.dumps(
+                {
+                    "info": {
+                        "config": {
+                            "model": {
+                                "model_kwargs": {
+                                    "max_output_tokens": 64000,
+                                    "include": ["reasoning.encrypted_content"],
+                                }
+                            }
+                        }
+                    },
+                    "messages": [
+                        {
+                            "role": "assistant",
+                            "output": [{"type": "function_call", "name": "shell"}],
+                        },
+                        {"role": "exit", "extra": {"exit_status": "Submitted"}},
+                    ],
+                }
+            )
+        )
+        return CommandResult(0, "model output", "", self.delay_s)
+
+
+@pytest.mark.parametrize(
+    ("outcome", "boundary"),
+    [
+        ("RepeatedFormatError", "model_protocol"),
+        ("finish_reason=length", "model_protocol"),
+        ("Submitted without changed.json", "artifact_import"),
+        ("check.py failed", "verification"),
+        ("no git diff", "workspace_edit"),
+        ("agent process timeout", "agent_startup"),
+    ],
+)
+def test_run_live_case_classifies_the_first_failed_protocol_boundary(tmp_path: Path, outcome: str, boundary: str):
+    case = PreflightCase(**_case(name="case-" + boundary, timeout_s=1))
+
+    result = asyncio.run(run_live_case(case, tmp_path / "out", LiveRunner(outcome), {}))
+
+    assert result["passed"] is False
+    assert result["failure_boundary"] == boundary
+    assert (tmp_path / "out" / "cases" / case.name / "case.json").is_file()
+
+
+def test_run_live_case_retains_a_valid_redacted_submission(tmp_path: Path):
+    case = PreflightCase(**_case(name="valid-live"))
+    runner = LiveRunner()
+
+    result = asyncio.run(
+        run_live_case(
+            case,
+            tmp_path / "out",
+            runner,
+            {"OPENAI_API_KEY": "do-not-retain", "OPENAI_BASE_URL": "https://model.test", "UNRELATED": "drop-me"},
+        )
+    )
+
+    assert result["passed"] is True
+    assert result["image_id"] == case.expected_image_id
+    assert result["effective_model_config"]["max_output_tokens"] == 64000
+    assert result["tool_calls"] == [{"type": "function_call", "name": "shell"}]
+    assert result["changed_paths"] == ["target/value.py"]
+    assert result["patch_bytes"] > 0
+    assert set(result["logs"]) == {"stdout", "stderr", "trajectory", "patch", "config"}
+    assert "do-not-retain" not in (tmp_path / "out" / "cases" / case.name / "stdout.log").read_text()
+    assert runner.environments[0] == {
+        "OPENAI_API_KEY": "do-not-retain",
+        "OPENAI_BASE_URL": "https://model.test",
+    }
+    command = runner.calls[0]
+    assert command[0:2] == ("docker", "run")
+    assert "-w" in command and command[command.index("-w") + 1] == "/app/task/workspace"
+    assert command[-17:] == (
+        "python",
+        "/app/task/output/runner.py",
+        "--yolo",
+        "--model=openai/gpt-5.4-2026-03-05",
+        "--task-file=/app/task/workspace/prompt.md",
+        "--output=/app/task/output/trajectory.json",
+        "--cost-limit",
+        "0",
+        "-c",
+        "mini",
+        "-c",
+        "model.model_class=litellm_response",
+        "-c",
+        "model.model_kwargs.reasoning.effort=low",
+        "-c",
+        "/app/task/output/responses.json",
+        "--exit-immediately",
+    )
+    assert "do-not-retain" not in " ".join(command)
+    assert any(part.startswith("evolve-preflight-valid-live-") for part in command)
+    case_dir = tmp_path / "out" / "cases" / case.name
+    config = json.loads((case_dir / "responses.json").read_text())
+    assert config == {
+        "model": {
+            "model_kwargs": {
+                "max_output_tokens": 64000,
+                "include": ["reasoning.encrypted_content"],
+                "prompt_cache_key": "evolve-preflight-valid-live",
+                "extra_headers": {"extra": '{"session_id": "evolve-preflight-valid-live"}'},
+            }
+        }
+    }
+    shim = (case_dir / "runner.py").read_text()
+    assert "mini-swe-agent" in shim
+    assert "--task-file=" in shim
+    assert "runpy.run_path" in shim
+
+
+def test_run_live_runs_cases_concurrently_and_keeps_siblings_after_a_timeout(tmp_path: Path):
+    cases = tuple(PreflightCase(**_case(name=f"case-{index}", timeout_s=1)) for index in range(3))
+    runner = LiveRunner(outcomes_by_case={"case-1": "agent process timeout"}, delay_s=0.08)
+    runner.expected_entries = len(cases)
+    started = preflight.monotonic()
+    result = asyncio.run(run_live(cases, tmp_path / "out", runner, {}))
+
+    assert runner.entered == 3
+    assert preflight.monotonic() - started < 0.35
+    assert result["passed"] is False
+    assert [case_result["passed"] for case_result in result["cases"]] == [True, False, True]
