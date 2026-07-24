@@ -8,6 +8,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -695,7 +696,7 @@ async def run_live_case(
         remaining_s = deadline - monotonic()
         if remaining_s <= 0:
             raise TimeoutError
-        check = await _host_command(("python", "check.py"), workspace, remaining_s)
+        check = await _host_command((sys.executable, "check.py"), workspace, remaining_s)
     except (OSError, TimeoutError) as error:
         failure = "verification timeout" if isinstance(error, TimeoutError) else str(error)
         result = _live_result(
