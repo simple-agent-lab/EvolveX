@@ -161,21 +161,3 @@ runs/gen-N/meta_agent/harbor/tasks/
 On success the active strategy writes the standard `meta_agent/changed.json`,
 `patch.diff`, `surface-check.json`, `rationale.md`, and `usage.json` regardless
 of the selected runner. AHE may additionally preserve `ahe-report.json`.
-
-## Fast image preflight
-
-Build versioned images before the timed check, then run the static and live
-cases concurrently from an immutable-ID matrix:
-
-```bash
-uv run python scripts/meta_agent_preflight.py \
-  --matrix /path/to/meta-agent-preflight.json \
-  --output artifacts/user/meta-agent-preflight
-```
-
-Use `--static-only` for the 15-second image-contract gate or
-`--case expanded-2.4.5` to reproduce one case. A complete warm-cache run has a
-five-minute budget and never builds, pulls, downloads, retags, or deletes
-images. Failures identify the first boundary—image contract, agent startup,
-model protocol, artifact import, verification, or workspace edit—rather than
-reporting every problem as a generic image failure.

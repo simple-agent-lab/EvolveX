@@ -35,7 +35,6 @@ APPROVED_MODULES = {
     "git.py",
     "harbor_local.py",
     "host_runtime.py",
-    "meta_agent_preflight.py",
     "operators.py",
     "patching.py",
     "population.py",

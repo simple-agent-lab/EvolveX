@@ -50,6 +50,7 @@ archive.jsonl
 .worktrees/
 /docs/superpowers/
 /docs/guides/
+/handoff-*/
 doc/
 
 # Editor, OS, and logs
