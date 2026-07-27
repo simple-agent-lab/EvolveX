@@ -12,6 +12,35 @@ def _miniswe_seed(root: Path) -> Path:
     return write_locked_miniswe_seed(root / "miniswe")
 
 
+def test_init_rejects_test_only_builtin_dummy_seed_before_creating_workspace(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+
+    result = run_evolve(
+        "init",
+        str(workspace),
+        "--recipe",
+        "hill_climb",
+        "--seed",
+        "builtin-dummy",
+        env={"EVOLVE_HOME": str(tmp_path / "evolve-home")},
+    )
+
+    assert result.returncode == 1
+    assert "builtin-dummy is test-only; pass a local seed directory instead" in result.stderr
+    assert not workspace.exists()
+
+
+def test_init_help_advertises_only_supported_seed_options() -> None:
+    result = run_evolve("init", "--help")
+
+    assert result.returncode == 0, result.stderr
+    assert "builtin-codex" in result.stdout
+    assert "local target dir" in result.stdout
+    assert "git URL to vendor" in result.stdout
+    assert "into target/" in result.stdout
+    assert "builtin-dummy" not in result.stdout
+
+
 def test_git_seed_revision_freezes_exact_commit(tmp_path: Path) -> None:
     seed = tmp_path / "seed"
     seed.mkdir()

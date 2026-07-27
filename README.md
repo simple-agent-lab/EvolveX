@@ -131,19 +131,20 @@ uv tool install .
 evolve --help
 ```
 
-## Quickstart: Run A Local Smoke Experiment
+## Quickstart: Run a Harbor Experiment
 
 Create a new generated workspace:
 
 ```bash
-evolve init /tmp/evolve-demo --recipe hill_climb-smoke
+evolve init /tmp/evolve-demo --recipe aevolve \
+  --dataset /absolute/path/to/harbor/tasks
 cd /tmp/evolve-demo
 ```
 
-Run a deterministic smoke loop with the stub evaluator:
+Run the evolution loop:
 
 ```bash
-EVAL_STUB=1 evolve run . --max-generations 5
+evolve run . --max-generations 5
 ```
 
 Runs print stage-level progress by default. Add `--verbose` to stream Harbor
@@ -162,11 +163,10 @@ and `no_proxy` values in both lower- and uppercase forms. Override only the
 values sent to task containers with `EVOLVE_HARBOR_HTTP_PROXY`,
 `EVOLVE_HARBOR_HTTPS_PROXY`, and `EVOLVE_HARBOR_NO_PROXY`.
 
-To scaffold an evolvable Harbor wrapper around Codex instead of the dummy
-target:
+To scaffold an evolvable Harbor wrapper around Codex:
 
 ```bash
-evolve init /tmp/evolve-codex --recipe hill_climb --seed builtin-codex \
+evolve init /tmp/evolve-codex --recipe aevolve --seed builtin-codex \
   --dataset /absolute/path/to/harbor/tasks
 ```
 
@@ -200,7 +200,7 @@ git tag --list 'gen/*'
 cat archive.jsonl
 ```
 
-The smoke run should produce `gen/0` through `gen/5` snapshots and
+The run should produce `gen/0` through `gen/5` snapshots and
 append scored rows to `archive.jsonl`.
 
 ## Recipes
@@ -232,7 +232,7 @@ optimization set during initialization.
 ## CLI Verbs
 
 ```text
-evolve init <workspace> [--recipe ...] [--seed builtin-dummy|builtin-codex|PATH|GIT_URL] [--dataset LOCAL_TASK_DIR]
+evolve init <workspace> [--recipe ...] [--seed builtin-codex|PATH|GIT_URL] [--dataset LOCAL_TASK_DIR]
 evolve run <workspace> [--max-generations N] [--children-per-gen N] [--resume] [--from-generation GENID]
 evolve fork <workspace> <parent> <child-worktree>
 evolve commit <workspace> <child-worktree> --parent <id> --genid <id>

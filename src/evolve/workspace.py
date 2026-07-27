@@ -64,6 +64,8 @@ class _OperatorBinding:
 
 def init_workspace(options: InitOptions) -> None:
     workspace = options.workspace
+    if options.seed == "builtin-dummy":
+        raise ValueError("builtin-dummy is test-only; pass a local seed directory instead")
     if workspace.exists() and any(workspace.iterdir()):
         raise ValueError(f"workspace is not empty: {workspace}")
 
@@ -435,15 +437,10 @@ def _write_target(workspace: Path, target_config: dict[str, Any]) -> None:
         raise ValueError("target.generate_lock must be a boolean")
     if revision is not None and _GIT_COMMIT.fullmatch(revision) is None:
         raise ValueError("target.revision must be a full 40-character git commit")
-    if not seed_text or seed_text == "builtin-dummy":
-        target = workspace / "target"
-        target.mkdir(parents=True, exist_ok=True)
-        (target / "agent.py").write_text(_template("target/agent.py"))
-        (target / "README.md").write_text("# Seed Target\n\nA tiny stdlib-only seed target for Evolve.\n")
-        (target / "UPSTREAM.json").write_text(
-            json.dumps({"kind": "builtin", "seed": "builtin-dummy"}, sort_keys=True) + "\n"
-        )
-        return
+    if not seed_text:
+        raise ValueError("target.seed is required")
+    if seed_text == "builtin-dummy":
+        raise ValueError("builtin-dummy is test-only; pass a local seed directory instead")
     if seed_text == "builtin-codex":
         _copy_resource_tree(resource_root("templates") / "target" / "codex", workspace / "target")
         (workspace / "target" / "UPSTREAM.json").write_text(

@@ -13,16 +13,15 @@ ledger. Everything goes through the workspace's `./evolve` console. This is the
 **First actions, always:**
 1. `cd` into the workspace (it contains `evolve`, `evaluator/`, `target/`).
    No workspace yet? Create a live Harbor experiment with
-   `evolve init <dir> --recipe hill_climb --dataset <tasks>`, or use
-   `--recipe hill_climb-smoke` for a local mechanism smoke test.
+   `evolve init <dir> --recipe aevolve --dataset <tasks>`.
 2. The workspace's own `evolve-workspace` skill (its `SKILL.md`) is the
    operating manual — it auto-discovers on `cd`-in.
 3. `./evolve status` before anything else; `./evolve doctor` if state looks wrong.
 
 **Two modes:**
 - Autonomous: `./evolve run . --max-generations N` — the operators edit the candidate.
-  `EVAL_STUB=1` only stubs canonical evaluation; use the smoke recipe and a
-  deterministic `EVOLVE_AGENT_COMMAND` when testing without live services.
+  `EVAL_STUB=1` only stubs canonical evaluation; it does not turn a public
+  recipe into a local fixture.
 - You-as-meta-agent: edit within the mutable surface, then let `./evolve run`
   drive eval/gate/record (interactive `gen begin` / `gen finish` is designed
   but not yet a CLI surface — see `DESIGN.md`).

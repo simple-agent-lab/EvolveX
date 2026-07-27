@@ -72,7 +72,7 @@ def init(
     workspace: Path,
     recipe: str = typer.Option("hill_climb", help="paradigm recipe to scaffold"),
     seed: str | None = typer.Option(
-        None, help="builtin-dummy, builtin-codex, local target dir, or git URL to vendor into target/"
+        None, help="builtin-codex, local target dir, or git URL to vendor into target/"
     ),
     dataset: str | None = typer.Option(None, help="local Harbor task directory to split and freeze"),
 ) -> None:
