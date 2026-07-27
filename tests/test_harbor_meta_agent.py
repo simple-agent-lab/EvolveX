@@ -783,6 +783,33 @@ def test_harbor_bundle_never_exposes_gate_or_sealed_data(tmp_path: Path, traject
         shutil.rmtree(bundle.staging, ignore_errors=True)
 
 
+@pytest.mark.parametrize("expose_gate_data", [False, True])
+def test_harbor_bundle_omits_gitignored_virtual_environments(
+    tmp_path: Path,
+    expose_gate_data: bool,
+) -> None:
+    checkout, run_dir = _checkout(tmp_path)
+    (checkout / ".gitignore").write_text("artifacts/\n.venv/\n")
+    (checkout / ".venv").mkdir()
+    (checkout / ".venv" / "framework-state.txt").write_text("host framework environment\n")
+    (checkout / "target" / ".venv").mkdir()
+    (checkout / "target" / ".venv" / "candidate-state.txt").write_text("host candidate environment\n")
+    runner = _harbor_runner_module()
+    surface = runner.load_surface_policy(checkout)
+    ctx = _ctx(checkout, run_dir)
+    ctx.config["expose_gate_data"] = expose_gate_data
+
+    bundle = runner._prepare_bundle(checkout, ctx, ["target"], surface)
+
+    try:
+        assert not (bundle.workspace / ".venv").exists()
+        assert not (bundle.workspace / "target" / ".venv").exists()
+        assert (checkout / ".venv" / "framework-state.txt").read_text() == "host framework environment\n"
+        assert (checkout / "target" / ".venv" / "candidate-state.txt").read_text() == "host candidate environment\n"
+    finally:
+        shutil.rmtree(bundle.staging, ignore_errors=True)
+
+
 @pytest.mark.parametrize("leak_source", ["prompt", "train-evidence"])
 def test_harbor_bundle_rejects_private_task_identifiers(tmp_path: Path, leak_source: str) -> None:
     checkout, run_dir = _checkout(tmp_path)
