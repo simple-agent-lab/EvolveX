@@ -123,7 +123,10 @@ def test_miniswe_wrapper_source_environment_contains_only_strings(adapter_path: 
     agent = module.MiniSweSourceAgent()
     agent.model_name = None
 
-    assert agent._source_env()["MSWEA_MODEL_NAME"] == ""
+    source_env = agent._source_env()
+
+    assert source_env["MSWEA_MODEL_NAME"] == ""
+    assert all(isinstance(value, str) for value in source_env.values())
 
 
 def test_miniswe_wrapper_uses_responses_reasoning_and_session_for_openai(

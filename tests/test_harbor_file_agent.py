@@ -41,10 +41,10 @@ def _load(monkeypatch, max_output_tokens: int | str | None = None):
                 env={"ROLE": "agent"},
             )
 
-        async def exec_as_agent(self, environment, command, env=None, **kwargs):
-            del kwargs
+        async def exec_as_agent(self, environment, command, env=None, cwd=None, timeout_sec=None):
             environment.commands.append(command)
             environment.envs.append(env or {})
+            environment.execution_options.append((cwd, timeout_sec))
 
     mini.MiniSweAgent = MiniSweAgent
     monkeypatch.setitem(sys.modules, "harbor", harbor)
@@ -62,6 +62,7 @@ class Environment:
     def __init__(self):
         self.commands = []
         self.envs = []
+        self.execution_options = []
         self.uploads = []
 
     async def upload_file(self, source, destination):
@@ -98,6 +99,41 @@ def test_file_task_agent_externalizes_large_miniswe_instruction(monkeypatch) -> 
     assert "store" not in model_kwargs
     assert "unset HTTP_PROXY" not in runtime_command
     assert environment.envs[-1] == {"ROLE": "agent"}
+
+
+def test_file_task_agent_forwards_execution_options_for_passthrough_and_rewritten_commands(monkeypatch) -> None:
+    module = _load(monkeypatch)
+    environment = Environment()
+    agent = module.FileTaskMiniSweAgent()
+
+    async def execute() -> None:
+        await agent.exec_as_agent(
+            environment,
+            command="echo passthrough",
+            env={"ROLE": "passthrough"},
+            cwd="/work/passthrough",
+            timeout_sec=11,
+        )
+        await agent.exec_as_agent(
+            environment,
+            command=(
+                "mini-swe-agent --yolo --task='rewrite me' --output=/logs/trajectory.json "
+                "--exit-immediately"
+            ),
+            env={"ROLE": "rewritten"},
+            cwd="/work/rewritten",
+            timeout_sec=29,
+        )
+
+    asyncio.run(execute())
+
+    assert environment.commands[0] == "echo passthrough"
+    assert "--task-file=" + module.TASK_PATH in environment.commands[1]
+    assert environment.envs == [{"ROLE": "passthrough"}, {"ROLE": "rewritten"}]
+    assert environment.execution_options == [
+        ("/work/passthrough", 11),
+        ("/work/rewritten", 29),
+    ]
 
 
 def test_file_task_agent_preserves_explicit_output_budget(monkeypatch) -> None:
