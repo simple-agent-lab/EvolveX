@@ -113,7 +113,7 @@ locked environment cannot be reproduced.
 Clone the repository and run the test suite:
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/simple-agent-lab/simple-evolve-agent.git
 cd simple-evolve-agent
 uv run pytest -q
 ```
@@ -137,7 +137,7 @@ Set the immutable digest for the evaluator capsule that will run your Harbor
 tasks:
 
 ```bash
-export EVOLVE_RUNTIME_DIGEST=sha256:<immutable-evaluator-capsule-digest>
+export EVOLVE_RUNTIME_DIGEST="sha256:replace-with-your-immutable-evaluator-capsule-digest"
 ```
 
 Create a new generated workspace:
