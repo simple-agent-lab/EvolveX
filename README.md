@@ -400,6 +400,12 @@ thermal pressure, and get more predictable long-running Docker behavior.
 - simple-agent-lab is deliberately not integrated until its Harbor adapter
   exists outside this codebase.
 
+## Project information
+
+Read the [security policy](SECURITY.md) to report vulnerabilities privately,
+the [Code of Conduct](CODE_OF_CONDUCT.md) for community expectations, and
+[support guidance](SUPPORT.md) for public issue routing and support boundaries.
+
 ## License
 
 Evolve Framework is licensed under [Apache-2.0](LICENSE). See

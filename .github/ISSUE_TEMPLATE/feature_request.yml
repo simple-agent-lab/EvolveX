@@ -1,0 +1,25 @@
+name: Feature request
+description: Propose a scoped improvement to Evolve Framework.
+title: "[Feature]: "
+labels: []
+body:
+  - type: textarea
+    id: problem
+    attributes: {label: User problem}
+    validations: {required: true}
+  - type: textarea
+    id: proposal
+    attributes: {label: Proposed behavior}
+    validations: {required: true}
+  - type: input
+    id: component
+    attributes: {label: Affected recipe or component}
+    validations: {required: true}
+  - type: textarea
+    id: alternatives
+    attributes: {label: Alternatives considered}
+    validations: {required: true}
+  - type: textarea
+    id: scope
+    attributes: {label: Scope and non-goals}
+    validations: {required: true}
