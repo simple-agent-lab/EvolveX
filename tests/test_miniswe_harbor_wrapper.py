@@ -10,16 +10,13 @@ import pytest
 from conftest import git, write_locked_miniswe_seed
 
 ROOT = Path(__file__).resolve().parents[1]
-ADAPTER_TEMPLATE = ROOT / "templates" / "workspace" / "evolve_harbor_adapter" / "__init__.py"
-ADAPTER_TEMPLATES = (
-    ROOT / "templates" / "target" / "harbor" / "miniswe_source_agent.py",
-    ADAPTER_TEMPLATE,
-)
+ADAPTER = ROOT / "src" / "evolve" / "integrations" / "harbor" / "miniswe_candidate.py"
+CANDIDATE_AGENT = "evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent"
 
 
-@pytest.fixture(params=ADAPTER_TEMPLATES, ids=("target", "workspace"))
-def adapter_path(request):
-    return request.param
+@pytest.fixture
+def adapter_path() -> Path:
+    return ADAPTER
 
 
 def _install_fake_harbor(monkeypatch):
@@ -66,7 +63,7 @@ def _install_fake_harbor(monkeypatch):
 
 
 def _load(path: Path):
-    spec = importlib.util.spec_from_file_location("evolve_harbor_adapter", path)
+    spec = importlib.util.spec_from_file_location("evolve.integrations.harbor.miniswe_candidate", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -289,9 +286,7 @@ def test_miniswe_wrapper_subclasses_harbor_miniswe_and_installs_candidate_source
     (target / "pyproject.toml").write_text("[project]\nname = 'mini-swe-agent'\nversion = '0.test'\n")
     (target / "uv.lock").write_text("version = 1\nrevision = 1\nrequires-python = '>=3.11'\n")
     (target / "src" / "minisweagent").mkdir(parents=True)
-    wrapper = target / "harbor_agent.py"
-    wrapper.write_text(ADAPTER_TEMPLATE.read_text())
-    module = _load(wrapper)
+    module = _load(ADAPTER)
 
     class Environment:
         def __init__(self) -> None:
@@ -382,9 +377,7 @@ def test_miniswe_wrapper_runs_candidate_source_api_not_cli(tmp_path: Path, monke
     monkeypatch.setenv("MINISWE_ENV_TIMEOUT", "30")
     target = tmp_path / "target"
     target.mkdir()
-    wrapper = target / "harbor_agent.py"
-    wrapper.write_text(ADAPTER_TEMPLATE.read_text())
-    module = _load(wrapper)
+    module = _load(ADAPTER)
 
     class Environment:
         def __init__(self) -> None:
@@ -427,9 +420,7 @@ def test_miniswe_runtime_and_offline_install_forward_download_proxies(tmp_path: 
 
     target = tmp_path / "target"
     target.mkdir()
-    wrapper = target / "harbor_agent.py"
-    wrapper.write_text(ADAPTER_TEMPLATE.read_text())
-    module = _load(wrapper)
+    module = _load(ADAPTER)
 
     class Environment:
         def __init__(self) -> None:
@@ -469,9 +460,7 @@ def test_miniswe_install_classifies_candidate_phase_failures(
 ) -> None:
     _install_fake_harbor(monkeypatch)
     target = write_locked_miniswe_seed(tmp_path / "target")
-    wrapper = target / "harbor_agent.py"
-    wrapper.write_text(ADAPTER_TEMPLATE.read_text())
-    module = _load(wrapper)
+    module = _load(ADAPTER)
     monkeypatch.setenv("EVOLVE_CANDIDATE_SOURCE", str(target))
 
     class Environment:
@@ -495,9 +484,7 @@ def test_miniswe_install_classifies_candidate_phase_failures(
 def test_miniswe_external_dependency_sync_is_infrastructure_owned(tmp_path: Path, monkeypatch) -> None:
     _install_fake_harbor(monkeypatch)
     target = write_locked_miniswe_seed(tmp_path / "target")
-    wrapper = target / "harbor_agent.py"
-    wrapper.write_text(ADAPTER_TEMPLATE.read_text())
-    module = _load(wrapper)
+    module = _load(ADAPTER)
     monkeypatch.setenv("EVOLVE_CANDIDATE_SOURCE", str(target))
 
     class Environment:
@@ -523,9 +510,7 @@ def test_miniswe_external_dependency_sync_is_infrastructure_owned(tmp_path: Path
 def test_miniswe_offline_runtime_never_downloads_uv(tmp_path: Path, monkeypatch) -> None:
     _install_fake_harbor(monkeypatch)
     target = write_locked_miniswe_seed(tmp_path / "target")
-    wrapper = target / "harbor_agent.py"
-    wrapper.write_text(ADAPTER_TEMPLATE.read_text())
-    module = _load(wrapper)
+    module = _load(ADAPTER)
     monkeypatch.setenv("EVOLVE_CANDIDATE_SOURCE", str(target))
     monkeypatch.setenv("UV_OFFLINE", "1")
     monkeypatch.delenv("EVOLVE_UV_BINARY", raising=False)
@@ -560,9 +545,7 @@ def test_miniswe_install_rejects_missing_lock_before_upload(tmp_path: Path, monk
     _install_fake_harbor(monkeypatch)
     target = write_locked_miniswe_seed(tmp_path / "target")
     (target / "uv.lock").unlink()
-    wrapper = target / "harbor_agent.py"
-    wrapper.write_text(ADAPTER_TEMPLATE.read_text())
-    module = _load(wrapper)
+    module = _load(ADAPTER)
     monkeypatch.setenv("EVOLVE_CANDIDATE_SOURCE", str(target))
 
     class Environment:
@@ -583,16 +566,16 @@ def test_init_with_local_miniswe_seed_writes_protected_harbor_adapter(tmp_path: 
     expected_lock = (seed / "uv.lock").read_bytes()
     workspace = tmp_path / "workspace"
     config = workspace_module.default_config("hill_climb", workspace.name)
-    config["target"]["harbor_agent"] = "miniswe-source"
-    config["evaluator"]["agent"] = "evolve_harbor_adapter:MiniSweSourceAgent"
+    config["evaluator"]["agent"] = CANDIDATE_AGENT
     monkeypatch.setattr(workspace_module, "default_config", lambda recipe, experiment_id: config)
 
     init_workspace(InitOptions(workspace=workspace, recipe="hill_climb", seed=str(seed)))
 
-    wrapper = workspace / "evolve_harbor_adapter" / "__init__.py"
+    wrapper = workspace / ".evolve" / "evolve" / "integrations" / "harbor" / "miniswe_candidate.py"
     assert wrapper.exists()
     assert "class MiniSweSourceAgent(MiniSweAgent):" in wrapper.read_text()
-    assert not (workspace / "target" / "harbor_agent.py").exists()
+    assert not (workspace / "evolve_harbor_adapter").exists()
+    assert not (workspace / "evolve_harbor_agent").exists()
     assert (workspace / "target" / "uv.lock").read_bytes() == expected_lock
     assert git(workspace, "ls-files", "target/uv.lock") == "target/uv.lock"
 
@@ -605,8 +588,7 @@ def test_init_tracks_seed_lockfile_even_when_seed_gitignore_excludes_it(tmp_path
     (seed / ".gitignore").write_text("uv.lock\n")
     workspace = tmp_path / "workspace"
     config = workspace_module.default_config("hill_climb", workspace.name)
-    config["target"]["harbor_agent"] = "miniswe-source"
-    config["evaluator"]["agent"] = "evolve_harbor_adapter:MiniSweSourceAgent"
+    config["evaluator"]["agent"] = CANDIDATE_AGENT
     monkeypatch.setattr(workspace_module, "default_config", lambda recipe, experiment_id: config)
 
     init_workspace(InitOptions(workspace=workspace, recipe="hill_climb", seed=str(seed)))
@@ -622,13 +604,13 @@ def test_init_does_not_enforce_package_manager_files(tmp_path: Path, monkeypatch
     (seed / "uv.lock").unlink()
     workspace = tmp_path / "workspace"
     config = workspace_module.default_config("hill_climb", workspace.name)
-    config["target"]["harbor_agent"] = "miniswe-source"
     monkeypatch.setattr(workspace_module, "default_config", lambda recipe, experiment_id: config)
 
     init_workspace(InitOptions(workspace=workspace, recipe="hill_climb", seed=str(seed)))
 
-    assert (workspace / "evolve_harbor_adapter" / "__init__.py").is_file()
-    assert not (workspace / "target" / "harbor_agent.py").exists()
+    assert (workspace / ".evolve" / "evolve" / "integrations" / "harbor" / "miniswe_candidate.py").is_file()
+    assert not (workspace / "evolve_harbor_adapter").exists()
+    assert not (workspace / "evolve_harbor_agent").exists()
 
 
 def test_init_with_local_miniswe_seed_excludes_virtualenv_cache(tmp_path: Path, monkeypatch) -> None:
@@ -644,8 +626,7 @@ def test_init_with_local_miniswe_seed_excludes_virtualenv_cache(tmp_path: Path, 
     (seed / "src" / "minisweagent" / ".env.test").write_text("TOKEN=must-not-copy\n")
     workspace = tmp_path / "workspace"
     config = workspace_module.default_config("hill_climb", workspace.name)
-    config["target"]["harbor_agent"] = "miniswe-source"
-    config["evaluator"]["agent"] = "evolve_harbor_adapter:MiniSweSourceAgent"
+    config["evaluator"]["agent"] = CANDIDATE_AGENT
     monkeypatch.setattr(workspace_module, "default_config", lambda recipe, experiment_id: config)
 
     init_workspace(InitOptions(workspace=workspace, recipe="hill_climb", seed=str(seed)))

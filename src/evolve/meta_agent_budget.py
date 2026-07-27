@@ -33,7 +33,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-HARBOR_FILE_TASK_AGENT = "evolve_harbor_agent:FileTaskMiniSweAgent"
+HARBOR_FILE_TASK_AGENT = "evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent"
 
 # Pinned Harbor 0.18 lifecycle defaults.
 HARBOR_ENVIRONMENT_START_S = 600.0

@@ -177,8 +177,6 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
         "pyproject.toml": _template("workspace/pyproject.toml"),
         "uv.lock": _template("workspace/uv.lock"),
         ".python-version": _template("workspace/.python-version"),
-        "evolve_harbor_adapter/__init__.py": _template("workspace/evolve_harbor_adapter/__init__.py"),
-        "evolve_harbor_agent/__init__.py": _template("workspace/evolve_harbor_agent/__init__.py"),
         "evolve.yaml": render_yaml(_runtime_config(config)),
         "README.md": _template("workspace/README.md"),
         "AGENTS.md": _template("workspace/AGENTS.md"),
@@ -425,9 +423,6 @@ def _runtime_config(config: dict[str, object]) -> dict[str, object]:
 
 
 def _write_target(workspace: Path, target_config: dict[str, Any]) -> None:
-    harbor_agent = str(target_config.get("harbor_agent") or "")
-    if harbor_agent not in ("", "miniswe-source"):
-        raise ValueError(f"unsupported target.harbor_agent: {harbor_agent}")
     seed = target_config.get("seed")
     seed_text = str(seed) if seed else None
     revision_value = target_config.get("revision")

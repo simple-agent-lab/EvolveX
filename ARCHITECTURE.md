@@ -38,6 +38,10 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `candidate/smoke.py` | 130 | run evaluator smoke against an exact candidate snapshot and persist redacted diagnostics |
 | `git.py` | 150 | thin git subprocess helpers — nothing evolve-specific |
 | `harbor_local.py` | 220 | minimal in-place Harbor environment for fast trials against a pre-configured local agent runtime |
+| `integrations/__init__.py` | 10 | external runtime integration package boundary |
+| `integrations/harbor/__init__.py` | 10 | Harbor integration package boundary |
+| `integrations/harbor/miniswe_candidate.py` | 450 | exact-candidate MiniSWE Harbor evaluator agent |
+| `integrations/harbor/miniswe_task_file.py` | 130 | large-task MiniSWE meta-agent transport |
 | `surface.py` | 150 | mutable-surface pattern matching and violation checks |
 | `report.py` | 182 | status/report rendering, best-ever recomputation, claim checklist |
 | `trace_analysis.py` | 410 | deterministic shared transforms used by the independent trace-analyzer operator variants |
@@ -58,7 +62,7 @@ each workspace, immutable there because it sits outside the mutable surface
 | `frozen/sdk.py` | 420 | Python operator entrypoint and file-contract IO; no library algorithm policy |
 | `frozen/meta_eval.py` | 130 | self-modification admission gate: confound-free replay of old vs new operator surface (mechanism 1) |
 
-Total `src/evolve/` budget: **7000 lines**. The budget admits the explicit evaluation-package
+Total `src/evolve/` budget: **7600 lines**. The budget admits the explicit evaluation-package
 boundaries, failed-task repair, the opt-in in-place Harbor runtime, and the redacted trace-analysis
 boundary between rollout and feedback assembly; if the mechanism wants to
 grow past that, something belongs in a workspace operator instead —

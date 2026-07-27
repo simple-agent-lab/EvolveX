@@ -22,7 +22,8 @@ from evolve.frozen.interfaces import OperatorContext
 from evolve.operators import _operator_deadline_s
 
 ROOT = Path(__file__).resolve().parents[1]
-FILE_TASK_AGENT = "evolve_harbor_agent:FileTaskMiniSweAgent"
+FILE_TASK_AGENT = "evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent"
+CANDIDATE_AGENT = "evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent"
 
 
 def _harbor_runner_module():
@@ -167,7 +168,7 @@ def _checkout(tmp_path: Path) -> tuple[Path, Path]:
         "surface:\n  include:\n    - target/**\n    - operators/**\n  exclude: []\n"
         "operators:\n  meta_agent: {variant: hyperagents, runner: harbor, timeout_s: 30}\n"
         "evaluator:\n  engine: harbor\n  dataset: pass@k\n"
-        "  agent: target.harbor_agent:MiniSweSourceAgent\n"
+        f"  agent: {CANDIDATE_AGENT}\n"
     )
     _git(checkout, "init", "-q")
     _git(checkout, "config", "user.name", "test")
@@ -238,8 +239,8 @@ if "--config" in sys.argv:
     job_name = job_config["job_name"]
     agent_config = job_config["agents"][0]
     if agent_config["name"] not in (
-        "evolve_harbor_adapter:MiniSweSourceAgent",
-        "evolve_harbor_agent:FileTaskMiniSweAgent",
+        "evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent",
+        "evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent",
     ):
         raise SystemExit("unexpected config agent")
     if agent_config["model_name"] != "gpt-test":
@@ -261,9 +262,9 @@ else:
     if option("--workdir") != "/app":
         raise SystemExit("expected /app workdir")
     agent_name = option("--agent")
-    if agent_name not in ("codex", "mini-swe-agent", "evolve_harbor_agent:FileTaskMiniSweAgent"):
+    if agent_name not in ("codex", "mini-swe-agent", "evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent"):
         raise SystemExit("unexpected agent")
-    miniswe = agent_name in ("mini-swe-agent", "evolve_harbor_agent:FileTaskMiniSweAgent")
+    miniswe = agent_name in ("mini-swe-agent", "evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent")
     if option("--model") != "gpt-test":
         raise SystemExit("expected gpt-test model")
     source = Path(option("--path", "-p"))
@@ -504,7 +505,7 @@ def test_harbor_meta_agent_injects_staged_miniswe_candidate_source(
     _install_fake_harbor(bin_dir)
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
     ctx = _ctx(checkout, run_dir)
-    ctx.config["agent"] = "evolve_harbor_adapter:MiniSweSourceAgent"
+    ctx.config["agent"] = CANDIDATE_AGENT
 
     _harbor_runner_module().run_agent(checkout, "failure evidence", ctx)
 
@@ -712,8 +713,8 @@ def test_agent_timeout_retry_loop_fits_full_lifecycle_budgets(
 @pytest.mark.parametrize(
     "agent",
     [
-        "evolve_harbor_adapter:MiniSweSourceAgent",
-        "evolve_harbor_agent:FileTaskMiniSweAgent",
+        CANDIDATE_AGENT,
+        FILE_TASK_AGENT,
     ],
 )
 def test_harbor_meta_agent_rejects_unsuccessful_miniswe_exit(

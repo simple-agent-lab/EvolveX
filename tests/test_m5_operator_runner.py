@@ -94,8 +94,8 @@ def test_run_operator_nonzero_and_timeout(tmp_path):
 @pytest.mark.parametrize(
     "agent",
     [
-        "evolve_harbor_agent:FileTaskMiniSweAgent",
-        "evolve_harbor_adapter:MiniSweSourceAgent",
+        "evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent",
+        "evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent",
     ],
 )
 def test_miniswe_source_harbor_meta_agent_outer_timeout_budgets_every_retry(

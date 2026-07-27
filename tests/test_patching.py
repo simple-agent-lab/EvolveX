@@ -29,7 +29,8 @@ def _repo(tmp_path: Path) -> Path:
         "target:\n  seed: builtin-dummy\n"
         "surface:\n  include:\n    - target/**\n  exclude:\n    - target/tmp/**\n"
         "operators:\n  meta_agent: {timeout_s: 30}\n"
-        "evaluator:\n  engine: harbor\n  dataset: pass@k\n  agent: target.harbor_agent:MiniSweSourceAgent\n"
+        "evaluator:\n  engine: harbor\n  dataset: pass@k\n"
+        "  agent: evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent\n"
     )
     _git(root, "add", ".")
     _git(root, "commit", "-qm", "parent")
@@ -178,8 +179,8 @@ def test_load_surface_policy_reads_workspace_surface_lists(tmp_path: Path) -> No
     assert policy == SurfacePolicy(include=["target/**"], exclude=["target/tmp/**"])
 
 
-def test_harbor_wrapper_is_implicitly_protected() -> None:
-    assert check_paths(["target/harbor_agent.py"], ["target/**"], []) == ["target/harbor_agent.py"]
+def test_harbor_agent_file_is_no_longer_implicitly_protected() -> None:
+    assert check_paths(["target/harbor_agent.py"], ["target/**"], []) == []
 
 
 def test_patch_parent_ref_prefers_context_parent(tmp_path: Path) -> None:

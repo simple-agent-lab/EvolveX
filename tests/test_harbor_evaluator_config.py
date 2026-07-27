@@ -15,11 +15,11 @@ def test_eval_env_uses_configured_harbor_agent() -> None:
         tasks_per_round=3,
         trials=1,
         partial_floor=0.8,
-        agent="evolve_harbor_adapter:MiniSweSourceAgent",
+        agent="evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent",
         model="openai/gpt-5.4-2026-03-05",
     )
 
-    assert "EVOLVE_HARBOR_AGENT=evolve_harbor_adapter:MiniSweSourceAgent\n" in env
+    assert "EVOLVE_HARBOR_AGENT=evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent\n" in env
     assert "EVOLVE_HARBOR_MODEL=openai/gpt-5.4-2026-03-05\n" in env
     assert "CheckoutTargetAgent" not in env
 
@@ -32,7 +32,7 @@ def test_eval_env_freezes_configured_model() -> None:
         tasks_per_round=30,
         trials=1,
         partial_floor=0.8,
-        agent="evolve_harbor_adapter:MiniSweSourceAgent",
+        agent="evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent",
         model="openai/gpt-5.4-2026-03-05",
     )
 
@@ -47,7 +47,7 @@ def test_eval_env_freezes_agent_timeout_multiplier() -> None:
         tasks_per_round=30,
         trials=1,
         partial_floor=0.8,
-        agent="evolve_harbor_adapter:MiniSweSourceAgent",
+        agent="evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent",
         agent_timeout_multiplier=4,
     )
 
@@ -62,7 +62,7 @@ def test_eval_env_freezes_verifier_timeout_multiplier() -> None:
         tasks_per_round=30,
         trials=1,
         partial_floor=0.8,
-        agent="evolve_harbor_adapter:MiniSweSourceAgent",
+        agent="evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent",
         verifier_timeout_multiplier=2,
     )
 
@@ -171,7 +171,7 @@ def test_init_writes_recipe_harbor_agent_to_eval_env(tmp_path: Path) -> None:
     init_fixture_workspace(workspace)
 
     env = (workspace / "evaluator" / "eval.env").read_text()
-    assert "EVOLVE_HARBOR_AGENT=evolve_harbor_adapter:MiniSweSourceAgent\n" in env
+    assert "EVOLVE_HARBOR_AGENT=evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent\n" in env
     assert "CheckoutTargetAgent" not in env
     assert (workspace / "evaluator" / "agent.env").read_text() == ""
     assert not (workspace / "evaluator" / "checkout_agent.py").exists()

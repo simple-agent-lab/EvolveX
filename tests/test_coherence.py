@@ -37,6 +37,10 @@ APPROVED_MODULES = {
     "git.py",
     "harbor_local.py",
     "host_runtime.py",
+    "integrations/__init__.py",
+    "integrations/harbor/__init__.py",
+    "integrations/harbor/miniswe_candidate.py",
+    "integrations/harbor/miniswe_task_file.py",
     "meta_agent_budget.py",
     "operators.py",
     "patching.py",
@@ -56,13 +60,7 @@ APPROVED_MODULES = {
 
 
 def _module_paths() -> list[Path]:
-    """Every mechanism module — top-level plus the frozen ring."""
-    return [
-        *sorted(SRC.glob("*.py")),
-        *sorted((SRC / "candidate").glob("*.py")),
-        *sorted((SRC / "evaluation").glob("*.py")),
-        *sorted((SRC / "frozen").glob("*.py")),
-    ]
+    return sorted(SRC.rglob("*.py"))
 
 
 def _module_relpaths() -> set[str]:

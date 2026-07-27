@@ -5,7 +5,7 @@ from pathlib import Path
 
 from .config import surface_lists
 
-IMPLICIT_EXCLUDES = ("evaluator/**", "target/harbor_agent.py", "archive.jsonl", ".evolve/**", "evolve")
+IMPLICIT_EXCLUDES = ("evaluator/**", "archive.jsonl", ".evolve/**", "evolve")
 
 
 def check_paths(

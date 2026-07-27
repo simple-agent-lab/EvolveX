@@ -75,7 +75,7 @@ def test_init_full_task_scope_freezes_every_task_without_partition(tmp_path: Pat
         "evolve.workspace.default_config",
         lambda _recipe, name: {
             "experiment": {"id": name, "max_generations": 1, "children_per_gen": 1},
-            "target": {"seed": "builtin-dummy", "harbor_agent": "miniswe-source"},
+            "target": {"seed": "builtin-dummy"},
             "surface": {"include": ["target/**"], "exclude": []},
             "operators": {
                 "select": {"variant": "ahe_latest"},
@@ -87,7 +87,7 @@ def test_init_full_task_scope_freezes_every_task_without_partition(tmp_path: Pat
             "evaluator": {
                 "engine": "harbor",
                 "dataset": str(dataset),
-                "agent": "evolve_harbor_adapter:MiniSweSourceAgent",
+                "agent": "evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent",
                 "task_scope": "full",
                 "evaluation_split": "train",
                 "sampling": "static",

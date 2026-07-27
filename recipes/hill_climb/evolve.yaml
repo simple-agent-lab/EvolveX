@@ -8,7 +8,6 @@ experiment:
   seed: 0
 target:
   seed: https://github.com/SWE-agent/mini-swe-agent.git
-  harbor_agent: miniswe-source
 surface:
   include:
     - target/**
@@ -25,7 +24,7 @@ evaluator:
   engine: harbor
   candidate_runtime: {variant: uv, project: target, python: "3.12"}
   dataset: swe-bench-lite
-  agent: evolve_harbor_adapter:MiniSweSourceAgent
+  agent: evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent
   split: {train: 0.5, gate: 0.4, sealed: 0.1, seed: 0}
   sampling: static
   tasks_per_round: 16

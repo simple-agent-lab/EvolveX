@@ -7,7 +7,8 @@ import types
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-ADAPTER = ROOT / "templates" / "workspace" / "evolve_harbor_agent" / "__init__.py"
+ADAPTER = ROOT / "src" / "evolve" / "integrations" / "harbor" / "miniswe_task_file.py"
+FILE_TASK_AGENT = "evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent"
 
 
 def _load(monkeypatch, max_output_tokens: int | str | None = None):
@@ -50,7 +51,7 @@ def _load(monkeypatch, max_output_tokens: int | str | None = None):
     monkeypatch.setitem(sys.modules, "harbor.agents", agents)
     monkeypatch.setitem(sys.modules, "harbor.agents.installed", installed)
     monkeypatch.setitem(sys.modules, "harbor.agents.installed.mini_swe_agent", mini)
-    spec = importlib.util.spec_from_file_location("evolve_harbor_agent_under_test", ADAPTER)
+    spec = importlib.util.spec_from_file_location("evolve.integrations.harbor.miniswe_task_file", ADAPTER)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

@@ -306,7 +306,7 @@ def test_harbor_smoke_is_install_only_and_exposes_raw_diagnostics(tmp_path: Path
             tasks_per_round=8,
             trials=2,
             partial_floor=0.8,
-            agent="evolve_harbor_adapter:MiniSweSourceAgent",
+            agent="evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent",
         )
     )
     _write_evaluator_helpers(evaluator)

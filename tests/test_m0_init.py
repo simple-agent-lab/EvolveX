@@ -63,7 +63,6 @@ def test_git_seed_revision_freezes_exact_commit(tmp_path: Path) -> None:
         {
             "seed": seed.as_uri(),
             "revision": locked_commit,
-            "harbor_agent": "miniswe-source",
         },
     )
 
@@ -93,7 +92,6 @@ def test_git_seed_can_explicitly_generate_missing_lock(tmp_path: Path) -> None:
             "seed": seed.as_uri(),
             "revision": seed_commit,
             "generate_lock": True,
-            "harbor_agent": "miniswe-source",
         },
     )
 
@@ -108,8 +106,8 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
         "pyproject.toml",
         "uv.lock",
         ".python-version",
-        "evolve_harbor_adapter/__init__.py",
-        "evolve_harbor_agent/__init__.py",
+        ".evolve/evolve/integrations/harbor/miniswe_candidate.py",
+        ".evolve/evolve/integrations/harbor/miniswe_task_file.py",
         "evolve.yaml",
         ".evolve-protocol-version",
         ".evolve/evolve/harbor_local.py",
@@ -149,15 +147,15 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
     assert not (workspace / "operators" / "mutate.py").exists()
     assert not (workspace / "operators" / "mutate.md").exists()
     assert not (workspace / "operators" / "mutation_brief.md").exists()
-    assert not (workspace / "evolve_harbor_adapter" / "modelhub_codex.py").exists()
+    assert not (workspace / "evolve_harbor_adapter").exists()
+    assert not (workspace / "evolve_harbor_agent").exists()
     assert not (workspace / "operators" / "meta_agent.md").exists()
     assert not (workspace / "operators" / "meta_agent_brief.md").exists()
     assert not (workspace / "evaluator" / "checkout_agent.py").exists()
-    assert not (workspace / "target" / "harbor_agent.py").exists()
     assert (workspace / ".python-version").read_text() == "3.12\n"
     assert "harbor==0.18.0" in (workspace / "pyproject.toml").read_text()
     assert (
-        'packages = [".evolve/evolve", "evolve_harbor_adapter", "evolve_harbor_agent", "library"]'
+        'packages = [".evolve/evolve", "library"]'
         in (workspace / "pyproject.toml").read_text()
     )
 
