@@ -106,6 +106,7 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
         "pyproject.toml",
         "uv.lock",
         ".python-version",
+        ".evolve-components.json",
         ".evolve/evolve/integrations/harbor/miniswe_candidate.py",
         ".evolve/evolve/integrations/harbor/miniswe_task_file.py",
         "evolve.yaml",
@@ -171,6 +172,9 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
     assert (workspace / ".evolve-protocol-version").read_text() == "1\n"
     upstream = json.loads((workspace / "target" / "UPSTREAM.json").read_text())
     assert upstream == {"kind": "fixture", "seed": "dummy"}
+    components = json.loads((workspace / ".evolve-components.json").read_text())
+    assert components["recipe"] == "hill_climb-smoke"
+    assert str(components["target_seed"]).endswith("tests/fixtures/seeds/dummy")
 
     gitignore = (workspace / ".gitignore").read_text()
     assert "runs/" in gitignore

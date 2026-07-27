@@ -103,6 +103,18 @@ def test_local_superpowers_artifacts_are_not_tracked() -> None:
     )
 
 
+def test_generated_python_caches_are_not_tracked() -> None:
+    result = subprocess.run(
+        ["git", "ls-files"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    tracked = result.stdout.splitlines()
+    assert not [path for path in tracked if "__pycache__/" in path or path.endswith(".pyc")]
+
+
 def test_stamped_fields_defined_once() -> None:
     defining = [
         path.relative_to(SRC).as_posix()

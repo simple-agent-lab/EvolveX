@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from conftest import run_evolve, write_locked_miniswe_seed
@@ -51,6 +52,10 @@ def test_ahe_recipe_initializes_harbor_miniswe_composition(tmp_path: Path) -> No
     assert not (workspace / "evolve_harbor_adapter").exists()
     assert not (workspace / "evolve_harbor_agent").exists()
     assert not (workspace / "library/meta_agent/support/ahe_manifest.py").exists()
+    assert json.loads((workspace / ".evolve-components.json").read_text())["integrations"] == [
+        "evolve.integrations.harbor.miniswe_candidate",
+        "evolve.integrations.harbor.miniswe_task_file",
+    ]
     assert (workspace / "evaluator/agent.env").read_text() == (
         "MINISWE_COST_LIMIT=0\nMINISWE_ENV_TIMEOUT=30\nMINISWE_REASONING_EFFORT=high\n"
         "MINISWE_STEP_LIMIT=100\n"

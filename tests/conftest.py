@@ -12,7 +12,8 @@ import pytest
 
 from evolve.archive import merged_rows as mechanism_merged_rows
 from evolve.config import load_config
-from evolve.workspace import InitOptions, init_workspace as create_workspace
+from evolve.workspace import InitOptions
+from evolve.workspace import init_workspace as create_workspace
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE_RECIPES = ROOT / "tests" / "fixtures" / "recipes"

@@ -71,7 +71,6 @@ def init_workspace(options: InitOptions) -> None:
     if workspace.exists() and any(workspace.iterdir()):
         raise ValueError(f"workspace is not empty: {workspace}")
 
-    workspace.mkdir(parents=True, exist_ok=True)
     config = default_config(options.recipe, workspace.name)
     target = config["target"]
     assert isinstance(target, dict)
@@ -90,6 +89,11 @@ def init_workspace(options: InitOptions) -> None:
         assert isinstance(evaluator, dict)
         evaluator["dataset"] = options.dataset
 
+    evaluator = config["evaluator"]
+    assert isinstance(evaluator, dict)
+    _validate_evaluator_config(evaluator)
+    _validate_target_config(target)
+    workspace.mkdir(parents=True, exist_ok=True)
     _write_files(workspace, config, recipe=options.recipe, init_cwd=Path.cwd())
     _write_target(workspace, target)
     _vendor_mechanism(workspace)
@@ -179,6 +183,10 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
         "pyproject.toml": _workspace_scaffold("pyproject.toml"),
         "uv.lock": _workspace_scaffold("uv.lock"),
         ".python-version": _workspace_scaffold(".python-version"),
+        ".evolve-components.json": json.dumps(
+            _component_manifest(recipe, config), indent=2, sort_keys=True
+        )
+        + "\n",
         "evolve.yaml": render_yaml(_runtime_config(config)),
         "README.md": _workspace_scaffold("README.md"),
         "AGENTS.md": _workspace_scaffold("AGENTS.md"),
@@ -426,20 +434,64 @@ def _runtime_config(config: dict[str, object]) -> dict[str, object]:
     return runtime
 
 
-def _write_target(workspace: Path, target_config: dict[str, Any]) -> None:
-    seed = target_config.get("seed")
-    seed_text = str(seed) if seed else None
-    revision_value = target_config.get("revision")
-    revision = str(revision_value) if revision_value else None
-    generate_lock = target_config.get("generate_lock", False)
+def _component_manifest(recipe: str, config: dict[str, object]) -> dict[str, object]:
+    evaluator = cast("dict[str, Any]", config["evaluator"])
+    operators = cast("dict[str, Any]", config["operators"])
+    meta_agent = cast("dict[str, Any]", operators["meta_agent"])
+    references = (str(evaluator.get("agent") or ""), str(meta_agent.get("agent") or ""))
+    return {
+        "recipe": recipe,
+        "target_seed": cast("dict[str, Any]", config["target"]).get("seed"),
+        "evaluator_engine": evaluator.get("engine"),
+        "integrations": sorted(
+            {
+                reference.split(":", 1)[0]
+                for reference in references
+                if reference.startswith("evolve.integrations.")
+            }
+        ),
+    }
+
+
+def _validate_evaluator_config(evaluator: dict[str, Any]) -> None:
+    engine = str(evaluator.get("engine") or "")
+    _evaluator_scaffold(engine, "engine.sh")
+    if engine == "harbor" and not evaluator.get("agent"):
+        raise ValueError("evaluator.agent is required for harbor recipes")
+
+
+def _validate_target_config(target: dict[str, Any]) -> None:
+    seed = target.get("seed")
+    if not seed:
+        raise ValueError("target.seed is required")
+    if not isinstance(seed, str):
+        raise ValueError("target.seed must be a string")
+    if seed == "builtin-dummy":
+        raise ValueError("builtin-dummy is test-only; pass a local seed directory instead")
+
+    revision = target.get("revision")
+    if revision is not None and (
+        not isinstance(revision, str) or _GIT_COMMIT.fullmatch(revision) is None
+    ):
+        raise ValueError("target.revision must be a full 40-character git commit")
+    generate_lock = target.get("generate_lock", False)
     if not isinstance(generate_lock, bool):
         raise ValueError("target.generate_lock must be a boolean")
-    if revision is not None and _GIT_COMMIT.fullmatch(revision) is None:
-        raise ValueError("target.revision must be a full 40-character git commit")
-    if not seed_text:
-        raise ValueError("target.seed is required")
-    if seed_text == "builtin-dummy":
-        raise ValueError("builtin-dummy is test-only; pass a local seed directory instead")
+
+    if seed == "builtin-codex" or _looks_like_git_url(seed):
+        return
+    if revision is not None:
+        raise ValueError("target.revision requires a git URL seed")
+    if not Path(seed).expanduser().is_dir():
+        raise ValueError(f"seed is not a local directory or git URL: {seed}")
+
+
+def _write_target(workspace: Path, target_config: dict[str, Any]) -> None:
+    _validate_target_config(target_config)
+    seed_text = cast(str, target_config["seed"])
+    revision_value = target_config.get("revision")
+    revision = cast(str | None, revision_value)
+    generate_lock = target_config.get("generate_lock", False)
     if seed_text == "builtin-codex":
         _copy_resource_tree(seed_root() / "codex", workspace / "target")
         (workspace / "target" / "UPSTREAM.json").write_text(

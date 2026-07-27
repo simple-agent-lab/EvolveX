@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from conftest import FIXTURE_SEEDS, run_evolve
@@ -26,6 +27,10 @@ def test_hyperagents_recipe_initializes_broad_harbor_bundle(tmp_path: Path) -> N
     assert "editable_roots:" in config
     assert "- target" in config and "- operators" in config
     assert "agent_env" not in operator_blocks(workspace)["meta_agent"]
+    assert json.loads((workspace / ".evolve-components.json").read_text())["integrations"] == [
+        "evolve.integrations.harbor.miniswe_candidate",
+        "evolve.integrations.harbor.miniswe_task_file",
+    ]
     assert (workspace / "evaluator/agent.env").read_text() == (
         "MINISWE_COST_LIMIT=0\nMINISWE_ENV_TIMEOUT=30\nMINISWE_REASONING_EFFORT=high\n"
         "MINISWE_STEP_LIMIT=100\n"
