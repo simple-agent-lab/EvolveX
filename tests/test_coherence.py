@@ -15,48 +15,8 @@ from evolve.frozen import interfaces
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src" / "evolve"
-APPROVED_MODULES = {
-    "__init__.py",
-    "__main__.py",
-    "agent.py",
-    "archive.py",
-    "branching.py",
-    "candidate/__init__.py",
-    "candidate/smoke.py",
-    "candidate/snapshot.py",
-    "cli.py",
-    "config.py",
-    "driver.py",
-    "evaluation/__init__.py",
-    "evaluation/evidence.py",
-    "evaluation/execution.py",
-    "evaluation/identity.py",
-    "evaluation/repair.py",
-    "evaluation/results.py",
-    "feedback.py",
-    "git.py",
-    "harbor_local.py",
-    "host_runtime.py",
-    "integrations/__init__.py",
-    "integrations/harbor/__init__.py",
-    "integrations/harbor/miniswe_candidate.py",
-    "integrations/harbor/miniswe_task_file.py",
-    "meta_agent_budget.py",
-    "operators.py",
-    "patching.py",
-    "population.py",
-    "report.py",
-    "runtime.py",
-    "splits.py",
-    "surface.py",
-    "trace_analysis.py",
-    "uv_runtime.py",
-    "workspace.py",
-    # the frozen ring — the invariant-enforcers, grouped under frozen/
-    "frozen/__init__.py",
-    "frozen/interfaces.py",
-    "frozen/sdk.py",
-}
+ARCHITECTURE_ROW = re.compile(r"^\| `([^`]+\.py)` \| (\d+) \|", re.MULTILINE)
+TOTAL_BUDGET = re.compile(r"^Total `src/evolve/` budget: \*\*(\d+) lines\*\*\.", re.MULTILINE)
 
 
 def _module_paths() -> list[Path]:
@@ -67,13 +27,29 @@ def _module_relpaths() -> set[str]:
     return {path.relative_to(SRC).as_posix() for path in _module_paths()}
 
 
-def test_every_module_is_approved_and_every_approved_module_exists() -> None:
+def _architecture_budgets() -> tuple[dict[str, int], int]:
+    architecture = (ROOT / "ARCHITECTURE.md").read_text()
+    rows = ARCHITECTURE_ROW.findall(architecture)
+    budgets = {name: int(limit) for name, limit in rows}
+    total = TOTAL_BUDGET.search(architecture)
+    assert len(rows) == len(budgets), "ARCHITECTURE.md must not list a module more than once"
+    assert total is not None, "ARCHITECTURE.md must declare the total src/evolve budget"
+    return budgets, int(total.group(1))
+
+
+def test_architecture_table_is_the_module_and_budget_authority() -> None:
+    budgets, documented_total = _architecture_budgets()
     actual = _module_relpaths()
-    assert actual == APPROVED_MODULES, (
-        f"unexpected module set: actual={sorted(actual)}; "
-        f"approved={sorted(APPROVED_MODULES)} - "
-        "adding or removing a mechanism module requires updating the pinned set"
-    )
+
+    assert set(budgets) == actual
+    over_budget = {
+        path.relative_to(SRC).as_posix(): (len(path.read_text().splitlines()), budgets[path.relative_to(SRC).as_posix()])
+        for path in _module_paths()
+        if len(path.read_text().splitlines()) > budgets[path.relative_to(SRC).as_posix()]
+    }
+    assert over_budget == {}
+    assert sum(budgets.values()) == documented_total
+    assert sum(len(path.read_text().splitlines()) for path in _module_paths()) <= documented_total
 
 
 def test_population_delegates_evaluation_identity() -> None:

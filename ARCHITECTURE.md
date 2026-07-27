@@ -20,33 +20,40 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | --- | --- | --- |
 | `__init__.py` | 10 | package marker, version |
 | `__main__.py` | 10 | `python -m evolve` entry |
-| `cli.py` | 200 | argument parsing and verb dispatch only — no logic |
-| `config.py` | 300 | read/render `evolve.yaml`: recipes, experiment values, surface lists, operator blocks |
-| `driver.py` | 1450 | the generation sequencer: orchestrates baseline eval, verbs + operators (incl. novelty, self-modification admission gates, sealed anchors); validates operator outputs; computes verified_fixes; audit quarantine; doctor repair |
-| `feedback.py` | 220 | assemble current and historical rollout evidence plus ledger-derived feedback for the meta-agent |
-| `operators.py` | 150 | subprocess runner for workspace operator scripts (contract: env vars, --config, timeout) |
-| `population.py` | 150 | genid/lineage bookkeeping for fan-out generations |
-| `archive.py` | 380 | append-only event store: merge semantics, stamped-field protection, mirroring, integrity fsck |
-| `evaluation/__init__.py` | 30 | pure evaluation-result facade |
-| `evaluation/results.py` | 170 | evaluation result types, outcome classification, and persisted record shape |
-| `evaluation/evidence.py` | 130 | evaluator-output validation and conversion into canonical trial results |
-| `evaluation/identity.py` | 150 | canonical task-set identity plus checkout and frozen-baseline comparability |
-| `evaluation/execution.py` | 280 | clean-checkout canonical evaluation: tree assertion, targeted task execution, lifecycle, artifacts, and score parsing |
-| `evaluation/repair.py` | 190 | target explicit infrastructure failures, merge repaired trials, and preserve attempt provenance |
+| `agent.py` | 200 | agent command execution and error/result types |
+| `archive.py` | 400 | append-only event store: merge semantics, stamped-field protection, mirroring, integrity fsck |
+| `branching.py` | 150 | durable branch-intent persistence and validation |
 | `candidate/__init__.py` | 10 | candidate-boundary package marker |
-| `candidate/snapshot.py` | 80 | exact candidate Git tree construction, temporary materialization, and reviewed-tree commit verification |
-| `candidate/smoke.py` | 130 | run evaluator smoke against an exact candidate snapshot and persist redacted diagnostics |
+| `candidate/smoke.py` | 150 | run evaluator smoke against an exact candidate snapshot and persist redacted diagnostics |
+| `candidate/snapshot.py` | 100 | exact candidate Git tree construction, temporary materialization, and reviewed-tree commit verification |
+| `cli.py` | 300 | argument parsing and verb dispatch only — no logic |
+| `config.py` | 200 | read/render `evolve.yaml`: recipes, experiment values, surface lists, operator blocks |
+| `driver.py` | 1800 | the generation sequencer: orchestrates baseline eval, verbs + operators (incl. novelty, self-modification admission gates, sealed anchors); validates operator outputs; computes verified_fixes; audit quarantine; doctor repair |
+| `evaluation/__init__.py` | 50 | pure evaluation-result facade |
+| `evaluation/evidence.py` | 150 | evaluator-output validation and conversion into canonical trial results |
+| `evaluation/execution.py` | 350 | clean-checkout canonical evaluation: tree assertion, targeted task execution, lifecycle, artifacts, and score parsing |
+| `evaluation/identity.py` | 150 | canonical task-set identity plus checkout and frozen-baseline comparability |
+| `evaluation/repair.py` | 200 | target explicit infrastructure failures, merge repaired trials, and preserve attempt provenance |
+| `evaluation/results.py` | 200 | evaluation result types, outcome classification, and persisted record shape |
+| `feedback.py` | 250 | assemble current and historical rollout evidence plus ledger-derived feedback for the meta-agent |
+| `operators.py` | 200 | subprocess runner for workspace operator scripts (contract: env vars, --config, timeout) |
+| `patching.py` | 150 | mutable-surface patch creation and parent-reference selection |
+| `population.py` | 100 | genid/lineage bookkeeping for fan-out generations |
+| `report.py` | 200 | status/report rendering, best-ever recomputation, claim checklist |
+| `runtime.py` | 150 | generated-workspace runtime entrypoint helpers |
+| `splits.py` | 250 | freeze deterministic train/gate/sealed Harbor task membership and materialize exact runtime selections |
+| `surface.py` | 150 | mutable-surface pattern matching and violation checks |
+| `trace_analysis.py` | 750 | deterministic shared transforms used by the independent trace-analyzer operator variants |
+| `uv_runtime.py` | 550 | locked uv runtime construction and command execution |
+| `workspace.py` | 750 | `evolve init` scaffolding: file copies, operator binding, deterministic dataset and Harbor runtime config, generated operator palette, protocol stamping, seed + mechanism vendoring, inner-skill copy |
 | `git.py` | 150 | thin git subprocess helpers — nothing evolve-specific |
-| `harbor_local.py` | 220 | minimal in-place Harbor environment for fast trials against a pre-configured local agent runtime |
+| `harbor_local.py` | 250 | minimal in-place Harbor environment for fast trials against a pre-configured local agent runtime |
+| `host_runtime.py` | 100 | host-side locked runtime process helpers |
 | `integrations/__init__.py` | 10 | external runtime integration package boundary |
 | `integrations/harbor/__init__.py` | 10 | Harbor integration package boundary |
 | `integrations/harbor/miniswe_candidate.py` | 450 | exact-candidate MiniSWE Harbor evaluator agent |
 | `integrations/harbor/miniswe_task_file.py` | 130 | large-task MiniSWE meta-agent transport |
-| `surface.py` | 150 | mutable-surface pattern matching and violation checks |
-| `report.py` | 182 | status/report rendering, best-ever recomputation, claim checklist |
-| `trace_analysis.py` | 410 | deterministic shared transforms used by the independent trace-analyzer operator variants |
-| `splits.py` | 210 | freeze deterministic train/gate/sealed Harbor task membership and materialize exact runtime selections |
-| `workspace.py` | 680 | `evolve init` scaffolding: file copies, operator binding, deterministic dataset and Harbor runtime config, generated operator palette, protocol stamping, seed + mechanism vendoring, inner-skill copy |
+| `meta_agent_budget.py` | 150 | shared Harbor meta-agent retry and timeout budget calculations |
 
 ### The frozen ring (`src/evolve/frozen/`)
 
@@ -57,12 +64,11 @@ each workspace, immutable there because it sits outside the mutable surface
 
 | File | Budget (lines) | Responsibility (one line — keep it true) |
 | --- | --- | --- |
-| `frozen/__init__.py` | 30 | the frozen-ring definition (litmus + two homes: contract/gate vs the ruler) — the canonical anchor a contributor reads |
-| `frozen/interfaces.py` | 330 | operator ABCs (incl. trace analyzer, novelty, and reflect), the registry, result schemas, payload validation |
-| `frozen/sdk.py` | 420 | Python operator entrypoint and file-contract IO; no library algorithm policy |
-| `frozen/meta_eval.py` | 130 | self-modification admission gate: confound-free replay of old vs new operator surface (mechanism 1) |
+| `frozen/__init__.py` | 50 | the frozen-ring definition (litmus + two homes: contract/gate vs the ruler) — the canonical anchor a contributor reads |
+| `frozen/interfaces.py` | 350 | operator ABCs (incl. trace analyzer, novelty, and reflect), the registry, result schemas, payload validation |
+| `frozen/sdk.py` | 300 | Python operator entrypoint and file-contract IO; no library algorithm policy |
 
-Total `src/evolve/` budget: **7600 lines**. The budget admits the explicit evaluation-package
+Total `src/evolve/` budget: **9880 lines**. The budget admits the explicit evaluation-package
 boundaries, failed-task repair, the opt-in in-place Harbor runtime, and the redacted trace-analysis
 boundary between rollout and feedback assembly; if the mechanism wants to
 grow past that, something belongs in a workspace operator instead —
