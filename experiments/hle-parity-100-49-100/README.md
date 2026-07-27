@@ -32,18 +32,19 @@ Initialize with either HLE recipe:
 
 ```bash
 cd /path/to/simple-evolve-agent
+export EVOLVE_RUNTIME_DIGEST="sha256:replace-with-your-immutable-evaluator-image-digest"
 
-evolve init /path/to/ahe-hle-run \
-  --recipe-path experiments/recipes/ahe_hle \
+uv run evolve init /path/to/ahe-hle-run \
+  --recipe ahe_hle \
   --dataset /path/to/hle_parity
 
-evolve init /path/to/hyperagents-hle-run \
-  --recipe-path experiments/recipes/hyperagents_hle/evolve.yaml \
+uv run evolve init /path/to/hyperagents-hle-run \
+  --recipe hyperagents_hle \
   --dataset /path/to/hle_parity
 ```
 
-`--recipe-path` is the explicit opt-in for unsupported experiment recipes; it
-does not add these names to the public `--recipe` inventory.
+Both HLE configurations are supported recipes in the public `--recipe`
+inventory.
 
 The generated workspace's `evaluator/splits.json` must reproduce
 `split.json`'s `tasks` membership. If Harbor changes its parity list, create a

@@ -132,6 +132,33 @@ def test_recipe_name_and_path_are_mutually_exclusive(tmp_path: Path) -> None:
     assert "cannot combine --recipe with --recipe-path" in result.stderr
 
 
+@pytest.mark.parametrize("reserved_name", ["eval.sh", "splits.json"])
+def test_recipe_path_rejects_evaluator_assets_that_replace_generated_files(
+    tmp_path: Path,
+    reserved_name: str,
+) -> None:
+    recipe = tmp_path / f"colliding-{reserved_name.replace('.', '-')}-recipe"
+    shutil.copytree(Path(recipe_root()) / "hill_climb", recipe)
+    collision = recipe / "evaluator" / reserved_name
+    collision.parent.mkdir(parents=True, exist_ok=True)
+    collision.write_text("RECIPE MUST NOT REPLACE GENERATED CONTENT\n")
+    seed = write_locked_miniswe_seed(tmp_path / f"{reserved_name}-seed")
+    workspace = tmp_path / f"{reserved_name}-workspace"
+
+    result = run_evolve(
+        "init",
+        str(workspace),
+        "--recipe-path",
+        str(recipe),
+        "--seed",
+        str(seed),
+    )
+
+    assert result.returncode == 1
+    assert f"recipe evaluator asset collides with generated file: evaluator/{reserved_name}" in result.stderr
+    assert not (workspace / "evaluator" / reserved_name).exists()
+
+
 @pytest.mark.parametrize("recipe", sorted(CASES))
 def test_dataset_override_preserves_recipe_target_and_integrations(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, recipe: str

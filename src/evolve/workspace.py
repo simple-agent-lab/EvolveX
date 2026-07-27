@@ -287,6 +287,16 @@ def _write_files(
         files[f"operators/{binding.kind}.py"] = _with_provenance(binding.kind, binding.source, binding.text)
         if binding.companion_text is not None:
             files[f"operators/{binding.kind}.md"] = binding.companion_text
+    recipe_evaluator_assets = _recipe_evaluator_assets(
+        recipe,
+        recipe_directory=recipe_directory,
+    )
+    evaluator_collisions = sorted(files.keys() & recipe_evaluator_assets.keys())
+    if evaluator_collisions:
+        raise ValueError(
+            "recipe evaluator asset collides with generated file: "
+            + ", ".join(evaluator_collisions)
+        )
     files["operators/README.md"] = _operator_index(
         bindings,
         recipe,
@@ -295,7 +305,7 @@ def _write_files(
     files.update(
         _operator_palette(recipe, recipe_directory=recipe_directory)
         | _operator_assets(recipe, recipe_directory=recipe_directory)
-        | _recipe_evaluator_assets(recipe, recipe_directory=recipe_directory)
+        | recipe_evaluator_assets
     )
     for relative_path, content in files.items():
         path = workspace / relative_path

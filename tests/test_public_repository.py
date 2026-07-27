@@ -144,6 +144,28 @@ def test_ci_warms_clean_python_312_cache_before_offline_workspace_probes() -> No
         "--python",
         "3.12",
     ]
+    assert shlex.split(by_id["warm-scaffold-runtime"]["run"]) == [
+        "uv",
+        "sync",
+        "--project",
+        "scaffolds/workspace",
+        "--frozen",
+        "--no-install-project",
+        "--python",
+        "3.12",
+    ]
+    assert by_id["warm-scaffold-runtime"]["env"] == {
+        "UV_PROJECT_ENVIRONMENT": "${{ runner.temp }}/evolve-scaffold-venv"
+    }
+    assert shlex.split(by_id["check-scaffold-lock"]["run"]) == [
+        "uv",
+        "lock",
+        "--project",
+        "scaffolds/workspace",
+        "--check",
+        "--offline",
+    ]
+    assert by_id["check-scaffold-lock"]["env"]["UV_OFFLINE"] == "1"
     assert shlex.split(by_id["offline-workspace-probe"]["run"]) == [
         "uv",
         "run",

@@ -41,6 +41,18 @@ jobs:
         id: warm-root-runtime
         run: uv sync --dev --python 3.12
 
+      - name: Warm scaffold Python 3.12 runtime
+        id: warm-scaffold-runtime
+        env:
+          UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}/evolve-scaffold-venv
+        run: uv sync --project scaffolds/workspace --frozen --no-install-project --python 3.12
+
+      - name: Check scaffold lock offline
+        id: check-scaffold-lock
+         env:
+           UV_OFFLINE: "1"
+         run: uv lock --project scaffolds/workspace --check --offline
+
       - name: Probe generated workspaces offline
         id: offline-workspace-probe
         env:
