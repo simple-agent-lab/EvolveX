@@ -95,7 +95,7 @@ def test_file_task_agent_externalizes_large_miniswe_instruction(monkeypatch) -> 
         "session_id": model_kwargs["prompt_cache_key"]
     }
     assert "store" not in model_kwargs
-    assert "unset HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy;" in runtime_command
+    assert "unset HTTP_PROXY" not in runtime_command
     assert environment.envs[-1] == {"ROLE": "agent"}
 
 

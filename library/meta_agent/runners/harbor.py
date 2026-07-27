@@ -15,6 +15,7 @@ import threading
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from evolve.agent import AgentCommandError, AgentRunResult
 from evolve.frozen.interfaces import OperatorContext
@@ -32,18 +33,18 @@ _EVAL_RECEIPT = ".evolve-eval-receipts.jsonl"
 _FILE_TASK_AGENT = "evolve_harbor_agent:FileTaskMiniSweAgent"
 _SAFE_INLINE_INSTRUCTION_BYTES = 96 * 1024
 _VISIBLE_RUN_INPUTS = ("rollout", "trace_analyzer", "feedback")
-_HIDDEN_WORKSPACE_ROOTS = {".git", "runs", "artifacts", "archive.jsonl", _EVAL_RECEIPT, "evaluator"}
+_HIDDEN_WORKSPACE_ROOTS = {".git", ".venv", "runs", "artifacts", "archive.jsonl", _EVAL_RECEIPT, "evaluator"}
 _SECRET_ASSIGNMENT = re.compile(
     r"(?i)\b([a-z0-9_-]*(?:api[_-]?key|access[_-]?token|auth(?:orization)?|secret|password))\b"
     r"([\"']?)(\s*[:=]\s*)([^\s,;}]+)"
 )
 _BEARER = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+")
+_CREDENTIAL_ENV = ("OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_API_BASE")
 _PROXY_ENV = (
     ("EVOLVE_HARBOR_HTTP_PROXY", "http_proxy", "HTTP_PROXY"),
     ("EVOLVE_HARBOR_HTTPS_PROXY", "https_proxy", "HTTPS_PROXY"),
-    ("EVOLVE_HARBOR_NO_PROXY", "no_proxy", "NO_PROXY"),
 )
-_CREDENTIAL_ENV = ("OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_API_BASE")
+_BYPASS_ENV = ("no_proxy", "NO_PROXY")
 
 
 class _WorkspaceBundle:
@@ -125,7 +126,7 @@ def _runs_ignore(runs_root: Path):
 def _manifest_ignored(relative: Path) -> bool:
     if not relative.parts:
         return False
-    return relative.parts[0] in {".git", "runs", "artifacts"} or relative.as_posix() in {
+    return relative.parts[0] in {".git", ".venv", "runs", "artifacts"} or relative.as_posix() in {
         "archive.jsonl",
         _EVAL_RECEIPT,
     }
@@ -491,18 +492,40 @@ def _append_agent_env(command: list[str], config: dict[str, Any]) -> None:
 
 def _agent_env(config: dict[str, Any]) -> dict[str, str]:
     values: dict[str, str] = {}
-    for override, lower, upper in _PROXY_ENV:
-        value = os.environ.get(override) or os.environ.get(lower) or os.environ.get(upper)
-        if value:
-            values[lower] = value
-            values[upper] = value
-    for name in _CREDENTIAL_ENV:
+    for name in (*_CREDENTIAL_ENV, *_BYPASS_ENV):
         value = os.environ.get(name)
         if value:
             values[name] = value
+    for override, lower, upper in _PROXY_ENV:
+        value = os.environ.get(override) or os.environ.get(lower) or os.environ.get(upper)
+        if value:
+            values.update({lower: value, upper: value})
+    bypass_override = os.environ.get("EVOLVE_HARBOR_NO_PROXY")
+    if bypass_override:
+        values.update({name: bypass_override for name in _BYPASS_ENV})
     configured = config.get("agent_env")
     if isinstance(configured, dict):
         values.update({str(key): str(value) for key, value in configured.items()})
+    for _, lower, upper in _PROXY_ENV:
+        value = values.get(lower) or values.get(upper)
+        if value:
+            values.update({lower: value, upper: value})
+    base_url = values.get("OPENAI_BASE_URL") or values.get("OPENAI_API_BASE")
+    bypass_entries: list[str] = []
+    for name in _BYPASS_ENV:
+        for entry in values.get(name, "").split(","):
+            entry = entry.strip()
+            if entry and entry not in bypass_entries:
+                bypass_entries.append(entry)
+    if base_url:
+        hostname = urlsplit(base_url).hostname
+        if not hostname:
+            raise ValueError("configured model base URL has no hostname")
+        if hostname not in bypass_entries:
+            bypass_entries.append(hostname)
+    if bypass_entries:
+        bypass = ",".join(bypass_entries)
+        values.update({name: bypass for name in _BYPASS_ENV})
     if str(config.get("agent") or "").strip().lower() == "codex":
         values["CODEX_FORCE_AUTH_JSON"] = "1"
     force_auth = os.environ.get("CODEX_FORCE_AUTH_JSON")

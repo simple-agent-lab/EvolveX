@@ -16,7 +16,7 @@ TASK_PATH = "/tmp/miniswe-source-task.txt"
 LOG_PATH = "/logs/agent/mini-swe-agent.txt"
 RUNTIME_EVIDENCE_PATH = "/logs/agent/evolve-runtime.json"
 HOST_UV_PATH = "/tmp/evolve-uv"
-PROXY_NAMES = ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy")
+PROXY_ENV_NAMES = ("HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy")
 
 
 class EvolveCandidateInvalidError(RuntimeError):
@@ -241,11 +241,12 @@ class MiniSweSourceAgent(MiniSweAgent):
             environment,
             command=(
                 "set -euo pipefail; "
-                f"unset {' '.join(PROXY_NAMES)}; "
                 'mkdir -p "$HOME/.local/bin"; export PATH="$HOME/.local/bin:$PATH"; '
+                "if ! command -v uv >/dev/null 2>&1 || ! uv --version >/dev/null 2>&1; then "
                 f"if [ -f {HOST_UV_PATH} ]; then "
                 f'cp {HOST_UV_PATH} "$HOME/.local/bin/uv"; chmod 755 "$HOME/.local/bin/uv"; '
                 'if ! "$HOME/.local/bin/uv" --version >/dev/null 2>&1; then rm -f "$HOME/.local/bin/uv"; fi; '
+                "fi; "
                 "fi; "
                 "if ! command -v uv >/dev/null 2>&1 || ! uv --version >/dev/null 2>&1; then "
                 'rm -f "$HOME/.local/bin/uv"; '
@@ -261,7 +262,6 @@ class MiniSweSourceAgent(MiniSweAgent):
         await self._runtime_phase(
             environment,
             "set -euo pipefail; "
-            f"unset {' '.join(PROXY_NAMES)}; "
             'if [ -f "$HOME/.local/bin/env" ]; then . "$HOME/.local/bin/env"; '
             'else export PATH="$HOME/.local/bin:$PATH"; fi; '
             f"uv sync --project {SOURCE_DIR} --frozen --no-install-local --offline",
@@ -271,7 +271,6 @@ class MiniSweSourceAgent(MiniSweAgent):
         await self._candidate_phase(
             environment,
             "set -euo pipefail; "
-            f"unset {' '.join(PROXY_NAMES)}; "
             'if [ -f "$HOME/.local/bin/env" ]; then . "$HOME/.local/bin/env"; '
             'else export PATH="$HOME/.local/bin:$PATH"; fi; '
             f"uv sync --project {SOURCE_DIR} --frozen --offline",
@@ -312,7 +311,6 @@ class MiniSweSourceAgent(MiniSweAgent):
     def _preflight_command(self, marker: str, script: str) -> str:
         return (
             "set -euo pipefail; "
-            f"unset {' '.join(PROXY_NAMES)}; "
             f"echo {shlex.quote(marker)} >/dev/null; "
             f"{VENV_PYTHON} -c {shlex.quote(script)}"
         )
@@ -355,11 +353,20 @@ class MiniSweSourceAgent(MiniSweAgent):
         await self.exec_as_agent(environment, command=self._run_command(task), env=self._source_env())
 
     def _install_env(self) -> dict[str, str]:
-        return {
+        env = {
             "UV_CACHE_DIR": self._get_env("UV_CACHE_DIR") or UV_CACHE_DIR,
             "UV_LINK_MODE": self._get_env("UV_LINK_MODE") or "copy",
             "UV_OFFLINE": self._get_env("UV_OFFLINE") or "1",
             "UV_PYTHON_INSTALL_DIR": self._get_env("UV_PYTHON_INSTALL_DIR") or UV_PYTHON_INSTALL_DIR,
+        }
+        env.update(self._proxy_env())
+        return env
+
+    def _proxy_env(self) -> dict[str, str]:
+        return {
+            name: value
+            for name in PROXY_ENV_NAMES
+            if (value := self._get_env(name)) is not None
         }
 
     def _augment_instruction(self, instruction: str) -> str:
@@ -379,7 +386,6 @@ class MiniSweSourceAgent(MiniSweAgent):
             "set -euo pipefail\n"
             'if [ -f "$HOME/.local/bin/env" ]; then . "$HOME/.local/bin/env"; '
             'else export PATH="$HOME/.local/bin:$PATH"; fi\n'
-            "unset HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy\n"
             f"cat > {shlex.quote(RUNNER_PATH)} <<'PY'\n{RUNNER}\nPY\n"
             f"{VENV_PYTHON} - <<'PY'\n"
             "from pathlib import Path\n"
@@ -405,6 +411,7 @@ class MiniSweSourceAgent(MiniSweAgent):
         if api_base is not None:
             env["OPENAI_BASE_URL"] = api_base
             env["OPENAI_API_BASE"] = api_base
+        env.update(self._proxy_env())
         for name in (
             "MINISWE_STEP_LIMIT",
             "MINISWE_COST_LIMIT",

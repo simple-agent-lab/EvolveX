@@ -36,12 +36,16 @@ def test_codex_meta_agent_always_uses_host_auth_json(monkeypatch: pytest.MonkeyP
 
 def test_harbor_meta_agent_forwards_openai_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     module = _harbor_runner_module()
+    for name in ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY", "no_proxy", "NO_PROXY"):
+        monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("OPENAI_API_KEY", "workspace-key")
     monkeypatch.setenv("OPENAI_BASE_URL", "https://workspace.example/v1")
 
     assert module._agent_env({"agent": "mini-swe-agent"}) == {
         "OPENAI_API_KEY": "workspace-key",
         "OPENAI_BASE_URL": "https://workspace.example/v1",
+        "no_proxy": "workspace.example",
+        "NO_PROXY": "workspace.example",
     }
     assert module._agent_env(
         {
@@ -49,6 +53,29 @@ def test_harbor_meta_agent_forwards_openai_environment(monkeypatch: pytest.Monke
             "agent_env": {"OPENAI_BASE_URL": "https://configured.example/v1"},
         }
     )["OPENAI_BASE_URL"] == "https://configured.example/v1"
+
+
+def test_harbor_meta_agent_forwards_dependency_proxies_with_model_bypass(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _harbor_runner_module()
+    monkeypatch.setenv("OPENAI_API_KEY", "workspace-key")
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://workspace.example/v1")
+    monkeypatch.setenv("http_proxy", "http://dependency-proxy.example:8118")
+    monkeypatch.setenv("HTTPS_PROXY", "http://dependency-proxy.example:8118")
+    monkeypatch.setenv("no_proxy", ".internal.example")
+    monkeypatch.setenv("NO_PROXY", ".upper.example")
+
+    assert module._agent_env({"agent": "mini-swe-agent"}) == {
+        "OPENAI_API_KEY": "workspace-key",
+        "OPENAI_BASE_URL": "https://workspace.example/v1",
+        "http_proxy": "http://dependency-proxy.example:8118",
+        "HTTP_PROXY": "http://dependency-proxy.example:8118",
+        "https_proxy": "http://dependency-proxy.example:8118",
+        "HTTPS_PROXY": "http://dependency-proxy.example:8118",
+        "no_proxy": ".internal.example,.upper.example,workspace.example",
+        "NO_PROXY": ".internal.example,.upper.example,workspace.example",
+    }
 
 
 def test_harbor_rejects_oversized_instruction_with_unsafe_agent(tmp_path: Path) -> None:
@@ -958,6 +985,28 @@ def test_install_bundle_omits_ignored_runtime_tree_with_symlinks(tmp_path: Path)
     assert changed == ["target/agent.py"]
     assert (checkout / "target" / "agent.py").read_text() == "print('child')\n"
     assert not (checkout / "target" / ".venv").exists()
+
+
+def test_install_bundle_ignores_workspace_runtime_environment(tmp_path: Path) -> None:
+    checkout, run_dir = _checkout(tmp_path)
+    runner = _harbor_runner_module()
+    surface = runner.load_surface_policy(checkout)
+    bundle = runner._prepare_bundle(checkout, _ctx(checkout, run_dir), ["target"], surface)
+    returned = tmp_path / "returned"
+    shutil.copytree(bundle.workspace, returned)
+    (returned / "target" / "agent.py").write_text("print('child')\n")
+    python = returned / ".venv" / "bin" / "python"
+    python.parent.mkdir(parents=True)
+    python.symlink_to("/runtime/python")
+
+    try:
+        changed = runner._install_bundle(checkout, returned, bundle, "gen/0", surface)
+    finally:
+        shutil.rmtree(bundle.staging, ignore_errors=True)
+
+    assert changed == ["target/agent.py"]
+    assert (checkout / "target" / "agent.py").read_text() == "print('child')\n"
+    assert not (checkout / ".venv").exists()
 
 
 def test_agent_output_prefers_preserved_model_response_over_post_submit_message(tmp_path: Path) -> None:

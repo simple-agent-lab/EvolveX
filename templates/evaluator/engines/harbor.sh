@@ -164,13 +164,49 @@ for credential_name in OPENAI_API_KEY OPENAI_BASE_URL OPENAI_API_BASE; do
     set -- "$@" --ae "$credential_name=$credential_value"
   fi
 done
+model_base=${OPENAI_BASE_URL:-${OPENAI_API_BASE:-}}
+proxy_bypass=$(
+  "$EVOLVE_FRAMEWORK_PYTHON" - "$model_base" "${EVOLVE_HARBOR_NO_PROXY-}" "${no_proxy-}" "${NO_PROXY-}" <<'PY'
+import sys
+from urllib.parse import urlsplit
+
+base_url, override, *configured = sys.argv[1:]
+entries = []
+for value in ([override] if override else configured):
+    for entry in value.split(","):
+        entry = entry.strip()
+        if entry and entry not in entries:
+            entries.append(entry)
+if base_url:
+    hostname = urlsplit(base_url).hostname
+    if not hostname:
+        raise SystemExit("configured model base URL has no hostname")
+    if hostname not in entries:
+        entries.append(hostname)
+print(",".join(entries))
+PY
+)
+proxy_http=${EVOLVE_HARBOR_HTTP_PROXY:-${http_proxy:-${HTTP_PROXY:-}}}
+proxy_https=${EVOLVE_HARBOR_HTTPS_PROXY:-${https_proxy:-${HTTPS_PROXY:-}}}
+for proxy_entry in \
+  "http_proxy=$proxy_http" "HTTP_PROXY=$proxy_http" \
+  "https_proxy=$proxy_https" "HTTPS_PROXY=$proxy_https"; do
+  if [ -n "${proxy_entry#*=}" ]; then
+    set -- "$@" --ae "$proxy_entry" --ve "$proxy_entry"
+  fi
+done
+if [ -n "$proxy_bypass" ]; then
+  for bypass_name in no_proxy NO_PROXY; do
+    set -- "$@" --ae "$bypass_name=$proxy_bypass" --ve "$bypass_name=$proxy_bypass"
+  done
+fi
 if [ -f evaluator/agent.env ]; then
   while IFS= read -r agent_entry || [ -n "$agent_entry" ]; do
     [ -n "$agent_entry" ] && set -- "$@" --ae "$agent_entry"
   done < evaluator/agent.env
 fi
 while IFS= read -r runtime_entry || [ -n "$runtime_entry" ]; do
-  [ -n "$runtime_entry" ] && set -- "$@" --ae "$runtime_entry"
+  [ -n "$runtime_entry" ] && set -- "$@" --ae "$runtime_entry" --ve "$runtime_entry"
 done < "$EVOLVE_RUN_DIR/candidate-runtime.env"
 if [ -n "${EVOLVE_CANDIDATE_SMOKE_MODE:-}" ]; then
   set -- "$@" --install-only --ae "EVOLVE_CANDIDATE_SMOKE_MODE=$EVOLVE_CANDIDATE_SMOKE_MODE"
@@ -186,21 +222,15 @@ fi
 if [ -n "${EVOLVE_HARBOR_AGENT_TIMEOUT_MULTIPLIER:-}" ]; then
   set -- "$@" --agent-timeout-multiplier "$EVOLVE_HARBOR_AGENT_TIMEOUT_MULTIPLIER"
 fi
+if [ -n "${EVOLVE_HARBOR_VERIFIER_TIMEOUT_MULTIPLIER:-}" ]; then
+  set -- "$@" --verifier-timeout-multiplier "$EVOLVE_HARBOR_VERIFIER_TIMEOUT_MULTIPLIER"
+fi
 if [ -n "${EVOLVE_HARBOR_MAX_RETRIES:-}" ]; then
   set -- "$@" --max-retries "$EVOLVE_HARBOR_MAX_RETRIES"
   set -- "$@" --retry-exclude AgentTimeoutError
   set -- "$@" --retry-exclude EvolveCandidateInvalidError
   set -- "$@" --retry-exclude ApiUsageLimitError
 fi
-proxy_http=${EVOLVE_HARBOR_HTTP_PROXY:-${http_proxy:-${HTTP_PROXY:-}}}
-proxy_https=${EVOLVE_HARBOR_HTTPS_PROXY:-${https_proxy:-${HTTPS_PROXY:-}}}
-proxy_no=${EVOLVE_HARBOR_NO_PROXY:-${no_proxy:-${NO_PROXY:-}}}
-for proxy_entry in \
-  "http_proxy=$proxy_http" "HTTP_PROXY=$proxy_http" \
-  "https_proxy=$proxy_https" "HTTPS_PROXY=$proxy_https" \
-  "no_proxy=$proxy_no" "NO_PROXY=$proxy_no"; do
-  if [ -n "${proxy_entry#*=}" ]; then set -- "$@" --ae "$proxy_entry" --ve "$proxy_entry"; fi
-done
 set -- "$@" --job-name "$EVOLVE_ATTEMPT_ID" --jobs-dir "$jobs_dir" --n-attempts "${EVOLVE_HARBOR_ATTEMPTS:-1}" -n "${EVOLVE_HARBOR_N_CONCURRENT:-$EVOLVE_HARBOR_N}" -y -q
 if [ -n "${EVOLVE_CANDIDATE_SMOKE_MODE:-}" ]; then
   "$UV" run --project "$EVOLVE_WORKSPACE" --frozen harbor "$@"

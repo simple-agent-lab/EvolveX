@@ -47,6 +47,12 @@ def test_harbor_evaluator_passes_agent_timeout_multiplier() -> None:
     assert '--agent-timeout-multiplier "$EVOLVE_HARBOR_AGENT_TIMEOUT_MULTIPLIER"' in text
 
 
+def test_harbor_evaluator_passes_verifier_timeout_multiplier() -> None:
+    text = _eval_sh("harbor", "fixture")
+
+    assert '--verifier-timeout-multiplier "$EVOLVE_HARBOR_VERIFIER_TIMEOUT_MULTIPLIER"' in text
+
+
 def test_harbor_evaluator_forwards_workspace_openai_environment() -> None:
     text = _eval_sh("harbor", "fixture")
 
@@ -63,7 +69,9 @@ def test_harbor_evaluator_prefers_failed_task_repair_selection() -> None:
     assert text.index(repair_override) < text.index('--include-task-name "$task_name"')
 
 
-def test_harbor_evaluator_forwards_custom_environment_and_skips_docker_cleanup(tmp_path: Path) -> None:
+def test_harbor_evaluator_forwards_dependency_proxies_with_model_bypass_and_skips_docker_cleanup(
+    tmp_path: Path,
+) -> None:
     evaluator = tmp_path / "evaluator"
     evaluator.mkdir()
     _write_executable(evaluator / "eval.sh", _eval_sh("harbor", "fixture"))
@@ -107,6 +115,11 @@ def test_harbor_evaluator_forwards_custom_environment_and_skips_docker_cleanup(t
         "EVOLVE_RUN_DIR": str(tmp_path / "run"),
         "EVOLVE_ATTEMPT_ID": "local-attempt",
         "EVOLVE_FRAMEWORK_PYTHON": sys.executable,
+        "OPENAI_BASE_URL": "https://model.example/v1",
+        "http_proxy": "http://dependency-proxy.example:8118",
+        "https_proxy": "http://dependency-proxy.example:8118",
+        "no_proxy": ".internal.example",
+        "NO_PROXY": ".upper.example",
     }
 
     result = subprocess.run([str(evaluator / "eval.sh")], cwd=tmp_path, env=env, text=True, capture_output=True)
@@ -115,6 +128,18 @@ def test_harbor_evaluator_forwards_custom_environment_and_skips_docker_cleanup(t
     args = args_capture.read_text().splitlines()
     assert args[args.index("--env") + 1] == "evolve.harbor_local:LocalEnvironment"
     assert args[args.index("--environment-kwarg") + 1] == 'workdir="/workspace"'
+    agent_environment = [args[index + 1] for index, value in enumerate(args) if value == "--ae"]
+    verifier_environment = [args[index + 1] for index, value in enumerate(args) if value == "--ve"]
+    expected_proxy_environment = {
+        "http_proxy=http://dependency-proxy.example:8118",
+        "HTTP_PROXY=http://dependency-proxy.example:8118",
+        "https_proxy=http://dependency-proxy.example:8118",
+        "HTTPS_PROXY=http://dependency-proxy.example:8118",
+        "no_proxy=.internal.example,.upper.example,model.example",
+        "NO_PROXY=.internal.example,.upper.example,model.example",
+    }
+    assert expected_proxy_environment.issubset(agent_environment)
+    assert expected_proxy_environment.issubset(verifier_environment)
     assert not docker_marker.exists()
 
 
@@ -266,8 +291,10 @@ def test_harbor_smoke_is_install_only_and_exposes_raw_diagnostics(tmp_path: Path
     mounts = json.loads(args[args.index("--mounts") + 1])
     assert mounts == runtime_mounts
     agent_environment = [args[index + 1] for index, value in enumerate(args) if value == "--ae"]
+    verifier_environment = [args[index + 1] for index, value in enumerate(args) if value == "--ve"]
     for key, value in runtime_env.items():
         assert f"{key}={value}" in agent_environment
+        assert f"{key}={value}" in verifier_environment
     assert not (run_dir / "harbor-result.json").exists()
     assert not (run_dir / "score").exists()
 

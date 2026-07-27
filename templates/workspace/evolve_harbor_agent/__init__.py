@@ -93,7 +93,6 @@ class FileTaskMiniSweAgent(MiniSweAgent):
                 + flags_after_task[exit_marker:]
             )
         file_launch = (
-            "unset HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy; "
             'MSWEA_BIN="$(command -v mini-swe-agent)"; '
             'MSWEA_PY="$(head -n 1 "$MSWEA_BIN")"; '
             'MSWEA_PY="${MSWEA_PY#\\#!}"; '
