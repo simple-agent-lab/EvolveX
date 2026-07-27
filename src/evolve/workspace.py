@@ -24,6 +24,7 @@ from .config import (
     SOURCE_ROOT,
     default_config,
     library_root,
+    load_config,
     recipe_root,
     render_yaml,
     resource_root,
@@ -55,9 +56,10 @@ _MINISWE_CANDIDATE_AGENT = (
 @dataclass(frozen=True)
 class InitOptions:
     workspace: Path
-    recipe: str
+    recipe: str | None = None
     seed: str | None = None
     dataset: str | None = None
+    recipe_path: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -70,12 +72,19 @@ class _OperatorBinding:
 
 def init_workspace(options: InitOptions) -> None:
     workspace = options.workspace
+    if options.recipe is not None and options.recipe_path is not None:
+        raise ValueError("cannot combine --recipe with --recipe-path")
     if options.seed == "builtin-dummy":
         raise ValueError("builtin-dummy is test-only; pass a local seed directory instead")
     if workspace.exists() and any(workspace.iterdir()):
         raise ValueError(f"workspace is not empty: {workspace}")
 
-    config = default_config(options.recipe, workspace.name)
+    if options.recipe_path is None:
+        recipe = options.recipe or "hill_climb"
+        recipe_directory: Path | Traversable | None = None
+        config = default_config(recipe, workspace.name)
+    else:
+        recipe, recipe_directory, config = _path_recipe(options.recipe_path, workspace.name)
     target = config["target"]
     assert isinstance(target, dict)
     if options.seed:
@@ -98,7 +107,13 @@ def init_workspace(options: InitOptions) -> None:
         staged_target = staging_workspace / "target"
         _validate_candidate_target_contract(staged_target, evaluator)
         workspace.mkdir(parents=True, exist_ok=True)
-        _write_files(workspace, config, recipe=options.recipe, init_cwd=Path.cwd())
+        _write_files(
+            workspace,
+            config,
+            recipe=recipe,
+            recipe_directory=recipe_directory,
+            init_cwd=Path.cwd(),
+        )
         shutil.copytree(staged_target, workspace / "target")
     _vendor_mechanism(workspace)
     _make_executable(
@@ -111,6 +126,19 @@ def init_workspace(options: InitOptions) -> None:
     )
     _init_git(workspace)
     _write_gen0_archive(workspace)
+
+
+def _path_recipe(recipe_path: Path, experiment_id: str) -> tuple[str, Path, dict[str, Any]]:
+    source = recipe_path.expanduser()
+    if not source.is_absolute():
+        source = Path.cwd() / source
+    source = source.resolve()
+    config_path = source / "evolve.yaml" if source.is_dir() else source
+    if config_path.name != "evolve.yaml" or not config_path.is_file():
+        raise ValueError("--recipe-path must name a recipe directory or its evolve.yaml")
+    config = copy.deepcopy(load_config(config_path))
+    config["experiment"]["id"] = experiment_id
+    return config_path.parent.name, config_path.parent, config
 
 
 _CONSOLE = """#!/usr/bin/env bash
@@ -143,7 +171,14 @@ def _vendor_mechanism(workspace: Path) -> None:
     (workspace / "evolve").write_text(_CONSOLE)
 
 
-def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, init_cwd: Path) -> None:
+def _write_files(
+    workspace: Path,
+    config: dict[str, object],
+    *,
+    recipe: str,
+    recipe_directory: Path | Traversable | None = None,
+    init_cwd: Path,
+) -> None:
     assert isinstance(config["evaluator"], dict)
     evaluator = cast("dict[str, Any]", config["evaluator"])
     evaluator_engine = str(evaluator["engine"])
@@ -242,13 +277,26 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
                 "evaluator/smoke.sh": _evaluator_scaffold("harbor", "smoke.sh"),
             }
         )
-    bindings = _operator_bindings(config, recipe=recipe, init_cwd=init_cwd)
+    bindings = _operator_bindings(
+        config,
+        recipe=recipe,
+        recipe_directory=recipe_directory,
+        init_cwd=init_cwd,
+    )
     for binding in bindings:
         files[f"operators/{binding.kind}.py"] = _with_provenance(binding.kind, binding.source, binding.text)
         if binding.companion_text is not None:
             files[f"operators/{binding.kind}.md"] = binding.companion_text
-    files["operators/README.md"] = _operator_index(bindings, recipe)
-    files.update(_operator_palette(recipe) | _operator_assets(recipe) | _recipe_evaluator_assets(recipe))
+    files["operators/README.md"] = _operator_index(
+        bindings,
+        recipe,
+        recipe_directory=recipe_directory,
+    )
+    files.update(
+        _operator_palette(recipe, recipe_directory=recipe_directory)
+        | _operator_assets(recipe, recipe_directory=recipe_directory)
+        | _recipe_evaluator_assets(recipe, recipe_directory=recipe_directory)
+    )
     for relative_path, content in files.items():
         path = workspace / relative_path
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -258,7 +306,13 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
     (workspace / "artifacts" / "generations").mkdir(parents=True, exist_ok=True)
 
 
-def _operator_bindings(config: dict[str, object], *, recipe: str, init_cwd: Path) -> list[_OperatorBinding]:
+def _operator_bindings(
+    config: dict[str, object],
+    *,
+    recipe: str,
+    recipe_directory: Path | Traversable | None = None,
+    init_cwd: Path,
+) -> list[_OperatorBinding]:
     operators = config.get("operators")
     if not isinstance(operators, dict):
         raise ValueError("operators section must be a mapping")
@@ -281,14 +335,23 @@ def _operator_bindings(config: dict[str, object], *, recipe: str, init_cwd: Path
             companion_text = companion.read_text() if companion.is_file() else None
             bindings.append(_OperatorBinding(kind, str(source_path), source_path.read_text(), companion_text))
             continue
-        source = _resolve_operator_variant(recipe, kind, str(variant or "default"))
+        source = _resolve_operator_variant(
+            recipe,
+            kind,
+            str(variant or "default"),
+            recipe_directory=recipe_directory,
+        )
         companion = source.with_suffix(".md")
         companion_text = companion.read_text() if companion.is_file() else None
         bindings.append(_OperatorBinding(kind, _source_label(source), source.read_text(), companion_text))
     return bindings
 
 
-def _operator_palette(recipe: str) -> dict[str, str]:
+def _operator_palette(
+    recipe: str,
+    *,
+    recipe_directory: Path | Traversable | None = None,
+) -> dict[str, str]:
     """Vendor the per-kind variant catalog into the workspace's own `library/`,
     mirroring the framework's `library/`. `operators/` holds only the active
     scripts the driver runs; `library/<kind>/` holds the swap-in alternatives a
@@ -296,7 +359,7 @@ def _operator_palette(recipe: str) -> dict[str, str]:
     trees is what makes `operators/` scannable at a glance."""
     palette: dict[str, str] = {}
     for kind in (*OPERATOR_KINDS, *OPTIONAL_OPERATOR_KINDS):
-        for directory in (recipe_root() / recipe / "operators" / kind, library_root() / kind):
+        for directory in (_recipe_directory(recipe, recipe_directory) / "operators" / kind, library_root() / kind):
             if not directory.is_dir():
                 continue
             for path in sorted(directory.iterdir()):
@@ -340,10 +403,14 @@ def _root_python_helpers(root: Path | Traversable):
             continue
 
 
-def _operator_assets(recipe: str) -> dict[str, str]:
+def _operator_assets(
+    recipe: str,
+    *,
+    recipe_directory: Path | Traversable | None = None,
+) -> dict[str, str]:
     assets: dict[str, str] = {}
     for kind in (*OPERATOR_KINDS, *OPTIONAL_OPERATOR_KINDS):
-        for directory in (recipe_root() / recipe / "operators" / kind, library_root() / kind):
+        for directory in (_recipe_directory(recipe, recipe_directory) / "operators" / kind, library_root() / kind):
             if directory.is_dir():
                 for relative, text in _text_files(directory):
                     if relative.suffix != ".py" or len(relative.parts) > 1:
@@ -351,18 +418,35 @@ def _operator_assets(recipe: str) -> dict[str, str]:
     return assets | {f"library/{name}": text for name, text in _root_python_helpers(library_root())}
 
 
-def _recipe_evaluator_assets(recipe: str) -> dict[str, str]:
-    root = recipe_root() / recipe / "evaluator"
+def _recipe_evaluator_assets(
+    recipe: str,
+    *,
+    recipe_directory: Path | Traversable | None = None,
+) -> dict[str, str]:
+    root = _recipe_directory(recipe, recipe_directory) / "evaluator"
     return (
         {} if not root.is_dir() else {f"evaluator/{relative.as_posix()}": text for relative, text in _text_files(root)}
     )
 
 
-def _operator_index(bindings: list[_OperatorBinding], recipe: str) -> str:
+def _operator_index(
+    bindings: list[_OperatorBinding],
+    recipe: str,
+    *,
+    recipe_directory: Path | Traversable | None = None,
+) -> str:
     rows = []
     for binding in bindings:
         active = Path(binding.source).stem
-        alts = [v for v in _available_operator_variants(recipe, binding.kind) if v != active]
+        alts = [
+            variant
+            for variant in _available_operator_variants(
+                recipe,
+                binding.kind,
+                recipe_directory=recipe_directory,
+            )
+            if variant != active
+        ]
         rows.append(
             f"| {binding.kind} | {active}.py | {_first_docstring_line(binding.text)} "
             f"| {', '.join(alts) if alts else '—'} |"
@@ -393,21 +477,36 @@ def _first_docstring_line(source_text: str) -> str:
     return "(no description)"
 
 
-def _resolve_operator_variant(recipe: str, kind: str, variant: str):
+def _resolve_operator_variant(
+    recipe: str,
+    kind: str,
+    variant: str,
+    *,
+    recipe_directory: Path | Traversable | None = None,
+):
     for candidate in (
-        recipe_root() / recipe / "operators" / kind / f"{variant}.py",
+        _recipe_directory(recipe, recipe_directory) / "operators" / kind / f"{variant}.py",
         library_root() / kind / f"{variant}.py",
     ):
         if candidate.is_file():
             return candidate
-    available = _available_operator_variants(recipe, kind)
+    available = _available_operator_variants(
+        recipe,
+        kind,
+        recipe_directory=recipe_directory,
+    )
     suffix = f" available: {', '.join(available)}" if available else " no variants available"
     raise ValueError(f"unknown {kind} variant: {variant};{suffix}")
 
 
-def _available_operator_variants(recipe: str, kind: str) -> list[str]:
+def _available_operator_variants(
+    recipe: str,
+    kind: str,
+    *,
+    recipe_directory: Path | Traversable | None = None,
+) -> list[str]:
     names: set[str] = set()
-    for directory in (recipe_root() / recipe / "operators" / kind, library_root() / kind):
+    for directory in (_recipe_directory(recipe, recipe_directory) / "operators" / kind, library_root() / kind):
         if not directory.is_dir():
             continue
         names.update(
@@ -416,6 +515,13 @@ def _available_operator_variants(recipe: str, kind: str) -> list[str]:
             if path.is_file() and path.name.endswith(".py") and not path.name.startswith("_")
         )
     return sorted(names)
+
+
+def _recipe_directory(
+    recipe: str,
+    recipe_directory: Path | Traversable | None,
+) -> Path | Traversable:
+    return recipe_root() / recipe if recipe_directory is None else recipe_directory
 
 
 def _with_provenance(kind: str, source: str, source_text: str) -> str:

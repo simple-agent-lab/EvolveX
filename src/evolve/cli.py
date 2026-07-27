@@ -70,18 +70,41 @@ def _guard(fn):
 @_guard
 def init(
     workspace: Path,
-    recipe: str = typer.Option("hill_climb", help="paradigm recipe to scaffold"),
+    recipe: str | None = typer.Option(
+        None,
+        help="supported public recipe to scaffold (default: hill_climb)",
+    ),
+    recipe_path: Path | None = typer.Option(
+        None,
+        "--recipe-path",
+        help="opt-in recipe directory or evolve.yaml path",
+    ),
     seed: str | None = typer.Option(
-        None, help="builtin-codex, local target dir, or git URL to vendor into target/"
+        None, help="git URL to vendor into target/; local target dir; builtin-codex"
     ),
     dataset: str | None = typer.Option(None, help="local Harbor task directory to split and freeze"),
 ) -> None:
     """Scaffold a new evolve workspace."""
-    if recipe not in RECIPE_NAMES:
+    if recipe is not None and recipe_path is not None:
         raise typer.BadParameter(
-            f"invalid choice: {recipe!r} (choose from {', '.join(RECIPE_NAMES)})", param_hint="--recipe"
+            "cannot combine --recipe with --recipe-path",
+            param_hint="--recipe-path",
         )
-    init_workspace(InitOptions(workspace=workspace, recipe=recipe, seed=seed, dataset=dataset))
+    selected_recipe = recipe or "hill_climb"
+    if recipe_path is None and selected_recipe not in RECIPE_NAMES:
+        raise typer.BadParameter(
+            f"invalid choice: {selected_recipe!r} (choose from {', '.join(RECIPE_NAMES)})",
+            param_hint="--recipe",
+        )
+    init_workspace(
+        InitOptions(
+            workspace=workspace,
+            recipe=selected_recipe if recipe_path is None else None,
+            seed=seed,
+            dataset=dataset,
+            recipe_path=recipe_path,
+        )
+    )
     print(f"Initialized evolve workspace at {workspace}")
 
 

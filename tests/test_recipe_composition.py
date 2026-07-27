@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from conftest import fixture_recipe_config, generated_workspace_uv_env, write_locked_miniswe_seed
+from conftest import fixture_recipe_config, generated_workspace_uv_env, run_evolve, write_locked_miniswe_seed
 
 from evolve.config import RECIPE_NAMES, default_config, load_config, recipe_root, scaffold_root, seed_root
 from evolve.workspace import InitOptions, _write_target, init_workspace
@@ -89,6 +89,47 @@ def test_supported_recipe_initializes_only_selected_components(
             env=generated_workspace_uv_env(),
         )
         assert probe.returncode == 0, probe.stderr
+
+
+def test_recipe_path_preserves_recipe_local_operators_and_assets(tmp_path: Path) -> None:
+    recipe = tmp_path / "custom-path-recipe"
+    shutil.copytree(Path(recipe_root()) / "hill_climb", recipe)
+    local_select = recipe / "operators" / "select"
+    (local_select / "prompts").mkdir(parents=True)
+    (local_select / "greedy.py").write_text('"""Recipe-local select."""\nLOCAL_RECIPE_OPERATOR = True\n')
+    (local_select / "prompts" / "decision.md").write_text("LOCAL RECIPE PROMPT\n")
+    (recipe / "evaluator" / "tasks").mkdir(parents=True)
+    (recipe / "evaluator" / "tasks" / "train.txt").write_text("task-a\n")
+    seed = write_locked_miniswe_seed(tmp_path / "recipe-path-seed")
+    workspace = tmp_path / "recipe-path-workspace"
+
+    result = run_evolve(
+        "init",
+        str(workspace),
+        "--recipe-path",
+        str(recipe / "evolve.yaml"),
+        "--seed",
+        str(seed),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "LOCAL_RECIPE_OPERATOR = True" in (workspace / "operators" / "select.py").read_text()
+    assert (workspace / "library" / "select" / "prompts" / "decision.md").read_text() == "LOCAL RECIPE PROMPT\n"
+    assert (workspace / "evaluator" / "tasks" / "train.txt").read_text() == "task-a\n"
+
+
+def test_recipe_name_and_path_are_mutually_exclusive(tmp_path: Path) -> None:
+    result = run_evolve(
+        "init",
+        str(tmp_path / "workspace"),
+        "--recipe",
+        "ahe",
+        "--recipe-path",
+        str(Path(recipe_root()) / "hill_climb"),
+    )
+
+    assert result.returncode == 2
+    assert "cannot combine --recipe with --recipe-path" in result.stderr
 
 
 @pytest.mark.parametrize("recipe", sorted(CASES))

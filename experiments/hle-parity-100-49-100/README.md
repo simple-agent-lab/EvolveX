@@ -31,14 +31,19 @@ against `source-task-names.txt`. The sets must match exactly.
 Initialize with either HLE recipe:
 
 ```bash
+cd /path/to/simple-evolve-agent
+
 evolve init /path/to/ahe-hle-run \
-  --recipe ahe_hle \
+  --recipe-path experiments/recipes/ahe_hle \
   --dataset /path/to/hle_parity
 
 evolve init /path/to/hyperagents-hle-run \
-  --recipe hyperagents_hle \
+  --recipe-path experiments/recipes/hyperagents_hle/evolve.yaml \
   --dataset /path/to/hle_parity
 ```
+
+`--recipe-path` is the explicit opt-in for unsupported experiment recipes; it
+does not add these names to the public `--recipe` inventory.
 
 The generated workspace's `evaluator/splits.json` must reproduce
 `split.json`'s `tasks` membership. If Harbor changes its parity list, create a
