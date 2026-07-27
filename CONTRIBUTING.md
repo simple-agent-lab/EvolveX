@@ -1,84 +1,60 @@
 # Contributing
 
-This project is built to stay coherent while many people (and agents) work on
-it. The rule that makes that possible: **don't trust discipline — build the
-constraint.** Most of the "rules" below are enforced by tests, so you'll find
-out fast if you cross one.
+Thank you for improving Evolve Framework. Read [DESIGN.md](DESIGN.md),
+[ARCHITECTURE.md](ARCHITECTURE.md), and [docs/coding-style.md](docs/coding-style.md)
+before making a non-trivial change.
 
-Read [`DESIGN.md`](DESIGN.md) (the architecture + rationale) and
-[`docs/coding-style.md`](docs/coding-style.md) (how code is written)
-before a non-trivial change. Those plus [`ARCHITECTURE.md`](ARCHITECTURE.md)
-are the maintained set — keep them current rather than adding new ones.
-See [`docs/README.md`](docs/README.md) for where new writing goes.
+## Setup and checks
 
-## Setup
-
-Requires `uv` and `git` (Python 3.12+ is provided by uv).
+Requires `uv`, Git, and Python 3.12 or later.
 
 ```bash
 uv sync --dev
-uv run pytest -q          # the full suite (~4 min)
-uv run ruff check .       # lint
-uv run ty check           # type check (must be zero)
+uv run pytest -q
+uv run ruff check .
+uv run ty check
 ```
 
-## What CI enforces (green before merge)
+Run all four commands before opening a pull request. Tests enforce the module
+inventory, recipe inventory, resource layout, and behavior contracts; do not
+keep stale tests green with compatibility shims.
 
-Two workflows gate every PR:
+## Source ownership
 
-- **`test`** — `uv run pytest` (the suite *is* the coherence guard) + a
-  self-driving smoke (`init → run → verify`).
-- **`lint`** — `ruff check` and `ty check`, both blocking.
+Keep these categories separate:
 
-If CI is red, the PR doesn't merge. Locally, run all three before pushing.
+- **Recipes** (`recipes/`) are the seven supported, user-facing configurations.
+  Recipe YAML selects the target, evaluator, and operator behavior.
+- **Scaffolds** (`scaffolds/`) are generated workspace structure. Common files
+  live under `scaffolds/workspace/`; evaluator-specific files live under their
+  engine directory.
+- **Seeds** (`seeds/`) are built-in evolvable target content. They are copied
+  only when a recipe selects that seed.
+- **Integrations** (`src/evolve/integrations/`) are framework-owned runtime
+  behavior. Harbor adapters are vendored inside `.evolve/evolve/`, never
+  generated as standalone workspace packages.
 
-## The constraints you'll hit (and why)
+Test fixtures under `tests/fixtures/` and experiments under `experiments/` are
+not supported recipes. Do not add either to the public recipe inventory.
 
-- **The architecture map is enforced.** `ARCHITECTURE.md` lists every
-  `src/evolve/` module with a one-line meaning and a line budget;
-  `tests/test_coherence.py` fails on drift. A new module needs a row *and* a
-  budget in the same commit. Over a budget → do a demolition pass, or raise the
-  budget with the reason in the commit message. Budgets are speed bumps that
-  force a conscious decision, not walls.
-- **Tests are spec, not scar tissue.** When behavior changes, update or delete
-  the test in the same commit — never shim production code to keep a stale test
-  green. Every rot pattern caught in review becomes a new assertion in
-  `test_coherence.py`.
-- **Three rings, one rule** (DESIGN §2): *mechanism owns the primitives; policy
-  is evolvable.* Ask "if evolution rewrote this to cheat, would a score become a
-  lie?" — if yes, it belongs in the frozen ring (`src/evolve/frozen/`), not an
-  operator.
-- **The mechanism never imports workspace operator code in-process.** Operators
-  run only as subprocesses via `operators.run_operator`.
-- **Runtime is stdlib-only** for the driver, operators, and frozen tools (they
-  run as bare subprocesses and inside meta_eval replay). Only the CLI layer
-  (`cli.py`) may use Typer.
+## Architecture and tests
 
-## Adding an operator
+`ARCHITECTURE.md` is an executable module map: every `src/evolve/**/*.py` file
+has one row and a line budget, enforced by `tests/test_coherence.py`. Update its
+row and honest budget in the same change as a source-module change.
 
-Operators are defined **once** in the registry — `interfaces.OPERATORS`
-(`src/evolve/frozen/interfaces.py`). Add one `OperatorSpec` entry (kind, ABC,
-result type, method, required?) and the kind lists in `config.py` and the
-contract tests derive from it automatically (`test_coherence` asserts every
-`*Operator` is registered and dispatched). Then:
+The mechanism must not import workspace operator code in-process. Operators run
+as subprocesses, while frozen evaluator state stays outside the mutable
+surface. When behavior changes, update or remove the test that describes the
+previous behavior in the same commit.
 
-1. add the ABC + `Result` dataclass + a `validate_*` payload check next to the
-   others in `interfaces.py`;
-2. add a dispatch branch in `frozen/sdk.py` (writes the operator's output file);
-3. add reference implementations under `library/<kind>/` (a `_skeleton.py` plus
-   at least one real variant) — these are consulted-and-adapted, not vendored
-   wholesale (`library/README.md`);
-4. wire it into the driver if it runs in the loop (required kinds run in the
-   sequence; optional kinds run only when a recipe configures them);
-5. add tests named by milestone (`test_m<N>_<topic>.py`).
+## Documentation and commits
 
-## Commits & docs
+Keep commits focused and update the maintained documentation with behavior:
 
-- Any behavior change that extends or contradicts the design edits `DESIGN.md`
-  **in the same commit**. `README`/`ARCHITECTURE` must never overstate what's
-  built.
-- Don't add new prose docs casually. Prefer editing `DESIGN.md`,
-  `ARCHITECTURE.md`, or `docs/coding-style.md`; otherwise follow
-  `docs/README.md`. Or put a comment next to the code it explains.
-- Keep commits logically scoped and individually green.
-- `DESIGN.md`'s status callout marks what's built vs planned — keep it honest.
+- `README.md` explains supported public workflows.
+- `DESIGN.md` explains the system model and rationale.
+- `ARCHITECTURE.md` maps executable modules.
+- [`docs/README.md`](docs/README.md) routes other documentation.
+
+Avoid adding new prose files when one of these documents can be made clearer.

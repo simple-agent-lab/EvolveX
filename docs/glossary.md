@@ -1,81 +1,29 @@
 # Glossary
 
-Precise meanings for the domain terms this project uses.
-
-> **Note:** the canonical required operator set is
-> `select · rollout · meta_agent · gate · record`. `trace_analyzer`, `validate`,
-> `novelty`, and `reflect` are optional operators
-> (off unless a recipe configures them). Authority is `DESIGN.md`.
-
-- **Agent** — the thing being improved. Open-source agent (e.g. mini-swe) =
-  a code folder; closed-source agent = a model plus an editable context layer.
-
-- **Candidate / target** — one agent version in the lineage. It *is the whole
-  agent folder* (`target/`), not an abstract genome. What runs under the
-  evaluator is what a mutation edits.
-
-- **Mutable surface** — the `surface` include/exclude globs that say which
-  files a mutation may edit. The single knob that separates evolving an open
-  agent (surface includes its code) from a closed agent (surface includes only
-  the context layer), and a normal run from self-modification (surface adds
-  `operators/**`). The evaluator, archive, and vendored mechanism are always
-  excluded.
-
-- **Operator** — a swappable step in the loop: select, rollout, optional trace analysis, meta-agent, gate,
-  record. Framework machinery configured per experiment, run as a subprocess;
-  not part of the agent being evolved. (`observe` is retired — the mechanism
-  writes the feedback bundle itself; see `src/evolve/feedback.py`.)
-
-- **Meta-agent strategy / variant** — the improvement policy that turns evidence
-  into an edit request, such as independent AHE or self-referential HyperAgents.
-
-- **Runner** — the execution and isolation backend. `local` runs a trusted host
-  command; `harbor` supplies a disposable full workspace at `/app/workspace`
-  and transactionally imports allowed roots from the validated artifact.
-
-- **Agent** — in runner configuration, the concrete Harbor or local editing
-  agent. Production AHE and HyperAgents use Harbor's installed `mini-swe-agent`;
-  canonical evaluation separately uses the frozen source-backed adapter.
-
-- **Evaluator / ruler** — the frozen scorer, wired to **Harbor**. Runs a
-  candidate via `target.harbor_agent` / `HarborAgent` and returns a score.
-  Frozen: its tree must match `gen/0` on every eval.
-
-- **Split** — `train / gate / sealed` (`evaluator/splits.json`): train feeds
-  rollout, gate scores the canonical eval, sealed is never selected on and
-  only human-triggered. (Task-level enforcement lands with Harbor
-  partitioning; today the shape is honored by convention.)
-
-- **Rollout** — runs the candidate on the train split and writes method-neutral
-  cases and trajectories.
-
-- **Trace analyzer** — independently transforms rollout cases into raw,
-  structured, and bounded selected evidence. The mechanism (`feedback.py`)
-  then writes the ledger-derived feedback bundle the meta-agent reads.
-
-- **Trace / trajectory** — the ordered message/tool-call/tool-result record of
-  a rollout. Harbor writes raw jobs under `~/.evolve`; normalized and analyzed
-  traces live under `runs/gen-N/rollout/` and `trace_analyzer/`.
-
-- **Archive / lineage** — every candidate version in git (commit = candidate,
-  tag `gen/N`) plus `archive.jsonl`. Keep everything.
-
-- **Select / gate** — select picks the parent (greedy = best; score_weighted /
-  random / newest are other variants; DGM-style divergent search fans out).
-  gate is the accept/reject verdict; `parent_eligible` = valid children become
-  eligible parents.
-
-- **Paradigm** — a published system (AHE, DGM, HyperAgents, MetaAgent,
-  autoresearch, hill_climb). A paradigm is a **recipe** (config), not an
-  architecture: same fixed operator loop, different operator variants +
-  surface + evaluator. There is no separate pipeline/workflow concept.
-
-- **Recipe** — the `evolve.yaml` config that instantiates a paradigm.
-
-- **Workspace** — the generated experiment directory: the agent folder +
-  operators + frozen evaluator + archive, with the mechanism vendored under
-  `.evolve/` so it self-drives.
-
-- **Mechanism** — the `evolve` code (driver + verbs). Installed as a CLI for
-  `evolve init`, and vendored into each generated workspace so it runs from
-  inside. Never imports workspace operator code in-process.
+- **Candidate / target** — one version of the agent being improved, stored in a
+  workspace's `target/` directory and tracked by its generation commit.
+- **Seed** — initial target content selected by `target.seed`. Built-in seeds
+  live in `seeds/`; external seeds are copied from the declared local directory
+  or Git source during initialization.
+- **Scaffold** — generated workspace structure owned by `scaffolds/`, separate
+  from the target's evolvable content. Evaluator scaffolds are selected by
+  `evaluator.engine`.
+- **Integration** — framework-owned runtime behavior for an external system.
+  Harbor integrations live under `src/evolve/integrations/harbor/` and travel
+  inside the vendored framework runtime.
+- **Supported recipe** — one of the five public YAML configurations in
+  `recipes/`: `aevolve`, `ahe`, `gepa`, `hill_climb`, or `hyperagents`.
+- **Test fixture** — deterministic test-only data under `tests/fixtures/`. It
+  is not a supported recipe or seed.
+- **Experiment** — unsupported research configuration or code under
+  `experiments/`; it is intentionally outside the public recipe inventory.
+- **Evaluator / ruler** — the frozen scoring harness in `evaluator/`. It runs
+  candidates and produces the results that the mechanism stamps into the archive.
+- **Mutable surface** — the `surface` include/exclude patterns in `evolve.yaml`
+  that define candidate-editable paths.
+- **Operator** — a subprocess stage in the evolution loop, such as select,
+  rollout, meta-agent, gate, or record.
+- **Archive / lineage** — `archive.jsonl` plus Git generation tags. Together
+  they retain the history of candidates and their stamped outcomes.
+- **Workspace** — the generated, standalone Git repository containing a target,
+  operators, evaluator, rendered configuration, and vendored framework runtime.

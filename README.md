@@ -308,6 +308,11 @@ files. Direct import-path manipulation is intentionally unsupported.
 | `src/evolve/archive.py` | Append-only archive, mirror reconciliation, stamped-field merge rules. |
 | `src/evolve/surface.py` | Mutable-surface include/exclude checking. |
 | `src/evolve/report.py` | `status` and `report` summaries. |
+| `recipes/` | Supported recipe configurations. |
+| `scaffolds/` | Common workspace and evaluator-engine files. |
+| `seeds/` | Built-in evolvable targets. |
+| `src/evolve/integrations/` | Framework-owned external runtime integrations. |
+| `library/` | Operator variants copied into generated workspaces. |
 | `tests/` | Milestone acceptance tests. |
 
 ## Development Checks
@@ -394,3 +399,8 @@ thermal pressure, and get more predictable long-running Docker behavior.
   experiment runs should target Linux.
 - simple-agent-lab is deliberately not integrated until its Harbor adapter
   exists outside this codebase.
+
+## License
+
+Evolve Framework is licensed under [Apache-2.0](LICENSE). See
+[NOTICE](NOTICE) for required attributions.

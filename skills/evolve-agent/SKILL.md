@@ -1,34 +1,34 @@
 ---
 name: evolve-agent
-description: Operate a self-evolving agent workspace — run evolution generations, act as the meta-agent, inspect lineage health, or repair interrupted state. Use when working inside a simple-evolve-agent workspace, or when asked to evolve/improve a candidate agent under a frozen evaluation harness.
+description: Operate an Evolve Framework workspace: run generations, inspect lineage health, or repair interrupted state.
 ---
 
-# Operating an evolve-agent workspace
+# Operating an Evolve Framework workspace
 
-A workspace evolves a candidate under a frozen scoring harness; git is the
-lineage archive (commit = candidate, tag `gen/<id>`), `archive.jsonl` the
-ledger. Everything goes through the workspace's `./evolve` console. This is the
-**outer** skill — a router; the operating manual travels inside each workspace.
+A workspace evolves a candidate under a frozen evaluator. Git generation tags
+are the lineage and `archive.jsonl` is the ledger. Use the workspace's
+`./evolve` console for all workspace actions.
 
-**First actions, always:**
-1. `cd` into the workspace (it contains `evolve`, `evaluator/`, `target/`).
-   No workspace yet? Create a live Harbor experiment with
-   `evolve init <dir> --recipe aevolve --dataset <tasks>`.
-2. The workspace's own `evolve-workspace` skill (its `SKILL.md`) is the
-   operating manual — it auto-discovers on `cd`-in.
-3. `./evolve status` before anything else; `./evolve doctor` if state looks wrong.
+## First actions
 
-**Two modes:**
-- Autonomous: `./evolve run . --max-generations N` — the operators edit the candidate.
-  `EVAL_STUB=1` only stubs canonical evaluation; it does not turn a public
-  recipe into a local fixture.
-- You-as-meta-agent: edit within the mutable surface, then let `./evolve run`
-  drive eval/gate/record (interactive `gen begin` / `gen finish` is designed
-  but not yet a CLI surface — see `DESIGN.md`).
+1. Enter the workspace; it contains `evolve`, `target/`, and `evaluator/`.
+2. If no workspace exists, initialize a supported recipe. Harbor recipes need
+   an immutable runtime digest and an existing local Harbor task collection:
 
-**Hard rules** (enforced, do not fight them): `evaluator/` is read-only; scores
-are stamped by the frozen side only; never hand-edit `archive.jsonl` or
-`best_ever.json` — `./evolve verify` recomputes and exposes tampering.
+   ```bash
+   export EVOLVE_RUNTIME_DIGEST=sha256:<immutable-evaluator-image-digest>
+   evolve init <workspace> --recipe aevolve --dataset <local-harbor-task-directory>
+   ```
 
-See `DESIGN.md` in the framework repo for the whole architecture; the five
-invariants are in `skills/_invariants.md`.
+3. Read `skills/evolve-workspace/SKILL.md` in the generated workspace, then run
+   `./evolve status`. Use `./evolve doctor` when state looks wrong.
+
+## Operating rules
+
+- Run evolution with `./evolve run . --max-generations N`.
+- Edit only paths allowed by the workspace's mutable surface.
+- Never edit `evaluator/`, `archive.jsonl`, or `best_ever.json` by hand.
+- Use `./evolve verify` to recompute and check lineage integrity.
+
+The public recipe inventory is `aevolve`, `ahe`, `gepa`, `hill_climb`, and
+`hyperagents`. Smoke recipes are test fixtures and are not workspace choices.
