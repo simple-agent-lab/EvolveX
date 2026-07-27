@@ -38,11 +38,6 @@ _SECRET_ASSIGNMENT = re.compile(
     r"([\"']?)(\s*[:=]\s*)([^\s,;}]+)"
 )
 _BEARER = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+")
-_PROXY_ENV = (
-    ("EVOLVE_HARBOR_HTTP_PROXY", "http_proxy", "HTTP_PROXY"),
-    ("EVOLVE_HARBOR_HTTPS_PROXY", "https_proxy", "HTTPS_PROXY"),
-    ("EVOLVE_HARBOR_NO_PROXY", "no_proxy", "NO_PROXY"),
-)
 _CREDENTIAL_ENV = ("OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_API_BASE")
 
 
@@ -527,11 +522,6 @@ def _append_agent_env(command: list[str], config: dict[str, Any]) -> None:
 
 def _agent_env(config: dict[str, Any]) -> dict[str, str]:
     values: dict[str, str] = {}
-    for override, lower, upper in _PROXY_ENV:
-        value = os.environ.get(override) or os.environ.get(lower) or os.environ.get(upper)
-        if value:
-            values[lower] = value
-            values[upper] = value
     for name in _CREDENTIAL_ENV:
         value = os.environ.get(name)
         if value:

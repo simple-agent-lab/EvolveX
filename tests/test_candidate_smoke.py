@@ -11,6 +11,7 @@ from conftest import git, run_evolve
 from evolve.candidate import smoke as candidate_smoke_module
 from evolve.candidate.smoke import run_candidate_smoke
 from evolve.config import default_config
+from evolve.uv_runtime import CandidateRuntimeResult, RuntimeMount
 from evolve.workspace import InitOptions, init_workspace
 
 ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
@@ -89,6 +90,48 @@ def test_smoke_runs_through_owned_process_helper(tmp_path: Path, monkeypatch) ->
         checkout,
         result.attempt_dir,
     )
+
+
+def test_smoke_prepares_and_injects_candidate_runtime(tmp_path: Path, monkeypatch) -> None:
+    checkout = smoke_checkout(tmp_path)
+    (checkout / "evolve.yaml").write_text(
+        "surface:\n"
+        "  include: [target/**]\n"
+        "  exclude: []\n"
+        "evaluator:\n"
+        "  candidate_runtime: {variant: uv, project: target, python: '3.12'}\n"
+    )
+    git(checkout, "add", "evolve.yaml")
+    git(checkout, "commit", "--amend", "--no-edit", "-q")
+    runtime_calls = []
+    run_env = {}
+
+    def fake_prepare(materialized, attempt, runtime_root, candidate_commit, evaluator):
+        runtime_calls.append((materialized, attempt, runtime_root, candidate_commit, evaluator))
+        return CandidateRuntimeResult(
+            "uv",
+            "target",
+            environment=(("UV_OFFLINE", "1"),),
+            mounts=(RuntimeMount(tmp_path / "cache", "/opt/evolve/uv/cache"),),
+        )
+
+    def fake_run_owned(command, *, cwd, env, timeout_s=None):
+        del command, cwd, timeout_s
+        run_env.update(env)
+        return SimpleNamespace(returncode=0, stdout="", stderr="", wall_s=0.01, timed_out=False)
+
+    monkeypatch.setattr(candidate_smoke_module, "prepare_candidate_runtime", fake_prepare, raising=False)
+    monkeypatch.setattr(candidate_smoke_module, "run_owned", fake_run_owned)
+
+    result = run_candidate_smoke(checkout, workspace=checkout)
+
+    assert result.status == "passed"
+    assert len(runtime_calls) == 1
+    assert runtime_calls[0][1] == result.attempt_dir
+    assert runtime_calls[0][2] == checkout / "runs" / "runtime"
+    assert runtime_calls[0][4]["candidate_runtime"]["variant"] == "uv"
+    assert json.loads(run_env["EVOLVE_CANDIDATE_RUNTIME_ENV_JSON"]) == {"UV_OFFLINE": "1"}
+    assert json.loads(run_env["EVOLVE_CANDIDATE_RUNTIME_MOUNTS_JSON"])[0]["target"] == "/opt/evolve/uv/cache"
 
 
 def test_smoke_redacts_proxy_credential_only(tmp_path: Path, monkeypatch) -> None:

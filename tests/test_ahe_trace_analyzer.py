@@ -343,6 +343,51 @@ def test_ahe_archive_analysis_marks_two_observation_flip_as_possibly_unstable(tm
     assert analysis["stability"]["unstable"] == []
 
 
+def test_ahe_archive_analysis_classifies_canonical_benchmark_complete_rewards(tmp_path: Path) -> None:
+    module = _module()
+    ctx = _ctx(tmp_path, genid="2", parent="1")
+    rows = []
+    for genid, passing_reward in (("0", 1.0), ("1", 0.0)):
+        rows.append(
+            {
+                "genid": genid,
+                "score": passing_reward,
+                "selection_eligible": True,
+                "task_vector": {
+                    "schema_version": 1,
+                    "tasks": {
+                        "flip": {
+                            "trials": [
+                                {
+                                    "status": "benchmark_complete",
+                                    "reward": passing_reward,
+                                    "owner": "benchmark",
+                                }
+                            ]
+                        },
+                        "always-fail": {
+                            "trials": [
+                                {"status": "benchmark_complete", "reward": 0.0, "owner": "benchmark"}
+                            ]
+                        },
+                        "infra": {
+                            "trials": [
+                                {"status": "infrastructure_failed", "reward": None, "owner": "infrastructure"}
+                            ]
+                        },
+                    },
+                },
+            }
+        )
+    _write_archive(ctx, rows)
+
+    analysis = module._archive_analysis(ctx)
+
+    assert analysis["stability"]["possibly_unstable"] == ["flip"]
+    assert analysis["stability"]["stable_fail"] == ["always-fail"]
+    assert analysis["stability"]["infra_only"] == ["infra"]
+
+
 def test_ahe_analyzer_renders_archive_analysis_in_overview(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     module = _module()
     ctx = _ctx(tmp_path, genid="2", parent="1")

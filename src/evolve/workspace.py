@@ -151,6 +151,7 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
     partial_floor = float(evaluator.get("partial_floor", 0.8))
     setup_timeout_multiplier = float(evaluator.get("agent_setup_timeout_multiplier", 1))
     agent_timeout_multiplier = float(evaluator.get("agent_timeout_multiplier", 1))
+    verifier_timeout_multiplier = float(evaluator.get("verifier_timeout_multiplier", 1))
     max_retries = int(evaluator.get("max_retries", 0))
     task_scope = str(evaluator.get("task_scope", "partitioned"))
     split = evaluator.get("split")
@@ -205,6 +206,7 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
             task_file=str(evaluator["task_file"]) if "task_file" in evaluator else None,
             setup_timeout_multiplier=setup_timeout_multiplier,
             agent_timeout_multiplier=agent_timeout_multiplier,
+            verifier_timeout_multiplier=verifier_timeout_multiplier,
             max_retries=max_retries,
         ),
         "evaluator/agent.env": _agent_env(evaluator.get("agent_env")),
@@ -646,6 +648,7 @@ def _eval_env(
     task_file: str | None = None,
     setup_timeout_multiplier: float = 1,
     agent_timeout_multiplier: float = 1,
+    verifier_timeout_multiplier: float = 1,
     max_retries: int = 0,
 ) -> str:
     expected_trials = tasks_per_round * max(trials, 1)
@@ -666,6 +669,8 @@ def _eval_env(
         text += f"EVOLVE_HARBOR_AGENT_SETUP_TIMEOUT_MULTIPLIER={setup_timeout_multiplier}\n"
     if agent_timeout_multiplier > 1:
         text += f"EVOLVE_HARBOR_AGENT_TIMEOUT_MULTIPLIER={agent_timeout_multiplier}\n"
+    if verifier_timeout_multiplier > 1:
+        text += f"EVOLVE_HARBOR_VERIFIER_TIMEOUT_MULTIPLIER={verifier_timeout_multiplier}\n"
     if max_retries > 0:
         text += f"EVOLVE_HARBOR_MAX_RETRIES={max_retries}\n"
     if model:

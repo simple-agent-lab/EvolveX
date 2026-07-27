@@ -51,6 +51,18 @@ def test_harbor_meta_agent_forwards_openai_environment(monkeypatch: pytest.Monke
     )["OPENAI_BASE_URL"] == "https://configured.example/v1"
 
 
+def test_harbor_meta_agent_does_not_forward_dependency_proxies(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _harbor_runner_module()
+    monkeypatch.setenv("OPENAI_API_KEY", "workspace-key")
+    monkeypatch.setenv("http_proxy", "http://dependency-proxy.example:8118")
+    monkeypatch.setenv("HTTPS_PROXY", "http://dependency-proxy.example:8118")
+    monkeypatch.setenv("EVOLVE_HARBOR_NO_PROXY", ".internal.example")
+
+    assert module._agent_env({"agent": "mini-swe-agent"}) == {
+        "OPENAI_API_KEY": "workspace-key",
+    }
+
+
 def test_harbor_rejects_oversized_instruction_with_unsafe_agent(tmp_path: Path) -> None:
     runner = _harbor_runner_module()
     prompt = tmp_path / "prompt.md"

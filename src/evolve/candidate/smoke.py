@@ -10,8 +10,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from ..config import load_config
 from ..runtime import owned_attempt_id, run_owned
 from ..surface import surface_patterns
+from ..uv_runtime import prepare_candidate_runtime
 from .snapshot import build_candidate_snapshot, materialize_snapshot
 
 SmokeStatus = Literal["passed", "failed", "unsupported"]
@@ -43,7 +45,29 @@ def run_candidate_smoke(checkout: Path, *, workspace: Path) -> SmokeResult:
         script = materialized / "evaluator" / "smoke.sh"
         if not script.is_file():
             return _write_result(attempt, "unsupported", snapshot.tree, None, "", "", time.monotonic() - started)
+        config = load_config(materialized / "evolve.yaml")
+        evaluator = config.get("evaluator")
+        runtime = prepare_candidate_runtime(
+            materialized,
+            attempt,
+            workspace / "runs" / "runtime",
+            snapshot.tree,
+            evaluator if isinstance(evaluator, dict) else {},
+        )
+        if not runtime.ready:
+            return _write_result(
+                attempt,
+                "failed",
+                snapshot.tree,
+                None,
+                "",
+                _redact(runtime.reason or "candidate runtime preparation failed", os.environ),
+                time.monotonic() - started,
+            )
         env = {**os.environ, "EVOLVE_RUN_DIR": str(attempt), "EVOLVE_ATTEMPT_ID": owned_attempt_id(workspace, attempt)}
+        if runtime.variant is not None:
+            env["EVOLVE_CANDIDATE_RUNTIME_ENV_JSON"] = runtime.environment_json()
+            env["EVOLVE_CANDIDATE_RUNTIME_MOUNTS_JSON"] = runtime.mounts_json()
         env.setdefault("EVOLVE_FRAMEWORK_PYTHON", sys.executable)
         completed = run_owned([str(script)], cwd=materialized, env=env)
     return _write_result(

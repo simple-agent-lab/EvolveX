@@ -100,7 +100,16 @@ def test_uv_runtime_prepares_cache_and_emits_offline_contract(tmp_path: Path) ->
     assert [mount.target for mount in result.mounts] == [
         "/opt/evolve/uv/cache",
         "/opt/evolve/uv/python",
+        "/root/.local/bin",
     ]
+    verifier_tools = result.mounts[-1]
+    assert verifier_tools.read_only is True
+    assert (verifier_tools.source / "uv").is_file()
+    assert (verifier_tools.source / "uvx").read_text().startswith("#!/bin/sh\n")
+    assert (verifier_tools.source / "env").read_text().startswith("#!/bin/sh\n")
+    assert (verifier_tools.source / "uv").stat().st_mode & 0o111
+    assert (verifier_tools.source / "uvx").stat().st_mode & 0o111
+    assert (verifier_tools.source / "env").stat().st_mode & 0o111
     receipt = json.loads((run_dir / "candidate-runtime.json").read_text())
     assert receipt["variant"] == "uv"
     assert receipt["project"] == "target"
@@ -110,12 +119,52 @@ def test_uv_runtime_prepares_cache_and_emits_offline_contract(tmp_path: Path) ->
     assert not (run_dir / ".candidate-runtime-venv").exists()
 
 
+def test_uv_runtime_can_stage_an_immutable_uv_installer_artifact(tmp_path: Path) -> None:
+    artifact = tmp_path / "uv-x86_64-unknown-linux-gnu.tar.gz"
+    artifact.write_bytes(b"exact pinned uv archive")
+
+    result, _, _ = _prepare(
+        tmp_path,
+        UV_OFFLINE_RC="0",
+        EVOLVE_UV_INSTALLER_ARTIFACT=str(artifact),
+    )
+
+    assert result.ready
+    environment = dict(result.environment)
+    assert environment["UV_DOWNLOAD_URL"] == "file:///root/.local/bin/uv-installer-downloads"
+    assert environment["UV_UNMANAGED_INSTALL"] == "/tmp/evolve-uv-bin"
+    verifier_tools = result.mounts[-1].source
+    assert (verifier_tools / "uv-installer-downloads" / artifact.name).read_bytes() == artifact.read_bytes()
+    assert "/tmp/evolve-uv-bin:$HOME/.local/bin" in (verifier_tools / "env").read_text()
+
+
 def test_uv_runtime_prepares_the_framework_python_for_offline_consumers(tmp_path: Path) -> None:
     result, _, calls = _prepare(tmp_path, UV_OFFLINE_RC="0")
 
     assert result.ready
     invocations = [json.loads(line) for line in calls.read_text().splitlines()]
     assert ["python", "install", "3.12"] in invocations
+
+
+def test_uv_runtime_makes_managed_python_aliases_portable_for_mounts(tmp_path: Path) -> None:
+    checkout, run_dir, runtime_root, evaluator, env, _ = _runtime_fixture(tmp_path)
+    python_dir = runtime_root / "uv-python"
+    versioned = python_dir / "cpython-3.12.13-linux-x86_64-gnu"
+    versioned.mkdir(parents=True)
+    alias = python_dir / "cpython-3.12-linux-x86_64-gnu"
+    alias.symlink_to(versioned)
+
+    result = prepare_candidate_runtime(
+        checkout,
+        run_dir,
+        runtime_root,
+        candidate_commit="abc123",
+        evaluator=evaluator,
+        env=env,
+    )
+
+    assert result.ready
+    assert alias.readlink() == Path(versioned.name)
 
 
 def test_uv_runtime_warms_local_build_requirements_before_consumers(tmp_path: Path) -> None:

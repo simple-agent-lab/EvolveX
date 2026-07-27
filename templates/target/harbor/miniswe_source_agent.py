@@ -243,9 +243,11 @@ class MiniSweSourceAgent(MiniSweAgent):
                 "set -euo pipefail; "
                 f"unset {' '.join(PROXY_NAMES)}; "
                 'mkdir -p "$HOME/.local/bin"; export PATH="$HOME/.local/bin:$PATH"; '
+                "if ! command -v uv >/dev/null 2>&1 || ! uv --version >/dev/null 2>&1; then "
                 f"if [ -f {HOST_UV_PATH} ]; then "
                 f'cp {HOST_UV_PATH} "$HOME/.local/bin/uv"; chmod 755 "$HOME/.local/bin/uv"; '
                 'if ! "$HOME/.local/bin/uv" --version >/dev/null 2>&1; then rm -f "$HOME/.local/bin/uv"; fi; '
+                "fi; "
                 "fi; "
                 "if ! command -v uv >/dev/null 2>&1 || ! uv --version >/dev/null 2>&1; then "
                 'rm -f "$HOME/.local/bin/uv"; '
