@@ -13,6 +13,7 @@ from conftest import fixture_recipe_config, init_fixture_workspace
 
 from evolve import runtime as runtime_module
 from evolve import workspace as workspace_module
+from evolve.config import scaffold_root
 from evolve.evaluation import Outcome
 from evolve.evaluation.execution import _expected_trials, evaluate
 from evolve.feedback import write_feedback_bundle
@@ -190,7 +191,7 @@ def test_cleanup_removes_only_exact_trial_compose_project(tmp_path: Path) -> Non
         "if [ \"$1\" = ps ]; then printf 'owned-container\\n'; fi\n"
     )
     docker.chmod(docker.stat().st_mode | stat.S_IXUSR)
-    script = Path(workspace_module.resource_root("templates")) / "evaluator" / "cleanup_harbor.py"
+    script = Path(scaffold_root()) / "evaluators" / "harbor" / "cleanup_harbor.py"
 
     result = subprocess.run(
         [sys.executable, str(script), str(jobs)],

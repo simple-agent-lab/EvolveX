@@ -368,6 +368,6 @@ def test_all_recipes_use_ninety_percent_partial_evidence_floor() -> None:
 
 
 def test_harbor_evaluator_accepts_validated_runtime_concurrency_override() -> None:
-    contents = (ROOT / "templates/evaluator/engines/harbor.sh").read_text()
+    contents = (ROOT / "scaffolds/evaluators/harbor/engine.sh").read_text()
     assert "EVOLVE_HARBOR_N_CONCURRENT_OVERRIDE" in contents
     assert "invalid EVOLVE_HARBOR_N_CONCURRENT_OVERRIDE" in contents

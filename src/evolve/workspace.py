@@ -26,6 +26,8 @@ from .config import (
     recipe_root,
     render_yaml,
     resource_root,
+    scaffold_root,
+    seed_root,
 )
 from .host_runtime import uv_executable
 from .splits import build_manifest
@@ -128,8 +130,8 @@ def _vendor_mechanism(workspace: Path) -> None:
         workspace / ".evolve" / "evolve",
         ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
     )
-    (workspace / ".evolve" / "launch_evolve.py").write_text(_template("workspace/launch_evolve.py"))
-    (workspace / ".evolve" / "launch_splits.py").write_text(_template("workspace/launch_splits.py"))
+    (workspace / ".evolve" / "launch_evolve.py").write_text(_workspace_scaffold("launch_evolve.py"))
+    (workspace / ".evolve" / "launch_splits.py").write_text(_workspace_scaffold("launch_splits.py"))
     (workspace / "evolve").write_text(_CONSOLE)
 
 
@@ -174,21 +176,21 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
     )
     evaluator_dataset = str(split_manifest["dataset"])
     files = {
-        "pyproject.toml": _template("workspace/pyproject.toml"),
-        "uv.lock": _template("workspace/uv.lock"),
-        ".python-version": _template("workspace/.python-version"),
+        "pyproject.toml": _workspace_scaffold("pyproject.toml"),
+        "uv.lock": _workspace_scaffold("uv.lock"),
+        ".python-version": _workspace_scaffold(".python-version"),
         "evolve.yaml": render_yaml(_runtime_config(config)),
-        "README.md": _template("workspace/README.md"),
-        "AGENTS.md": _template("workspace/AGENTS.md"),
-        "program.md": _template("workspace/program.md"),
-        ".gitignore": _template("workspace/.gitignore"),
+        "README.md": _workspace_scaffold("README.md"),
+        "AGENTS.md": _workspace_scaffold("AGENTS.md"),
+        "program.md": _workspace_scaffold("program.md"),
+        ".gitignore": _workspace_scaffold(".gitignore"),
         ".evolve-protocol-version": "1\n",
         "operators/engines/local.sh": _shell_script("operator local engine"),
         "operators/preflight.sh": _shell_script("operator preflight"),
-        "operators/select.md": _template("workspace/operators/select.md"),
-        "operators/rollout.md": _template("workspace/operators/rollout.md"),
-        "operators/gate.md": _template("workspace/operators/gate.md"),
-        "operators/record.md": _template("workspace/operators/record.md"),
+        "operators/select.md": _workspace_scaffold("operators/select.md"),
+        "operators/rollout.md": _workspace_scaffold("operators/rollout.md"),
+        "operators/gate.md": _workspace_scaffold("operators/gate.md"),
+        "operators/record.md": _workspace_scaffold("operators/record.md"),
         "skills/evolve-workspace/SKILL.md": _skill("evolve-workspace/SKILL.md"),
         "PROTOCOL.md": (library_root() / "PROTOCOL.md").read_text(),
         "evaluator/eval.sh": _eval_sh(evaluator_engine, evaluator_dataset),
@@ -215,22 +217,24 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
         "evaluator/splits.json": json.dumps(split_manifest, indent=2, sort_keys=True) + "\n",
         "evaluator/dataset.pin": f"dataset={evaluator_dataset}\nchecksum=sha256:stub\n",
         "evaluator/runtime.pin": f"{runtime_digest}\n",
-        "evaluator/harbor_artifacts.py": _template("evaluator/harbor_artifacts.py"),
-        "evaluator/parse_score.py": _template("evaluator/parse_score.py"),
-        "evaluator/stub_eval.py": _template("evaluator/stub_eval.py"),
+        "evaluator/stub_eval.py": _workspace_scaffold("evaluator/stub_eval.py"),
         "evaluator/engines/local.sh": _shell_script("canonical local engine"),
         "archive.jsonl": "",
     }
     if evaluator_engine == "harbor":
-        files["evaluator/cleanup_harbor.py"] = _template("evaluator/cleanup_harbor.py")
-        files["evaluator/smoke.sh"] = _template("evaluator/smoke.sh")
+        files.update(
+            {
+                "evaluator/cleanup_harbor.py": _evaluator_scaffold("harbor", "cleanup_harbor.py"),
+                "evaluator/harbor_artifacts.py": _evaluator_scaffold("harbor", "harbor_artifacts.py"),
+                "evaluator/parse_score.py": _evaluator_scaffold("harbor", "parse_score.py"),
+                "evaluator/smoke.sh": _evaluator_scaffold("harbor", "smoke.sh"),
+            }
+        )
     bindings = _operator_bindings(config, recipe=recipe, init_cwd=init_cwd)
     for binding in bindings:
         files[f"operators/{binding.kind}.py"] = _with_provenance(binding.kind, binding.source, binding.text)
         if binding.companion_text is not None:
             files[f"operators/{binding.kind}.md"] = binding.companion_text
-    if any(binding.kind == "novelty" for binding in bindings):
-        files["operators/novelty.md"] = _template("workspace/operators/novelty.md")
     files["operators/README.md"] = _operator_index(bindings, recipe)
     files.update(_operator_palette(recipe) | _operator_assets(recipe) | _recipe_evaluator_assets(recipe))
     for relative_path, content in files.items():
@@ -437,7 +441,7 @@ def _write_target(workspace: Path, target_config: dict[str, Any]) -> None:
     if seed_text == "builtin-dummy":
         raise ValueError("builtin-dummy is test-only; pass a local seed directory instead")
     if seed_text == "builtin-codex":
-        _copy_resource_tree(resource_root("templates") / "target" / "codex", workspace / "target")
+        _copy_resource_tree(seed_root() / "codex", workspace / "target")
         (workspace / "target" / "UPSTREAM.json").write_text(
             json.dumps({"kind": "builtin", "seed": "builtin-codex"}, sort_keys=True) + "\n"
         )
@@ -694,17 +698,23 @@ def _eval_env(
 
 
 def _eval_sh(engine: str, _dataset: str) -> str:
-    if engine != "harbor":
-        raise ValueError(f"unsupported evaluator.engine: {engine}")
-    return _template("evaluator/eval-prefix.sh") + _template("evaluator/engines/harbor.sh")
+    return _workspace_scaffold("evaluator/eval-prefix.sh") + _evaluator_scaffold(engine, "engine.sh")
 
 
 def _shell_script(label: str) -> str:
     return f"#!/bin/sh\nset -eu\nprintf '%s\\n' '{label}'\n"
 
 
-def _template(relative_path: str) -> str:
-    return (resource_root("templates") / relative_path).read_text()
+def _workspace_scaffold(relative_path: str) -> str:
+    return (scaffold_root() / "workspace" / relative_path).read_text()
+
+
+def _evaluator_scaffold(engine: str, relative_path: str) -> str:
+    root = scaffold_root() / "evaluators" / engine
+    path = root / relative_path
+    if not path.is_file():
+        raise ValueError(f"unsupported evaluator.engine: {engine}")
+    return path.read_text()
 
 
 def _skill(relative_path: str) -> str:

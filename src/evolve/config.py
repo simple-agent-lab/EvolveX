@@ -41,6 +41,14 @@ def library_root() -> Resource:
     return resource_root("library")
 
 
+def scaffold_root() -> Resource:
+    return resource_root("scaffolds")
+
+
+def seed_root() -> Resource:
+    return resource_root("seeds")
+
+
 def _recipe_names() -> tuple[str, ...]:
     root = recipe_root()
     if not root.is_dir():

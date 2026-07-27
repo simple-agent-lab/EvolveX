@@ -5,7 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from evolve.config import resource_root
+from evolve.config import scaffold_root
 from evolve.workspace import _eval_env, _eval_sh
 
 
@@ -16,7 +16,7 @@ def _write_executable(path: Path, text: str) -> None:
 
 def _write_evaluator_helpers(evaluator: Path) -> None:
     for name in ("harbor_artifacts.py", "parse_score.py", "cleanup_harbor.py"):
-        (evaluator / name).write_text((resource_root("templates") / "evaluator" / name).read_text())
+        (evaluator / name).write_text((scaffold_root() / "evaluators" / "harbor" / name).read_text())
 
 
 def _write_fake_uv(bin_dir: Path) -> None:

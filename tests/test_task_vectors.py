@@ -244,7 +244,7 @@ def test_stub_eval_emits_configured_completed_trials_without_changing_score(tmp_
     target_dir.mkdir()
     (target_dir / "agent.py").write_text("# FAIL task-0\n")
     run_dir = tmp_path / "run"
-    script = Path(__file__).resolve().parents[1] / "templates" / "evaluator" / "stub_eval.py"
+    script = Path(__file__).resolve().parents[1] / "scaffolds" / "workspace" / "evaluator" / "stub_eval.py"
 
     result = subprocess.run(
         [sys.executable, str(script), str(run_dir)],

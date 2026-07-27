@@ -56,7 +56,8 @@ packages = ["src/evolve", "library"]
 [tool.hatch.build.targets.wheel.force-include]
 "library" = "evolve/library"
 "recipes" = "evolve/recipes"
-"templates" = "evolve/templates"
+"scaffolds" = "evolve/scaffolds"
+"seeds" = "evolve/seeds"
 "skills" = "evolve/skills"
 
 [tool.pytest.ini_options]

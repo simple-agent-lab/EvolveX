@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _python_sources() -> list[Path]:
-    roots = (ROOT / "library", ROOT / "src", ROOT / "templates")
+    roots = (ROOT / "library", ROOT / "src", ROOT / "scaffolds", ROOT / "seeds")
     return sorted(path for root in roots for path in root.rglob("*.py"))
 
 
@@ -25,7 +25,7 @@ def test_production_python_does_not_mutate_sys_path() -> None:
 
 def test_shell_entry_points_do_not_set_pythonpath() -> None:
     violations = []
-    for path in sorted((ROOT / "templates").rglob("*.sh")):
+    for path in sorted((ROOT / "scaffolds").rglob("*.sh")):
         for lineno, line in enumerate(path.read_text().splitlines(), 1):
             if "PYTHONPATH=" in line:
                 violations.append(f"{path.relative_to(ROOT)}:{lineno}")
