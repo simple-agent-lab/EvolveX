@@ -402,7 +402,7 @@ class MiniSweSourceAgent(MiniSweAgent):
         env = {
             "MSWEA_CONFIGURED": "true",
             "MSWEA_COST_TRACKING": "ignore_errors",
-            "MSWEA_MODEL_NAME": self.model_name,
+            "MSWEA_MODEL_NAME": self.model_name or "",
             "MINISWE_TASK_PATH": TASK_PATH,
             "MINISWE_OUTPUT_PATH": str(self._mini_swe_agent_trajectory_path),
         }

@@ -117,6 +117,15 @@ def test_miniswe_wrapper_forwards_reasoning_effort(adapter_path: Path, monkeypat
     assert "MINISWE_REASONING_EFFORT" not in module.MiniSweSourceAgent()._source_env()
 
 
+def test_miniswe_wrapper_source_environment_contains_only_strings(adapter_path: Path, monkeypatch) -> None:
+    _install_fake_harbor(monkeypatch)
+    module = _load(adapter_path)
+    agent = module.MiniSweSourceAgent()
+    agent.model_name = None
+
+    assert agent._source_env()["MSWEA_MODEL_NAME"] == ""
+
+
 def test_miniswe_wrapper_uses_responses_reasoning_and_session_for_openai(
     adapter_path: Path, monkeypatch
 ) -> None:

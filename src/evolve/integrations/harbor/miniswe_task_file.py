@@ -8,8 +8,12 @@ import shlex
 import tempfile
 import uuid
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from harbor.agents.installed.mini_swe_agent import MiniSweAgent
+
+if TYPE_CHECKING:
+    from harbor.environments.base import BaseEnvironment
 
 TASK_PATH = "/tmp/evolve-miniswe-task.md"
 SHIM_PATH = "/tmp/evolve-miniswe-file-task.py"
@@ -34,12 +38,21 @@ runpy.run_path(entrypoint, run_name="__main__")
 
 
 class FileTaskMiniSweAgent(MiniSweAgent):
-    async def exec_as_agent(self, environment, command: str, env=None, **kwargs):
+    async def exec_as_agent(
+        self,
+        environment: BaseEnvironment,
+        command: str,
+        env: dict[str, str] | None = None,
+        cwd: str | None = None,
+        timeout_sec: int | None = None,
+    ) -> Any:
         launch = command.find(_LAUNCH)
         task = command.find(_TASK, launch)
         output = command.rfind(_OUTPUT)
         if launch < 0 or task < 0 or output < task:
-            return await super().exec_as_agent(environment, command=command, env=env, **kwargs)
+            return await super().exec_as_agent(
+                environment, command=command, env=env, cwd=cwd, timeout_sec=timeout_sec
+            )
 
         values = shlex.split(command[task + len(_TASK) : output])
         if len(values) != 1:
@@ -99,4 +112,6 @@ class FileTaskMiniSweAgent(MiniSweAgent):
             f'"$MSWEA_PY" {SHIM_PATH} "$MSWEA_BIN"'
         )
         rewritten = prefix + file_launch + flags_before_task + f" --task-file={TASK_PATH}" + flags_after_task
-        return await super().exec_as_agent(environment, command=rewritten, env=env, **kwargs)
+        return await super().exec_as_agent(
+            environment, command=rewritten, env=env, cwd=cwd, timeout_sec=timeout_sec
+        )
