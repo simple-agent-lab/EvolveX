@@ -112,7 +112,7 @@ def test_ci_warms_clean_python_312_cache_before_offline_workspace_probes() -> No
     assert (ROOT / ".python-version").read_text() == "3.12\n"
     workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "test.yml").read_text())
     job = workflow["jobs"]["test"]
-    assert job["env"]["UV_CACHE_DIR"] == "${{ runner.temp }}/evolve-clean-uv-cache"
+    assert "runner.temp" not in yaml.safe_dump(job.get("env", {}))
 
     steps = job["steps"]
     setup_uv = next(step for step in steps if str(step.get("uses", "")).startswith("astral-sh/setup-uv@"))
@@ -120,12 +120,16 @@ def test_ci_warms_clean_python_312_cache_before_offline_workspace_probes() -> No
 
     indexes = {step.get("id"): index for index, step in enumerate(steps)}
     assert (
-        indexes["install-python-312"]
+        indexes["configure-uv-cache"]
+        < indexes["install-python-312"]
         < indexes["reset-uv-cache"]
         < indexes["warm-root-runtime"]
         < indexes["offline-workspace-probe"]
     )
     by_id = {step.get("id"): step for step in steps}
+    assert by_id["configure-uv-cache"]["run"] == (
+        'echo "UV_CACHE_DIR=$RUNNER_TEMP/evolve-clean-uv-cache" >> "$GITHUB_ENV"'
+    )
     assert shlex.split(by_id["install-python-312"]["run"]) == [
         "uv",
         "python",
@@ -143,10 +147,12 @@ def test_ci_warms_clean_python_312_cache_before_offline_workspace_probes() -> No
     assert shlex.split(by_id["offline-workspace-probe"]["run"]) == [
         "uv",
         "run",
+        "--offline",
         "pytest",
         "-q",
         "tests/test_recipe_composition.py",
     ]
+    assert by_id["offline-workspace-probe"]["env"]["UV_OFFLINE"] == "1"
 
 
 def test_root_lock_warms_every_generated_workspace_runtime_version() -> None:

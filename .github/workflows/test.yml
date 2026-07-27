@@ -16,8 +16,6 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    env:
-      UV_CACHE_DIR: ${{ runner.temp }}/evolve-clean-uv-cache
     steps:
       - uses: actions/checkout@v4
 
@@ -26,6 +24,10 @@ jobs:
         with:
           enable-cache: true
           python-version: "3.12"
+
+      - name: Configure clean uv cache
+        id: configure-uv-cache
+        run: echo "UV_CACHE_DIR=$RUNNER_TEMP/evolve-clean-uv-cache" >> "$GITHUB_ENV"
 
       - name: Install Python 3.12
         id: install-python-312
@@ -41,7 +43,9 @@ jobs:
 
       - name: Probe generated workspaces offline
         id: offline-workspace-probe
-        run: uv run pytest -q tests/test_recipe_composition.py
+        env:
+          UV_OFFLINE: "1"
+        run: uv run --offline pytest -q tests/test_recipe_composition.py
 
       # Safety net: workspaces set their own per-repo git identity, but a bare CI
       # runner has no global one — configure it so any stray git op still works.

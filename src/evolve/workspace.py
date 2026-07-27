@@ -91,10 +91,15 @@ def init_workspace(options: InitOptions) -> None:
     assert isinstance(evaluator, dict)
     _validate_evaluator_config(evaluator)
     _validate_target_config(target)
-    _validate_candidate_target_contract(target, evaluator)
-    workspace.mkdir(parents=True, exist_ok=True)
-    _write_files(workspace, config, recipe=options.recipe, init_cwd=Path.cwd())
-    _write_target(workspace, target)
+    with tempfile.TemporaryDirectory(prefix="evolve-target-") as tmp:
+        staging_workspace = Path(tmp) / "workspace"
+        staging_workspace.mkdir()
+        _write_target(staging_workspace, target)
+        staged_target = staging_workspace / "target"
+        _validate_candidate_target_contract(staged_target, evaluator)
+        workspace.mkdir(parents=True, exist_ok=True)
+        _write_files(workspace, config, recipe=options.recipe, init_cwd=Path.cwd())
+        shutil.copytree(staged_target, workspace / "target")
     _vendor_mechanism(workspace)
     _make_executable(
         workspace / "operators" / "engines" / "local.sh",
@@ -486,18 +491,15 @@ def _validate_target_config(target: dict[str, Any]) -> None:
 
 
 def _validate_candidate_target_contract(
-    target: dict[str, Any], evaluator: dict[str, Any]
+    prepared_target: Path, evaluator: dict[str, Any]
 ) -> None:
     if evaluator.get("agent") != _MINISWE_CANDIDATE_AGENT:
         return
-    seed = cast(str, target["seed"])
-    if target.get("generate_lock", False):
-        return
-    if not _looks_like_git_url(seed) and (Path(seed).expanduser() / "uv.lock").is_file():
+    if (prepared_target / "uv.lock").is_file():
         return
     raise ValueError(
         "evaluator.agent selects the MiniSWE candidate lock contract; "
-        "set target.generate_lock: true or provide a target.seed containing uv.lock"
+        "the prepared target must contain target/uv.lock"
     )
 
 
@@ -512,21 +514,18 @@ def _write_target(workspace: Path, target_config: dict[str, Any]) -> None:
         (workspace / "target" / "UPSTREAM.json").write_text(
             json.dumps({"kind": "builtin", "seed": "builtin-codex"}, sort_keys=True) + "\n"
         )
-        return
-    if _looks_like_git_url(seed_text):
+    elif _looks_like_git_url(seed_text):
         with tempfile.TemporaryDirectory(prefix="evolve-seed-") as tmp:
             checkout = Path(tmp) / "seed"
             _git_clone(seed_text, checkout, revision=revision)
             _vendor_seed(workspace, checkout, seed_text)
-        if generate_lock:
-            _generate_target_lock(workspace / "target")
-        return
-    if revision is not None:
-        raise ValueError("target.revision requires a git URL seed")
-    source = Path(seed_text).expanduser()
-    if not source.is_dir():
-        raise ValueError(f"seed is not a local directory or git URL: {seed_text}")
-    _vendor_seed(workspace, source.resolve(), str(source.resolve()))
+    else:
+        if revision is not None:
+            raise ValueError("target.revision requires a git URL seed")
+        source = Path(seed_text).expanduser()
+        if not source.is_dir():
+            raise ValueError(f"seed is not a local directory or git URL: {seed_text}")
+        _vendor_seed(workspace, source.resolve(), str(source.resolve()))
     if generate_lock:
         _generate_target_lock(workspace / "target")
 
@@ -606,6 +605,11 @@ def _git_clone(url: str, destination: Path, *, revision: str | None = None) -> N
 
 
 def _generate_target_lock(target: Path) -> None:
+    if not (target / "pyproject.toml").is_file():
+        raise ValueError(
+            "target.generate_lock requires the prepared target to contain "
+            "target/pyproject.toml"
+        )
     result = subprocess.run(
         [uv_executable(), "lock", "--python", sys.executable, "--project", str(target)],
         text=True,
@@ -613,7 +617,10 @@ def _generate_target_lock(target: Path) -> None:
         check=False,
     )
     if result.returncode != 0:
-        raise RuntimeError(result.stderr.strip() or "target lock generation failed")
+        detail = result.stderr.strip() or "uv lock failed"
+        raise RuntimeError(f"target.generate_lock failed: {detail}")
+    if not (target / "uv.lock").is_file():
+        raise ValueError("target.generate_lock did not produce target/uv.lock")
 
 
 def _init_git(workspace: Path) -> None:

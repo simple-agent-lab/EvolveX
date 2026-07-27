@@ -45,7 +45,7 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `surface.py` | 150 | mutable-surface pattern matching and violation checks |
 | `trace_analysis.py` | 750 | deterministic shared transforms used by the independent trace-analyzer operator variants |
 | `uv_runtime.py` | 550 | locked uv runtime construction and command execution |
-| `workspace.py` | 800 | `evolve init` scaffolding: file copies, operator binding, deterministic dataset and Harbor runtime config, generated operator palette, protocol stamping, seed + mechanism vendoring, inner-skill copy |
+| `workspace.py` | 850 | `evolve init` scaffolding: file copies, operator binding, deterministic dataset and Harbor runtime config, generated operator palette, protocol stamping, seed + mechanism vendoring, inner-skill copy |
 | `git.py` | 150 | thin git subprocess helpers — nothing evolve-specific |
 | `harbor_local.py` | 250 | minimal in-place Harbor environment for fast trials against a pre-configured local agent runtime |
 | `host_runtime.py` | 100 | host-side locked runtime process helpers |
@@ -68,7 +68,7 @@ each workspace, immutable there because it sits outside the mutable surface
 | `frozen/interfaces.py` | 350 | operator ABCs (incl. trace analyzer, novelty, and reflect), the registry, result schemas, payload validation |
 | `frozen/sdk.py` | 300 | Python operator entrypoint and file-contract IO; no library algorithm policy |
 
-Total `src/evolve/` budget: **9930 lines**. The budget admits the explicit evaluation-package
+Total `src/evolve/` budget: **9980 lines**. The budget admits the explicit evaluation-package
 boundaries, failed-task repair, the opt-in in-place Harbor runtime, and the redacted trace-analysis
 boundary between rollout and feedback assembly; if the mechanism wants to
 grow past that, something belongs in a workspace operator instead —
