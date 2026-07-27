@@ -1,11 +1,10 @@
 import json
-import os
 import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from conftest import fixture_recipe_config, write_locked_miniswe_seed
+from conftest import fixture_recipe_config, generated_workspace_uv_env, write_locked_miniswe_seed
 
 from evolve.config import RECIPE_NAMES, default_config, load_config, recipe_root, scaffold_root, seed_root
 from evolve.workspace import InitOptions, _write_target, init_workspace
@@ -57,7 +56,7 @@ def test_supported_recipe_initializes_only_selected_components(
         text=True,
         capture_output=True,
         check=False,
-        env=os.environ.copy(),
+        env=generated_workspace_uv_env(),
     )
     assert sync.returncode == 0, sync.stderr
 
@@ -76,7 +75,7 @@ def test_supported_recipe_initializes_only_selected_components(
             text=True,
             capture_output=True,
             check=False,
-            env=os.environ.copy(),
+            env=generated_workspace_uv_env(),
         )
         assert probe.returncode == 0, probe.stderr
 

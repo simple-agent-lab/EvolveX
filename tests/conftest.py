@@ -20,6 +20,28 @@ FIXTURE_RECIPES = ROOT / "tests" / "fixtures" / "recipes"
 FIXTURE_SEEDS = ROOT / "tests" / "fixtures" / "seeds"
 
 
+def _uv_directory(*arguments: str) -> str:
+    result = subprocess.run(
+        ["uv", *arguments],
+        text=True,
+        capture_output=True,
+        check=False,
+        env=os.environ.copy(),
+    )
+    assert result.returncode == 0, result.stderr
+    return result.stdout.strip()
+
+
+_UV_RUNTIME_ENV = {
+    "UV_PYTHON_INSTALL_DIR": _uv_directory("python", "dir"),
+    "UV_CACHE_DIR": _uv_directory("cache", "dir"),
+}
+
+
+def generated_workspace_uv_env() -> dict[str, str]:
+    return {**os.environ, **_UV_RUNTIME_ENV}
+
+
 def fixture_recipe_config(name: str, experiment_id: str) -> dict[str, Any]:
     config = copy.deepcopy(load_config(FIXTURE_RECIPES / name / "evolve.yaml"))
     config["experiment"]["id"] = experiment_id
