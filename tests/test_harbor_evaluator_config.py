@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from conftest import init_fixture_workspace
 
 from evolve import workspace as workspace_module
 from evolve.workspace import InitOptions, _eval_env, init_workspace
@@ -167,7 +168,7 @@ def test_init_real_harbor_recipe_requires_evaluator_agent(
 def test_init_writes_recipe_harbor_agent_to_eval_env(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
 
-    init_workspace(InitOptions(workspace=workspace, recipe="hill_climb-smoke"))
+    init_fixture_workspace(workspace)
 
     env = (workspace / "evaluator" / "eval.env").read_text()
     assert "EVOLVE_HARBOR_AGENT=evolve_harbor_adapter:MiniSweSourceAgent\n" in env

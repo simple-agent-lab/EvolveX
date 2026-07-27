@@ -2,7 +2,7 @@ import json
 import subprocess
 from pathlib import Path
 
-from conftest import git, run_evolve, write_locked_miniswe_seed
+from conftest import git, init_fixture_workspace, run_evolve, write_locked_miniswe_seed
 
 from evolve.config import surface_lists
 from evolve.workspace import _write_target
@@ -74,15 +74,7 @@ def test_git_seed_can_explicitly_generate_missing_lock(tmp_path: Path) -> None:
 def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
     workspace = tmp_path / "experiment"
 
-    result = run_evolve(
-        "init",
-        str(workspace),
-        "--recipe",
-        "hill_climb-smoke",
-        env={"EVAL_STUB": "1", "EVOLVE_HOME": str(tmp_path / "evolve-home")},
-    )
-
-    assert result.returncode == 0, result.stderr
+    init_fixture_workspace(workspace)
     expected_paths = [
         "pyproject.toml",
         "uv.lock",
@@ -143,7 +135,7 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
     config = (workspace / "evolve.yaml").read_text()
     assert "children_per_gen: 1" in config
     assert "mode: driver" in config
-    assert "seed: builtin-dummy" in config
+    assert "tests/fixtures/seeds/dummy" in config
     assert "variant:" not in config
     assert "script:" not in config
     assert "meta_agent:\n    runner: local\n    timeout_s: 3600" in config
@@ -151,7 +143,7 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
     assert "- target/**" in config
     assert (workspace / ".evolve-protocol-version").read_text() == "1\n"
     upstream = json.loads((workspace / "target" / "UPSTREAM.json").read_text())
-    assert upstream == {"kind": "builtin", "seed": "builtin-dummy"}
+    assert upstream == {"kind": "fixture", "seed": "dummy"}
 
     gitignore = (workspace / ".gitignore").read_text()
     assert "runs/" in gitignore
@@ -168,15 +160,7 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
 def test_init_creates_generation_zero_git_snapshot_and_archive_event(tmp_path: Path) -> None:
     workspace = tmp_path / "experiment"
 
-    result = run_evolve(
-        "init",
-        str(workspace),
-        "--recipe",
-        "hill_climb-smoke",
-        env={"EVAL_STUB": "1", "EVOLVE_HOME": str(tmp_path / "evolve-home")},
-    )
-
-    assert result.returncode == 0, result.stderr
+    init_fixture_workspace(workspace)
     assert git(workspace, "tag", "--list", "gen/0") == "gen/0"
     assert git(workspace, "rev-parse", "gen/0^{commit}") == git(workspace, "rev-parse", "HEAD")
     assert "gen 0" in git(workspace, "log", "-1", "--pretty=%s").lower()

@@ -9,9 +9,8 @@ from evolve.splits import build_manifest
 ROOT = Path(__file__).resolve().parents[1]
 RECIPES = ROOT / "recipes"
 TERMINAL_BENCH_DATASET = ROOT / "terminal-bench-2-50-19-20"
-REAL_RECIPES = {
+SUPPORTED_RECIPES = {
     "aevolve",
-    "aevolve_tbench_bridge",
     "ahe",
     "ahe_hle",
     "gepa",
@@ -20,7 +19,6 @@ REAL_RECIPES = {
     "hyperagents_hle",
 }
 UV_SOURCE_RECIPES = {"ahe", "ahe_hle", "hill_climb", "hyperagents", "hyperagents_hle"}
-SMOKE_RECIPES = {"hill_climb-smoke", "hyperagents-smoke"}
 
 
 def _config(name: str) -> str:
@@ -34,12 +32,11 @@ def _parsed_config(name: str) -> dict[str, object]:
 def test_all_recipes_are_recipe_artifacts_only() -> None:
     recipe_names = tuple(path.name for path in sorted(RECIPES.iterdir()) if path.is_dir())
     assert set(recipe_names) == set(RECIPE_NAMES)
-    assert set(RECIPE_NAMES) == REAL_RECIPES | SMOKE_RECIPES
+    assert set(RECIPE_NAMES) == SUPPORTED_RECIPES
     for name in RECIPE_NAMES:
         recipe = RECIPES / name
         assert (recipe / "evolve.yaml").is_file()
-        if not name.endswith("-smoke"):
-            assert (recipe / "README.md").is_file()
+        assert (recipe / "README.md").is_file()
         assert {path.name for path in recipe.iterdir()} <= {
             "README.md",
             "evolve.yaml",
@@ -54,8 +51,8 @@ def test_all_recipes_are_recipe_artifacts_only() -> None:
         assert top_level_sections == ["experiment", "target", "surface", "operators", "evaluator"]
 
 
-def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
-    for name in REAL_RECIPES:
+def test_supported_recipes_use_harbor_and_method_meta_agent() -> None:
+    for name in SUPPORTED_RECIPES:
         config = _config(name)
         assert "engine: harbor" in config
         assert "target/**" in config
@@ -76,28 +73,6 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "evolve_memory: false" in config
             assert "evolve_tools: false" in config
             assert "agent: target.agent:HarborAgent" in config
-        elif name == "aevolve_tbench_bridge":
-            parsed = _parsed_config(name)
-            evaluator = parsed["evaluator"]
-            assert isinstance(evaluator, dict)
-            assert "max_generations: 10" in config
-            assert "seed: builtin-codex" in config
-            assert "harbor_agent: miniswe-source" in config
-            assert "rollout:\n    variant: harbor" in config
-            assert "variant: trajectory_only" in config
-            assert "trajectory_only: true" in config
-            assert "expose_gate_data: false" in config
-            assert "variant: aevolve" in config
-            assert "runner: harbor" in config
-            assert "agent: codex" in config
-            assert "editable_roots: [target]" in config
-            assert "evolve_prompts: true" in config
-            assert "evolve_skills: true" in config
-            assert "evolve_memory: true" in config
-            assert "evolve_tools: false" in config
-            assert "agent: evolve_harbor_adapter:MiniSweSourceAgent" in config
-            assert evaluator["candidate_runtime"] == {"variant": "uv", "project": "target", "python": "3.12"}
-            assert evaluator["max_retries"] == 0
         elif name == "gepa":
             assert "dataset: swe-bench-lite" in config
             assert "seed: builtin-codex" in config
@@ -243,7 +218,7 @@ def test_terminal_bench_recipe_split_matches_frozen_membership() -> None:
     }
 
 
-def test_real_uv_recipes_enable_candidate_runtime() -> None:
+def test_supported_uv_recipes_enable_candidate_runtime_and_task_retry() -> None:
     for name in UV_SOURCE_RECIPES:
         evaluator = _parsed_config(name)["evaluator"]
         assert isinstance(evaluator, dict)
@@ -396,35 +371,3 @@ def test_harbor_evaluator_accepts_validated_runtime_concurrency_override() -> No
     contents = (ROOT / "templates/evaluator/engines/harbor.sh").read_text()
     assert "EVOLVE_HARBOR_N_CONCURRENT_OVERRIDE" in contents
     assert "invalid EVOLVE_HARBOR_N_CONCURRENT_OVERRIDE" in contents
-
-
-def test_smoke_recipes_are_explicitly_named_and_deterministic() -> None:
-    for name in SMOKE_RECIPES:
-        config = _config(name)
-        evaluator = _parsed_config(name)["evaluator"]
-        assert isinstance(evaluator, dict)
-        assert "candidate_runtime" not in evaluator
-        assert "engine: harbor" in config
-        assert "dataset: pass@k" in config
-        assert "seed: builtin-dummy" in config
-        assert "agent: evolve_harbor_adapter:MiniSweSourceAgent" in config
-        assert "mutate:" not in config
-        if name == "hyperagents-smoke":
-            assert "    - operators/**" in config
-            assert "    - operators/meta_agent.py" not in config
-            assert "select: {variant: score_child_prop" in config
-            assert "rollout: {variant: noop}" in config
-            assert "trace_analyzer:" not in config
-            assert "meta_agent: {variant: hyperagents" in config
-            assert "runner: local" in config
-            assert "editable_roots: [target, operators]" in config
-            assert "validate: {variant: hyperagents" in config
-            assert "record: {variant: hyperagents}" in config
-            assert "budget_usd: 1" in config
-            assert "tasks_per_round: 8" in config
-        else:
-            assert "rollout: {variant: failure_focused" in config
-            assert "trace_analyzer:" not in config
-            assert "meta_agent: {variant: hyperagents, runner: local" in config
-            assert "variant: noop" not in config
-        assert "variant: fixed" not in config

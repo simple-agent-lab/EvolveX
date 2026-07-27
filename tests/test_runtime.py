@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 
 import pytest
+from conftest import fixture_recipe_config, init_fixture_workspace
 
 from evolve import runtime as runtime_module
 from evolve import workspace as workspace_module
@@ -16,7 +17,6 @@ from evolve.evaluation import Outcome
 from evolve.evaluation.execution import _expected_trials, evaluate
 from evolve.feedback import write_feedback_bundle
 from evolve.runtime import attempt_dir
-from evolve.workspace import InitOptions, init_workspace
 
 
 def _pid_is_alive(pid: int) -> bool:
@@ -216,7 +216,7 @@ def test_cleanup_removes_only_exact_trial_compose_project(tmp_path: Path) -> Non
 
 def test_console_uses_locked_workspace_project(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
-    init_workspace(InitOptions(workspace=workspace, recipe="hill_climb-smoke"))
+    init_fixture_workspace(workspace)
 
     text = (workspace / "evolve").read_text()
 
@@ -230,7 +230,7 @@ def test_console_uses_locked_workspace_project(tmp_path: Path) -> None:
 
 def test_init_and_feedback_do_not_create_prediction_contracts(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
-    init_workspace(InitOptions(workspace=workspace, recipe="hill_climb-smoke"))
+    init_fixture_workspace(workspace)
     archive_row = json.loads((workspace / "archive.jsonl").read_text())
     run_dir = workspace / "runs" / "contract-check"
 
@@ -251,7 +251,7 @@ def test_console_shell_quotes_unusual_uv_path(
     fake_uv.write_text('#!/bin/sh\nprintf \'%s\\n\' "$@" > "$CAPTURE"\n')
     fake_uv.chmod(fake_uv.stat().st_mode | stat.S_IXUSR)
     workspace = tmp_path / "workspace"
-    init_workspace(InitOptions(workspace=workspace, recipe="hill_climb-smoke"))
+    init_fixture_workspace(workspace)
     env = os.environ.copy()
     env["EVOLVE_UV_BINARY"] = str(fake_uv)
     env["CAPTURE"] = str(capture)
@@ -327,14 +327,14 @@ def test_harbor_init_requires_evaluator_runtime_digest(tmp_path: Path, monkeypat
     monkeypatch.delenv("EVOLVE_RUNTIME_DIGEST")
 
     with pytest.raises(ValueError, match="EVOLVE_RUNTIME_DIGEST.*evaluator capsule"):
-        init_workspace(InitOptions(workspace=tmp_path / "workspace", recipe="hill_climb-smoke"))
+        init_fixture_workspace(tmp_path / "workspace")
 
 
 def test_init_commits_evaluator_owned_runtime_pin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("EVOLVE_RUNTIME_DIGEST", "sha256:immutable-evaluator")
     workspace = tmp_path / "workspace"
 
-    init_workspace(InitOptions(workspace=workspace, recipe="hill_climb-smoke"))
+    init_fixture_workspace(workspace)
 
     assert (workspace / "evaluator/runtime.pin").read_text() == "sha256:immutable-evaluator\n"
     assert not (workspace / "target/runtime.pin").exists()
@@ -344,13 +344,13 @@ def test_default_expected_trials_match_generated_evaluator_environment(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    config = workspace_module.default_config("hill_climb-smoke", "workspace")
+    config = fixture_recipe_config("hill_climb-smoke", "workspace")
     config["evaluator"].pop("tasks_per_round")
     config["evaluator"]["k"] = 2
     monkeypatch.setattr(workspace_module, "default_config", lambda _recipe, _experiment: config)
     monkeypatch.setenv("EVAL_STUB", "1")
     workspace = tmp_path / "workspace"
-    workspace_module.init_workspace(workspace_module.InitOptions(workspace, "hill_climb-smoke"))
+    workspace_module.init_workspace(workspace_module.InitOptions(workspace, "fixture"))
 
     record = evaluate(workspace, "gen/0", "0", purpose="genesis")
 

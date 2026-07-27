@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from conftest import run_evolve
+from conftest import FIXTURE_SEEDS, run_evolve
 
 from evolve.config import operator_blocks, surface_lists
 
@@ -13,7 +13,7 @@ def test_hyperagents_recipe_initializes_broad_harbor_bundle(tmp_path: Path) -> N
         "--recipe",
         "hyperagents",
         "--seed",
-        "builtin-dummy",
+        str(FIXTURE_SEEDS / "dummy"),
         env={"EVAL_STUB": "1", "EVOLVE_HOME": str(tmp_path / "evolve-home")},
     )
     assert result.returncode == 0, result.stderr

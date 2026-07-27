@@ -6,7 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from conftest import git, run_evolve
+from conftest import fixture_recipe_config, git, init_fixture_workspace, run_evolve
 
 from evolve.candidate import smoke as candidate_smoke_module
 from evolve.candidate.smoke import run_candidate_smoke
@@ -217,7 +217,7 @@ def test_candidate_smoke_cli_returns_three_when_unsupported(tmp_path: Path) -> N
 def test_init_generates_executable_smoke_only_for_harbor(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("EVOLVE_HOME", str(tmp_path / "evolve-home"))
     harbor = tmp_path / "harbor"
-    init_workspace(InitOptions(workspace=harbor, recipe="hill_climb-smoke"))
+    init_fixture_workspace(harbor)
 
     smoke = harbor / "evaluator" / "smoke.sh"
     assert smoke.read_text() == (
@@ -231,13 +231,13 @@ def test_init_generates_executable_smoke_only_for_harbor(tmp_path: Path, monkeyp
 
     from evolve import workspace as workspace_module
 
-    local_config = default_config("hill_climb-smoke", "local")
+    local_config = fixture_recipe_config("hill_climb-smoke", "local")
     assert isinstance(local_config["evaluator"], dict)
     local_config["evaluator"]["engine"] = "local"
     local_config["evaluator"].pop("agent", None)
     monkeypatch.setattr(workspace_module, "default_config", lambda recipe, experiment_id: local_config)
     local = tmp_path / "local"
     with pytest.raises(ValueError, match="unsupported evaluator.engine: local"):
-        init_workspace(InitOptions(workspace=local, recipe="hill_climb-smoke"))
+        init_workspace(InitOptions(workspace=local, recipe="local"))
 
     assert not (local / "evaluator" / "smoke.sh").exists()

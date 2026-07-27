@@ -1,5 +1,8 @@
 # A-Evolve Terminal-Bench Bridge
 
+> Experimental and unsupported. This recipe is excluded from the public recipe
+> inventory because its default seed and MiniSWE paths are not yet coherent.
+
 Runs A-Evolve for ten generations with a MiniSWE source target, Codex as the
 Harbor-hosted meta-agent, and a local OpenAI-compatible Responses bridge for
 target rollouts. Supply the local MiniSWE seed and Terminal-Bench dataset with
