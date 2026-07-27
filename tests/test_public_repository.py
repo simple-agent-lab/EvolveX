@@ -1,4 +1,5 @@
 import re
+import shlex
 import tomllib
 from pathlib import Path
 
@@ -105,3 +106,63 @@ def test_public_markdown_relative_links_resolve() -> None:
             if not (source.parent / path).resolve().exists():
                 broken.append(f"{source.relative_to(ROOT)} -> {target}")
     assert broken == []
+
+
+def test_ci_warms_clean_python_312_cache_before_offline_workspace_probes() -> None:
+    assert (ROOT / ".python-version").read_text() == "3.12\n"
+    workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "test.yml").read_text())
+    job = workflow["jobs"]["test"]
+    assert job["env"]["UV_CACHE_DIR"] == "${{ runner.temp }}/evolve-clean-uv-cache"
+
+    steps = job["steps"]
+    setup_uv = next(step for step in steps if str(step.get("uses", "")).startswith("astral-sh/setup-uv@"))
+    assert setup_uv["with"]["python-version"] == "3.12"
+
+    indexes = {step.get("id"): index for index, step in enumerate(steps)}
+    assert (
+        indexes["install-python-312"]
+        < indexes["reset-uv-cache"]
+        < indexes["warm-root-runtime"]
+        < indexes["offline-workspace-probe"]
+    )
+    by_id = {step.get("id"): step for step in steps}
+    assert shlex.split(by_id["install-python-312"]["run"]) == [
+        "uv",
+        "python",
+        "install",
+        "3.12",
+    ]
+    assert shlex.split(by_id["reset-uv-cache"]["run"]) == ["rm", "-rf", "$UV_CACHE_DIR"]
+    assert shlex.split(by_id["warm-root-runtime"]["run"]) == [
+        "uv",
+        "sync",
+        "--dev",
+        "--python",
+        "3.12",
+    ]
+    assert shlex.split(by_id["offline-workspace-probe"]["run"]) == [
+        "uv",
+        "run",
+        "pytest",
+        "-q",
+        "tests/test_recipe_composition.py",
+    ]
+
+
+def test_root_lock_warms_every_generated_workspace_runtime_version() -> None:
+    def registry_versions(path: Path) -> dict[str, str]:
+        lock = tomllib.loads(path.read_text())
+        return {
+            package["name"]: package["version"]
+            for package in lock["package"]
+            if "version" in package
+            and package.get("source", {}).get("registry") == "https://pypi.org/simple"
+        }
+
+    root = registry_versions(ROOT / "uv.lock")
+    generated = registry_versions(ROOT / "scaffolds" / "workspace" / "uv.lock")
+    assert {
+        name: (root.get(name), version)
+        for name, version in generated.items()
+        if root.get(name) != version
+    } == {}

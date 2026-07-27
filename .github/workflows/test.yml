@@ -16,6 +16,8 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    env:
+      UV_CACHE_DIR: ${{ runner.temp }}/evolve-clean-uv-cache
     steps:
       - uses: actions/checkout@v4
 
@@ -23,9 +25,23 @@ jobs:
         uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
+          python-version: "3.12"
 
-      - name: Install dev dependencies
-        run: uv sync --dev
+      - name: Install Python 3.12
+        id: install-python-312
+        run: uv python install 3.12
+
+      - name: Reset uv cache for hermetic probe
+        id: reset-uv-cache
+        run: rm -rf "$UV_CACHE_DIR"
+
+      - name: Warm root Python 3.12 runtime
+        id: warm-root-runtime
+        run: uv sync --dev --python 3.12
+
+      - name: Probe generated workspaces offline
+        id: offline-workspace-probe
+        run: uv run pytest -q tests/test_recipe_composition.py
 
       # Safety net: workspaces set their own per-repo git identity, but a bare CI
       # runner has no global one — configure it so any stray git op still works.

@@ -3,7 +3,7 @@ import random
 from pathlib import Path
 
 import pytest
-from conftest import run_evolve
+from conftest import FIXTURE_SEEDS, run_evolve
 
 from evolve.frozen.interfaces import OperatorContext
 from evolve.splits import build_manifest, select_dataset_tasks, selected_task_names, split_selection_digest
@@ -57,7 +57,13 @@ def test_init_dataset_option_freezes_local_harbor_tasks(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
 
     result = run_evolve(
-        "init", str(workspace), "--dataset", str(dataset), env={"EVOLVE_HOME": str(tmp_path / "evolve-home")}
+        "init",
+        str(workspace),
+        "--recipe",
+        "aevolve",
+        "--dataset",
+        str(dataset),
+        env={"EVOLVE_HOME": str(tmp_path / "evolve-home")},
     )
 
     assert result.returncode == 0, result.stderr
@@ -75,7 +81,7 @@ def test_init_full_task_scope_freezes_every_task_without_partition(tmp_path: Pat
         "evolve.workspace.default_config",
         lambda _recipe, name: {
             "experiment": {"id": name, "max_generations": 1, "children_per_gen": 1},
-            "target": {"seed": "builtin-dummy"},
+            "target": {"seed": str(FIXTURE_SEEDS / "dummy")},
             "surface": {"include": ["target/**"], "exclude": []},
             "operators": {
                 "select": {"variant": "ahe_latest"},
@@ -87,7 +93,7 @@ def test_init_full_task_scope_freezes_every_task_without_partition(tmp_path: Pat
             "evaluator": {
                 "engine": "harbor",
                 "dataset": str(dataset),
-                "agent": "evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent",
+                "agent": "target.agent:HarborAgent",
                 "task_scope": "full",
                 "evaluation_split": "train",
                 "sampling": "static",

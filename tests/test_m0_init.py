@@ -1,11 +1,14 @@
 import json
+import shutil
 import subprocess
 from pathlib import Path
 
 from conftest import git, init_fixture_workspace, run_evolve, write_locked_miniswe_seed
 
-from evolve.config import surface_lists
-from evolve.workspace import _write_target
+from evolve.config import load_config, surface_lists
+from evolve.workspace import InitOptions, _write_target, init_workspace
+
+MINISWE_REVISION = "388da74aad620a384ab47669b17c52133e30e7c3"
 
 
 def _miniswe_seed(root: Path) -> Path:
@@ -96,6 +99,33 @@ def test_git_seed_can_explicitly_generate_missing_lock(tmp_path: Path) -> None:
     )
 
     assert (workspace / "target" / "uv.lock").is_file()
+
+
+def test_default_hill_climb_pins_seed_and_generates_candidate_lock(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from evolve import workspace as workspace_module
+
+    clone_source = _miniswe_seed(tmp_path)
+    (clone_source / "uv.lock").unlink()
+
+    def clone_reviewed_miniswe(
+        url: str, destination: Path, *, revision: str | None = None
+    ) -> None:
+        assert url == "https://github.com/SWE-agent/mini-swe-agent.git"
+        assert revision == MINISWE_REVISION
+        shutil.copytree(clone_source, destination)
+
+    monkeypatch.setattr(workspace_module, "_git_clone", clone_reviewed_miniswe)
+    workspace = tmp_path / "workspace"
+    init_workspace(InitOptions(workspace=workspace, recipe="hill_climb"))
+
+    assert (workspace / "target" / "uv.lock").is_file()
+    assert load_config(workspace / "evolve.yaml")["target"] == {
+        "seed": "https://github.com/SWE-agent/mini-swe-agent.git",
+        "revision": MINISWE_REVISION,
+        "generate_lock": True,
+    }
 
 
 def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:

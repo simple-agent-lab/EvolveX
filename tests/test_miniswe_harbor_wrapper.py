@@ -608,21 +608,22 @@ def test_init_tracks_seed_lockfile_even_when_seed_gitignore_excludes_it(tmp_path
     git(workspace, "cat-file", "-e", "gen/0:target/uv.lock")
 
 
-def test_init_does_not_enforce_package_manager_files(tmp_path: Path, monkeypatch) -> None:
-    from evolve import workspace as workspace_module
+def test_init_rejects_unlocked_local_miniswe_seed_before_workspace_creation(
+    tmp_path: Path,
+) -> None:
     from evolve.workspace import InitOptions, init_workspace
 
     seed = write_locked_miniswe_seed(tmp_path / "miniswe")
     (seed / "uv.lock").unlink()
     workspace = tmp_path / "workspace"
-    config = workspace_module.default_config("hill_climb", workspace.name)
-    monkeypatch.setattr(workspace_module, "default_config", lambda recipe, experiment_id: config)
 
-    init_workspace(InitOptions(workspace=workspace, recipe="hill_climb", seed=str(seed)))
+    with pytest.raises(
+        ValueError,
+        match=r"evaluator\.agent.*MiniSWE candidate lock contract.*target\.generate_lock.*uv\.lock",
+    ):
+        init_workspace(InitOptions(workspace=workspace, recipe="hill_climb", seed=str(seed)))
 
-    assert (workspace / ".evolve" / "evolve" / "integrations" / "harbor" / "miniswe_candidate.py").is_file()
-    assert not (workspace / "evolve_harbor_adapter").exists()
-    assert not (workspace / "evolve_harbor_agent").exists()
+    assert not workspace.exists()
 
 
 def test_init_with_local_miniswe_seed_excludes_virtualenv_cache(tmp_path: Path, monkeypatch) -> None:

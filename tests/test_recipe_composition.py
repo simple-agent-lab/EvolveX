@@ -1,4 +1,5 @@
 import json
+import shutil
 import subprocess
 from pathlib import Path
 from unittest.mock import patch
@@ -18,6 +19,16 @@ CASES = {
     "gepa": ("codex", "target.agent:HarborAgent", "codex"),
     "hyperagents": ("external", CANDIDATE, FILE_TASK),
 }
+MINISWE_REVISION = "388da74aad620a384ab47669b17c52133e30e7c3"
+
+
+def _local_dataset(root: Path, count: int = 10) -> Path:
+    root.mkdir()
+    for index in range(count):
+        task = root / f"task-{index}"
+        task.mkdir()
+        (task / "task.toml").write_text(f'version = "1.0"\nname = "task-{index}"\n')
+    return root
 
 
 @pytest.mark.parametrize(("recipe", "expected"), sorted(CASES.items()))
@@ -78,6 +89,56 @@ def test_supported_recipe_initializes_only_selected_components(
             env=generated_workspace_uv_env(),
         )
         assert probe.returncode == 0, probe.stderr
+
+
+@pytest.mark.parametrize("recipe", sorted(CASES))
+def test_dataset_override_preserves_recipe_target_and_integrations(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, recipe: str
+) -> None:
+    from evolve import workspace as workspace_module
+
+    clone_source = write_locked_miniswe_seed(tmp_path / "clone-source")
+
+    def clone_reviewed_miniswe(
+        url: str, destination: Path, *, revision: str | None = None
+    ) -> None:
+        assert url == "https://github.com/SWE-agent/mini-swe-agent.git"
+        assert revision == MINISWE_REVISION
+        shutil.copytree(clone_source, destination)
+
+    monkeypatch.setattr(workspace_module, "_git_clone", clone_reviewed_miniswe)
+    workspace = tmp_path / recipe
+    init_workspace(
+        InitOptions(
+            workspace=workspace,
+            recipe=recipe,
+            dataset=str(_local_dataset(tmp_path / "tasks")),
+        )
+    )
+
+    rendered = load_config(workspace / "evolve.yaml")
+    target_kind, evaluator_agent, meta_agent = CASES[recipe]
+    expected_target = (
+        {
+            "seed": "https://github.com/SWE-agent/mini-swe-agent.git",
+            "revision": MINISWE_REVISION,
+            "generate_lock": True,
+        }
+        if target_kind == "external"
+        else {"seed": "builtin-codex"}
+    )
+    assert rendered["target"] == expected_target
+    assert rendered["evaluator"]["agent"] == evaluator_agent
+    assert rendered["operators"]["meta_agent"]["agent"] == meta_agent
+    assert json.loads((workspace / ".evolve-components.json").read_text())[
+        "integrations"
+    ] == sorted(
+        {
+            reference.split(":", 1)[0]
+            for reference in (evaluator_agent, meta_agent)
+            if reference.startswith("evolve.integrations.")
+        }
+    )
 
 
 def test_every_production_resource_has_a_supported_consumer() -> None:

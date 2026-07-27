@@ -43,8 +43,10 @@ Candidate execution uses Harbor's `agent_timeout_multiplier: 2`, giving the
 100-step budget up to twice each task's declared agent timeout.
 
 ```bash
+export EVOLVE_RUNTIME_DIGEST="sha256:replace-with-your-immutable-evaluator-image-digest"
+export HARBOR_TASKS="/absolute/path/to/terminal-bench-2-10-10-10"
 cd /path/to/simple-evolve-agent
-evolve init /path/to/ahe-run --recipe ahe
+evolve init /path/to/ahe-run --recipe ahe --dataset "$HARBOR_TASKS"
 cd /path/to/ahe-run
 ./evolve run . --max-generations 1
 ```

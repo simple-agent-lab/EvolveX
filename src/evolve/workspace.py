@@ -9,6 +9,7 @@ import shlex
 import shutil
 import stat
 import subprocess
+import sys
 import tempfile
 from dataclasses import dataclass
 from importlib.resources.abc import Traversable
@@ -46,6 +47,9 @@ _SEED_IGNORE_PATTERNS = (
 )
 _ENV_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _GIT_COMMIT = re.compile(r"[0-9a-fA-F]{40}")
+_MINISWE_CANDIDATE_AGENT = (
+    "evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent"
+)
 
 
 @dataclass(frozen=True)
@@ -78,12 +82,6 @@ def init_workspace(options: InitOptions) -> None:
         target["seed"] = options.seed
         target.pop("revision", None)
         target.pop("generate_lock", None)
-    elif options.dataset:
-        # Dataset-backed experiments should be self-contained and must not need
-        # a network clone merely to freeze their evaluator split.
-        target["seed"] = "builtin-codex"
-        target.pop("revision", None)
-        target.pop("generate_lock", None)
     if options.dataset:
         evaluator = config["evaluator"]
         assert isinstance(evaluator, dict)
@@ -93,6 +91,7 @@ def init_workspace(options: InitOptions) -> None:
     assert isinstance(evaluator, dict)
     _validate_evaluator_config(evaluator)
     _validate_target_config(target)
+    _validate_candidate_target_contract(target, evaluator)
     workspace.mkdir(parents=True, exist_ok=True)
     _write_files(workspace, config, recipe=options.recipe, init_cwd=Path.cwd())
     _write_target(workspace, target)
@@ -486,6 +485,22 @@ def _validate_target_config(target: dict[str, Any]) -> None:
         raise ValueError(f"seed is not a local directory or git URL: {seed}")
 
 
+def _validate_candidate_target_contract(
+    target: dict[str, Any], evaluator: dict[str, Any]
+) -> None:
+    if evaluator.get("agent") != _MINISWE_CANDIDATE_AGENT:
+        return
+    seed = cast(str, target["seed"])
+    if target.get("generate_lock", False):
+        return
+    if not _looks_like_git_url(seed) and (Path(seed).expanduser() / "uv.lock").is_file():
+        return
+    raise ValueError(
+        "evaluator.agent selects the MiniSWE candidate lock contract; "
+        "set target.generate_lock: true or provide a target.seed containing uv.lock"
+    )
+
+
 def _write_target(workspace: Path, target_config: dict[str, Any]) -> None:
     _validate_target_config(target_config)
     seed_text = cast(str, target_config["seed"])
@@ -592,7 +607,7 @@ def _git_clone(url: str, destination: Path, *, revision: str | None = None) -> N
 
 def _generate_target_lock(target: Path) -> None:
     result = subprocess.run(
-        [uv_executable(), "lock", "--project", str(target)],
+        [uv_executable(), "lock", "--python", sys.executable, "--project", str(target)],
         text=True,
         capture_output=True,
         check=False,
