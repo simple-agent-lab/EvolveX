@@ -12,9 +12,11 @@ def test_repository_contains_only_supported_recipes() -> None:
         "aevolve",
         "aevolve_tbench_bridge",
         "ahe",
+        "ahe_hle",
         "gepa",
         "hill_climb",
         "hill_climb-smoke",
         "hyperagents",
+        "hyperagents_hle",
         "hyperagents-smoke",
     }

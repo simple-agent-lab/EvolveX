@@ -13,6 +13,8 @@ file is `library/gate/parent_eligible.py`.
 - [A-Evolve](aevolve/README.md)
 - [A-Evolve Terminal-Bench Bridge](aevolve_tbench_bridge/README.md)
 - [Agentic Harness Engineering](ahe/README.md)
+- [Agentic Harness Engineering on HLE Parity](ahe_hle/README.md)
 - [GEPA](gepa/README.md)
 - [HyperAgents](hyperagents/README.md)
+- [HyperAgents on HLE Parity](hyperagents_hle/README.md)
 - `hyperagents-smoke` — deterministic local counterpart

@@ -9,8 +9,17 @@ from evolve.splits import build_manifest
 ROOT = Path(__file__).resolve().parents[1]
 RECIPES = ROOT / "recipes"
 TERMINAL_BENCH_DATASET = ROOT / "terminal-bench-2-50-19-20"
-REAL_RECIPES = {"aevolve", "aevolve_tbench_bridge", "ahe", "gepa", "hill_climb", "hyperagents"}
-UV_SOURCE_RECIPES = {"ahe", "hill_climb", "hyperagents"}
+REAL_RECIPES = {
+    "aevolve",
+    "aevolve_tbench_bridge",
+    "ahe",
+    "ahe_hle",
+    "gepa",
+    "hill_climb",
+    "hyperagents",
+    "hyperagents_hle",
+}
+UV_SOURCE_RECIPES = {"ahe", "ahe_hle", "hill_climb", "hyperagents", "hyperagents_hle"}
 SMOKE_RECIPES = {"hill_climb-smoke", "hyperagents-smoke"}
 
 
@@ -104,9 +113,17 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "editable_roots: [target]" in config
             assert "agent: target.agent:HarborAgent" in config
             assert "record: {variant: gepa" in config
-        elif name == "ahe":
+        elif name in {"ahe", "ahe_hle"}:
             assert "max_generations: 10" in config
-            assert "dataset: terminal-bench-2-50-19-20" in config
+            expected_dataset = "hle_parity" if name == "ahe_hle" else "terminal-bench-2-50-19-20"
+            expected_tasks = 100 if name == "ahe_hle" else 50
+            expected_split = (
+                "{train: 0.40160642570281124, gate: 0.19678714859437751, "
+                "sealed: 0.40160642570281124, seed: 42}"
+                if name == "ahe_hle"
+                else "{train: 0.562, gate: 0.213, sealed: 0.225, seed: 0}"
+            )
+            assert f"dataset: {expected_dataset}" in config
             assert "seed: https://github.com/SWE-agent/mini-swe-agent.git" in config
             assert "revision: 388da74aad620a384ab47669b17c52133e30e7c3" in config
             assert "generate_lock: true" in config
@@ -126,14 +143,22 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "image: evolve-meta-agent-app:20260724-tools-mswe245" in config
             assert "task_scope: full" not in config
             assert "evaluation_split: train" in config
-            assert "tasks_per_round: 50" in config
+            assert f"tasks_per_round: {expected_tasks}" in config
             assert "k: 1" in config
             assert "n_concurrent: 25" in config
-            assert "\n  split: {train: 0.562, gate: 0.213, sealed: 0.225, seed: 0}" in config
+            assert f"\n  split: {expected_split}" in config
             assert "\n  anchor:" not in config
-        elif name == "hyperagents":
+        elif name in {"hyperagents", "hyperagents_hle"}:
             assert "max_generations: 10" in config
-            assert "dataset: terminal-bench-2-50-19-20" in config
+            expected_dataset = "hle_parity" if name == "hyperagents_hle" else "terminal-bench-2-50-19-20"
+            expected_tasks = 100 if name == "hyperagents_hle" else 50
+            expected_split = (
+                "{train: 0.40160642570281124, gate: 0.19678714859437751, "
+                "sealed: 0.40160642570281124, seed: 42}"
+                if name == "hyperagents_hle"
+                else "{train: 0.562, gate: 0.213, sealed: 0.225, seed: 0}"
+            )
+            assert f"dataset: {expected_dataset}" in config
             assert "seed: https://github.com/SWE-agent/mini-swe-agent.git" in config
             assert "revision: 388da74aad620a384ab47669b17c52133e30e7c3" in config
             assert "generate_lock: true" in config
@@ -154,10 +179,10 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "image: evolve-meta-agent-app:20260724-tools-mswe245" in config
             assert "task_scope: full" not in config
             assert "evaluation_split: train" in config
-            assert "tasks_per_round: 50" in config
+            assert f"tasks_per_round: {expected_tasks}" in config
             assert "k: 1" in config
             assert "n_concurrent: 25" in config
-            assert "\n  split: {train: 0.562, gate: 0.213, sealed: 0.225, seed: 0}" in config
+            assert f"\n  split: {expected_split}" in config
             assert "\n  anchor:" not in config
             assert "budget_usd" not in config
         else:

@@ -1,0 +1,47 @@
+experiment:
+  id: hyperagents-hle
+  max_generations: 10
+  target_score: null
+  children_per_gen: 1
+  mode: driver
+  seed: 0
+target:
+  seed: https://github.com/SWE-agent/mini-swe-agent.git
+  revision: 388da74aad620a384ab47669b17c52133e30e7c3
+  generate_lock: true
+  harbor_agent: miniswe-source
+surface:
+  include:
+    - target/**
+    - operators/**
+  exclude: []
+operators:
+  select: {variant: score_child_prop, seed: 0}
+  rollout: {variant: evaluation_replay, field_limit: 2000, timeout_s: 600}
+  trace_analyzer: {variant: trace_browser, max_chars: 30000, timeout_s: 600}
+  meta_agent: {variant: hyperagents, runner: harbor, expose_gate_data: false, agent: evolve_harbor_agent:FileTaskMiniSweAgent, model: openai/gpt-5.4-2026-03-05, environment: docker, image: evolve-meta-agent-app:20260724-tools-mswe245, editable_roots: [target, operators], prompt_path: target/src/minisweagent/config/mini.yaml, skills_dir: target/skills, memory_dir: target/memory, tools_dir: target/tools, agent_kwargs: {reasoning_effort: high, cost_limit: 0, max_tokens: 64000}, max_retries: 2, timeout_s: 21600}
+  validate: {variant: hyperagents, timeout_s: 300}
+  gate: {variant: parent_eligible}
+  record: {variant: hyperagents}
+  timeout_s: 600
+evaluator:
+  engine: harbor
+  model: openai/gpt-5.4-2026-03-05
+  candidate_runtime: {variant: uv, project: target, python: "3.12"}
+  dataset: hle_parity
+  agent: evolve_harbor_adapter:MiniSweSourceAgent
+  evaluation_split: train
+  sampling: static
+  tasks_per_round: 100
+  split: {train: 0.40160642570281124, gate: 0.19678714859437751, sealed: 0.40160642570281124, seed: 42}
+  k: 1
+  n_concurrent: 25
+  agent_timeout_multiplier: 2
+  max_retries: 1
+  benchmark_timeout_is_zero: true
+  partial_floor: 0.8
+  agent_env:
+    MINISWE_STEP_LIMIT: "100"
+    MINISWE_REASONING_EFFORT: "high"
+    MINISWE_COST_LIMIT: "0"
+    MINISWE_ENV_TIMEOUT: "30"
