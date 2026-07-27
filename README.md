@@ -133,6 +133,13 @@ evolve --help
 
 ## Quickstart: Run a Harbor Experiment
 
+Set the immutable digest for the evaluator capsule that will run your Harbor
+tasks:
+
+```bash
+export EVOLVE_RUNTIME_DIGEST=sha256:<immutable-evaluator-capsule-digest>
+```
+
 Create a new generated workspace:
 
 ```bash
