@@ -3,6 +3,7 @@ import json
 import os
 import random
 import shutil
+import stat
 import subprocess
 from pathlib import Path
 
@@ -76,6 +77,34 @@ def test_harbor_meta_agent_forwards_dependency_proxies_with_model_bypass(
         "no_proxy": ".internal.example,.upper.example,workspace.example",
         "NO_PROXY": ".internal.example,.upper.example,workspace.example",
     }
+
+
+def test_harbor_meta_agent_redacts_configured_proxy_literal(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _harbor_runner_module()
+    proxy = "http://private-user:private-password@proxy.example.invalid:8118"
+    monkeypatch.setenv("HTTPS_PROXY", proxy)
+
+    redacted = module._redact(f"dependency download through {proxy} timed out")
+
+    assert proxy not in redacted
+    assert redacted == "dependency download through [REDACTED] timed out"
+
+
+def test_harbor_meta_agent_child_creates_private_files(tmp_path: Path) -> None:
+    module = _harbor_runner_module()
+    output = tmp_path / "child-output"
+    log = tmp_path / "harbor.log"
+
+    returncode, _wall_s = module._run_harbor(
+        ["/bin/sh", "-c", 'printf private > "$OUTPUT_PATH"'],
+        tmp_path,
+        log,
+        {**os.environ, "OUTPUT_PATH": str(output)},
+    )
+
+    assert returncode == 0
+    assert stat.S_IMODE(output.stat().st_mode) == 0o600
+    assert stat.S_IMODE(log.stat().st_mode) == 0o600
 
 
 def test_harbor_rejects_oversized_instruction_with_unsafe_agent(tmp_path: Path) -> None:

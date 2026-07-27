@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +20,21 @@ SAFE_ARTIFACTS = (
 )
 _CANDIDATE_MARKER = "EVOLVE_CANDIDATE_INVALID:"
 _SAFE_ERROR_CODE = re.compile(r"[a-z0-9_]+")
+_SENSITIVE_ENV_NAME = re.compile(
+    r"(?i)(?:proxy|api[_-]?key|access[_-]?token|token|secret|password|authorization|auth)"
+)
+
+
+def _redact_environment_values(text: str, environment: Mapping[str, str] | None = None) -> str:
+    configured = os.environ if environment is None else environment
+    values = {
+        value
+        for name, value in configured.items()
+        if _SENSITIVE_ENV_NAME.search(name) and len(value) >= 8
+    }
+    for value in sorted(values, key=len, reverse=True):
+        text = text.replace(value, "[REDACTED]")
+    return text
 
 
 def candidate_error_code(exception_info: object) -> str | None:
@@ -178,7 +195,7 @@ def _cost_usd(result: dict[str, Any]) -> float:
 def _exception_message(value: object) -> str | None:
     if not value:
         return None
-    message = str(value).strip().splitlines()[0].strip()
+    message = _redact_environment_values(str(value).strip().splitlines()[0].strip())
     return None if message.startswith("Traceback") else message or None
 
 

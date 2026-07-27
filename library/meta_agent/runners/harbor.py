@@ -13,6 +13,7 @@ import subprocess
 import tempfile
 import threading
 import time
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -39,6 +40,9 @@ _SECRET_ASSIGNMENT = re.compile(
     r"([\"']?)(\s*[:=]\s*)([^\s,;}]+)"
 )
 _BEARER = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+")
+_SENSITIVE_ENV_NAME = re.compile(
+    r"(?i)(?:proxy|api[_-]?key|access[_-]?token|token|secret|password|authorization|auth)"
+)
 _CREDENTIAL_ENV = ("OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_API_BASE")
 _PROXY_ENV = (
     ("EVOLVE_HARBOR_HTTP_PROXY", "http_proxy", "HTTP_PROXY"),
@@ -452,6 +456,7 @@ def _install_bundle(
 def _write_json(path: Path, payload: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    path.chmod(0o600)
 
 
 def _instruction_transport(agent: str, prompt_path: Path) -> dict[str, object]:
@@ -473,7 +478,15 @@ def _read_json(path: Path) -> object:
         return None
 
 
-def _redact(text: str) -> str:
+def _redact(text: str, environment: Mapping[str, str] | None = None) -> str:
+    configured = os.environ if environment is None else environment
+    values = {
+        value
+        for name, value in configured.items()
+        if _SENSITIVE_ENV_NAME.search(name) and len(value) >= 8
+    }
+    for value in sorted(values, key=len, reverse=True):
+        text = text.replace(value, "[REDACTED]")
     text = _BEARER.sub("Bearer [REDACTED]", text)
     return _SECRET_ASSIGNMENT.sub(lambda match: f"{match.group(1)}{match.group(2)}{match.group(3)}[REDACTED]", text)
 
@@ -729,6 +742,7 @@ def _run_harbor(
         stderr=subprocess.STDOUT,
         start_new_session=True,
         bufsize=1,
+        umask=0o077,
     )
     chunks: list[str] = []
 
@@ -758,6 +772,7 @@ def _run_harbor(
     wall_s = round(time.monotonic() - start, 6)
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log_path.write_text(_redact(f"wall_s={wall_s}\n{''.join(chunks)}"))
+    log_path.chmod(0o600)
     return (process.returncode if process.returncode is not None else 1), wall_s
 
 

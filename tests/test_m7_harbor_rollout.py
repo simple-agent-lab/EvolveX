@@ -1,6 +1,8 @@
 import importlib.util
 import json
+import os
 import random
+import stat
 from pathlib import Path
 
 import pytest
@@ -113,6 +115,34 @@ def test_harbor_rollout_distinguishes_task_agent_and_infra_failures(tmp_path: Pa
     assert "must-not-leak" not in by_name["task-failed"]["verifier_output"]
     assert "[REDACTED]" in by_name["task-failed"]["verifier_output"]
     assert "json-secret" not in module._redact('{"OPENAI_API_KEY":"json-secret"}')
+
+
+def test_harbor_rollout_redacts_configured_proxy_literal(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _harbor_rollout_module()
+    proxy = "http://private-user:private-password@proxy.example.invalid:8118"
+    monkeypatch.setenv("HTTPS_PROXY", proxy)
+
+    redacted = module._redact(f"dependency download through {proxy} timed out")
+
+    assert proxy not in redacted
+    assert redacted == "dependency download through [REDACTED] timed out"
+
+
+def test_harbor_rollout_child_creates_private_files(tmp_path: Path) -> None:
+    module = _harbor_rollout_module()
+    output = tmp_path / "child-output"
+    log = tmp_path / "harbor.log"
+
+    returncode = module._run_harbor(
+        ["/bin/sh", "-c", 'printf private > "$OUTPUT_PATH"'],
+        tmp_path,
+        log,
+        {**os.environ, "OUTPUT_PATH": str(output)},
+    )
+
+    assert returncode == 0
+    assert stat.S_IMODE(output.stat().st_mode) == 0o600
+    assert stat.S_IMODE(log.stat().st_mode) == 0o600
 
 
 def test_harbor_rollout_rejects_evidence_when_every_case_is_infrastructure_failure(tmp_path: Path) -> None:

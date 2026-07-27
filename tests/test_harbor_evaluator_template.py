@@ -141,6 +141,11 @@ def test_harbor_evaluator_forwards_dependency_proxies_with_model_bypass_and_skip
     assert expected_proxy_environment.issubset(agent_environment)
     assert expected_proxy_environment.issubset(verifier_environment)
     assert not docker_marker.exists()
+    run_dir = tmp_path / "run"
+    assert stat.S_IMODE(run_dir.stat().st_mode) == 0o700
+    assert stat.S_IMODE((run_dir / "candidate-runtime.env").stat().st_mode) == 0o600
+    assert stat.S_IMODE((run_dir / "jobs").stat().st_mode) == 0o700
+    assert stat.S_IMODE((run_dir / "jobs" / "trial" / "result.json").stat().st_mode) == 0o600
 
 
 def test_harbor_stage_limit_and_anchor_task_file_override(tmp_path: Path) -> None:

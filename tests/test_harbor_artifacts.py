@@ -210,6 +210,29 @@ def test_collect_harbor_artifacts_omits_traceback_text_from_exception_messages(t
     assert "exception_message" not in vector["tasks"]["case-a"]["trials"][0]
 
 
+def test_collect_harbor_artifacts_redacts_configured_proxy_literal(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    proxy = "http://private-user:private-password@proxy.example.invalid:8118"
+    monkeypatch.setenv("HTTPS_PROXY", proxy)
+    jobs = tmp_path / "jobs"
+    write_trial(
+        jobs / "case-a__one",
+        task="case-a",
+        trial="one",
+        reward=None,
+        exception_type="RuntimeError",
+        exception_message=f"dependency download through {proxy} timed out",
+    )
+
+    vector, _artifacts, _scoring_rewards = collect_harbor_artifacts(jobs)
+
+    message = vector["tasks"]["case-a"]["trials"][0]["exception_message"]
+    assert proxy not in message
+    assert message == "dependency download through [REDACTED] timed out"
+
+
 def test_write_harbor_artifacts_indexes_only_retained_safe_files(tmp_path: Path) -> None:
     jobs = tmp_path / "jobs"
     trial = jobs / "case-a__one"
