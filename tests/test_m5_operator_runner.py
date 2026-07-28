@@ -2,6 +2,8 @@ import subprocess
 import textwrap
 from pathlib import Path
 
+import pytest
+
 from evolve.driver import _run_operator_guarded
 from evolve.operators import OperatorResult, run_operator
 
@@ -89,7 +91,53 @@ def test_run_operator_nonzero_and_timeout(tmp_path):
     assert "timeout" in timed_out.stderr.lower()
 
 
-def test_harbor_meta_agent_outer_timeout_budgets_every_retry(
+@pytest.mark.parametrize(
+    "agent",
+    [
+        "evolve_harbor_agent:FileTaskMiniSweAgent",
+        "evolve_harbor_adapter:MiniSweSourceAgent",
+    ],
+)
+def test_miniswe_source_harbor_meta_agent_outer_timeout_budgets_every_retry(
+    tmp_path: Path,
+    monkeypatch,
+    agent: str,
+) -> None:
+    checkout = tmp_path / "checkout"
+    _write_operator(checkout, "meta_agent", "pass\n")
+    observed: dict[str, object] = {}
+
+    def fake_run(*args, **kwargs):
+        observed["timeout"] = kwargs["timeout"]
+        observed["env_timeout"] = kwargs["env"]["EVOLVE_OPERATOR_TIMEOUT_S"]
+        return subprocess.CompletedProcess(args[0], 0, "", "")
+
+    monkeypatch.setattr("evolve.operators.subprocess.run", fake_run)
+
+    result = run_operator(
+        name="meta_agent",
+        checkout=checkout,
+        workspace=tmp_path,
+        genid="1",
+        parent=None,
+        run_dir=tmp_path / "r",
+        config_block={
+            "runner": "harbor",
+            "agent": agent,
+            "max_retries": 1,
+            "timeout_s": 3600,
+        },
+        timeout_s=3600,
+    )
+
+    assert result.returncode == 0
+    assert observed == {
+        "timeout": 14640.0,
+        "env_timeout": "14640.0",
+    }
+
+
+def test_codex_harbor_meta_agent_keeps_whole_process_timeout(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -111,14 +159,19 @@ def test_harbor_meta_agent_outer_timeout_budgets_every_retry(
         genid="1",
         parent=None,
         run_dir=tmp_path / "r",
-        config_block={"runner": "harbor", "max_retries": 1, "timeout_s": 3600},
+        config_block={
+            "runner": "harbor",
+            "agent": "codex",
+            "max_retries": 1,
+            "timeout_s": 3600,
+        },
         timeout_s=3600,
     )
 
     assert result.returncode == 0
     assert observed == {
-        "timeout": 14640.0,
-        "env_timeout": "14640.0",
+        "timeout": 3600,
+        "env_timeout": "3600",
     }
 
 

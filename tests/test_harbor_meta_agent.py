@@ -261,7 +261,7 @@ else:
     if option("--workdir") != "/app":
         raise SystemExit("expected /app workdir")
     agent_name = option("--agent")
-    if agent_name not in ("mini-swe-agent", "evolve_harbor_agent:FileTaskMiniSweAgent"):
+    if agent_name not in ("codex", "mini-swe-agent", "evolve_harbor_agent:FileTaskMiniSweAgent"):
         raise SystemExit("unexpected agent")
     miniswe = agent_name in ("mini-swe-agent", "evolve_harbor_agent:FileTaskMiniSweAgent")
     if option("--model") != "gpt-test":
@@ -575,6 +575,40 @@ def test_file_task_meta_agent_configures_per_attempt_timeout_and_timeout_retry(
     assert observed["process_timeout_s"] == 13380.0
 
 
+def test_codex_meta_agent_keeps_harbor_whole_process_timeout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checkout, run_dir = _checkout(tmp_path)
+    bin_dir = tmp_path / "bin"
+    _install_fake_harbor(bin_dir)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    ctx = _ctx(checkout, run_dir)
+    ctx.config.update(
+        {
+            "agent": "codex",
+            "max_retries": 1,
+            "timeout_s": 3600,
+        }
+    )
+    runner = _harbor_runner_module()
+    observed: dict[str, object] = {}
+    real_run_harbor = runner._run_harbor
+
+    def capture_run_harbor(*args, timeout_s=None, **kwargs):
+        observed["process_timeout_s"] = timeout_s
+        return real_run_harbor(*args, timeout_s=timeout_s, **kwargs)
+
+    monkeypatch.setattr(runner, "_run_harbor", capture_run_harbor)
+
+    runner.run_agent(checkout, "failure evidence", ctx)
+
+    command = json.loads((run_dir / "meta_agent" / "harbor" / "command.json").read_text())
+    assert "--config" not in command
+    assert command[command.index("--agent") + 1] == "codex"
+    assert observed["process_timeout_s"] is None
+
+
 def test_agent_timeout_retry_loop_fits_full_lifecycle_budgets(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -654,13 +688,22 @@ def test_agent_timeout_retry_loop_fits_full_lifecycle_budgets(
     assert attempts == [0, 1]
     assert result.exception_info is None
     assert elapsed_s == runner._meta_agent_process_timeout_s(
-        {"timeout_s": 3600, "max_retries": 1}
+        {
+            "runner": "harbor",
+            "agent": FILE_TASK_AGENT,
+            "timeout_s": 3600,
+            "max_retries": 1,
+        }
     )
     assert (
         600.0 + elapsed_s + 600.0 + 60.0
         == _operator_deadline_s(
             "meta_agent",
-            {"runner": "harbor", "max_retries": 1},
+            {
+                "runner": "harbor",
+                "agent": FILE_TASK_AGENT,
+                "max_retries": 1,
+            },
             3600,
         )
     )

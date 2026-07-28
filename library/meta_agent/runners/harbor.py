@@ -22,7 +22,12 @@ from evolve.agent import AgentCommandError, AgentRunResult
 from evolve.frozen.interfaces import OperatorContext
 from evolve.git import git, head_commit, working_tree_changed_paths
 from evolve.host_runtime import uv_run
-from evolve.meta_agent_budget import harbor_meta_agent_budget
+from evolve.meta_agent_budget import (
+    HARBOR_FILE_TASK_AGENT,
+    harbor_agent_supports_per_attempt_timeout,
+    harbor_meta_agent_budget,
+    uses_harbor_per_attempt_timeout,
+)
 from evolve.patching import SurfacePolicy, load_surface_policy, patch_parent_ref
 from evolve.surface import check_paths
 from library.meta_agent.support.artifacts import ensure_artifact_layout
@@ -32,7 +37,7 @@ _ARTIFACT_SOURCE = "/app/task/workspace"
 _READONLY_ARTIFACT_SOURCE = "/logs/artifacts"
 _READONLY_REPORT = "ahe-debugger-response.md"
 _EVAL_RECEIPT = ".evolve-eval-receipts.jsonl"
-_FILE_TASK_AGENT = "evolve_harbor_agent:FileTaskMiniSweAgent"
+_FILE_TASK_AGENT = HARBOR_FILE_TASK_AGENT
 _SAFE_INLINE_INSTRUCTION_BYTES = 96 * 1024
 _RETRY_EXCLUDE_EXCEPTIONS = (
     "VerifierTimeoutError",
@@ -525,6 +530,8 @@ def _retry_config(config: dict[str, Any]) -> dict[str, Any]:
 
 
 def _meta_agent_process_timeout_s(config: dict[str, Any]) -> float | None:
+    if not uses_harbor_per_attempt_timeout(config):
+        return None
     timeout_s = _positive_float(config.get("timeout_s"))
     if timeout_s is None:
         return None
@@ -733,7 +740,7 @@ def _build_command(
     uv_cache_dir: Path | None = None,
 ) -> list[str]:
     agent = str(config.get("agent") or "codex")
-    if agent.endswith(":MiniSweSourceAgent") or agent == _FILE_TASK_AGENT:
+    if harbor_agent_supports_per_attempt_timeout(agent):
         if "target" not in bundle.roots:
             raise ValueError("MiniSweSourceAgent requires target in editable_roots")
         return _miniswe_config_command(

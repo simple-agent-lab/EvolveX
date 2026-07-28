@@ -30,7 +30,10 @@ those implementation details therefore never consume an agent attempt window.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
+
+HARBOR_FILE_TASK_AGENT = "evolve_harbor_agent:FileTaskMiniSweAgent"
 
 # Pinned Harbor 0.18 lifecycle defaults.
 HARBOR_ENVIRONMENT_START_S = 600.0
@@ -47,6 +50,21 @@ HARBOR_RETRY_RECREATION_S = 60.0
 PRE_HARBOR_BUNDLE_GIT_S = 600.0
 POST_HARBOR_VALIDATION_INSTALL_S = 600.0
 OUTER_FINAL_CLEANUP_S = 60.0
+
+
+def harbor_agent_supports_per_attempt_timeout(agent: object) -> bool:
+    """Whether the runner's config-mode branch writes an agent timeout cap."""
+
+    name = str(agent or "")
+    return name == HARBOR_FILE_TASK_AGENT or name.endswith(":MiniSweSourceAgent")
+
+
+def uses_harbor_per_attempt_timeout(config: Mapping[str, object]) -> bool:
+    """Whether a meta-agent config receives Harbor's per-attempt timeout."""
+
+    return config.get("runner") == "harbor" and harbor_agent_supports_per_attempt_timeout(
+        config.get("agent")
+    )
 
 
 @dataclass(frozen=True)
