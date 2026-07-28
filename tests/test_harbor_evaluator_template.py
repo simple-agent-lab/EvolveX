@@ -107,6 +107,7 @@ def test_harbor_evaluator_ignores_ambient_frozen_control_overrides(tmp_path: Pat
         "EVOLVE_FRAMEWORK_PYTHON": sys.executable,
         "EVOLVE_CANDIDATE_RUNTIME_ENV_JSON": "{}",
         "EVOLVE_CANDIDATE_RUNTIME_MOUNTS_JSON": "[]",
+        "EVOLVE_HARBOR_N_CONCURRENT_OVERRIDE": "2",
         "EVOLVE_HARBOR_AGENT_SETUP_TIMEOUT_MULTIPLIER": "9",
         "EVOLVE_HARBOR_AGENT_TIMEOUT_MULTIPLIER": "9",
         "EVOLVE_HARBOR_VERIFIER_TIMEOUT_MULTIPLIER": "9",
@@ -123,6 +124,7 @@ def test_harbor_evaluator_ignores_ambient_frozen_control_overrides(tmp_path: Pat
 
     assert result.returncode == 0, result.stderr
     args = args_capture.read_text().splitlines()
+    assert args[args.index("-n") + 1] == "2"
     assert "--agent-setup-timeout-multiplier" not in args
     assert "--agent-timeout-multiplier" not in args
     assert "--verifier-timeout-multiplier" not in args
