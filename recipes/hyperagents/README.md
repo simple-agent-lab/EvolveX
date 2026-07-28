@@ -22,17 +22,16 @@ The explicit `max_tokens` value is required because mini-swe-agent otherwise
 uses its 1,000-token default.
 `gate.variant: parent_eligible` admits evaluated process variants.
 `evaluator.engine: harbor` runs the canonical black-box benchmark.
-The configured split freezes the dataset's existing 50/19/20 task identities
-when the workspace is initialized from the project root. Each candidate
-receives one trial on every training task. The 19 gate tasks are not evaluated
-during evolution, and the 20 sealed tasks remain held out for final evaluation.
+`task_scope: full` freezes all 30 curated task identities as one shared
+optimization set when the workspace is initialized from the project root.
+Each candidate receives one trial on every task.
 
 The selected parent's retained optimization evaluation is available before
 the child is produced, and every installable child is then immediately
 evaluated on the same frozen optimization set. Generation 0 and generations 1
-through 10 therefore form a 50-task optimization curve. The gate operator
-decides parent eligibility from that training evaluation rather than invoking
-the 19-task gate partition. The evaluator is frozen with capacity for 25 workers; set
+through 10 therefore form a 30-task optimization curve. The gate operator
+decides parent eligibility from that evaluation rather than invoking a separate
+task partition. The evaluator is frozen with capacity for 10 workers; set
 `EVOLVE_HARBOR_N_CONCURRENT_OVERRIDE=5` for a five-worker generation-1 smoke,
 then omit the override for the full run.
 Candidate execution uses Harbor's `agent_timeout_multiplier: 2`, giving the

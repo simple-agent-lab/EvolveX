@@ -63,7 +63,7 @@ complete, honest evolution loop.
 | --- | --- | --- |
 | 0 · run the loop | generations, lineage, champion tracking | `evolve init` → `evolve run . --max-generations N` |
 | 1 · be the mutator | your agent makes the edits; the mechanism keeps the books | `mode: agent` recipe + `program.md`; drive the verbs by hand |
-| 2 · shape the search | select/gate variants; six published systems as recipes | `--recipe <name>`, or edit `evolve.yaml` |
+| 2 · shape the search | select/gate variants; five published systems as recipes | `--recipe <name>`, or edit `evolve.yaml` |
 | 3 · let it self-modify | widen the surface so the agent evolves its own operators (scripts + strategy prose) | `surface.include` adds `operators/**` (e.g. the `hyperagents` recipe) |
 
 Evolving weights is not a separate level: a checkpoint is just a candidate —
@@ -79,7 +79,7 @@ Milestones M0-M6 are implemented and tested in the mechanism suite:
 | M1 | Evaluator invariants, clean-checkout eval, surface enforcement, infra failure status. |
 | M2 | Feedback bundle shape and early deterministic mutation mechanics; real operator-authored mutation landed later in M5. |
 | M3 | Population fan-out and early widened-surface self-reference tests; real child-gate self-reference landed later in M5. |
-| M4 | Six recipes, agent bootstrapping instructions, `status`, and `report`. |
+| M4 | Five recipes, agent bootstrapping instructions, `status`, and `report`. |
 | M5 | Real subprocess operator runtime, `evolve record`, `evolve.sdk`, operator config variants, and child-owned gate/record self-reference. |
 | M6 | Harbor-first evaluator templates, a generic local-command mutator runner, target seed vendoring, and per-round same-hash evaluation. |
 

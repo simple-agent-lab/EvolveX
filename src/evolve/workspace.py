@@ -48,9 +48,7 @@ _SEED_IGNORE_PATTERNS = (
 )
 _ENV_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _GIT_COMMIT = re.compile(r"[0-9a-fA-F]{40}")
-_MINISWE_CANDIDATE_AGENT = (
-    "evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent"
-)
+_MINISWE_CANDIDATE_AGENT = "evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent"
 
 
 @dataclass(frozen=True)
@@ -222,10 +220,7 @@ def _write_files(
         "pyproject.toml": _workspace_scaffold("pyproject.toml"),
         "uv.lock": _workspace_scaffold("uv.lock"),
         ".python-version": _workspace_scaffold(".python-version"),
-        ".evolve-components.json": json.dumps(
-            _component_manifest(recipe, config), indent=2, sort_keys=True
-        )
-        + "\n",
+        ".evolve-components.json": json.dumps(_component_manifest(recipe, config), indent=2, sort_keys=True) + "\n",
         "evolve.yaml": render_yaml(_runtime_config(config)),
         "README.md": _workspace_scaffold("README.md"),
         "AGENTS.md": _workspace_scaffold("AGENTS.md"),
@@ -293,15 +288,10 @@ def _write_files(
     )
     generated_output_paths = {relative_path.casefold() for relative_path in files}
     evaluator_collisions = sorted(
-        relative_path
-        for relative_path in recipe_evaluator_assets
-        if relative_path.casefold() in generated_output_paths
+        relative_path for relative_path in recipe_evaluator_assets if relative_path.casefold() in generated_output_paths
     )
     if evaluator_collisions:
-        raise ValueError(
-            "recipe evaluator asset collides with generated file: "
-            + ", ".join(evaluator_collisions)
-        )
+        raise ValueError("recipe evaluator asset collides with generated file: " + ", ".join(evaluator_collisions))
     files["operators/README.md"] = _operator_index(
         bindings,
         recipe,
@@ -569,11 +559,7 @@ def _component_manifest(recipe: str, config: dict[str, object]) -> dict[str, obj
         "target_seed": cast("dict[str, Any]", config["target"]).get("seed"),
         "evaluator_engine": evaluator.get("engine"),
         "integrations": sorted(
-            {
-                reference.split(":", 1)[0]
-                for reference in references
-                if reference.startswith("evolve.integrations.")
-            }
+            {reference.split(":", 1)[0] for reference in references if reference.startswith("evolve.integrations.")}
         ),
     }
 
@@ -595,9 +581,7 @@ def _validate_target_config(target: dict[str, Any]) -> None:
         raise ValueError("builtin-dummy is test-only; pass a local seed directory instead")
 
     revision = target.get("revision")
-    if revision is not None and (
-        not isinstance(revision, str) or _GIT_COMMIT.fullmatch(revision) is None
-    ):
+    if revision is not None and (not isinstance(revision, str) or _GIT_COMMIT.fullmatch(revision) is None):
         raise ValueError("target.revision must be a full 40-character git commit")
     generate_lock = target.get("generate_lock", False)
     if not isinstance(generate_lock, bool):
@@ -611,17 +595,37 @@ def _validate_target_config(target: dict[str, Any]) -> None:
         raise ValueError(f"seed is not a local directory or git URL: {seed}")
 
 
-def _validate_candidate_target_contract(
-    prepared_target: Path, evaluator: dict[str, Any]
-) -> None:
+def _validate_candidate_target_contract(prepared_target: Path, evaluator: dict[str, Any]) -> None:
     if evaluator.get("agent") != _MINISWE_CANDIDATE_AGENT:
         return
-    if (prepared_target / "uv.lock").is_file():
-        return
-    raise ValueError(
-        "evaluator.agent selects the MiniSWE candidate lock contract; "
-        "the prepared target must contain target/uv.lock"
+    missing = [relative for relative in ("pyproject.toml", "uv.lock") if not (prepared_target / relative).is_file()]
+    if missing:
+        raise ValueError(
+            "MiniSWE candidate target is incomplete; the prepared target must "
+            f"contain target/{' and target/'.join(missing)}"
+        )
+    if not ((prepared_target / "src" / "minisweagent").is_dir() or (prepared_target / "minisweagent").is_dir()):
+        raise ValueError(
+            "MiniSWE candidate target is incomplete; the prepared target must "
+            "contain target/src/minisweagent or target/minisweagent"
+        )
+    checked = subprocess.run(
+        [
+            uv_executable(),
+            "lock",
+            "--check",
+            "--python",
+            sys.executable,
+            "--project",
+            str(prepared_target),
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
     )
+    if checked.returncode:
+        detail = checked.stderr.strip() or checked.stdout.strip() or "invalid lock"
+        raise ValueError(f"MiniSWE candidate uv lock --check failed: {detail}")
 
 
 def _write_target(workspace: Path, target_config: dict[str, Any]) -> None:
@@ -727,10 +731,7 @@ def _git_clone(url: str, destination: Path, *, revision: str | None = None) -> N
 
 def _generate_target_lock(target: Path) -> None:
     if not (target / "pyproject.toml").is_file():
-        raise ValueError(
-            "target.generate_lock requires the prepared target to contain "
-            "target/pyproject.toml"
-        )
+        raise ValueError("target.generate_lock requires the prepared target to contain target/pyproject.toml")
     result = subprocess.run(
         [uv_executable(), "lock", "--python", sys.executable, "--project", str(target)],
         text=True,

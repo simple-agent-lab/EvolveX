@@ -146,6 +146,8 @@ def classify_evaluation(
         )
     elif Outcome.CANCELLED in outcomes:
         outcome, reason = Outcome.CANCELLED, setup_reason or "evaluation cancelled"
+    elif len(trials) > expected_trials:
+        outcome, reason = Outcome.INFRASTRUCTURE_FAILED, "unexpected extra trial evidence"
     elif scoreable and coverage >= partial_floor:
         outcome = Outcome.BENCHMARK_COMPLETE
         reason = (

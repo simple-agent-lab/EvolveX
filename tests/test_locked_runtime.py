@@ -100,16 +100,7 @@ def test_uv_runtime_prepares_cache_and_emits_offline_contract(tmp_path: Path) ->
     assert [mount.target for mount in result.mounts] == [
         "/opt/evolve/uv/cache",
         "/opt/evolve/uv/python",
-        "/root/.local/bin",
     ]
-    verifier_tools = result.mounts[-1]
-    assert verifier_tools.read_only is True
-    assert (verifier_tools.source / "uv").is_file()
-    assert (verifier_tools.source / "uvx").read_text().startswith("#!/bin/sh\n")
-    assert (verifier_tools.source / "env").read_text().startswith("#!/bin/sh\n")
-    assert (verifier_tools.source / "uv").stat().st_mode & 0o111
-    assert (verifier_tools.source / "uvx").stat().st_mode & 0o111
-    assert (verifier_tools.source / "env").stat().st_mode & 0o111
     receipt = json.loads((run_dir / "candidate-runtime.json").read_text())
     assert receipt["variant"] == "uv"
     assert receipt["project"] == "target"
@@ -119,23 +110,12 @@ def test_uv_runtime_prepares_cache_and_emits_offline_contract(tmp_path: Path) ->
     assert not (run_dir / ".candidate-runtime-venv").exists()
 
 
-def test_uv_runtime_can_stage_an_immutable_uv_installer_artifact(tmp_path: Path) -> None:
-    artifact = tmp_path / "uv-x86_64-unknown-linux-gnu.tar.gz"
-    artifact.write_bytes(b"exact pinned uv archive")
-
-    result, _, _ = _prepare(
-        tmp_path,
-        UV_OFFLINE_RC="0",
-        EVOLVE_UV_INSTALLER_ARTIFACT=str(artifact),
-    )
+def test_uv_runtime_does_not_mount_host_executables_over_container_tools(tmp_path: Path) -> None:
+    result, _, _ = _prepare(tmp_path, UV_OFFLINE_RC="0")
 
     assert result.ready
-    environment = dict(result.environment)
-    assert environment["UV_DOWNLOAD_URL"] == "file:///root/.local/bin/uv-installer-downloads"
-    assert environment["UV_UNMANAGED_INSTALL"] == "/tmp/evolve-uv-bin"
-    verifier_tools = result.mounts[-1].source
-    assert (verifier_tools / "uv-installer-downloads" / artifact.name).read_bytes() == artifact.read_bytes()
-    assert "/tmp/evolve-uv-bin:$HOME/.local/bin" in (verifier_tools / "env").read_text()
+    assert all(mount.target.startswith("/opt/evolve/uv/") for mount in result.mounts)
+    assert all(mount.target != "/root/.local/bin" for mount in result.mounts)
 
 
 def test_uv_runtime_prepares_the_framework_python_for_offline_consumers(tmp_path: Path) -> None:

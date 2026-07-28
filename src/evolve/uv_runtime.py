@@ -5,7 +5,6 @@ import json
 import re
 import shutil
 import sys
-import tempfile
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -18,9 +17,6 @@ from .runtime import run_owned
 
 CONTAINER_UV_CACHE = "/opt/evolve/uv/cache"
 CONTAINER_UV_PYTHON = "/opt/evolve/uv/python"
-CONTAINER_VERIFIER_BIN = "/root/.local/bin"
-CONTAINER_UV_INSTALLER_BIN = "/tmp/evolve-uv-bin"
-CONTAINER_UV_INSTALLER_DOWNLOADS = f"{CONTAINER_VERIFIER_BIN}/uv-installer-downloads"
 RECEIPT_NAME = "candidate-runtime.json"
 FRAMEWORK_PYTHON = f"{sys.version_info.major}.{sys.version_info.minor}"
 
@@ -228,7 +224,6 @@ def _finish_ready_runtime(
     config: UvRuntimeConfig,
     cache: Path,
     python_dir: Path,
-    verifier_bin: Path,
     *,
     candidate_commit: str,
     dependency_digest: str,
@@ -249,72 +244,22 @@ def _finish_ready_runtime(
         duration_s=time.monotonic() - started,
         reason=None,
     )
-    environment = [
-        ("UV_CACHE_DIR", CONTAINER_UV_CACHE),
-        ("UV_LINK_MODE", "copy"),
-        ("UV_OFFLINE", "1"),
-        ("UV_PYTHON", config.python),
-        ("UV_PYTHON_INSTALL_DIR", CONTAINER_UV_PYTHON),
-    ]
-    if (verifier_bin / "uv-installer-downloads").is_dir():
-        environment.extend(
-            (
-                ("UV_DOWNLOAD_URL", f"file://{CONTAINER_UV_INSTALLER_DOWNLOADS}"),
-                ("UV_UNMANAGED_INSTALL", CONTAINER_UV_INSTALLER_BIN),
-            )
-        )
     return CandidateRuntimeResult(
         config.variant,
         config.project_relative,
-        environment=tuple(environment),
+        environment=(
+            ("UV_CACHE_DIR", CONTAINER_UV_CACHE),
+            ("UV_LINK_MODE", "copy"),
+            ("UV_OFFLINE", "1"),
+            ("UV_PYTHON", config.python),
+            ("UV_PYTHON_INSTALL_DIR", CONTAINER_UV_PYTHON),
+        ),
         mounts=(
             RuntimeMount(cache, CONTAINER_UV_CACHE),
             RuntimeMount(python_dir, CONTAINER_UV_PYTHON),
-            RuntimeMount(verifier_bin, CONTAINER_VERIFIER_BIN, read_only=True),
         ),
         receipt_path=receipt,
     )
-
-
-def _prepare_verifier_bin(
-    uv: str,
-    runtime_root: Path,
-    installer_artifact: str | None = None,
-) -> Path:
-    uv_path = Path(uv).resolve()
-    installer_path = Path(installer_artifact).resolve() if installer_artifact else None
-    digest_input = hashlib.sha256(uv_path.read_bytes())
-    if installer_path is not None:
-        digest_input.update(installer_path.name.encode())
-        digest_input.update(b"\0")
-        digest_input.update(installer_path.read_bytes())
-    digest = digest_input.hexdigest()[:16]
-    destination = runtime_root / f"verifier-bin-{digest}"
-    if destination.is_dir():
-        return destination
-    runtime_root.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="verifier-bin-", dir=runtime_root) as temporary:
-        staged = Path(temporary)
-        shutil.copy2(uv_path, staged / "uv")
-        (staged / "uvx").write_text('#!/bin/sh\nexec "$HOME/.local/bin/uv" tool run "$@"\n')
-        (staged / "env").write_text(
-            '#!/bin/sh\ncase ":${PATH:-}:" in\n'
-            f'  *":{CONTAINER_UV_INSTALLER_BIN}:"*) ;;\n'
-            f'  *) export PATH="{CONTAINER_UV_INSTALLER_BIN}:$HOME/.local/bin${{PATH:+:$PATH}}" ;;\n'
-            "esac\n"
-        )
-        if installer_path is not None:
-            downloads = staged / "uv-installer-downloads"
-            downloads.mkdir()
-            shutil.copy2(installer_path, downloads / installer_path.name)
-        for path in staged.iterdir():
-            if path.is_file():
-                path.chmod(0o755)
-        try:
-            staged.rename(destination)
-        except FileExistsError:
-            pass
-    return destination
 
 
 def prepare_candidate_runtime(
@@ -468,17 +413,11 @@ def prepare_candidate_runtime(
                 secret_environment=command_env,
             )
 
-        verifier_bin = _prepare_verifier_bin(
-            uv,
-            runtime_root,
-            values.get("EVOLVE_UV_INSTALLER_ARTIFACT"),
-        )
         return _finish_ready_runtime(
             run_dir,
             config,
             cache,
             python_dir,
-            verifier_bin,
             candidate_commit=candidate_commit,
             dependency_digest=dependency_digest,
             started=started,

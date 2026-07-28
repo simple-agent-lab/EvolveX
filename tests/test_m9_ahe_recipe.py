@@ -57,8 +57,7 @@ def test_ahe_recipe_initializes_harbor_miniswe_composition(tmp_path: Path) -> No
         "evolve.integrations.harbor.miniswe_task_file",
     ]
     assert (workspace / "evaluator/agent.env").read_text() == (
-        "MINISWE_COST_LIMIT=0\nMINISWE_ENV_TIMEOUT=30\nMINISWE_REASONING_EFFORT=high\n"
-        "MINISWE_STEP_LIMIT=100\n"
+        "MINISWE_COST_LIMIT=0\nMINISWE_ENV_TIMEOUT=30\nMINISWE_REASONING_EFFORT=high\nMINISWE_STEP_LIMIT=100\n"
     )
     config = (workspace / "evolve.yaml").read_text()
     assert "variant: ahe" in config
@@ -75,10 +74,10 @@ def test_ahe_recipe_initializes_harbor_miniswe_composition(tmp_path: Path) -> No
     }
     assert operators["trace_analyzer"] == {
         "variant": "ahe",
-        "max_tasks": 50,
-        "max_concurrent": 25,
+        "max_tasks": 30,
+        "max_concurrent": 10,
         "timeout_per_task": 600,
-        "debugger_max_retries": 0,
+        "retry_attempts": 3,
         "debugger_agent_kwargs": {"reasoning_effort": "high", "max_tokens": 64000},
         "field_limit": 2000,
         "timeout_s": 3600,
@@ -86,9 +85,9 @@ def test_ahe_recipe_initializes_harbor_miniswe_composition(tmp_path: Path) -> No
     config = (workspace / "evolve.yaml").read_text()
     assert "budget_usd" not in config
     assert "max_cases" not in config
-    assert "  task_scope: full" not in config
+    assert "  task_scope: full" in config
     assert "  evaluation_split: train" in config
-    assert "  tasks_per_round: 50" in config
-    assert "\n  split:\n    train: 0.562\n    gate: 0.213\n    sealed: 0.225\n    seed: 0" in config
+    assert "  tasks_per_round: 30" in config
+    assert "\n  split:" not in config
     assert "  k: 1" in config
-    assert "  n_concurrent: 25" in config
+    assert "  n_concurrent: 10" in config

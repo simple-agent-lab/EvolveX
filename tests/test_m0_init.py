@@ -1,4 +1,5 @@
 import json
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -127,21 +128,15 @@ def test_git_seed_can_explicitly_generate_missing_lock(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("source_kind", ["local", "git"])
-def test_init_accepts_explicit_locked_candidate_target(
-    tmp_path: Path, source_kind: str
-) -> None:
+def test_init_accepts_explicit_locked_candidate_target(tmp_path: Path, source_kind: str) -> None:
     seed = _versioned_candidate_seed(tmp_path / "seed", locked=True)
     seed_reference = seed.as_uri() if source_kind == "git" else str(seed)
     workspace = tmp_path / "workspace"
 
-    init_workspace(
-        InitOptions(workspace=workspace, recipe="hill_climb", seed=seed_reference)
-    )
+    init_workspace(InitOptions(workspace=workspace, recipe="hill_climb", seed=seed_reference))
 
     assert (workspace / "target" / "uv.lock").is_file()
-    assert load_config(workspace / "evolve.yaml")["target"] == {
-        "seed": seed_reference
-    }
+    assert load_config(workspace / "evolve.yaml")["target"] == {"seed": seed_reference}
     assert git(workspace, "ls-files", "target/uv.lock") == "target/uv.lock"
     git(workspace, "cat-file", "-e", "gen/0:target/uv.lock")
 
@@ -156,18 +151,45 @@ def test_init_rejects_explicit_unlocked_candidate_target_without_destination_res
 
     with pytest.raises(
         ValueError,
-        match=r"evaluator\.agent.*candidate lock contract.*prepared target.*uv\.lock",
+        match=r"MiniSWE candidate.*prepared target.*uv\.lock",
     ):
-        init_workspace(
-            InitOptions(workspace=workspace, recipe="hill_climb", seed=seed_reference)
-        )
+        init_workspace(InitOptions(workspace=workspace, recipe="hill_climb", seed=seed_reference))
 
     assert not workspace.exists()
 
 
-def test_init_accepts_generated_lock_for_local_candidate_project(
-    tmp_path: Path, monkeypatch
+@pytest.mark.parametrize("missing", ["pyproject.toml", "src/minisweagent"])
+def test_init_rejects_incomplete_miniswe_candidate_project_before_creating_workspace(
+    tmp_path: Path, missing: str
 ) -> None:
+    seed = write_locked_miniswe_seed(tmp_path / "seed")
+    path = seed / missing
+    if path.is_dir():
+        shutil.rmtree(path)
+    else:
+        path.unlink()
+    workspace = tmp_path / "workspace"
+
+    with pytest.raises(ValueError, match=r"MiniSWE candidate.*target/"):
+        init_workspace(InitOptions(workspace=workspace, recipe="hill_climb", seed=str(seed)))
+
+    assert not workspace.exists()
+
+
+def test_init_rejects_invalid_miniswe_candidate_lock_before_creating_workspace(
+    tmp_path: Path,
+) -> None:
+    seed = write_locked_miniswe_seed(tmp_path / "seed")
+    (seed / "uv.lock").write_text("not valid TOML = [\n")
+    workspace = tmp_path / "workspace"
+
+    with pytest.raises(ValueError, match=r"MiniSWE candidate.*uv lock --check"):
+        init_workspace(InitOptions(workspace=workspace, recipe="hill_climb", seed=str(seed)))
+
+    assert not workspace.exists()
+
+
+def test_init_accepts_generated_lock_for_local_candidate_project(tmp_path: Path, monkeypatch) -> None:
     seed = write_locked_miniswe_seed(tmp_path / "seed")
     (seed / "uv.lock").unlink()
     _override_hill_target(
@@ -182,9 +204,7 @@ def test_init_accepts_generated_lock_for_local_candidate_project(
     git(workspace, "cat-file", "-e", "gen/0:target/uv.lock")
 
 
-def test_init_rejects_generate_lock_for_non_project_before_creating_workspace(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_init_rejects_generate_lock_for_non_project_before_creating_workspace(tmp_path: Path, monkeypatch) -> None:
     seed = tmp_path / "seed"
     seed.mkdir()
     (seed / "README.md").write_text("not a Python project\n")
@@ -203,9 +223,7 @@ def test_init_rejects_generate_lock_for_non_project_before_creating_workspace(
     assert not workspace.exists()
 
 
-def test_init_rejects_builtin_candidate_even_when_generate_lock_is_requested(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_init_rejects_builtin_candidate_even_when_generate_lock_is_requested(tmp_path: Path, monkeypatch) -> None:
     _override_hill_target(
         monkeypatch,
         {"seed": "builtin-codex", "generate_lock": True},
@@ -228,7 +246,7 @@ def test_init_rejects_explicit_builtin_candidate_without_destination_residue(
 
     with pytest.raises(
         ValueError,
-        match=r"evaluator\.agent.*candidate lock contract.*prepared target.*uv\.lock",
+        match=r"MiniSWE candidate.*prepared target.*uv\.lock",
     ):
         init_workspace(
             InitOptions(
@@ -241,9 +259,7 @@ def test_init_rejects_explicit_builtin_candidate_without_destination_residue(
     assert not workspace.exists()
 
 
-def test_write_target_requires_generated_lock_postcondition(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_write_target_requires_generated_lock_postcondition(tmp_path: Path, monkeypatch) -> None:
     from evolve import workspace as workspace_module
 
     seed = write_locked_miniswe_seed(tmp_path / "seed")
@@ -265,18 +281,14 @@ def test_write_target_requires_generated_lock_postcondition(
         )
 
 
-def test_default_hill_climb_pins_seed_and_generates_candidate_lock(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_default_hill_climb_pins_seed_and_generates_candidate_lock(tmp_path: Path, monkeypatch) -> None:
     from evolve import workspace as workspace_module
 
     clone_source = _versioned_candidate_seed(tmp_path / "miniswe", locked=False)
     clone_revision = git(clone_source, "rev-parse", "HEAD")
     git_clone = workspace_module._git_clone
 
-    def clone_reviewed_miniswe(
-        url: str, destination: Path, *, revision: str | None = None
-    ) -> None:
+    def clone_reviewed_miniswe(url: str, destination: Path, *, revision: str | None = None) -> None:
         assert url == "https://github.com/SWE-agent/mini-swe-agent.git"
         assert revision == MINISWE_REVISION
         git_clone(clone_source.as_uri(), destination, revision=clone_revision)
@@ -352,10 +364,7 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
     assert not (workspace / "evaluator" / "checkout_agent.py").exists()
     assert (workspace / ".python-version").read_text() == "3.12\n"
     assert "harbor==0.18.0" in (workspace / "pyproject.toml").read_text()
-    assert (
-        'packages = [".evolve/evolve", "library"]'
-        in (workspace / "pyproject.toml").read_text()
-    )
+    assert 'packages = [".evolve/evolve", "library"]' in (workspace / "pyproject.toml").read_text()
 
     config = (workspace / "evolve.yaml").read_text()
     assert "children_per_gen: 1" in config

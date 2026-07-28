@@ -58,12 +58,15 @@ def test_harbor_meta_agent_forwards_openai_environment(monkeypatch: pytest.Monke
         "no_proxy": "workspace.example",
         "NO_PROXY": "workspace.example",
     }
-    assert module._agent_env(
-        {
-            "agent": "mini-swe-agent",
-            "agent_env": {"OPENAI_BASE_URL": "https://configured.example/v1"},
-        }
-    )["OPENAI_BASE_URL"] == "https://configured.example/v1"
+    assert (
+        module._agent_env(
+            {
+                "agent": "mini-swe-agent",
+                "agent_env": {"OPENAI_BASE_URL": "https://configured.example/v1"},
+            }
+        )["OPENAI_BASE_URL"]
+        == "https://configured.example/v1"
+    )
 
 
 def test_harbor_meta_agent_forwards_dependency_proxies_with_model_bypass(
@@ -98,6 +101,34 @@ def test_harbor_meta_agent_redacts_configured_proxy_literal(monkeypatch: pytest.
 
     assert proxy not in redacted
     assert redacted == "dependency download through [REDACTED] timed out"
+
+
+def test_harbor_meta_agent_redacts_config_only_proxy_from_command_record(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checkout, run_dir = _checkout(tmp_path)
+    bin_dir = tmp_path / "bin"
+    _install_fake_harbor(bin_dir)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    for name in (
+        "EVOLVE_HARBOR_HTTP_PROXY",
+        "EVOLVE_HARBOR_HTTPS_PROXY",
+        "http_proxy",
+        "HTTP_PROXY",
+        "https_proxy",
+        "HTTPS_PROXY",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    proxy = "http://config-user:config-password@proxy.example.invalid:8118"
+    ctx = _ctx(checkout, run_dir)
+    ctx.config["agent_env"] = {"HTTPS_PROXY": proxy}
+
+    _harbor_runner_module().run_agent(checkout, "failure evidence", ctx)
+
+    command = json.loads((run_dir / "meta_agent" / "harbor" / "command.json").read_text())
+    assert all(proxy not in argument for argument in command)
+    assert "HTTPS_PROXY=[REDACTED]" in command
 
 
 def test_harbor_meta_agent_child_creates_private_files(tmp_path: Path) -> None:
@@ -678,9 +709,7 @@ def test_agent_timeout_retry_loop_fits_full_lifecycle_budgets(
 
     queue = TrialQueue(1, retry_config=retry)
     result = asyncio.run(
-        queue._execute_trial_with_retries(
-            SimpleNamespace(agent=None, trial_name="timeout-then-success")
-        )
+        queue._execute_trial_with_retries(SimpleNamespace(agent=None, trial_name="timeout-then-success"))
     )
 
     assert EnvironmentConfig().build_timeout_sec == 600
@@ -696,17 +725,14 @@ def test_agent_timeout_retry_loop_fits_full_lifecycle_budgets(
             "max_retries": 1,
         }
     )
-    assert (
-        600.0 + elapsed_s + 600.0 + 60.0
-        == _operator_deadline_s(
-            "meta_agent",
-            {
-                "runner": "harbor",
-                "agent": FILE_TASK_AGENT,
-                "max_retries": 1,
-            },
-            3600,
-        )
+    assert 600.0 + elapsed_s + 600.0 + 60.0 == _operator_deadline_s(
+        "meta_agent",
+        {
+            "runner": "harbor",
+            "agent": FILE_TASK_AGENT,
+            "max_retries": 1,
+        },
+        3600,
     )
 
 

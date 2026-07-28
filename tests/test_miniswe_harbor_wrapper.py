@@ -619,7 +619,7 @@ def test_init_rejects_unlocked_local_miniswe_seed_before_workspace_creation(
 
     with pytest.raises(
         ValueError,
-        match=r"evaluator\.agent.*candidate lock contract.*prepared target.*uv\.lock",
+        match=r"MiniSWE candidate.*prepared target.*uv\.lock",
     ):
         init_workspace(InitOptions(workspace=workspace, recipe="hill_climb", seed=str(seed)))
 

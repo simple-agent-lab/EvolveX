@@ -88,10 +88,22 @@ def test_partial_evidence_is_scoreless_even_when_present_trials_have_rewards() -
     assert record.score is None
 
 
+def test_extra_trial_evidence_cannot_inflate_the_score() -> None:
+    trials = (
+        TrialResult("a", 0, Outcome.BENCHMARK_COMPLETE, 1.0, "benchmark"),
+        TrialResult("b", 0, Outcome.BENCHMARK_COMPLETE, 1.0, "benchmark"),
+    )
+
+    record = classify_evaluation(**record_values(), trials=trials, expected_trials=1)
+
+    assert record.outcome is Outcome.INFRASTRUCTURE_FAILED
+    assert record.score is None
+    assert record.reason == "unexpected extra trial evidence"
+
+
 def test_partial_floor_accepts_sparse_infrastructure_failures_conservatively() -> None:
     trials = tuple(
-        TrialResult(f"task-{index}", 0, Outcome.BENCHMARK_COMPLETE, 1.0, "benchmark")
-        for index in range(48)
+        TrialResult(f"task-{index}", 0, Outcome.BENCHMARK_COMPLETE, 1.0, "benchmark") for index in range(48)
     ) + (
         TrialResult("task-48", 0, Outcome.INFRASTRUCTURE_FAILED, None, "ambiguous", "ProcessExit"),
         TrialResult("task-49", 0, Outcome.INFRASTRUCTURE_FAILED, None, "infrastructure", "MissingReward"),

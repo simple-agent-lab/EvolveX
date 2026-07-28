@@ -33,15 +33,14 @@ def test_hyperagents_recipe_initializes_broad_harbor_bundle(tmp_path: Path) -> N
         "evolve.integrations.harbor.miniswe_task_file",
     ]
     assert (workspace / "evaluator/agent.env").read_text() == (
-        "MINISWE_COST_LIMIT=0\nMINISWE_ENV_TIMEOUT=30\nMINISWE_REASONING_EFFORT=high\n"
-        "MINISWE_STEP_LIMIT=100\n"
+        "MINISWE_COST_LIMIT=0\nMINISWE_ENV_TIMEOUT=30\nMINISWE_REASONING_EFFORT=high\nMINISWE_STEP_LIMIT=100\n"
     )
-    assert "task_scope: full" not in config
+    assert "task_scope: full" in config
     assert "evaluation_split: train" in config
-    assert "tasks_per_round: 50" in config
-    assert "\n  split:\n    train: 0.562\n    gate: 0.213\n    sealed: 0.225\n    seed: 0" in config
+    assert "tasks_per_round: 30" in config
+    assert "\n  split:" not in config
     assert "k: 1" in config
-    assert "n_concurrent: 25" in config
+    assert "n_concurrent: 10" in config
     prompt = (workspace / "operators/meta_agent.py").read_text()
     assert "Strongly prefer a substantive `target/**`" in prompt
     assert "operator-only proposal is allowed" in prompt

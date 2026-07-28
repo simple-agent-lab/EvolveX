@@ -53,9 +53,7 @@ _SECRET_ASSIGNMENT = re.compile(
     r"([\"']?)(\s*[:=]\s*)([^\s,;}]+)"
 )
 _BEARER = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+")
-_SENSITIVE_ENV_NAME = re.compile(
-    r"(?i)(?:proxy|api[_-]?key|access[_-]?token|token|secret|password|authorization|auth)"
-)
+_SENSITIVE_ENV_NAME = re.compile(r"(?i)(?:proxy|api[_-]?key|access[_-]?token|token|secret|password|authorization|auth)")
 _CREDENTIAL_ENV = ("OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_API_BASE")
 _PROXY_ENV = (
     ("EVOLVE_HARBOR_HTTP_PROXY", "http_proxy", "HTTP_PROXY"),
@@ -527,15 +525,15 @@ def _read_json(path: Path) -> object:
 
 def _redact(text: str, environment: Mapping[str, str] | None = None) -> str:
     configured = os.environ if environment is None else environment
-    values = {
-        value
-        for name, value in configured.items()
-        if _SENSITIVE_ENV_NAME.search(name) and len(value) >= 8
-    }
+    values = {value for name, value in configured.items() if _SENSITIVE_ENV_NAME.search(name) and len(value) >= 8}
     for value in sorted(values, key=len, reverse=True):
         text = text.replace(value, "[REDACTED]")
     text = _BEARER.sub("Bearer [REDACTED]", text)
     return _SECRET_ASSIGNMENT.sub(lambda match: f"{match.group(1)}{match.group(2)}{match.group(3)}[REDACTED]", text)
+
+
+def _redaction_environment(config: dict[str, Any]) -> dict[str, str]:
+    return {**os.environ, **_agent_env(config)}
 
 
 def _nonnegative_int(value: object, default: int) -> int:
@@ -813,6 +811,7 @@ def _run_harbor(
     env: dict[str, str],
     *,
     timeout_s: float | None = None,
+    redaction_environment: Mapping[str, str] | None = None,
 ) -> tuple[int, float]:
     start = time.monotonic()
     process = subprocess.Popen(
@@ -833,7 +832,7 @@ def _run_harbor(
         for line in process.stdout:
             chunks.append(line)
             if os.environ.get("EVOLVE_LIVE_OUTPUT") == "1":
-                print(_redact(line), end="", flush=True)
+                print(_redact(line, redaction_environment), end="", flush=True)
 
     reader = threading.Thread(target=consume_output, daemon=True)
     reader.start()
@@ -853,7 +852,7 @@ def _run_harbor(
     reader.join()
     wall_s = round(time.monotonic() - start, 6)
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    log_path.write_text(_redact(f"wall_s={wall_s}\n{''.join(chunks)}"))
+    log_path.write_text(_redact(f"wall_s={wall_s}\n{''.join(chunks)}", redaction_environment))
     log_path.chmod(0o600)
     return (process.returncode if process.returncode is not None else 1), wall_s
 
@@ -991,11 +990,13 @@ def run_readonly_agent(
     usage: dict[str, Any] = {"usd": 0, "wall_s": 0}
     output = ""
     returncode = 1
+    redaction_environment: Mapping[str, str] = os.environ
     try:
         if "agent_pythonpath" in ctx.config:
             raise ValueError(
                 "agent_pythonpath was removed; add the adapter to the workspace pyproject.toml and uv.lock"
             )
+        redaction_environment = _redaction_environment(ctx.config)
         harbor, harbor_env = uv_run(ctx.workspace, "harbor")
         task_root = output_dir / "task"
         prompt_path = output_dir / "prompt.md"
@@ -1032,13 +1033,17 @@ def run_readonly_agent(
             )
         else:
             command = _base_command(harbor, task_root, prompt_path, jobs_root, tasks_dir, job_name, ctx.config)
-        _write_json(output_dir / "command.json", [_redact(arg) for arg in command])
+        _write_json(
+            output_dir / "command.json",
+            [_redact(arg, redaction_environment) for arg in command],
+        )
         returncode, wall_s = _run_harbor(
             command,
             checkout,
             output_dir / "harbor.log",
             harbor_env,
             timeout_s=timeout_s,
+            redaction_environment=redaction_environment,
         )
         usage["wall_s"] = wall_s
         trial_dir, trial = _trial_result(jobs_root / job_name)
@@ -1052,7 +1057,9 @@ def run_readonly_agent(
         if returncode != 0:
             raise RuntimeError(f"harbor exec exited {returncode}")
         if trial.get("exception_info") not in (None, {}):
-            raise RuntimeError(f"Harbor read-only trial failed: {_redact(str(trial.get('exception_info')))}")
+            raise RuntimeError(
+                f"Harbor read-only trial failed: {_redact(str(trial.get('exception_info')), redaction_environment)}"
+            )
         if not output:
             raise RuntimeError("Harbor read-only trial returned no agent response")
         return AgentRunResult(
@@ -1065,7 +1072,7 @@ def run_readonly_agent(
         )
     except Exception as exc:
         raise AgentCommandError(
-            f"{exc.__class__.__name__}: {_redact(str(exc))}",
+            f"{exc.__class__.__name__}: {_redact(str(exc), redaction_environment)}",
             output=output,
             usage=usage,
             returncode=returncode,
@@ -1085,11 +1092,13 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
     output = ""
     returncode = 1
     bundle: _WorkspaceBundle | None = None
+    redaction_environment: Mapping[str, str] = os.environ
     try:
         if "agent_pythonpath" in ctx.config:
             raise ValueError(
                 "agent_pythonpath was removed; add the adapter to the workspace pyproject.toml and uv.lock"
             )
+        redaction_environment = _redaction_environment(ctx.config)
         bundle = _prepare_bundle(
             checkout,
             ctx,
@@ -1134,13 +1143,17 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
             ctx.config,
             _uv_cache_dir(ctx.workspace),
         )
-        _write_json(harbor_root / "command.json", [_redact(arg) for arg in command])
+        _write_json(
+            harbor_root / "command.json",
+            [_redact(arg, redaction_environment) for arg in command],
+        )
         returncode, wall_s = _run_harbor(
             command,
             checkout,
             harbor_root / "harbor.log",
             harbor_env,
             timeout_s=_meta_agent_process_timeout_s(ctx.config),
+            redaction_environment=redaction_environment,
         )
         usage["wall_s"] = wall_s
         trial_dir, trial = _trial_result(jobs_root / job_name)
@@ -1159,7 +1172,9 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
         if returncode != 0:
             raise RuntimeError(f"harbor exec exited {returncode}; see {harbor_root / 'harbor.log'}")
         if trial.get("exception_info") not in (None, {}):
-            raise RuntimeError(f"Harbor meta-agent trial failed: {_redact(str(trial.get('exception_info')))}")
+            raise RuntimeError(
+                f"Harbor meta-agent trial failed: {_redact(str(trial.get('exception_info')), redaction_environment)}"
+            )
         if str(ctx.config.get("agent") or "").endswith(":MiniSweSourceAgent") or _uses_miniswe_artifact(
             ctx.config.get("agent")
         ):
@@ -1167,7 +1182,7 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
             if exit_status != "Submitted":
                 raise RuntimeError(
                     "Harbor MiniSwe meta-agent did not submit successfully: "
-                    f"exit_status={_redact(str(exit_status or 'missing'))}"
+                    f"exit_status={_redact(str(exit_status or 'missing'), redaction_environment)}"
                 )
         artifact, manifest = _artifact_candidate(trial_dir)
         _write_json(harbor_root / "artifact-manifest.json", manifest)
@@ -1193,13 +1208,13 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
         _write_json(
             harbor_root / "error.json",
             {
-                "message": _redact(str(exc)),
+                "message": _redact(str(exc), redaction_environment),
                 "returncode": returncode,
                 "type": exc.__class__.__name__,
             },
         )
         raise AgentCommandError(
-            f"{exc.__class__.__name__}: {_redact(str(exc))}",
+            f"{exc.__class__.__name__}: {_redact(str(exc), redaction_environment)}",
             output=output,
             usage=usage,
             returncode=returncode,
