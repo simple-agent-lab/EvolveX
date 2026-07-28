@@ -45,6 +45,8 @@ def load_branch_intent(workspace: Path) -> BranchIntent | None:
     for field, expected in required.items():
         if not isinstance(raw.get(field), expected):
             raise RuntimeError(f"invalid branch intent field {field} in {path}")
+    if not all(isinstance(value, str) for value in raw["target_genids"]):
+        raise RuntimeError(f"invalid branch intent field target_genids in {path}")
     if raw["target_generation"] < 1 or not raw["target_genids"]:
         raise RuntimeError(f"invalid branch intent target in {path}")
     return BranchIntent(
@@ -58,6 +60,7 @@ def load_branch_intent(workspace: Path) -> BranchIntent | None:
 
 
 def create_branch_intent(workspace: Path, intent: BranchIntent) -> BranchIntent:
+    """Persist an intent while the caller holds the workspace lock."""
     existing = load_branch_intent(workspace)
     if existing is not None:
         if existing == intent:
@@ -72,6 +75,7 @@ def create_branch_intent(workspace: Path, intent: BranchIntent) -> BranchIntent:
 
 
 def consume_branch_intent(workspace: Path, intent: BranchIntent) -> None:
+    """Remove an unchanged intent while the caller holds the workspace lock."""
     path = branch_intent_path(workspace)
     existing = load_branch_intent(workspace)
     if existing is None:
