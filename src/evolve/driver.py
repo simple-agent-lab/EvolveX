@@ -51,7 +51,9 @@ from .frozen.interfaces import (
 )
 from .git import (
     add_worktree,
+    changed_paths,
     create_tag,
+    direct_parent_commit,
     generation_tags,
     git,
     git_common_dir,
@@ -156,16 +158,24 @@ def _run_locked(options: RunOptions, workspace: Path) -> None:
             continue
 
         round_number = None
-        selected = _branch_parents(intent, gen, pending)
-        if selected is None:
-            selected = _select_generation_parents(
-                workspace,
-                exp_id,
-                gen,
-                pending,
-                options.children_per_gen,
-                operators_config,
-            )
+        selected = {
+            genid: _tagged_parent(workspace, exp_id, genid, rows.get(genid, {}))
+            for genid in pending
+            if tag_exists(workspace, f"gen/{genid}")
+        }
+        untagged = [genid for genid in pending if genid not in selected]
+        if untagged:
+            untagged_selected = _branch_parents(intent, gen, untagged)
+            if untagged_selected is None:
+                untagged_selected = _select_generation_parents(
+                    workspace,
+                    exp_id,
+                    gen,
+                    untagged,
+                    options.children_per_gen,
+                    operators_config,
+                )
+            selected.update(untagged_selected)
         for genid in genids:
             row = rows_by_genid(workspace).get(genid, {})
             pending_eval_gate_record = genid in _evaluation_pending_gate_record_genids(workspace)
@@ -185,6 +195,63 @@ def _run_locked(options: RunOptions, workspace: Path) -> None:
         if intent is not None and gen == intent.target_generation:
             _consume_completed_branch_intent(workspace, intent)
     _maybe_final_anchor(workspace, options.max_generations)
+
+
+def _recover_tagged_parent(workspace: Path, exp_id: str, genid: str) -> str:
+    tag = f"gen/{genid}"
+    parent_commit = direct_parent_commit(workspace, tag)
+    candidates = []
+    for row in ArchiveView(workspace).valid_parents():
+        parent = str(row["genid"])
+        if (
+            tag_exists(workspace, f"gen/{parent}")
+            and git_stdout(workspace, "rev-parse", f"gen/{parent}^{{commit}}") == parent_commit
+        ):
+            candidates.append(parent)
+    if len(candidates) != 1:
+        detail = ", ".join(f"gen/{value}" for value in candidates) or "none"
+        raise RuntimeError(f"cannot recover lineage for {tag}: expected one certified Git parent, found {detail}")
+    parent = candidates[0]
+    mutated = changed_paths(workspace, f"gen/{parent}", tag)
+    include, exclude = surface_patterns(workspace)
+    violations = check_paths(mutated, include, exclude)
+    if not mutated:
+        raise RuntimeError(f"cannot recover lineage for {tag}: candidate has no changes")
+    if violations:
+        raise RuntimeError(
+            f"cannot recover lineage for {tag}: changed paths outside mutable surface: {', '.join(violations)}"
+        )
+    append_event(
+        workspace,
+        exp_id,
+        {
+            "genid": genid,
+            "parent": parent,
+            "tag": tag,
+            "mutated": mutated,
+            "surface_violations": [],
+        },
+    )
+    return parent
+
+
+def _tagged_parent(
+    workspace: Path,
+    exp_id: str,
+    genid: str,
+    row: dict[str, Any],
+) -> str:
+    recorded = row.get("parent")
+    if recorded is None:
+        return _recover_tagged_parent(workspace, exp_id, genid)
+    parent = str(recorded)
+    actual = direct_parent_commit(workspace, f"gen/{genid}")
+    expected = git_stdout(workspace, "rev-parse", f"gen/{parent}^{{commit}}")
+    if actual != expected:
+        raise RuntimeError(
+            f"lineage contradiction for gen/{genid}: archive parent gen/{parent} does not match Git parent {actual}"
+        )
+    return parent
 
 
 def _next_generation_number(workspace: Path) -> int:

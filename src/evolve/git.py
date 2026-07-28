@@ -59,6 +59,13 @@ def generation_tags(workspace: Path) -> list[str]:
     return sorted(line for line in output.splitlines() if line.startswith("gen/"))
 
 
+def direct_parent_commit(workspace: Path, ref: str) -> str:
+    parents = git_stdout(workspace, "show", "-s", "--format=%P", f"{ref}^{{commit}}").split()
+    if len(parents) != 1:
+        raise RuntimeError(f"{ref} must have exactly one Git parent, found {len(parents)}")
+    return parents[0]
+
+
 def changed_paths(workspace: Path, parent_tag: str, child_tag: str) -> list[str]:
     output = git_stdout(workspace, "diff", "--name-only", parent_tag, child_tag)
     return [line for line in output.splitlines() if line]
