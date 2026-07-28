@@ -115,11 +115,6 @@ def run(
     max_generations: int | None = typer.Option(None, "--max-generations"),
     children_per_gen: int | None = typer.Option(None, "--children-per-gen"),
     resume: bool = typer.Option(False, "--resume", help="accepted no-op; resume is the default"),
-    from_generation: str | None = typer.Option(
-        None,
-        "--from-generation",
-        help="force the next unused generation to branch from this certified parent",
-    ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="stream evaluator and operator output"),
 ) -> None:
     """Start or resume the built-in evolution loop."""
@@ -127,14 +122,7 @@ def run(
     children = children_per_gen if children_per_gen is not None else experiment_int(workspace, "children_per_gen", 1)
     _enable_live_output(verbose)
     with _workspace_environment(workspace):
-        driver_run(
-            RunOptions(
-                workspace=workspace,
-                max_generations=gens,
-                children_per_gen=children,
-                from_generation=from_generation,
-            )
-        )
+        driver_run(RunOptions(workspace=workspace, max_generations=gens, children_per_gen=children))
     print(f"Ran evolve loop through generation {gens}")
 
 

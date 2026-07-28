@@ -3,12 +3,10 @@ from __future__ import annotations
 import fcntl
 import json
 import os
-import shutil
 import tempfile
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TextIO
 
@@ -27,7 +25,6 @@ from .archive import (
     read_events,
     rows_by_genid,
 )
-from .branching import BranchIntent, consume_branch_intent, create_branch_intent, load_branch_intent
 from .candidate.snapshot import build_candidate_snapshot, commit_candidate_snapshot
 from .config import evaluator_anchor, evaluator_sampling, experiment_id, operator_blocks
 from .evaluation import (
@@ -52,10 +49,7 @@ from .frozen.interfaces import (
 )
 from .git import (
     add_worktree,
-    changed_paths,
     create_tag,
-    direct_parent_commit,
-    generation_tags,
     git,
     git_common_dir,
     git_stdout,
@@ -92,7 +86,6 @@ class RunOptions:
     workspace: Path
     max_generations: int
     children_per_gen: int = 1
-    from_generation: str | None = None
 
 
 @dataclass(frozen=True)
@@ -143,8 +136,6 @@ def _run_locked(options: RunOptions, workspace: Path) -> None:
     evaluator_sampling(workspace)
     _ensure_genesis_evaluated(workspace)
     operators_config = operator_blocks(workspace)
-    intent = _prepare_branch_intent(options, workspace)
-    _consume_completed_branch_intent(workspace, intent)
 
     for gen in range(1, options.max_generations + 1):
         genids = [
@@ -159,26 +150,14 @@ def _run_locked(options: RunOptions, workspace: Path) -> None:
             continue
 
         round_number = None
-        selected = {
-            genid: _tagged_parent(workspace, exp_id, genid, rows.get(genid, {}))
-            for genid in pending
-            if tag_exists(workspace, f"gen/{genid}")
-        }
-        untagged = [genid for genid in pending if genid not in selected]
-        if untagged:
-            for action in _clear_untagged_generation_state(workspace, gen, untagged):
-                print(f"[evolve] {action}", flush=True)
-            untagged_selected = _branch_parents(intent, gen, untagged)
-            if untagged_selected is None:
-                untagged_selected = _select_generation_parents(
-                    workspace,
-                    exp_id,
-                    gen,
-                    untagged,
-                    options.children_per_gen,
-                    operators_config,
-                )
-            selected.update(untagged_selected)
+        selected = _select_generation_parents(
+            workspace,
+            exp_id,
+            gen,
+            pending,
+            options.children_per_gen,
+            operators_config,
+        )
         for genid in genids:
             row = rows_by_genid(workspace).get(genid, {})
             pending_eval_gate_record = genid in _evaluation_pending_gate_record_genids(workspace)
@@ -195,244 +174,7 @@ def _run_locked(options: RunOptions, workspace: Path) -> None:
                 _resume_tagged_child(workspace, exp_id, genid, parent, round_number, operators_config)
                 continue
             _run_child(workspace, exp_id, genid, parent, round_number, operators_config)
-        if intent is not None and gen == intent.target_generation:
-            _consume_completed_branch_intent(workspace, intent)
     _maybe_final_anchor(workspace, options.max_generations)
-
-
-def _clear_untagged_generation_state(
-    workspace: Path,
-    generation: int,
-    genids: list[str],
-) -> list[str]:
-    actions: list[str] = []
-    select_dir = workspace / "runs" / f"gen-{generation}" / "select"
-    if select_dir.exists():
-        shutil.rmtree(select_dir)
-        actions.append(f"discarded stale selection output for generation {generation}")
-    for genid in genids:
-        child = _child_worktree_path(workspace, genid)
-        if child.exists():
-            remove_worktree(workspace, child)
-            actions.append(f"removed stale worktree {child.name}")
-        run_dir = _run_dir(workspace, genid)
-        if run_dir.exists():
-            shutil.rmtree(run_dir)
-            actions.append(f"discarded stale operator output for gen/{genid}")
-    git(workspace, "worktree", "prune", check=False)
-    return actions
-
-
-def _recover_tagged_parent(workspace: Path, exp_id: str, genid: str) -> str:
-    tag = f"gen/{genid}"
-    parent_commit = direct_parent_commit(workspace, tag)
-    candidates = []
-    for row in ArchiveView(workspace).valid_parents():
-        parent = str(row["genid"])
-        if (
-            tag_exists(workspace, f"gen/{parent}")
-            and git_stdout(workspace, "rev-parse", f"gen/{parent}^{{commit}}") == parent_commit
-        ):
-            _certified_source_commit(workspace, parent)
-            candidates.append(parent)
-    if len(candidates) != 1:
-        detail = ", ".join(f"gen/{value}" for value in candidates) or "none"
-        raise RuntimeError(f"cannot recover lineage for {tag}: expected one certified Git parent, found {detail}")
-    parent = candidates[0]
-    mutated = changed_paths(workspace, f"gen/{parent}", tag)
-    include, exclude = surface_patterns(workspace)
-    violations = check_paths(mutated, include, exclude)
-    if not mutated:
-        raise RuntimeError(f"cannot recover lineage for {tag}: candidate has no changes")
-    if violations:
-        raise RuntimeError(
-            f"cannot recover lineage for {tag}: changed paths outside mutable surface: {', '.join(violations)}"
-        )
-    append_event(
-        workspace,
-        exp_id,
-        {
-            "genid": genid,
-            "parent": parent,
-            "tag": tag,
-            "mutated": mutated,
-            "surface_violations": [],
-        },
-    )
-    return parent
-
-
-def _tagged_parent(
-    workspace: Path,
-    exp_id: str,
-    genid: str,
-    row: dict[str, Any],
-) -> str:
-    recorded = row.get("parent")
-    if recorded is None:
-        return _recover_tagged_parent(workspace, exp_id, genid)
-    parent = str(recorded)
-    actual = direct_parent_commit(workspace, f"gen/{genid}")
-    expected = _certified_source_commit(workspace, parent)
-    if actual != expected:
-        raise RuntimeError(
-            f"lineage contradiction for gen/{genid}: archive parent gen/{parent} does not match Git parent {actual}"
-        )
-    return parent
-
-
-def _next_generation_number(workspace: Path) -> int:
-    numbers = [generation_number(str(row.get("genid", ""))) for row in rows_by_genid(workspace).values()]
-    numbers.extend(generation_number(tag.removeprefix("gen/")) for tag in generation_tags(workspace))
-    return max((value for value in numbers if value is not None), default=0) + 1
-
-
-def _prepare_branch_intent(options: RunOptions, workspace: Path) -> BranchIntent | None:
-    existing = load_branch_intent(workspace)
-    if options.from_generation is None:
-        if existing is not None:
-            _validate_active_branch_intent(workspace, existing, options.children_per_gen)
-            _assert_branch_target_reachable(options, existing.source_generation, existing.target_generation)
-            print(
-                f"[evolve] branch intent resumed: gen/{existing.source_generation} "
-                f"-> generation {existing.target_generation}",
-                flush=True,
-            )
-        return existing
-    source = _validate_genid(options.from_generation)
-    if existing is not None:
-        if source != existing.source_generation:
-            raise RuntimeError(
-                f"conflicting branch intent: active gen/{existing.source_generation}, requested gen/{source}"
-            )
-        _validate_active_branch_intent(workspace, existing, options.children_per_gen)
-        _assert_branch_target_reachable(options, source, existing.target_generation)
-        print(
-            f"[evolve] branch intent resumed: gen/{existing.source_generation} "
-            f"-> generation {existing.target_generation}",
-            flush=True,
-        )
-        return existing
-    _assert_valid_parent(workspace, source)
-    source_commit = _certified_source_commit(workspace, source)
-    unfinished = _durable_unfinished_genids(workspace)
-    if unfinished:
-        raise RuntimeError(
-            "cannot create branch while generations need recovery: " + ", ".join(f"gen/{value}" for value in unfinished)
-        )
-    target_generation = _next_generation_number(workspace)
-    _assert_branch_target_reachable(options, source, target_generation)
-    target_genids = tuple(
-        format_genid(target_generation, index, options.children_per_gen) for index in range(options.children_per_gen)
-    )
-    requested = BranchIntent(
-        source_generation=source,
-        source_tag=f"gen/{source}",
-        source_commit=source_commit,
-        target_generation=target_generation,
-        target_genids=target_genids,
-        created_at=datetime.now(UTC).isoformat(),
-    )
-    created = create_branch_intent(workspace, requested)
-    print(
-        f"[evolve] branch intent created: gen/{source} -> generation {target_generation}",
-        flush=True,
-    )
-    return created
-
-
-def _assert_branch_target_reachable(options: RunOptions, source_generation: str, target_generation: int) -> None:
-    if options.max_generations < target_generation:
-        raise RuntimeError(
-            f"--max-generations must be at least {target_generation} to branch from gen/{source_generation}"
-        )
-
-
-def _validate_active_branch_intent(
-    workspace: Path,
-    intent: BranchIntent,
-    children_per_gen: int,
-) -> None:
-    _assert_valid_parent(workspace, intent.source_generation)
-    expected_tag = f"gen/{intent.source_generation}"
-    if intent.source_tag != expected_tag:
-        raise RuntimeError(f"branch intent source tag mismatch: expected {expected_tag}, got {intent.source_tag}")
-    actual_commit = _certified_source_commit(workspace, intent.source_generation)
-    if actual_commit != intent.source_commit:
-        raise RuntimeError(f"branch intent source gen/{intent.source_generation} changed commit")
-    expected_genids = tuple(
-        format_genid(intent.target_generation, index, children_per_gen) for index in range(children_per_gen)
-    )
-    if expected_genids != intent.target_genids:
-        raise RuntimeError(
-            f"branch intent children-per-gen mismatch: expected {intent.target_genids}, requested {expected_genids}"
-        )
-
-
-def _certified_source_commit(workspace: Path, source_generation: str) -> str:
-    row = ArchiveView(workspace).row(source_generation) or {}
-    certified_commit = row.get("candidate_commit")
-    if not isinstance(certified_commit, str) or not certified_commit:
-        raise RuntimeError(
-            f"Git/archive contradiction for parent gen/{source_generation}: missing certified candidate_commit"
-        )
-    actual_commit = git_stdout(workspace, "rev-parse", f"gen/{source_generation}^{{commit}}")
-    if actual_commit != certified_commit:
-        raise RuntimeError(
-            f"Git/archive contradiction for parent gen/{source_generation}: "
-            f"tag commit {actual_commit} does not match certified candidate_commit {certified_commit}"
-        )
-    return actual_commit
-
-
-def _durable_unfinished_genids(workspace: Path) -> list[str]:
-    rows = rows_by_genid(workspace)
-    pending_gate = _evaluation_pending_gate_record_genids(workspace)
-    genids = set(rows)
-    genids.update(tag.removeprefix("gen/") for tag in generation_tags(workspace))
-    return sorted(
-        (
-            genid
-            for genid in genids
-            if genid != "0" and _generation_is_pending(rows.get(genid, {}), genid in pending_gate)
-        ),
-        key=lambda value: (generation_number(value) or -1, value),
-    )
-
-
-def _branch_parents(
-    intent: BranchIntent | None,
-    generation: int,
-    pending: list[str],
-) -> dict[str, str] | None:
-    if intent is None or generation != intent.target_generation:
-        return None
-    unexpected = sorted(set(pending) - set(intent.target_genids))
-    if unexpected:
-        raise RuntimeError(f"branch intent target mismatch for generation {generation}: {', '.join(unexpected)}")
-    return {genid: intent.source_generation for genid in pending}
-
-
-def _consume_completed_branch_intent(workspace: Path, intent: BranchIntent | None) -> None:
-    if intent is None:
-        return
-    rows = rows_by_genid(workspace)
-    pending_gate = _evaluation_pending_gate_record_genids(workspace)
-    if all(not _generation_is_pending(rows.get(genid, {}), genid in pending_gate) for genid in intent.target_genids):
-        for genid in intent.target_genids:
-            if (
-                tag_exists(workspace, f"gen/{genid}")
-                and str(rows.get(genid, {}).get("parent")) != intent.source_generation
-            ):
-                raise RuntimeError(
-                    f"branch intent target parent mismatch for gen/{genid}: "
-                    f"expected {intent.source_generation}, got {rows.get(genid, {}).get('parent')}"
-                )
-        consume_branch_intent(workspace, intent)
-        print(
-            f"[evolve] branch intent consumed: generation {intent.target_generation}",
-            flush=True,
-        )
 
 
 def _maybe_final_anchor(workspace: Path, generation: int) -> None:
@@ -687,17 +429,6 @@ def doctor(workspace: Path) -> list[str]:
             remove_worktree(workspace, path)
             actions.append(f"removed stale worktree {path.name}")
     git(workspace, "worktree", "prune", check=False)
-    intent = load_branch_intent(workspace)
-    if intent is not None:
-        actions.append(f"active branch intent: gen/{intent.source_generation} -> generation {intent.target_generation}")
-    rows = rows_by_genid(workspace)
-    needs_lineage = sorted(
-        tag.removeprefix("gen/")
-        for tag in generation_tags(workspace)
-        if tag != "gen/0" and rows.get(tag.removeprefix("gen/"), {}).get("parent") is None
-    )
-    if needs_lineage:
-        actions.append(f"tagged candidate needs lineage recovery: {', '.join(needs_lineage)}")
     pending = sorted(_evaluation_pending_gate_record_genids(workspace))
     if pending:
         actions.append(f"pending gate/record (run will resume): {', '.join(pending)}")
@@ -732,12 +463,10 @@ def _resume_tagged_child(
     needs_gate_record = genid in _evaluation_pending_gate_record_genids(workspace)
     canonical = row.get("outcome") in CANONICAL_OUTCOMES
     if row.get("outcome") == Outcome.INFRASTRUCTURE_FAILED.value or not canonical:
-        print(f"[evolve] gen/{genid} evaluation: starting recovery attempt", flush=True)
         eval_child(workspace, genid, round_number=round_number)
         row = rows_by_genid(workspace).get(genid, {})
         needs_gate_record = genid in _evaluation_pending_gate_record_genids(workspace)
     if needs_gate_record:
-        print(f"[evolve] gen/{genid} gate/record: resuming", flush=True)
         _run_gate_and_record(workspace, exp_id, genid, parent, operators_config, round_number=round_number)
 
 

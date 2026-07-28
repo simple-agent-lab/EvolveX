@@ -53,7 +53,10 @@ def test_run_loads_workspace_dotenv_without_overriding_explicit_environment(
 ) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    (workspace / ".env").write_text("OPENAI_BASE_URL=https://dotenv.example/v1\nOPENAI_API_KEY=dotenv-key\n")
+    (workspace / ".env").write_text(
+        "OPENAI_BASE_URL=https://dotenv.example/v1\n"
+        "OPENAI_API_KEY=dotenv-key\n"
+    )
     monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
     monkeypatch.setenv("OPENAI_API_KEY", "explicit-key")
     captured: dict[str, str | None] = {}
@@ -94,17 +97,3 @@ def test_run_uses_caller_dotenv_as_fallback_for_separate_workspace(
     cli.run(workspace, max_generations=0)
 
     assert captured["base_url"] == "https://caller.example/v1"
-
-
-def test_run_passes_from_generation_to_driver(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    workspace = tmp_path / "workspace"
-    workspace.mkdir()
-    captured = {}
-
-    def fake_run(options) -> None:
-        captured["from_generation"] = options.from_generation
-
-    monkeypatch.setattr(cli, "driver_run", fake_run)
-    cli.run(workspace, max_generations=11, from_generation="4")
-
-    assert captured["from_generation"] == "4"
