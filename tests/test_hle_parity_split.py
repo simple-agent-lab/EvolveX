@@ -8,7 +8,6 @@ from conftest import run_evolve, write_locked_miniswe_seed
 from evolve.config import load_config
 from evolve.splits import build_manifest
 
-
 ROOT = Path(__file__).resolve().parents[1]
 SPLIT_DIR = ROOT / "experiments" / "hle-parity-100-49-100"
 SPLIT_NAMES = ("train", "gate", "sealed")

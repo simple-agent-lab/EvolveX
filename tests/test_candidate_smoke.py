@@ -10,7 +10,6 @@ from conftest import fixture_recipe_config, git, init_fixture_workspace, run_evo
 
 from evolve.candidate import smoke as candidate_smoke_module
 from evolve.candidate.smoke import run_candidate_smoke
-from evolve.config import default_config
 from evolve.uv_runtime import CandidateRuntimeResult, RuntimeMount
 from evolve.workspace import InitOptions, init_workspace
 
