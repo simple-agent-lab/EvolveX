@@ -233,7 +233,7 @@ optimization set during initialization.
 
 ```text
 evolve init <workspace> [--recipe ...] [--seed builtin-dummy|builtin-codex|PATH|GIT_URL] [--dataset LOCAL_TASK_DIR]
-evolve run <workspace> [--max-generations N] [--children-per-gen N] [--resume]
+evolve run <workspace> [--max-generations N] [--children-per-gen N] [--resume] [--from-generation GENID]
 evolve fork <workspace> <parent> <child-worktree>
 evolve commit <workspace> <child-worktree> --parent <id> --genid <id>
 evolve eval <workspace> <genid> [--force]
@@ -246,6 +246,20 @@ evolve report [workspace]
 `run` is the built-in driver. Agent-mode experiments can instead read
 `program.md` in the generated workspace and sequence the same verbs
 manually. The invariants are enforced inside the verbs either way.
+
+`run` resumes interrupted work from the experiment folder by default. Work
+before a candidate is tagged may be discarded and rerun; tagged candidates,
+certified evaluations, and completed generations are preserved.
+
+To branch future evolution non-destructively from a prior certified candidate:
+
+```bash
+evolve run <workspace> --from-generation 4 --max-generations 11
+```
+
+This creates the next unused generation with `gen/4` as its parent. It does not
+delete generations 5–10. If the process stops before the branch generation
+finishes, the forced-parent intent is resumed automatically.
 
 ## Honesty Guarantees
 
