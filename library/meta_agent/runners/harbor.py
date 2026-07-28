@@ -216,6 +216,8 @@ def _tree_manifest(root: Path) -> dict[str, tuple[str, str]]:
 
 def _initialize_sanitized_git(workspace: Path) -> None:
     git(workspace, "init", "--quiet")
+    git(workspace, "config", "gc.auto", "0")
+    git(workspace, "config", "maintenance.auto", "false")
     git(workspace, "config", "user.name", "Evolve Meta-Agent")
     git(workspace, "config", "user.email", "meta-agent@evolve.invalid")
     git(workspace, "add", "--all")

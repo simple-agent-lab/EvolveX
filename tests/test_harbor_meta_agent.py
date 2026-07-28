@@ -1115,6 +1115,23 @@ def test_harbor_bundle_omits_gitignored_checkout_state(
         shutil.rmtree(bundle.staging, ignore_errors=True)
 
 
+def test_sanitized_harbor_bundle_disables_background_git_maintenance(tmp_path: Path) -> None:
+    checkout, run_dir = _checkout(tmp_path)
+    runner = _harbor_runner_module()
+    bundle = runner._prepare_bundle(
+        checkout,
+        _ctx(checkout, run_dir),
+        ["target"],
+        runner.load_surface_policy(checkout),
+    )
+
+    try:
+        assert _git(bundle.workspace, "config", "--get", "gc.auto") == "0"
+        assert _git(bundle.workspace, "config", "--get", "maintenance.auto") == "false"
+    finally:
+        shutil.rmtree(bundle.staging, ignore_errors=True)
+
+
 def test_harbor_bundle_rejects_non_boolean_gate_visibility(tmp_path: Path) -> None:
     checkout, run_dir = _checkout(tmp_path)
     ctx = _ctx(checkout, run_dir)
