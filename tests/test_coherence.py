@@ -89,6 +89,25 @@ def test_no_test_hooks_in_mechanism() -> None:
             assert pattern not in text, f"test hook {pattern!r} in {path}"
 
 
+def _is_versioned_superpowers_document(path: str) -> bool:
+    return path.startswith(("docs/superpowers/specs/", "docs/superpowers/plans/"))
+
+
+def test_only_versioned_superpowers_specs_and_plans_are_allowed() -> None:
+    assert _is_versioned_superpowers_document(
+        "docs/superpowers/specs/approved-design.md"
+    )
+    assert _is_versioned_superpowers_document(
+        "docs/superpowers/plans/approved-plan.md"
+    )
+    assert not _is_versioned_superpowers_document(
+        "docs/superpowers/worktrees/temporary-copy.md"
+    )
+    assert not _is_versioned_superpowers_document(
+        "docs/superpowers/sdd/2026-07-28-task/report.md"
+    )
+
+
 def test_local_superpowers_artifacts_are_not_tracked() -> None:
     result = subprocess.run(
         ["git", "ls-files", "--", "docs/superpowers"],
@@ -97,7 +116,15 @@ def test_local_superpowers_artifacts_are_not_tracked() -> None:
         capture_output=True,
         text=True,
     )
-    assert result.stdout == ""
+    tracked_artifacts = [
+        path
+        for path in result.stdout.splitlines()
+        if not _is_versioned_superpowers_document(path)
+    ]
+    assert not tracked_artifacts, (
+        "transient Superpowers artifacts must not be tracked: "
+        f"{tracked_artifacts}"
+    )
 
 
 def test_stamped_fields_defined_once() -> None:
