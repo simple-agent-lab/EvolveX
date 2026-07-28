@@ -198,6 +198,7 @@ def _prepare_branch_intent(options: RunOptions, workspace: Path) -> BranchIntent
     if options.from_generation is None:
         if existing is not None:
             _validate_active_branch_intent(workspace, existing, options.children_per_gen)
+            _assert_branch_target_reachable(options, existing.source_generation, existing.target_generation)
             print(
                 f"[evolve] branch intent resumed: gen/{existing.source_generation} "
                 f"-> generation {existing.target_generation}",
@@ -211,6 +212,7 @@ def _prepare_branch_intent(options: RunOptions, workspace: Path) -> BranchIntent
                 f"conflicting branch intent: active gen/{existing.source_generation}, requested gen/{source}"
             )
         _validate_active_branch_intent(workspace, existing, options.children_per_gen)
+        _assert_branch_target_reachable(options, source, existing.target_generation)
         print(
             f"[evolve] branch intent resumed: gen/{existing.source_generation} "
             f"-> generation {existing.target_generation}",
@@ -225,8 +227,7 @@ def _prepare_branch_intent(options: RunOptions, workspace: Path) -> BranchIntent
             "cannot create branch while generations need recovery: " + ", ".join(f"gen/{value}" for value in unfinished)
         )
     target_generation = _next_generation_number(workspace)
-    if options.max_generations < target_generation:
-        raise RuntimeError(f"--max-generations must be at least {target_generation} to branch from gen/{source}")
+    _assert_branch_target_reachable(options, source, target_generation)
     target_genids = tuple(
         format_genid(target_generation, index, options.children_per_gen) for index in range(options.children_per_gen)
     )
@@ -244,6 +245,13 @@ def _prepare_branch_intent(options: RunOptions, workspace: Path) -> BranchIntent
         flush=True,
     )
     return created
+
+
+def _assert_branch_target_reachable(options: RunOptions, source_generation: str, target_generation: int) -> None:
+    if options.max_generations < target_generation:
+        raise RuntimeError(
+            f"--max-generations must be at least {target_generation} to branch from gen/{source_generation}"
+        )
 
 
 def _validate_active_branch_intent(

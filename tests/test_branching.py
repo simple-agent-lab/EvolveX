@@ -317,3 +317,19 @@ def test_active_intent_rejects_mismatched_source_tag(tmp_path: Path) -> None:
         run(RunOptions(workspace, max_generations=2))
 
     assert load_branch_intent(workspace) == intent
+
+
+@pytest.mark.parametrize("from_generation", [None, "0"], ids=["flagless", "explicit"])
+def test_active_intent_requires_max_generations_to_reach_target(
+    tmp_path: Path,
+    from_generation: str | None,
+) -> None:
+    workspace, _ = init_workspace(tmp_path)
+    run(RunOptions(workspace, max_generations=2))
+    persisted_intent(workspace, "0", 3, ("3",))
+    before = branch_intent_path(workspace).read_bytes()
+
+    with pytest.raises(RuntimeError, match="--max-generations must be at least 3"):
+        run(RunOptions(workspace, max_generations=2, from_generation=from_generation))
+
+    assert branch_intent_path(workspace).read_bytes() == before
