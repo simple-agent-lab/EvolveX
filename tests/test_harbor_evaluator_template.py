@@ -53,6 +53,82 @@ def test_harbor_evaluator_passes_verifier_timeout_multiplier() -> None:
     assert '--verifier-timeout-multiplier "$EVOLVE_HARBOR_VERIFIER_TIMEOUT_MULTIPLIER"' in text
 
 
+def test_harbor_evaluator_ignores_ambient_frozen_control_overrides(tmp_path: Path) -> None:
+    evaluator = tmp_path / "evaluator"
+    evaluator.mkdir()
+    _write_executable(evaluator / "eval.sh", _eval_sh("harbor", "fixture"))
+    (evaluator / "eval.env").write_text(
+        _eval_env(
+            "experiment",
+            "fixture",
+            n_concurrent=1,
+            tasks_per_round=1,
+            trials=1,
+            partial_floor=0.9,
+            agent="custom:Agent",
+            setup_timeout_multiplier=1,
+            agent_timeout_multiplier=1,
+            verifier_timeout_multiplier=1,
+            max_retries=0,
+        )
+    )
+    (evaluator / "agent.env").write_text("")
+    (evaluator / "verifier.env").write_text("")
+    (evaluator / "environment.kwargs").write_text("")
+    (evaluator / "splits.json").write_text('{"resolved":false}\n')
+    _write_evaluator_helpers(evaluator)
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    _write_fake_uv(fake_bin)
+    _write_executable(
+        fake_bin / "harbor",
+        "#!/bin/sh\n"
+        'printf \'%s\\n\' "$@" > "$HARBOR_ARGS_CAPTURE"\n'
+        "jobs_dir=\n"
+        'while [ "$#" -gt 0 ]; do\n'
+        '  if [ "$1" = "--jobs-dir" ]; then shift; jobs_dir=$1; fi\n'
+        "  shift || true\n"
+        "done\n"
+        'mkdir -p "$jobs_dir/trial"\n'
+        'printf \'%s\\n\' \'{"task_name":"task","trial_name":"trial","verifier_result":{"rewards":{"reward":1}}}\' > "$jobs_dir/trial/result.json"\n',
+    )
+    _write_executable(fake_bin / "docker", "#!/bin/sh\nexit 0\n")
+
+    args_capture = tmp_path / "args"
+    run_dir = tmp_path / "run"
+    env = {
+        **os.environ,
+        "HOME": str(tmp_path / "home"),
+        "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
+        "HARBOR_ARGS_CAPTURE": str(args_capture),
+        "EVOLVE_RUN_DIR": str(run_dir),
+        "EVOLVE_ATTEMPT_ID": "ambient-override-test",
+        "EVOLVE_FRAMEWORK_PYTHON": sys.executable,
+        "EVOLVE_CANDIDATE_RUNTIME_ENV_JSON": "{}",
+        "EVOLVE_CANDIDATE_RUNTIME_MOUNTS_JSON": "[]",
+        "EVOLVE_HARBOR_AGENT_SETUP_TIMEOUT_MULTIPLIER": "9",
+        "EVOLVE_HARBOR_AGENT_TIMEOUT_MULTIPLIER": "9",
+        "EVOLVE_HARBOR_VERIFIER_TIMEOUT_MULTIPLIER": "9",
+        "EVOLVE_HARBOR_MAX_RETRIES": "9",
+    }
+
+    result = subprocess.run(
+        [str(evaluator / "eval.sh")],
+        cwd=tmp_path,
+        env=env,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    args = args_capture.read_text().splitlines()
+    assert "--agent-setup-timeout-multiplier" not in args
+    assert "--agent-timeout-multiplier" not in args
+    assert "--verifier-timeout-multiplier" not in args
+    assert "--max-retries" not in args
+
+
 def test_harbor_evaluator_forwards_workspace_openai_environment() -> None:
     text = _eval_sh("harbor", "fixture")
 

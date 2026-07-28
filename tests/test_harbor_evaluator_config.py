@@ -68,6 +68,27 @@ def test_eval_env_freezes_verifier_timeout_multiplier() -> None:
     assert "EVOLVE_HARBOR_VERIFIER_TIMEOUT_MULTIPLIER=2\n" in env
 
 
+def test_eval_env_omits_neutral_harbor_controls() -> None:
+    env = _eval_env(
+        "exp",
+        "terminal-bench-2",
+        n_concurrent=1,
+        tasks_per_round=1,
+        trials=1,
+        partial_floor=0.9,
+        agent="custom:Agent",
+        setup_timeout_multiplier=1,
+        agent_timeout_multiplier=1,
+        verifier_timeout_multiplier=1,
+        max_retries=0,
+    )
+
+    assert "EVOLVE_HARBOR_AGENT_SETUP_TIMEOUT_MULTIPLIER" not in env
+    assert "EVOLVE_HARBOR_AGENT_TIMEOUT_MULTIPLIER" not in env
+    assert "EVOLVE_HARBOR_VERIFIER_TIMEOUT_MULTIPLIER" not in env
+    assert "EVOLVE_HARBOR_MAX_RETRIES" not in env
+
+
 def test_eval_env_and_environment_kwargs_render_local_backend() -> None:
     env = _eval_env(
         "exp",
