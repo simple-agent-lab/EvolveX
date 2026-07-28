@@ -53,6 +53,21 @@ def test_eval_env_freezes_agent_timeout_multiplier() -> None:
     assert "EVOLVE_HARBOR_AGENT_TIMEOUT_MULTIPLIER=4\n" in env
 
 
+def test_eval_env_freezes_verifier_timeout_multiplier() -> None:
+    env = _eval_env(
+        "exp",
+        "terminal-bench-2",
+        n_concurrent=8,
+        tasks_per_round=30,
+        trials=1,
+        partial_floor=0.8,
+        agent="evolve_harbor_adapter:MiniSweSourceAgent",
+        verifier_timeout_multiplier=2,
+    )
+
+    assert "EVOLVE_HARBOR_VERIFIER_TIMEOUT_MULTIPLIER=2\n" in env
+
+
 def test_eval_env_and_environment_kwargs_render_local_backend() -> None:
     env = _eval_env(
         "exp",

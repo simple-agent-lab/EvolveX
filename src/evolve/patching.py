@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -45,6 +46,8 @@ def create_candidate_patch(
 ) -> CandidatePatch:
     root = Path(checkout).resolve()
     notes: list[str] = []
+    if _restore_unchanged_injected_archive(root, parent_ref):
+        notes.append("ignored unchanged framework-injected archive.jsonl")
     changed = working_tree_changed_paths(root, parent_ref)
     violations = check_paths(changed, surface.include, surface.exclude)
 
@@ -63,6 +66,27 @@ def create_candidate_patch(
         diff = git(root, "diff", "--binary", parent_ref, snapshot.commit, "--").stdout
     surface_report = {"ok": not violations, "mutated": changed, "violations": violations}
     return CandidatePatch(changed_paths=changed, diff=diff, surface_report=surface_report, notes=notes)
+
+
+def _restore_unchanged_injected_archive(root: Path, parent_ref: str) -> bool:
+    workspace_raw = os.environ.get("EVOLVE_WORKSPACE")
+    checkout_raw = os.environ.get("EVOLVE_CHECKOUT")
+    if not workspace_raw or not checkout_raw:
+        return False
+    workspace = Path(workspace_raw).resolve()
+    if workspace == root or Path(checkout_raw).resolve() != root:
+        return False
+    live_archive = workspace / "archive.jsonl"
+    checkout_archive = root / "archive.jsonl"
+    try:
+        unchanged = live_archive.is_file() and checkout_archive.is_file() and (
+            live_archive.read_bytes() == checkout_archive.read_bytes()
+        )
+    except OSError:
+        return False
+    if not unchanged:
+        return False
+    return _repair_surface_path(root, parent_ref, "archive.jsonl") is not None
 
 
 def _candidate_diff(root: Path, parent_ref: str, changed: list[str]) -> str:

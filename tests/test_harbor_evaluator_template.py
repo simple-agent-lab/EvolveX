@@ -88,6 +88,7 @@ def test_harbor_evaluator_forwards_dependency_proxies_with_model_bypass_and_skip
         )
     )
     (evaluator / "environment.kwargs").write_text('workdir="/workspace"\n')
+    (evaluator / "verifier.env").write_text("JUDGE_MODEL=gpt-5.4-mini-2026-03-17\n")
     _write_evaluator_helpers(evaluator)
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
@@ -140,6 +141,8 @@ def test_harbor_evaluator_forwards_dependency_proxies_with_model_bypass_and_skip
     }
     assert expected_proxy_environment.issubset(agent_environment)
     assert expected_proxy_environment.issubset(verifier_environment)
+    assert "JUDGE_MODEL=gpt-5.4-mini-2026-03-17" in verifier_environment
+    assert "JUDGE_MODEL=gpt-5.4-mini-2026-03-17" not in agent_environment
     assert not docker_marker.exists()
     run_dir = tmp_path / "run"
     assert stat.S_IMODE(run_dir.stat().st_mode) == 0o700
@@ -299,7 +302,10 @@ def test_harbor_smoke_is_install_only_and_exposes_raw_diagnostics(tmp_path: Path
     verifier_environment = [args[index + 1] for index, value in enumerate(args) if value == "--ve"]
     for key, value in runtime_env.items():
         assert f"{key}={value}" in agent_environment
-        assert f"{key}={value}" in verifier_environment
+        if key == "UV_OFFLINE":
+            assert f"{key}={value}" not in verifier_environment
+        else:
+            assert f"{key}={value}" in verifier_environment
     assert not (run_dir / "harbor-result.json").exists()
     assert not (run_dir / "score").exists()
 

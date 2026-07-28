@@ -30,4 +30,5 @@ evaluator:
   tasks_per_round: 8
   k: 1
   n_concurrent: 1
-  partial_floor: 0.8
+  max_retries: 0
+  partial_floor: 0.9

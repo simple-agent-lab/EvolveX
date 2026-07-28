@@ -20,7 +20,7 @@ def _lifecycle_workspace(tmp_path: Path, outcomes: dict[str, list[str]]) -> Path
         "run_dir = Path(os.environ['EVOLVE_RUN_DIR'])\n"
         "run_dir.mkdir(parents=True, exist_ok=True)\n"
         "purpose = os.environ['EVOLVE_EVAL_KIND']\n"
-        "attempt = int(run_dir.name.removeprefix('attempt-'))\n"
+        "attempt = int(run_dir.name[len('attempt-'):])\n"
         "sequence = outcomes.get(purpose, outcomes.get('candidate', ['benchmark_complete']))\n"
         "outcome = sequence[min(attempt - 1, len(sequence) - 1)]\n"
         "owner = 'candidate' if outcome == 'candidate_invalid' else 'benchmark_agent'\n"
@@ -47,7 +47,7 @@ def _evaluation_events(workspace: Path, genid: str) -> list[dict[str, object]]:
     ]
 
 
-def test_candidate_infrastructure_failure_is_recorded_once_without_batch_replay(
+def test_candidate_infrastructure_failure_is_recorded_without_automatic_retry(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -63,18 +63,7 @@ def test_candidate_infrastructure_failure_is_recorded_once_without_batch_replay(
     run(RunOptions(workspace, max_generations=1, children_per_gen=1))
 
     attempts = _evaluation_events(workspace, "1")
-    assert [event["attempt"] for event in attempts] == [1, 2]
-    assert attempts[0]["candidate_commit"] == attempts[1]["candidate_commit"]
-    assert attempts[1]["retry_of"] == 1
-    assert attempts[1]["source_attempts"] == [2]
-    assert attempts[1]["repaired_tasks"] == ["case-a"]
-    assert attempts[1]["trials"][0]["source_attempt"] == 2
-    assert attempts[1]["trials"][0]["repaired_from_attempt"] == 1
-    repaired_trial = attempts[1]["task_vector"]["tasks"]["case-a"]["trials"][0]
-    assert repaired_trial["source_attempt"] == 2
-    assert repaired_trial["repaired_from_attempt"] == 1
-    repair_dir = Path(workspace / attempts[1]["artifacts"]["path"]).parent
-    assert (repair_dir / "repair-task-names.txt").read_text() == "case-a\n"
-    assert (repair_dir / "composite_evaluation_artifacts.json").exists()
-    assert rows_by_genid(workspace)["1"]["attempt"] == 2
-    assert rows_by_genid(workspace)["1"]["status"] == "complete"
+    assert [event["attempt"] for event in attempts] == [1]
+    assert attempts[0].get("retry_of") is None
+    assert rows_by_genid(workspace)["1"]["attempt"] == 1
+    assert rows_by_genid(workspace)["1"]["status"] == "infrastructure_failed"

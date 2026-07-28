@@ -205,8 +205,18 @@ if [ -f evaluator/agent.env ]; then
     [ -n "$agent_entry" ] && set -- "$@" --ae "$agent_entry"
   done < evaluator/agent.env
 fi
+if [ -f evaluator/verifier.env ]; then
+  while IFS= read -r verifier_entry || [ -n "$verifier_entry" ]; do
+    [ -n "$verifier_entry" ] && set -- "$@" --ve "$verifier_entry"
+  done < evaluator/verifier.env
+fi
 while IFS= read -r runtime_entry || [ -n "$runtime_entry" ]; do
-  [ -n "$runtime_entry" ] && set -- "$@" --ae "$runtime_entry" --ve "$runtime_entry"
+  if [ -n "$runtime_entry" ]; then
+    case "$runtime_entry" in
+      UV_OFFLINE=*) set -- "$@" --ae "$runtime_entry" ;;
+      *) set -- "$@" --ae "$runtime_entry" --ve "$runtime_entry" ;;
+    esac
+  fi
 done < "$EVOLVE_RUN_DIR/candidate-runtime.env"
 if [ -n "${EVOLVE_CANDIDATE_SMOKE_MODE:-}" ]; then
   set -- "$@" --install-only --ae "EVOLVE_CANDIDATE_SMOKE_MODE=$EVOLVE_CANDIDATE_SMOKE_MODE"

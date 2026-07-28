@@ -32,6 +32,6 @@ evaluator:
   anchor: {final: true, every_rounds: 0}
   k: 1
   n_concurrent: 16
-  max_retries: 1
+  max_retries: 0
   benchmark_timeout_is_zero: true
-  partial_floor: 0.8
+  partial_floor: 0.9

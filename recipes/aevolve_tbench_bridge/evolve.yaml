@@ -91,5 +91,5 @@ evaluator:
   n_concurrent: 10
   agent_setup_timeout_multiplier: 3
   agent_timeout_multiplier: 4
-  max_retries: 15
-  partial_floor: 0.8
+  max_retries: 0
+  partial_floor: 0.9

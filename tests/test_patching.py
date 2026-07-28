@@ -104,6 +104,59 @@ def test_create_candidate_patch_reports_remaining_violation_when_repair_disabled
     assert patch.notes == []
 
 
+def test_create_candidate_patch_ignores_unchanged_injected_live_archive(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    root = _repo(tmp_path)
+    live_archive = '{"genid":"0","score":0.5}\n'
+    (workspace / "archive.jsonl").write_text(live_archive)
+    (root / "archive.jsonl").write_text(live_archive)
+    (root / "target" / "agent.py").write_text("print('child')\n")
+    monkeypatch.setenv("EVOLVE_WORKSPACE", str(workspace))
+    monkeypatch.setenv("EVOLVE_CHECKOUT", str(root))
+
+    patch = create_candidate_patch(
+        checkout=root,
+        parent_ref="gen/0",
+        surface=SurfacePolicy(include=["target/**"], exclude=[]),
+        repair=False,
+    )
+
+    assert patch.changed_paths == ["target/agent.py"]
+    assert patch.surface_report == {"ok": True, "mutated": ["target/agent.py"], "violations": []}
+    assert "archive.jsonl" not in patch.diff
+    assert not (root / "archive.jsonl").exists()
+
+
+def test_create_candidate_patch_keeps_agent_modified_injected_archive_as_violation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    root = _repo(tmp_path)
+    (workspace / "archive.jsonl").write_text('{"genid":"0","score":0.5}\n')
+    (root / "archive.jsonl").write_text('{"genid":"0","score":0.9}\n')
+    monkeypatch.setenv("EVOLVE_WORKSPACE", str(workspace))
+    monkeypatch.setenv("EVOLVE_CHECKOUT", str(root))
+
+    patch = create_candidate_patch(
+        checkout=root,
+        parent_ref="gen/0",
+        surface=SurfacePolicy(include=["target/**"], exclude=[]),
+        repair=False,
+    )
+
+    assert patch.changed_paths == ["archive.jsonl"]
+    assert patch.surface_report == {
+        "ok": False,
+        "mutated": ["archive.jsonl"],
+        "violations": ["archive.jsonl"],
+    }
+    assert (root / "archive.jsonl").exists()
+
+
 def test_create_candidate_patch_rejects_already_staged_path(tmp_path: Path) -> None:
     root = _repo(tmp_path)
     (root / "target" / "agent.py").write_text("print('child')\n")

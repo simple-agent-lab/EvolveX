@@ -97,7 +97,7 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "evolve_tools: false" in config
             assert "agent: evolve_harbor_adapter:MiniSweSourceAgent" in config
             assert evaluator["candidate_runtime"] == {"variant": "uv", "project": "target", "python": "3.12"}
-            assert evaluator["max_retries"] == 15
+            assert evaluator["max_retries"] == 0
         elif name == "gepa":
             assert "dataset: swe-bench-lite" in config
             assert "seed: builtin-codex" in config
@@ -243,12 +243,12 @@ def test_terminal_bench_recipe_split_matches_frozen_membership() -> None:
     }
 
 
-def test_real_uv_recipes_enable_candidate_runtime_and_task_retry() -> None:
+def test_real_uv_recipes_enable_candidate_runtime() -> None:
     for name in UV_SOURCE_RECIPES:
         evaluator = _parsed_config(name)["evaluator"]
         assert isinstance(evaluator, dict)
         assert evaluator["candidate_runtime"] == {"variant": "uv", "project": "target", "python": "3.12"}
-        assert evaluator["max_retries"] == 1
+        assert evaluator["max_retries"] == 0
         assert evaluator["benchmark_timeout_is_zero"] is True
 
 
@@ -351,6 +351,24 @@ def test_hyperagents_recipe_configures_reasoning_without_cost_caps() -> None:
         "MINISWE_REASONING_EFFORT": "high",
         "MINISWE_STEP_LIMIT": "100",
     }
+
+
+def test_hle_recipes_pin_supported_judge_model() -> None:
+    for name in ("ahe_hle", "hyperagents_hle"):
+        recipe = _parsed_config(name)
+        assert recipe["evaluator"]["verifier_env"] == {
+            "JUDGE_MODEL": "gpt-5.4-mini-2026-03-17"
+        }
+
+
+def test_all_recipes_disable_expensive_evaluator_retries() -> None:
+    for name in RECIPE_NAMES:
+        assert _parsed_config(name)["evaluator"]["max_retries"] == 0
+
+
+def test_all_recipes_use_ninety_percent_partial_evidence_floor() -> None:
+    for name in RECIPE_NAMES:
+        assert _parsed_config(name)["evaluator"]["partial_floor"] == 0.9
 
 
 def test_harbor_evaluator_accepts_validated_runtime_concurrency_override() -> None:

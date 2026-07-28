@@ -29,4 +29,5 @@ evaluator:
   anchor: {final: true, every_rounds: 0}
   k: 1
   n_concurrent: 16
-  partial_floor: 0.8
+  max_retries: 0
+  partial_floor: 0.9

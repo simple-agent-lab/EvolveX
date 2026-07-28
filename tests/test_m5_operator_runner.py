@@ -1,6 +1,7 @@
 import textwrap
 from pathlib import Path
 
+from evolve.driver import _run_operator_guarded
 from evolve.operators import OperatorResult, run_operator
 
 
@@ -85,3 +86,31 @@ def test_run_operator_nonzero_and_timeout(tmp_path):
     )
     assert timed_out.returncode == -1
     assert "timeout" in timed_out.stderr.lower()
+
+
+def test_guarded_operator_restores_archive_in_child_checkout(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    checkout = tmp_path / "checkout"
+    run_dir = workspace / "runs" / "gen-1"
+    workspace.mkdir()
+    checkout.mkdir()
+    live_archive = '{"genid":"0","score":0.5}\n'
+    (workspace / "archive.jsonl").write_text(live_archive)
+    (checkout / "archive.jsonl").write_text("")
+    _write_operator(checkout, "probe", "pass\n")
+
+    result = _run_operator_guarded(
+        name="probe",
+        checkout=checkout,
+        workspace=workspace,
+        exp_id="experiment",
+        genid="1",
+        parent="0",
+        run_dir=run_dir,
+        config_block={},
+        timeout_s=30,
+    )
+
+    assert result.returncode == 0
+    assert (workspace / "archive.jsonl").read_text() == live_archive
+    assert (checkout / "archive.jsonl").read_text() == ""

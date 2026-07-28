@@ -88,6 +88,46 @@ def test_partial_evidence_is_scoreless_even_when_present_trials_have_rewards() -
     assert record.score is None
 
 
+def test_partial_floor_accepts_sparse_infrastructure_failures_conservatively() -> None:
+    trials = tuple(
+        TrialResult(f"task-{index}", 0, Outcome.BENCHMARK_COMPLETE, 1.0, "benchmark")
+        for index in range(48)
+    ) + (
+        TrialResult("task-48", 0, Outcome.INFRASTRUCTURE_FAILED, None, "ambiguous", "ProcessExit"),
+        TrialResult("task-49", 0, Outcome.INFRASTRUCTURE_FAILED, None, "infrastructure", "MissingReward"),
+    )
+
+    record = classify_evaluation(
+        **record_values(),
+        trials=trials,
+        expected_trials=50,
+        partial_floor=0.8,
+    )
+
+    assert record.outcome is Outcome.BENCHMARK_COMPLETE
+    assert record.score == 0.96
+    assert record.selection_eligible is True
+    assert record.reason == "partial evidence accepted: 48/50 scoreable trials"
+    assert [trial.outcome for trial in record.trials[-2:]] == [
+        Outcome.INFRASTRUCTURE_FAILED,
+        Outcome.INFRASTRUCTURE_FAILED,
+    ]
+
+
+def test_partial_floor_rejects_systemically_missing_evidence() -> None:
+    trials = (TrialResult("task-0", 0, Outcome.BENCHMARK_COMPLETE, 1.0, "benchmark"),)
+
+    record = classify_evaluation(
+        **record_values(),
+        trials=trials,
+        expected_trials=100,
+        partial_floor=0.8,
+    )
+
+    assert record.outcome is Outcome.INFRASTRUCTURE_FAILED
+    assert record.score is None
+
+
 def test_unknown_exception_ownership_is_infrastructure() -> None:
     trial = TrialResult("a", 0, Outcome.BENCHMARK_COMPLETE, 1.0, "unknown", "RuntimeError")
 

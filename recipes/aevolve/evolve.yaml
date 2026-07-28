@@ -52,5 +52,5 @@ evaluator:
   k: 1
   n_concurrent: 4
   agent_setup_timeout_multiplier: 3
-  max_retries: 1
-  partial_floor: 0.8
+  max_retries: 0
+  partial_floor: 0.9

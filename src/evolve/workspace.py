@@ -148,9 +148,10 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
     tasks_per_round = int(evaluator.get("tasks_per_round", evaluator_trials))
     evaluator_n = int(evaluator.get("n_concurrent", evaluator_trials))
     evaluator_environment = str(evaluator.get("environment") or "")
-    partial_floor = float(evaluator.get("partial_floor", 0.8))
+    partial_floor = float(evaluator.get("partial_floor", 0.9))
     setup_timeout_multiplier = float(evaluator.get("agent_setup_timeout_multiplier", 1))
     agent_timeout_multiplier = float(evaluator.get("agent_timeout_multiplier", 1))
+    verifier_timeout_multiplier = float(evaluator.get("verifier_timeout_multiplier", 1))
     max_retries = int(evaluator.get("max_retries", 0))
     task_scope = str(evaluator.get("task_scope", "partitioned"))
     split = evaluator.get("split")
@@ -205,9 +206,11 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
             task_file=str(evaluator["task_file"]) if "task_file" in evaluator else None,
             setup_timeout_multiplier=setup_timeout_multiplier,
             agent_timeout_multiplier=agent_timeout_multiplier,
+            verifier_timeout_multiplier=verifier_timeout_multiplier,
             max_retries=max_retries,
         ),
         "evaluator/agent.env": _agent_env(evaluator.get("agent_env")),
+        "evaluator/verifier.env": _agent_env(evaluator.get("verifier_env")),
         "evaluator/environment.kwargs": _environment_kwargs(evaluator.get("environment_kwargs")),
         "evaluator/splits.json": json.dumps(split_manifest, indent=2, sort_keys=True) + "\n",
         "evaluator/dataset.pin": f"dataset={evaluator_dataset}\nchecksum=sha256:stub\n",
@@ -501,20 +504,42 @@ def _git_clone(url: str, destination: Path, *, revision: str | None = None) -> N
     git = shutil.which("git")
     if git is None:
         raise RuntimeError("git is required for evolve init")
-    commands = (
-        [[git, "clone", "--depth", "1", url, str(destination)]]
-        if revision is None
-        else [
+    if revision is None:
+        commands = [[git, "clone", "--depth", "1", url, str(destination)]]
+    else:
+        commands = [
             [git, "init", str(destination)],
             [git, "-C", str(destination), "remote", "add", "origin", url],
-            [git, "-C", str(destination), "fetch", "--depth", "1", "origin", revision],
-            [git, "-C", str(destination), "checkout", "--detach", "FETCH_HEAD"],
         ]
-    )
     for command in commands:
         result = subprocess.run(command, text=True, capture_output=True, check=False)
         if result.returncode != 0:
             raise RuntimeError(result.stderr.strip() or "git clone failed")
+    if revision is None:
+        return
+    fetch = subprocess.run(
+        [git, "-C", str(destination), "fetch", "--depth", "1", "origin", revision],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if fetch.returncode != 0:
+        fetch = subprocess.run(
+            [git, "-C", str(destination), "fetch", "origin"],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    if fetch.returncode != 0:
+        raise RuntimeError(fetch.stderr.strip() or "git fetch failed")
+    checkout = subprocess.run(
+        [git, "-C", str(destination), "checkout", "--detach", revision],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if checkout.returncode != 0:
+        raise RuntimeError(checkout.stderr.strip() or "git checkout failed")
 
 
 def _generate_target_lock(target: Path) -> None:
@@ -646,6 +671,7 @@ def _eval_env(
     task_file: str | None = None,
     setup_timeout_multiplier: float = 1,
     agent_timeout_multiplier: float = 1,
+    verifier_timeout_multiplier: float = 1,
     max_retries: int = 0,
 ) -> str:
     expected_trials = tasks_per_round * max(trials, 1)
@@ -666,6 +692,8 @@ def _eval_env(
         text += f"EVOLVE_HARBOR_AGENT_SETUP_TIMEOUT_MULTIPLIER={setup_timeout_multiplier}\n"
     if agent_timeout_multiplier > 1:
         text += f"EVOLVE_HARBOR_AGENT_TIMEOUT_MULTIPLIER={agent_timeout_multiplier}\n"
+    if verifier_timeout_multiplier > 1:
+        text += f"EVOLVE_HARBOR_VERIFIER_TIMEOUT_MULTIPLIER={verifier_timeout_multiplier}\n"
     if max_retries > 0:
         text += f"EVOLVE_HARBOR_MAX_RETRIES={max_retries}\n"
     if model:

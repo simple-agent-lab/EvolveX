@@ -19,6 +19,15 @@ SAFE_ARTIFACTS = (
     "exception.txt",
 )
 _CANDIDATE_MARKER = "EVOLVE_CANDIDATE_INVALID:"
+_MISSING_TOOL_OUTPUT = "No tool output found for function call"
+_VERIFIER_UV_RESOLUTION_ERROR = "No solution found when resolving tool dependencies:"
+_VERIFIER_UV_OFFLINE_HINTS = (
+    "was not found in the cache",
+    "Packages were unavailable because the network was disabled",
+)
+_VERIFIER_UV_DOWNLOAD_ERROR = "error: Failed to download:"
+_VERIFIER_UV_REQUEST_ERROR = "Caused by: Request failed"
+_VERIFIER_CURL_SERVER_ERROR = re.compile(r"curl: \(\d+\) The requested URL returned error: 5\d\d\b")
 _SAFE_ERROR_CODE = re.compile(r"[a-z0-9_]+")
 _SENSITIVE_ENV_NAME = re.compile(
     r"(?i)(?:proxy|api[_-]?key|access[_-]?token|token|secret|password|authorization|auth)"
@@ -41,6 +50,8 @@ def candidate_error_code(exception_info: object) -> str | None:
     if not isinstance(exception_info, dict):
         return None
     message = str(exception_info.get("exception_message") or "")
+    if _MISSING_TOOL_OUTPUT in message:
+        return "invalid_tool_history"
     if _CANDIDATE_MARKER not in message:
         return None
     code = message.partition(_CANDIDATE_MARKER)[2].strip().splitlines()[0].strip()
@@ -79,7 +90,13 @@ def _load_task_trials(jobs_dir: Path) -> list[dict[str, Any]]:
         trial_name = result.get("trial_name")
         if not isinstance(task_name, str) or not isinstance(trial_name, str):
             continue
-        status, reward, owner = _trial_result(result, verifier_timeout_is_final_zero=verifier_timeout_is_final_zero)
+        trial_dir = result_path.parent
+        verifier_dependency_error = None if (_reward(result) or 0.0) > 0.0 else _verifier_dependency_error(trial_dir)
+        status, reward, owner = _trial_result(
+            result,
+            verifier_timeout_is_final_zero=verifier_timeout_is_final_zero,
+            verifier_dependency_error=verifier_dependency_error,
+        )
         exception_info = result.get("exception_info")
         exception_type = None
         exception_message = None
@@ -88,7 +105,9 @@ def _load_task_trials(jobs_dir: Path) -> list[dict[str, Any]]:
             raw_message = exception_info.get("exception_message")
             exception_type = str(raw_type) if raw_type else None
             exception_message = _exception_message(raw_message)
-        trial_dir = result_path.parent
+        if exception_type is None and verifier_dependency_error:
+            exception_type = "VerifierDependencyError"
+            exception_message = verifier_dependency_error
         trials.append(
             {
                 "task_name": task_name,
@@ -166,7 +185,14 @@ def _verifier_timeout_is_final_zero(jobs_dir: Path) -> bool:
         return False
 
 
-def _trial_result(result: dict[str, Any], *, verifier_timeout_is_final_zero: bool) -> tuple[str, float | None, str]:
+def _trial_result(
+    result: dict[str, Any],
+    *,
+    verifier_timeout_is_final_zero: bool,
+    verifier_dependency_error: str | None = None,
+) -> tuple[str, float | None, str]:
+    if verifier_dependency_error:
+        return "infrastructure_failed", None, "evaluator"
     exception = result.get("exception_info") or {}
     exception_type = str(exception.get("exception_type") or "")
     if exception_type in {"AgentTimeoutError", "AgentExecutionTimeoutError"}:
@@ -185,6 +211,21 @@ def _trial_result(result: dict[str, Any], *, verifier_timeout_is_final_zero: boo
     if reward is not None:
         return "benchmark_complete", reward, "benchmark"
     return "infrastructure_failed", None, "evaluator"
+
+
+def _verifier_dependency_error(trial_dir: Path) -> str | None:
+    output = trial_dir / "verifier" / "test-stdout.txt"
+    try:
+        text = output.read_text(errors="replace")
+    except OSError:
+        return None
+    if _VERIFIER_UV_RESOLUTION_ERROR in text and any(hint in text for hint in _VERIFIER_UV_OFFLINE_HINTS):
+        return "verifier uv tool dependency resolution failed"
+    if _VERIFIER_UV_DOWNLOAD_ERROR in text and _VERIFIER_UV_REQUEST_ERROR in text:
+        return "verifier uv tool dependency download failed"
+    if _VERIFIER_CURL_SERVER_ERROR.search(text):
+        return "verifier dependency bootstrap download failed"
+    return None
 
 
 def _cost_usd(result: dict[str, Any]) -> float:

@@ -114,21 +114,29 @@ def classify_evaluation(
     *,
     trials: tuple[TrialResult, ...],
     expected_trials: int,
+    partial_floor: float = 1.0,
     benchmark_timeout_is_zero: bool = False,
     setup_outcome: Outcome | None = None,
     setup_reason: str | None = None,
     **values: Any,
 ) -> EvaluationRecord:
+    if expected_trials < 1:
+        raise ValueError("expected_trials must be at least 1")
+    if not 0 < partial_floor <= 1:
+        raise ValueError("partial_floor must be greater than zero and at most one")
     outcomes = tuple(effective_trial_outcome(trial) for trial in trials)
     if setup_outcome is not None:
         outcomes = (setup_outcome, *outcomes)
-    if Outcome.INFRASTRUCTURE_FAILED in outcomes:
+    scoreable = tuple(
+        trial
+        for trial in trials
+        if effective_trial_outcome(trial) not in {Outcome.INFRASTRUCTURE_FAILED, Outcome.CANDIDATE_INVALID}
+        and trial.score_eligible(benchmark_timeout_is_zero=benchmark_timeout_is_zero)
+    )
+    coverage = len(scoreable) / expected_trials
+    if setup_outcome is Outcome.INFRASTRUCTURE_FAILED:
         outcome = Outcome.INFRASTRUCTURE_FAILED
-        reason = (
-            setup_reason
-            if setup_outcome is Outcome.INFRASTRUCTURE_FAILED and setup_reason
-            else "infrastructure-owned trial failure"
-        )
+        reason = setup_reason or "evaluation infrastructure failed"
     elif Outcome.CANDIDATE_INVALID in outcomes:
         outcome = Outcome.CANDIDATE_INVALID
         reason = (
@@ -138,14 +146,19 @@ def classify_evaluation(
         )
     elif Outcome.CANCELLED in outcomes:
         outcome, reason = Outcome.CANCELLED, setup_reason or "evaluation cancelled"
-    elif not trials or len(trials) != expected_trials:
-        outcome, reason = Outcome.INFRASTRUCTURE_FAILED, "missing required trial evidence"
-    elif all(trial.score_eligible(benchmark_timeout_is_zero=benchmark_timeout_is_zero) for trial in trials):
-        outcome, reason = Outcome.BENCHMARK_COMPLETE, "all required trials are scoreable"
+    elif scoreable and coverage >= partial_floor:
+        outcome = Outcome.BENCHMARK_COMPLETE
+        reason = (
+            "all required trials are scoreable"
+            if len(scoreable) == expected_trials and len(trials) == expected_trials
+            else f"partial evidence accepted: {len(scoreable)}/{expected_trials} scoreable trials"
+        )
+    elif Outcome.INFRASTRUCTURE_FAILED in outcomes or not trials or len(trials) != expected_trials:
+        outcome, reason = Outcome.INFRASTRUCTURE_FAILED, "insufficient scoreable trial evidence"
     else:
         outcome, reason = Outcome.TIMEOUT, "non-scoreable timeout"
     score = (
-        sum(float(trial.reward) for trial in trials if trial.reward is not None) / len(trials)
+        sum(float(trial.reward) for trial in scoreable if trial.reward is not None) / expected_trials
         if outcome is Outcome.BENCHMARK_COMPLETE
         else None
     )

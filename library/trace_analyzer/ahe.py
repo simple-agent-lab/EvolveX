@@ -586,6 +586,17 @@ def _change_evaluation(ctx: OperatorContext, cases: list[Case], field_limit: int
 
 def _task_vector_outcome(task: Case) -> str:
     trials = _list(task.get("trials"))
+    rewards = [
+        float(trial["reward"])
+        for trial in trials
+        if isinstance(trial, dict)
+        and isinstance(trial.get("reward"), (int, float))
+        and not isinstance(trial.get("reward"), bool)
+    ]
+    if rewards and len(rewards) == len(trials) and all(reward > 0 for reward in rewards):
+        return "pass"
+    if rewards:
+        return "fail"
     statuses = [str(trial.get("status") or "") for trial in trials if isinstance(trial, dict)]
     if statuses and all(status == "passed" for status in statuses):
         return "pass"

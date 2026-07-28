@@ -34,7 +34,6 @@ from .evaluation import (
     evaluation_status,
 )
 from .evaluation.execution import EvaluationInterrupted, evaluate
-from .evaluation.repair import evaluation_record_from_payload, repair_task_ids
 from .feedback import write_feedback_bundle
 from .frozen.interfaces import (
     ArchiveView,
@@ -87,10 +86,6 @@ class RunOptions:
     workspace: Path
     max_generations: int
     children_per_gen: int = 1
-
-
-class EvaluationPaused(RuntimeError):
-    """The same committed candidate exhausted its one infrastructure retry."""
 
 
 @dataclass(frozen=True)
@@ -873,6 +868,11 @@ def _evaluate_once(
     pending_gate_on_complete: bool = False,
     resume_infrastructure: bool = True,
 ) -> EvaluationRecord:
+    """Run one evaluation attempt and preserve its evidence.
+
+    A later explicit resume is the operator-controlled retry boundary.
+    """
+
     def run_attempt(**kwargs: Any) -> EvaluationRecord:
         try:
             record = evaluate(workspace, tag, genid, purpose=purpose, **kwargs)
@@ -883,23 +883,7 @@ def _evaluate_once(
         _append_lifecycle_evaluation(workspace, record, metadata, pending_gate_on_complete)
         return record
 
-    previous = _last_evaluation_event(workspace, genid, purpose, round_number) if resume_infrastructure else None
-    if previous is not None and previous.get("outcome") == Outcome.INFRASTRUCTURE_FAILED:
-        if previous.get("retry_of") is not None:
-            raise EvaluationPaused(f"gen/{genid} infrastructure failed twice")
-        first = evaluation_record_from_payload(previous)
-    else:
-        first = run_attempt()
-        if first.outcome is not Outcome.INFRASTRUCTURE_FAILED:
-            return first
-
-    failed_tasks = repair_task_ids(first)
-    second = run_attempt(repair_from=first) if failed_tasks else run_attempt(retry_of=first.attempt)
-    if second.candidate_commit != first.candidate_commit:
-        raise RuntimeError(f"gen/{genid} changed commit during infrastructure retry")
-    if second.outcome is Outcome.INFRASTRUCTURE_FAILED:
-        raise EvaluationPaused(f"gen/{genid} infrastructure failed twice")
-    return second
+    return run_attempt()
 
 
 def _append_lifecycle_evaluation(
@@ -918,23 +902,6 @@ def _append_lifecycle_evaluation(
         else {}
     )
     append_evaluation_record(workspace, record, metadata={**metadata, **gate_metadata})
-
-
-def _last_evaluation_event(
-    workspace: Path,
-    genid: str,
-    purpose: str,
-    round_number: int | None,
-) -> dict[str, Any] | None:
-    for event in reversed(read_events(archive_path(workspace))):
-        if (
-            event.get("event_type") == "evaluation"
-            and str(event.get("genid")) == genid
-            and event.get("purpose") == purpose
-            and event.get("round") == round_number
-        ):
-            return event
-    return None
 
 
 def _select_generation_parents(
@@ -1340,7 +1307,9 @@ def _run_operator_guarded(
 ) -> OperatorResult:
     before = _archive_line_snapshots(workspace, exp_id)
     if checkout.resolve() != workspace.resolve():
-        _write_archive_lines(archive_path(checkout), before[archive_path(workspace)])
+        checkout_archive = archive_path(checkout)
+        before[checkout_archive] = _archive_lines(checkout_archive)
+        _write_archive_lines(checkout_archive, before[archive_path(workspace)])
         receipts = _archive_lines(eval_receipt_path(archive_path(workspace)))
         if receipts:
             _write_archive_lines(eval_receipt_path(archive_path(checkout)), receipts)

@@ -37,9 +37,9 @@ evaluator:
   k: 1
   n_concurrent: 25
   agent_timeout_multiplier: 2
-  max_retries: 1
+  max_retries: 0
   benchmark_timeout_is_zero: true
-  partial_floor: 0.8
+  partial_floor: 0.9
   agent_env:
     MINISWE_STEP_LIMIT: "100"
     MINISWE_REASONING_EFFORT: "high"
