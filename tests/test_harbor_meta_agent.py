@@ -8,6 +8,8 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from harbor.models.exec.config import ExecConfig
+from harbor.trial.queue import TrialQueue
 
 from evolve.agent import AgentCommandError
 from evolve.frozen.interfaces import OperatorContext
@@ -228,7 +230,10 @@ if "--config" in sys.argv:
     jobs_dir = Path(job_config["jobs_dir"])
     job_name = job_config["job_name"]
     agent_config = job_config["agents"][0]
-    if agent_config["name"] != "evolve_harbor_adapter:MiniSweSourceAgent":
+    if agent_config["name"] not in (
+        "evolve_harbor_adapter:MiniSweSourceAgent",
+        "evolve_harbor_agent:FileTaskMiniSweAgent",
+    ):
         raise SystemExit("unexpected config agent")
     if agent_config["model_name"] != "gpt-test":
         raise SystemExit("expected config model")
@@ -512,6 +517,55 @@ def test_harbor_meta_agent_injects_staged_miniswe_candidate_source(
             "target": "/installed-agent/uv-cache",
         }
     ]
+
+
+def test_file_task_meta_agent_configures_per_attempt_timeout_and_timeout_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checkout, run_dir = _checkout(tmp_path)
+    bin_dir = tmp_path / "bin"
+    _install_fake_harbor(bin_dir)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    ctx = _ctx(checkout, run_dir)
+    ctx.config.update(
+        {
+            "agent": FILE_TASK_AGENT,
+            "image": "evolve-meta-agent:test",
+            "max_retries": 1,
+            "timeout_s": 3600,
+        }
+    )
+    runner = _harbor_runner_module()
+    observed: dict[str, object] = {}
+    real_run_harbor = runner._run_harbor
+
+    def capture_run_harbor(*args, timeout_s=None, **kwargs):
+        observed["process_timeout_s"] = timeout_s
+        return real_run_harbor(*args, timeout_s=timeout_s, **kwargs)
+
+    monkeypatch.setattr(runner, "_run_harbor", capture_run_harbor)
+
+    runner.run_agent(checkout, "failure evidence", ctx)
+
+    harbor_root = run_dir / "meta_agent" / "harbor"
+    config = ExecConfig.model_validate_json((harbor_root / "exec-config.json").read_text())
+    job = config.map.job
+    assert config.map.compile.environments[0].docker_image == "evolve-meta-agent:test"
+    assert job.agents[0].override_timeout_sec == 3600
+    assert job.n_attempts == 1
+    assert job.retry.max_retries == 1
+    assert job.retry.exclude_exceptions == {
+        "VerifierTimeoutError",
+        "RewardFileNotFoundError",
+        "RewardFileEmptyError",
+        "VerifierOutputParseError",
+        "ApiUsageLimitError",
+    }
+    queue = TrialQueue(1, retry_config=job.retry)
+    assert queue._should_retry_exception("AgentTimeoutError")
+    assert queue._calculate_backoff_delay_sec(0) == 1
+    assert observed["process_timeout_s"] == 7205.0
 
 
 @pytest.mark.parametrize(

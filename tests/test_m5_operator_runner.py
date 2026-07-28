@@ -111,14 +111,14 @@ def test_harbor_meta_agent_outer_timeout_budgets_every_retry(
         genid="1",
         parent=None,
         run_dir=tmp_path / "r",
-        config_block={"runner": "harbor", "max_retries": 1},
+        config_block={"runner": "harbor", "max_retries": 1, "timeout_s": 3600},
         timeout_s=3600,
     )
 
     assert result.returncode == 0
     assert observed == {
-        "timeout": 7205.0,
-        "env_timeout": "7205.0",
+        "timeout": 7215.0,
+        "env_timeout": "7215.0",
     }
 
 

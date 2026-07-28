@@ -15,7 +15,7 @@ import threading
 import time
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, SupportsFloat, SupportsIndex, cast
 from urllib.parse import urlsplit
 
 from evolve.agent import AgentCommandError, AgentRunResult
@@ -33,6 +33,16 @@ _READONLY_REPORT = "ahe-debugger-response.md"
 _EVAL_RECEIPT = ".evolve-eval-receipts.jsonl"
 _FILE_TASK_AGENT = "evolve_harbor_agent:FileTaskMiniSweAgent"
 _SAFE_INLINE_INSTRUCTION_BYTES = 96 * 1024
+# Harbor 0.18's first retry backoff is one second; reserve four more seconds
+# for deleting and recreating its single trial before the second attempt.
+_RETRY_TRANSITION_HEADROOM_S = 5.0
+_RETRY_EXCLUDE_EXCEPTIONS = (
+    "VerifierTimeoutError",
+    "RewardFileNotFoundError",
+    "RewardFileEmptyError",
+    "VerifierOutputParseError",
+    "ApiUsageLimitError",
+)
 _VISIBLE_RUN_INPUTS = ("rollout", "trace_analyzer", "feedback")
 _HIDDEN_WORKSPACE_ROOTS = {".git", ".venv", "runs", "artifacts", "archive.jsonl", _EVAL_RECEIPT, "evaluator"}
 _SECRET_ASSIGNMENT = re.compile(
@@ -498,6 +508,32 @@ def _nonnegative_int(value: object, default: int) -> int:
         return default
 
 
+def _positive_float(value: object) -> float | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        parsed = float(cast(str | SupportsFloat | SupportsIndex, value))
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
+def _retry_config(config: dict[str, Any]) -> dict[str, Any]:
+    max_retries = _nonnegative_int(config.get("max_retries"), 0)
+    retry: dict[str, Any] = {"max_retries": max_retries}
+    if max_retries:
+        retry["exclude_exceptions"] = list(_RETRY_EXCLUDE_EXCEPTIONS)
+    return retry
+
+
+def _meta_agent_process_timeout_s(config: dict[str, Any]) -> float | None:
+    timeout_s = _positive_float(config.get("timeout_s"))
+    if timeout_s is None:
+        return None
+    max_retries = _nonnegative_int(config.get("max_retries"), 0)
+    return timeout_s * (max_retries + 1) + _RETRY_TRANSITION_HEADROOM_S * max_retries
+
+
 def _append_agent_env(command: list[str], config: dict[str, Any]) -> None:
     for key, value in _agent_env(config).items():
         command.extend(["--ae", f"{key}={value}"])
@@ -569,6 +605,7 @@ def _miniswe_config_command(
     candidate_source: Path,
     artifact: str | None,
     uv_cache_dir: Path,
+    agent_timeout_s: float | None,
 ) -> list[str]:
     agent_env = _agent_env(config)
     agent_env.setdefault("EVOLVE_CANDIDATE_SOURCE", str(candidate_source.resolve()))
@@ -576,6 +613,8 @@ def _miniswe_config_command(
         "name": str(config.get("agent")),
         "env": agent_env,
     }
+    if agent_timeout_s is not None:
+        agent["override_timeout_sec"] = agent_timeout_s
     model = config.get("model")
     if model:
         agent["model_name"] = str(model)
@@ -586,7 +625,7 @@ def _miniswe_config_command(
     compile_environment: dict[str, Any] = {"paths": [str(source.resolve())]}
     image = config.get("image")
     if image:
-        compile_environment["image"] = str(image)
+        compile_environment["docker_image"] = str(image)
     workdir = str(config.get("workdir") or "/app")
     if workdir != "/app":
         compile_environment["workdir"] = workdir
@@ -608,12 +647,15 @@ def _miniswe_config_command(
             }
         ],
     }
+    environment_kwargs = config.get("environment_kwargs")
+    if isinstance(environment_kwargs, dict):
+        environment["kwargs"] = environment_kwargs
     job_config: dict[str, Any] = {
         "job_name": job_name,
         "jobs_dir": str(jobs_root.resolve()),
         "n_concurrent_trials": 1,
         "quiet": os.environ.get("EVOLVE_LIVE_OUTPUT") != "1",
-        "retry": {"max_retries": _nonnegative_int(config.get("max_retries"), 0)},
+        "retry": _retry_config(config),
         "environment": environment,
         "agents": [agent],
     }
@@ -693,7 +735,7 @@ def _build_command(
     uv_cache_dir: Path | None = None,
 ) -> list[str]:
     agent = str(config.get("agent") or "codex")
-    if agent.endswith(":MiniSweSourceAgent"):
+    if agent.endswith(":MiniSweSourceAgent") or agent == _FILE_TASK_AGENT:
         if "target" not in bundle.roots:
             raise ValueError("MiniSweSourceAgent requires target in editable_roots")
         return _miniswe_config_command(
@@ -707,6 +749,7 @@ def _build_command(
             candidate_source=bundle.workspace / "target",
             artifact=_ARTIFACT_SOURCE,
             uv_cache_dir=uv_cache_dir or _uv_cache_dir(bundle.task_root),
+            agent_timeout_s=_positive_float(config.get("timeout_s")),
         )
     command = _base_command(harbor, bundle.task_root, prompt_path, jobs_root, tasks_dir, job_name, config)
     workdir_index = command.index("--workdir")
@@ -946,6 +989,7 @@ def run_readonly_agent(
                 candidate_source=checkout / "target",
                 artifact=None,
                 uv_cache_dir=_uv_cache_dir(ctx.workspace),
+                agent_timeout_s=timeout_s,
             )
         else:
             command = _base_command(harbor, task_root, prompt_path, jobs_root, tasks_dir, job_name, ctx.config)
@@ -1052,7 +1096,13 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
             _uv_cache_dir(ctx.workspace),
         )
         _write_json(harbor_root / "command.json", [_redact(arg) for arg in command])
-        returncode, wall_s = _run_harbor(command, checkout, harbor_root / "harbor.log", harbor_env)
+        returncode, wall_s = _run_harbor(
+            command,
+            checkout,
+            harbor_root / "harbor.log",
+            harbor_env,
+            timeout_s=_meta_agent_process_timeout_s(ctx.config),
+        )
         usage["wall_s"] = wall_s
         trial_dir, trial = _trial_result(jobs_root / job_name)
         usage = _usage(trial, wall_s)

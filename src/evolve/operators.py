@@ -29,7 +29,11 @@ namespace = {"__name__": "__main__", "__file__": str(script), "__package__": Non
 exec(compile(script.read_bytes(), str(script), "exec"), namespace)
 """
 
-_HARBOR_META_AGENT_HEADROOM_S = 5.0
+# Harbor 0.18 waits one second before the first retry; the remaining four
+# seconds cover removal/recreation of its single trial between attempts.
+_HARBOR_RETRY_TRANSITION_HEADROOM_S = 5.0
+_HARBOR_PROCESS_TERMINATION_GRACE_S = 5.0
+_OPERATOR_CHILD_EXIT_GRACE_S = 5.0
 
 
 def _text(value: object | None) -> str:
@@ -46,13 +50,18 @@ def _progress(message: str) -> None:
 
 
 def _operator_deadline_s(name: str, config_block: dict[str, Any], timeout_s: float) -> float:
-    if name != "meta_agent" or config_block.get("runner") != "harbor":
+    if name != "meta_agent" or config_block.get("runner") != "harbor" or timeout_s <= 0:
         return timeout_s
     try:
         max_retries = max(0, int(config_block.get("max_retries", 0)))
     except (TypeError, ValueError):
         max_retries = 0
-    return timeout_s * (max_retries + 1) + _HARBOR_META_AGENT_HEADROOM_S
+    return (
+        timeout_s * (max_retries + 1)
+        + _HARBOR_RETRY_TRANSITION_HEADROOM_S * max_retries
+        + _HARBOR_PROCESS_TERMINATION_GRACE_S
+        + _OPERATOR_CHILD_EXIT_GRACE_S
+    )
 
 
 def run_operator(
