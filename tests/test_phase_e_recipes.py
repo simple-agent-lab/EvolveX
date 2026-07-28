@@ -138,7 +138,7 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "budget_usd" not in config
             assert "agent: evolve_harbor_agent:FileTaskMiniSweAgent" in config
             assert "editable_roots: [target]" in config
-            assert "max_retries: 2" in config
+            assert "max_retries: 1" in config
             assert "agent: evolve_harbor_adapter:MiniSweSourceAgent" in config
             assert "image: evolve-meta-agent-app:20260724-tools-mswe245" in config
             assert "task_scope: full" not in config
@@ -172,7 +172,7 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "runner: harbor" in config
             assert "agent: evolve_harbor_agent:FileTaskMiniSweAgent" in config
             assert "editable_roots: [target, operators]" in config
-            assert "max_retries: 2" in config
+            assert "max_retries: 1" in config
             assert "validate: {variant: hyperagents" in config
             assert "gate: {variant: parent_eligible}" in config
             assert "record: {variant: hyperagents}" in config
@@ -252,11 +252,32 @@ def test_real_uv_recipes_enable_candidate_runtime() -> None:
         assert evaluator["benchmark_timeout_is_zero"] is True
 
 
-def test_shared_optimization_recipes_double_candidate_agent_timeout() -> None:
-    for name in ("ahe", "hyperagents"):
-        evaluator = _parsed_config(name)["evaluator"]
-        assert isinstance(evaluator, dict)
-        assert evaluator["agent_timeout_multiplier"] == 2
+@pytest.mark.parametrize(
+    "name",
+    ["ahe", "ahe_hle", "hyperagents", "hyperagents_hle"],
+)
+def test_four_experiment_recipes_share_runtime_contract(name: str) -> None:
+    recipe = _parsed_config(name)
+    evaluator = recipe["evaluator"]
+    meta_agent = recipe["operators"]["meta_agent"]
+
+    assert evaluator["agent_setup_timeout_multiplier"] == 1
+    assert evaluator["agent_timeout_multiplier"] == 1
+    assert evaluator["verifier_timeout_multiplier"] == 1
+    assert evaluator["max_retries"] == 0
+    assert evaluator["k"] == 1
+    assert evaluator["benchmark_timeout_is_zero"] is True
+    assert evaluator["partial_floor"] == 0.9
+    assert meta_agent["timeout_s"] == 3600
+    assert meta_agent["max_retries"] == 1
+
+
+@pytest.mark.parametrize("name", ["ahe", "ahe_hle"])
+def test_ahe_recipes_disable_trace_debugger_whole_job_retries(name: str) -> None:
+    trace = _parsed_config(name)["operators"]["trace_analyzer"]
+
+    assert trace["debugger_max_retries"] == 0
+    assert "retry_attempts" not in trace
 
 
 def test_miniswe_method_agents_use_the_rollout_model_version() -> None:
