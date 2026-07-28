@@ -49,9 +49,9 @@ jobs:
 
       - name: Check scaffold lock offline
         id: check-scaffold-lock
-         env:
-           UV_OFFLINE: "1"
-         run: uv lock --project scaffolds/workspace --check --offline
+        env:
+          UV_OFFLINE: "1"
+        run: uv lock --project scaffolds/workspace --check --offline
 
       - name: Probe generated workspaces offline
         id: offline-workspace-probe
