@@ -1,4 +1,5 @@
 import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -12,6 +13,7 @@ from evolve.workspace import InitOptions, _write_target, init_workspace
 
 CANDIDATE = "evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent"
 FILE_TASK = "evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent"
+ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 CASES = {
     "hill_climb": ("external", CANDIDATE, "codex"),
     "aevolve": ("codex", "target.agent:HarborAgent", "codex"),
@@ -129,7 +131,7 @@ def test_recipe_name_and_path_are_mutually_exclusive(tmp_path: Path) -> None:
     )
 
     assert result.returncode == 2
-    assert "cannot combine --recipe with --recipe-path" in result.stderr
+    assert "cannot combine --recipe with --recipe-path" in ANSI_ESCAPE.sub("", result.stderr)
 
 
 @pytest.mark.parametrize("reserved_name", ["eval.sh", "splits.json"])
