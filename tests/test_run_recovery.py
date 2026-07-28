@@ -5,9 +5,11 @@ import pytest
 from conftest import init_workspace, rows_by_genid, smoke_agent_command
 
 from evolve import driver
+from evolve.archive import STAMPED_FIELDS, archive_path, eval_receipt_path, mirror_path, read_events
+from evolve.branching import BranchIntent, create_branch_intent
 from evolve.config import experiment_id
-from evolve.driver import RunOptions, commit_child, fork_child, run
-from evolve.git import direct_parent_commit, git, tag_exists
+from evolve.driver import RunOptions, commit_child, doctor, fork_child, run
+from evolve.git import direct_parent_commit, generation_tags, git, tag_exists
 
 
 @pytest.fixture(autouse=True)
@@ -16,48 +18,53 @@ def smoke_run_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("EVOLVE_AGENT_COMMAND", smoke_agent_command())
 
 
-def completed_generation_snapshot(workspace: Path, genid: str = "0") -> tuple[object, ...]:
-    row = rows_by_genid(workspace)[genid]
-    artifact = row.get("artifacts")
-    artifact_path = None
-    artifact_bytes = None
-    if isinstance(artifact, dict) and isinstance(artifact.get("path"), str):
-        artifact_path = artifact["path"]
-        artifact_bytes = (workspace / artifact_path).read_bytes()
-    receipts = workspace / ".evolve-eval-receipts.jsonl"
-    archive_events = tuple(
-        line
-        for line in (workspace / "archive.jsonl").read_text().splitlines()
-        if str(json.loads(line).get("genid")) == genid
-    )
-    return (
-        git(workspace, "rev-parse", f"gen/{genid}^{{commit}}").stdout.strip(),
-        archive_events,
-        tuple(receipts.read_text().splitlines()),
-        artifact_path,
-        artifact_bytes,
-    )
+def completed_state_snapshot(workspace: Path) -> tuple[object, ...]:
+    tags = {tag: git(workspace, "rev-parse", f"{tag}^{{commit}}").stdout.strip() for tag in generation_tags(workspace)}
+    local_archive = archive_path(workspace)
+    mirrored_archive = mirror_path(experiment_id(workspace))
+    evidence = {
+        str(path): tuple(path.read_text().splitlines()) if path.exists() else ()
+        for path in (
+            local_archive,
+            mirrored_archive,
+            eval_receipt_path(local_archive),
+            eval_receipt_path(mirrored_archive),
+        )
+    }
+    referenced_files: dict[str, bytes] = {}
+
+    def snapshot_references(value: object) -> None:
+        if isinstance(value, dict):
+            path = value.get("path")
+            if isinstance(path, str):
+                referenced = workspace / path
+                if referenced.is_file():
+                    referenced_files[path] = referenced.read_bytes()
+            for nested in value.values():
+                snapshot_references(nested)
+        elif isinstance(value, list):
+            for nested in value:
+                snapshot_references(nested)
+
+    snapshot_references(read_events(local_archive))
+    return tags, evidence, referenced_files
 
 
-def assert_completed_generation_preserved(
+def assert_completed_state_preserved(
     workspace: Path,
     before: tuple[object, ...],
-    genid: str = "0",
 ) -> None:
-    before_commit, before_events, before_receipts, artifact_path, before_artifact = before
-    after_commit, after_events, after_receipts, _, _ = completed_generation_snapshot(workspace, genid)
-    assert after_commit == before_commit
-    assert isinstance(before_events, tuple)
-    assert isinstance(after_events, tuple)
-    assert all(after_events.count(event) >= before_events.count(event) for event in before_events)
-    assert isinstance(before_receipts, tuple)
-    assert isinstance(after_receipts, tuple)
-    assert all(after_receipts.count(receipt) >= before_receipts.count(receipt) for receipt in before_receipts)
-    if isinstance(artifact_path, str):
-        assert (workspace / artifact_path).read_bytes() == before_artifact
-    else:
-        assert artifact_path is None
-        assert before_artifact is None
+    before_tags, before_evidence, before_files = before
+    after_tags, after_evidence, _ = completed_state_snapshot(workspace)
+    assert isinstance(before_tags, dict)
+    assert isinstance(after_tags, dict)
+    assert all(after_tags.get(tag) == commit for tag, commit in before_tags.items())
+    assert isinstance(before_evidence, dict)
+    assert isinstance(after_evidence, dict)
+    for path, lines in before_evidence.items():
+        assert all(after_evidence[path].count(line) >= lines.count(line) for line in lines)
+    assert isinstance(before_files, dict)
+    assert all((workspace / path).read_bytes() == contents for path, contents in before_files.items())
 
 
 def tagged_child_based_on_moved_parent(workspace: Path, tmp_path: Path) -> None:
@@ -146,7 +153,7 @@ def test_tagged_candidate_recovers_missing_lineage_without_reselecting(
     fork_child(workspace, "0", child)
     target = child / "target" / "agent.py"
     target.write_text(target.read_text() + "\n# interrupted candidate\n")
-    completed_before = completed_generation_snapshot(workspace)
+    completed_before = completed_state_snapshot(workspace)
 
     real_append = driver.append_event
 
@@ -159,6 +166,7 @@ def test_tagged_candidate_recovers_missing_lineage_without_reselecting(
     monkeypatch.setattr(driver, "append_event", real_append)
     assert tag_exists(workspace, "gen/1")
     assert "1" not in rows_by_genid(workspace)
+    assert "tagged candidate needs lineage recovery: 1" in doctor(workspace)
 
     monkeypatch.setattr(
         driver,
@@ -171,7 +179,113 @@ def test_tagged_candidate_recovers_missing_lineage_without_reselecting(
     assert row["parent"] == "0"
     assert row["mutated"] == ["target/agent.py"]
     assert row["status"] == "complete"
-    assert_completed_generation_preserved(workspace, completed_before)
+    assert_completed_state_preserved(workspace, completed_before)
+
+
+def test_untagged_generation_discards_stale_operator_output_before_rerun(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    workspace, _ = init_workspace(tmp_path)
+    run(RunOptions(workspace, max_generations=0))
+    stale = workspace / "runs" / "gen-1" / "stale-sentinel"
+    stale.parent.mkdir(parents=True, exist_ok=True)
+    stale.write_text("interrupted\n")
+    completed_before = completed_state_snapshot(workspace)
+
+    run(RunOptions(workspace, max_generations=1))
+
+    assert rows_by_genid(workspace)["1"]["status"] == "complete"
+    assert not stale.exists()
+    assert "[evolve] discarded stale operator output for gen/1" in capsys.readouterr().out
+    assert_completed_state_preserved(workspace, completed_before)
+
+
+def test_tagged_candidate_starts_new_evaluation_attempt_after_partial_attempt(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    workspace, _ = init_workspace(tmp_path)
+    run(RunOptions(workspace, max_generations=0))
+    child = tmp_path / "child"
+    fork_child(workspace, "0", child)
+    target = child / "target" / "agent.py"
+    target.write_text(target.read_text() + "\n# candidate\n")
+    commit_child(workspace, child, "0", "1")
+    commit = git(workspace, "rev-parse", "gen/1^{commit}").stdout.strip()
+    partial = workspace / "runs" / "evaluations" / "candidate" / "gen-1" / f"candidate-{commit}" / "attempt-1"
+    partial.mkdir(parents=True)
+    (partial / "partial-sentinel").write_text("interrupted\n")
+    completed_before = completed_state_snapshot(workspace)
+
+    run(RunOptions(workspace, max_generations=1))
+
+    row = rows_by_genid(workspace)["1"]
+    assert row["attempt"] == 2
+    assert (partial / "partial-sentinel").read_text() == "interrupted\n"
+    assert "[evolve] gen/1 evaluation: starting recovery attempt" in capsys.readouterr().out
+    assert_completed_state_preserved(workspace, completed_before)
+
+
+def _remove_gate_event(path: Path, genid: str) -> None:
+    events = read_events(path)
+    candidates = [
+        index
+        for index, event in enumerate(events)
+        if str(event.get("genid")) == genid
+        and STAMPED_FIELDS.isdisjoint(event)
+        and {"valid_parent", "verdict", "reason"} <= set(event)
+    ]
+    assert len(candidates) == 1
+    del events[candidates[0]]
+    path.write_text("".join(json.dumps(event, sort_keys=True) + "\n" for event in events))
+
+
+def test_completed_evaluation_resumes_only_pending_gate_record(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    workspace, evolve_home = init_workspace(tmp_path)
+    run(RunOptions(workspace, max_generations=1))
+    _remove_gate_event(workspace / "archive.jsonl", "1")
+    _remove_gate_event(evolve_home / "mirrors" / workspace.name / "archive.jsonl", "1")
+    assert rows_by_genid(workspace)["1"]["pending_gate_record"] is True
+    completed_before = completed_state_snapshot(workspace)
+    monkeypatch.setattr(
+        driver,
+        "eval_child",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("evaluation reran")),
+    )
+    monkeypatch.setattr(
+        driver,
+        "_select_generation_parents",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("selection reran")),
+    )
+
+    run(RunOptions(workspace, max_generations=1))
+
+    row = rows_by_genid(workspace)["1"]
+    assert row["pending_gate_record"] is False
+    assert row["status"] == "complete"
+    assert "[evolve] gen/1 gate/record: resuming" in capsys.readouterr().out
+    assert_completed_state_preserved(workspace, completed_before)
+
+
+def test_doctor_reports_active_branch_intent(tmp_path: Path) -> None:
+    workspace, _ = init_workspace(tmp_path)
+    run(RunOptions(workspace, max_generations=0))
+    intent = BranchIntent(
+        source_generation="0",
+        source_tag="gen/0",
+        source_commit=git(workspace, "rev-parse", "gen/0^{commit}").stdout.strip(),
+        target_generation=1,
+        target_genids=("1",),
+        created_at="2026-07-28T00:00:00+00:00",
+    )
+    create_branch_intent(workspace, intent)
+
+    assert "active branch intent: gen/0 -> generation 1" in doctor(workspace)
 
 
 def test_tagged_candidate_refuses_archive_git_parent_contradiction(tmp_path: Path) -> None:

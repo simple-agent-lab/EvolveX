@@ -3,6 +3,7 @@ from __future__ import annotations
 import fcntl
 import json
 import os
+import shutil
 import tempfile
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -165,6 +166,8 @@ def _run_locked(options: RunOptions, workspace: Path) -> None:
         }
         untagged = [genid for genid in pending if genid not in selected]
         if untagged:
+            for action in _clear_untagged_generation_state(workspace, gen, untagged):
+                print(f"[evolve] {action}", flush=True)
             untagged_selected = _branch_parents(intent, gen, untagged)
             if untagged_selected is None:
                 untagged_selected = _select_generation_parents(
@@ -195,6 +198,29 @@ def _run_locked(options: RunOptions, workspace: Path) -> None:
         if intent is not None and gen == intent.target_generation:
             _consume_completed_branch_intent(workspace, intent)
     _maybe_final_anchor(workspace, options.max_generations)
+
+
+def _clear_untagged_generation_state(
+    workspace: Path,
+    generation: int,
+    genids: list[str],
+) -> list[str]:
+    actions: list[str] = []
+    select_dir = workspace / "runs" / f"gen-{generation}" / "select"
+    if select_dir.exists():
+        shutil.rmtree(select_dir)
+        actions.append(f"discarded stale selection output for generation {generation}")
+    for genid in genids:
+        child = _child_worktree_path(workspace, genid)
+        if child.exists():
+            remove_worktree(workspace, child)
+            actions.append(f"removed stale worktree {child.name}")
+        run_dir = _run_dir(workspace, genid)
+        if run_dir.exists():
+            shutil.rmtree(run_dir)
+            actions.append(f"discarded stale operator output for gen/{genid}")
+    git(workspace, "worktree", "prune", check=False)
+    return actions
 
 
 def _recover_tagged_parent(workspace: Path, exp_id: str, genid: str) -> str:
@@ -661,6 +687,17 @@ def doctor(workspace: Path) -> list[str]:
             remove_worktree(workspace, path)
             actions.append(f"removed stale worktree {path.name}")
     git(workspace, "worktree", "prune", check=False)
+    intent = load_branch_intent(workspace)
+    if intent is not None:
+        actions.append(f"active branch intent: gen/{intent.source_generation} -> generation {intent.target_generation}")
+    rows = rows_by_genid(workspace)
+    needs_lineage = sorted(
+        tag.removeprefix("gen/")
+        for tag in generation_tags(workspace)
+        if tag != "gen/0" and rows.get(tag.removeprefix("gen/"), {}).get("parent") is None
+    )
+    if needs_lineage:
+        actions.append(f"tagged candidate needs lineage recovery: {', '.join(needs_lineage)}")
     pending = sorted(_evaluation_pending_gate_record_genids(workspace))
     if pending:
         actions.append(f"pending gate/record (run will resume): {', '.join(pending)}")
@@ -695,10 +732,12 @@ def _resume_tagged_child(
     needs_gate_record = genid in _evaluation_pending_gate_record_genids(workspace)
     canonical = row.get("outcome") in CANONICAL_OUTCOMES
     if row.get("outcome") == Outcome.INFRASTRUCTURE_FAILED.value or not canonical:
+        print(f"[evolve] gen/{genid} evaluation: starting recovery attempt", flush=True)
         eval_child(workspace, genid, round_number=round_number)
         row = rows_by_genid(workspace).get(genid, {})
         needs_gate_record = genid in _evaluation_pending_gate_record_genids(workspace)
     if needs_gate_record:
+        print(f"[evolve] gen/{genid} gate/record: resuming", flush=True)
         _run_gate_and_record(workspace, exp_id, genid, parent, operators_config, round_number=round_number)
 
 
