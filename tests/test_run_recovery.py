@@ -60,6 +60,82 @@ def assert_completed_generation_preserved(
         assert before_artifact is None
 
 
+def tagged_child_based_on_moved_parent(workspace: Path, tmp_path: Path) -> None:
+    moved_parent = tmp_path / "moved-parent"
+    fork_child(workspace, "0", moved_parent)
+    parent_target = moved_parent / "target" / "agent.py"
+    parent_target.write_text(parent_target.read_text() + "\n# uncertified moved parent\n")
+    git(moved_parent, "add", "target/agent.py")
+    git(moved_parent, "commit", "-m", "uncertified moved parent")
+    moved_parent_commit = git(moved_parent, "rev-parse", "HEAD").stdout.strip()
+    driver.remove_worktree(workspace, moved_parent)
+    git(workspace, "tag", "-f", "gen/0", moved_parent_commit)
+
+    child = tmp_path / "moved-parent-child"
+    driver.add_worktree(workspace, child, "gen/0")
+    child_target = child / "target" / "agent.py"
+    child_target.write_text(child_target.read_text() + "\n# child of moved parent\n")
+    git(child, "add", "target/agent.py")
+    git(child, "commit", "-m", "child of moved parent")
+    git(child, "tag", "gen/1")
+    driver.remove_worktree(workspace, child)
+
+
+def recovery_evidence_snapshot(workspace: Path) -> tuple[object, ...]:
+    row = rows_by_genid(workspace)["0"]
+    artifact = row.get("artifacts")
+    artifact_path = artifact.get("path") if isinstance(artifact, dict) else None
+    artifact_bytes = (workspace / artifact_path).read_bytes() if isinstance(artifact_path, str) else None
+    return (
+        (workspace / "archive.jsonl").read_bytes(),
+        (workspace / ".evolve-eval-receipts.jsonl").read_bytes(),
+        git(workspace, "rev-parse", "gen/0^{commit}").stdout.strip(),
+        git(workspace, "rev-parse", "gen/1^{commit}").stdout.strip(),
+        artifact_path,
+        artifact_bytes,
+    )
+
+
+def test_missing_lineage_refuses_child_based_on_moved_parent_tag(tmp_path: Path) -> None:
+    workspace, _ = init_workspace(tmp_path)
+    run(RunOptions(workspace, max_generations=0))
+    tagged_child_based_on_moved_parent(workspace, tmp_path)
+    evidence_before = recovery_evidence_snapshot(workspace)
+
+    with pytest.raises(RuntimeError, match="Git/archive contradiction for parent gen/0"):
+        driver._recover_tagged_parent(workspace, experiment_id(workspace), "1")
+
+    assert recovery_evidence_snapshot(workspace) == evidence_before
+
+
+def test_recorded_lineage_refuses_child_based_on_moved_parent_tag(tmp_path: Path) -> None:
+    workspace, _ = init_workspace(tmp_path)
+    run(RunOptions(workspace, max_generations=0))
+    tagged_child_based_on_moved_parent(workspace, tmp_path)
+    driver.append_event(
+        workspace,
+        experiment_id(workspace),
+        {
+            "genid": "1",
+            "parent": "0",
+            "tag": "gen/1",
+            "mutated": ["target/agent.py"],
+            "surface_violations": [],
+        },
+    )
+    evidence_before = recovery_evidence_snapshot(workspace)
+
+    with pytest.raises(RuntimeError, match="Git/archive contradiction for parent gen/0"):
+        driver._tagged_parent(
+            workspace,
+            experiment_id(workspace),
+            "1",
+            rows_by_genid(workspace)["1"],
+        )
+
+    assert recovery_evidence_snapshot(workspace) == evidence_before
+
+
 def test_tagged_candidate_recovers_missing_lineage_without_reselecting(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -207,6 +207,7 @@ def _recover_tagged_parent(workspace: Path, exp_id: str, genid: str) -> str:
             tag_exists(workspace, f"gen/{parent}")
             and git_stdout(workspace, "rev-parse", f"gen/{parent}^{{commit}}") == parent_commit
         ):
+            _certified_source_commit(workspace, parent)
             candidates.append(parent)
     if len(candidates) != 1:
         detail = ", ".join(f"gen/{value}" for value in candidates) or "none"
@@ -246,7 +247,7 @@ def _tagged_parent(
         return _recover_tagged_parent(workspace, exp_id, genid)
     parent = str(recorded)
     actual = direct_parent_commit(workspace, f"gen/{genid}")
-    expected = git_stdout(workspace, "rev-parse", f"gen/{parent}^{{commit}}")
+    expected = _certified_source_commit(workspace, parent)
     if actual != expected:
         raise RuntimeError(
             f"lineage contradiction for gen/{genid}: archive parent gen/{parent} does not match Git parent {actual}"
