@@ -4,10 +4,10 @@ import pytest
 from conftest import init_workspace, rows_by_genid, run_evolve, smoke_agent_command
 
 from evolve import driver
-from evolve.archive import archive_path, eval_receipt_path
+from evolve.archive import archive_path
 from evolve.branching import BranchIntent, branch_intent_path, create_branch_intent, load_branch_intent
 from evolve.driver import RunOptions, commit_child, fork_child, run
-from evolve.git import generation_tags, git_stdout
+from evolve.git import git_stdout
 
 
 @pytest.fixture(autouse=True)
@@ -71,39 +71,6 @@ def persisted_intent(workspace: Path, source: str, target: int, genids: tuple[st
             target_genids=genids,
             created_at="2026-07-28T00:00:00+00:00",
         ),
-    )
-
-
-def branch_evidence_snapshot(workspace: Path, target_genid: str) -> tuple[object, ...]:
-    archive = archive_path(workspace)
-    artifacts = tuple(
-        sorted(
-            (path.relative_to(workspace).as_posix(), path.read_bytes())
-            for path in workspace.glob("runs/evaluations/**/evaluation_artifacts.json")
-        )
-    )
-    return (
-        git_stdout(workspace, "rev-parse", f"gen/{target_genid}^{{commit}}"),
-        archive.read_bytes(),
-        eval_receipt_path(archive).read_bytes(),
-        branch_intent_path(workspace).read_bytes(),
-        artifacts,
-    )
-
-
-def durable_history_snapshot(workspace: Path) -> tuple[object, ...]:
-    archive = archive_path(workspace)
-    artifacts = tuple(
-        sorted(
-            (path.relative_to(workspace).as_posix(), path.read_bytes())
-            for path in workspace.glob("runs/evaluations/**/evaluation_artifacts.json")
-        )
-    )
-    return (
-        tuple((tag, git_stdout(workspace, "rev-parse", f"{tag}^{{commit}}")) for tag in generation_tags(workspace)),
-        archive.read_bytes(),
-        eval_receipt_path(archive).read_bytes(),
-        artifacts,
     )
 
 
@@ -306,24 +273,6 @@ def test_completed_intent_refuses_target_with_contradictory_parent(tmp_path: Pat
     assert archive_path(workspace).read_bytes() == archive_before
 
 
-def test_tagged_active_intent_rejects_wrong_parent_before_evaluation(tmp_path: Path) -> None:
-    workspace, _ = init_workspace(tmp_path)
-    run(RunOptions(workspace, max_generations=1))
-    intent = persisted_intent(workspace, "0", 2, ("2",))
-    child = tmp_path / "wrong-parent-child"
-    fork_child(workspace, "1", child)
-    target = child / "target" / "agent.py"
-    target.write_text(target.read_text() + "\n# target contradicts forced parent\n")
-    commit_child(workspace, child, "1", "2")
-    before = branch_evidence_snapshot(workspace, "2")
-
-    with pytest.raises(RuntimeError, match="branch intent target parent mismatch for gen/2"):
-        run(RunOptions(workspace, max_generations=2))
-
-    assert branch_evidence_snapshot(workspace, "2") == before
-    assert load_branch_intent(workspace) == intent
-
-
 def test_matching_branch_request_resumes_after_tag_before_evaluation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -384,21 +333,3 @@ def test_active_intent_requires_max_generations_to_reach_target(
         run(RunOptions(workspace, max_generations=2, from_generation=from_generation))
 
     assert branch_intent_path(workspace).read_bytes() == before
-
-
-@pytest.mark.parametrize("from_generation", [None, "0"], ids=["flagless", "explicit"])
-def test_terminal_intent_is_consumed_before_reachability_check(
-    tmp_path: Path,
-    from_generation: str | None,
-) -> None:
-    workspace, _ = init_workspace(tmp_path)
-    run(RunOptions(workspace, max_generations=1))
-    run(RunOptions(workspace, max_generations=2, from_generation="0"))
-    assert rows_by_genid(workspace)["2"]["parent"] == "0"
-    persisted_intent(workspace, "0", 2, ("2",))
-    history_before = durable_history_snapshot(workspace)
-
-    run(RunOptions(workspace, max_generations=1, from_generation=from_generation))
-
-    assert load_branch_intent(workspace) is None
-    assert durable_history_snapshot(workspace) == history_before

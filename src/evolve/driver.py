@@ -15,14 +15,12 @@ from typing import Any, TextIO
 from .archive import (
     EVALUATION_FIELDS,
     LEGACY_WRITE_BLOCKED_FIELDS,
-    RECEIPT_CERTIFIED_FIELD,
     RECORD_ATTEMPT_FIELD,
     RESERVED_AUXILIARY_FIELDS,
     STAMPED_FIELDS,
     append_evaluation_record,
     append_event,
     archive_path,
-    certified_evaluation_events,
     ensure_local_archive,
     eval_receipt_path,
     mirror_path,
@@ -291,19 +289,23 @@ def _next_generation_number(workspace: Path) -> int:
 
 def _prepare_branch_intent(options: RunOptions, workspace: Path) -> BranchIntent | None:
     existing = load_branch_intent(workspace)
+    if options.from_generation is None:
+        if existing is not None:
+            _validate_active_branch_intent(workspace, existing, options.children_per_gen)
+            _assert_branch_target_reachable(options, existing.source_generation, existing.target_generation)
+            print(
+                f"[evolve] branch intent resumed: gen/{existing.source_generation} "
+                f"-> generation {existing.target_generation}",
+                flush=True,
+            )
+        return existing
+    source = _validate_genid(options.from_generation)
     if existing is not None:
-        source = (
-            _validate_genid(options.from_generation)
-            if options.from_generation is not None
-            else existing.source_generation
-        )
-        if options.from_generation is not None and source != existing.source_generation:
+        if source != existing.source_generation:
             raise RuntimeError(
                 f"conflicting branch intent: active gen/{existing.source_generation}, requested gen/{source}"
             )
         _validate_active_branch_intent(workspace, existing, options.children_per_gen)
-        if _consume_completed_branch_intent(workspace, existing):
-            return None
         _assert_branch_target_reachable(options, source, existing.target_generation)
         print(
             f"[evolve] branch intent resumed: gen/{existing.source_generation} "
@@ -311,9 +313,6 @@ def _prepare_branch_intent(options: RunOptions, workspace: Path) -> BranchIntent
             flush=True,
         )
         return existing
-    if options.from_generation is None:
-        return None
-    source = _validate_genid(options.from_generation)
     _assert_valid_parent(workspace, source)
     source_commit = _certified_source_commit(workspace, source)
     unfinished = _durable_unfinished_genids(workspace)
@@ -368,27 +367,6 @@ def _validate_active_branch_intent(
         raise RuntimeError(
             f"branch intent children-per-gen mismatch: expected {intent.target_genids}, requested {expected_genids}"
         )
-    _validate_active_branch_target_parents(workspace, intent)
-
-
-def _validate_active_branch_target_parents(workspace: Path, intent: BranchIntent) -> None:
-    rows = rows_by_genid(workspace)
-    for genid in intent.target_genids:
-        recorded = rows.get(genid, {}).get("parent")
-        if recorded is not None and str(recorded) != intent.source_generation:
-            raise RuntimeError(
-                f"branch intent target parent mismatch for gen/{genid}: "
-                f"expected {intent.source_generation}, got {recorded}"
-            )
-        if not tag_exists(workspace, f"gen/{genid}"):
-            continue
-        actual_parent = direct_parent_commit(workspace, f"gen/{genid}")
-        if actual_parent != intent.source_commit:
-            raise RuntimeError(
-                f"branch intent target parent mismatch for gen/{genid}: "
-                f"expected gen/{intent.source_generation} commit {intent.source_commit}, "
-                f"got Git parent {actual_parent}"
-            )
 
 
 def _certified_source_commit(workspace: Path, source_generation: str) -> str:
@@ -435,26 +413,26 @@ def _branch_parents(
     return {genid: intent.source_generation for genid in pending}
 
 
-def _consume_completed_branch_intent(workspace: Path, intent: BranchIntent | None) -> bool:
+def _consume_completed_branch_intent(workspace: Path, intent: BranchIntent | None) -> None:
     if intent is None:
-        return False
+        return
     rows = rows_by_genid(workspace)
     pending_gate = _evaluation_pending_gate_record_genids(workspace)
     if all(not _generation_is_pending(rows.get(genid, {}), genid in pending_gate) for genid in intent.target_genids):
         for genid in intent.target_genids:
-            recorded = rows.get(genid, {}).get("parent")
-            if recorded is not None and str(recorded) != intent.source_generation:
+            if (
+                tag_exists(workspace, f"gen/{genid}")
+                and str(rows.get(genid, {}).get("parent")) != intent.source_generation
+            ):
                 raise RuntimeError(
                     f"branch intent target parent mismatch for gen/{genid}: "
-                    f"expected {intent.source_generation}, got {recorded}"
+                    f"expected {intent.source_generation}, got {rows.get(genid, {}).get('parent')}"
                 )
         consume_branch_intent(workspace, intent)
         print(
             f"[evolve] branch intent consumed: generation {intent.target_generation}",
             flush=True,
         )
-        return True
-    return False
 
 
 def _maybe_final_anchor(workspace: Path, generation: int) -> None:
@@ -468,10 +446,7 @@ def _maybe_final_anchor(workspace: Path, generation: int) -> None:
     )
     if candidate is None:
         return
-    if any(
-        isinstance(entry, dict) and entry.get("kind") == "anchor" and entry.get(RECEIPT_CERTIFIED_FIELD) is True
-        for entry in candidate.get("evals", [])
-    ):
+    if any(isinstance(entry, dict) and entry.get("kind") == "anchor" for entry in candidate.get("evals", [])):
         return
     genid = str(candidate["genid"])
     _evaluate_once(
@@ -705,12 +680,6 @@ def doctor(workspace: Path) -> list[str]:
     """Detect + repair interrupted state: prune stale child worktrees a crash
     left behind, and report generations pending gate/record that `run` resumes.
     Returns the actions taken/observations (empty means nothing to do)."""
-    workspace = workspace.resolve()
-    with workspace_run_lock(workspace):
-        return _doctor_locked(workspace)
-
-
-def _doctor_locked(workspace: Path) -> list[str]:
     actions: list[str] = []
     worktrees = workspace / "runs" / "worktrees"
     if worktrees.exists():
@@ -761,9 +730,9 @@ def _resume_tagged_child(
 ) -> None:
     row = rows_by_genid(workspace).get(genid, {})
     needs_gate_record = genid in _evaluation_pending_gate_record_genids(workspace)
-    canonical = row.get("outcome") in CANONICAL_OUTCOMES and _has_certified_evaluation(row)
+    canonical = row.get("outcome") in CANONICAL_OUTCOMES
     if row.get("outcome") == Outcome.INFRASTRUCTURE_FAILED.value or not canonical:
-        print(f"[evolve] gen/{genid} evaluation: attempting evaluation recovery", flush=True)
+        print(f"[evolve] gen/{genid} evaluation: starting recovery attempt", flush=True)
         eval_child(workspace, genid, round_number=round_number)
         row = rows_by_genid(workspace).get(genid, {})
         needs_gate_record = genid in _evaluation_pending_gate_record_genids(workspace)
@@ -818,7 +787,6 @@ def _run_gate_and_record(
                     round_number=round_number,
                     operator_ref=f"gen/{genid}",
                 )
-                append_event(workspace, exp_id, {"genid": genid, "pending_gate_record": False})
                 return
             gate_payload, gate_error = _load_gate_payload(run_dir)
             if gate_error is not None or gate_payload is None:
@@ -840,9 +808,9 @@ def _run_gate_and_record(
                     round_number=round_number,
                     operator_ref=f"gen/{genid}",
                 )
-                append_event(workspace, exp_id, {"genid": genid, "pending_gate_record": False})
                 return
 
+            append_event(workspace, exp_id, {"genid": genid, "pending_gate_record": False, **gate_payload})
             _run_terminal_record(
                 workspace,
                 exp_id,
@@ -854,7 +822,6 @@ def _run_gate_and_record(
                 operator_ref=f"gen/{genid}",
                 allowed_fields=RECORD_ANNOTATION_FIELDS,
             )
-            append_event(workspace, exp_id, {"genid": genid, "pending_gate_record": False, **gate_payload})
         finally:
             remove_worktree(workspace, checkout)
 
@@ -1023,13 +990,12 @@ def eval_child(
         raise RuntimeError("per-round evaluation sampling is not supported; use static sampling")
     rows = rows_by_genid(workspace)
     row = rows.get(genid, {})
-    status = _recovery_evaluation_status(row)
+    status = evaluation_status(row)
     if (
         not force
         and round_number is None
         and row.get("outcome") in CANONICAL_OUTCOMES
         and row.get("outcome") != Outcome.INFRASTRUCTURE_FAILED.value
-        and _has_certified_evaluation(row)
     ):
         return None
     if force:
@@ -1135,12 +1101,8 @@ def _stamp_evaluation(
 
 def _ensure_genesis_evaluated(workspace: Path) -> None:
     row = rows_by_genid(workspace).get("0", {})
-    status = _recovery_evaluation_status(row)
-    if (
-        row.get("outcome") == "benchmark_complete"
-        and row.get("selection_eligible") is True
-        and _has_certified_evaluation(row)
-    ):
+    status = evaluation_status(row)
+    if row.get("outcome") == "benchmark_complete" and row.get("selection_eligible") is True:
         return
     if status in {
         Outcome.CANDIDATE_INVALID.value,
@@ -1335,11 +1297,9 @@ def _load_parents(run_dir: Path) -> tuple[list[str] | None, OperatorOutputError 
 
 def _evaluation_pending_gate_record_genids(workspace: Path) -> set[str]:
     pending: set[str] = set()
-    path = archive_path(workspace)
-    certified = certified_evaluation_events(path)
-    for event in read_events(path):
+    for event in read_events(archive_path(workspace)):
         genid = str(event.get("genid", ""))
-        if event in certified and _event_is_evaluation_stamp(event):
+        if _event_is_evaluation_stamp(event):
             pending.add(genid)
             continue
         if genid in pending and _event_is_gate_record_event(event):
@@ -1356,22 +1316,14 @@ def _event_marks_pending_gate_record(event: dict[str, Any]) -> bool:
 
 
 def _event_is_gate_record_event(event: dict[str, Any]) -> bool:
-    return STAMPED_FIELDS.isdisjoint(event) and event.get("pending_gate_record") is False
+    if STAMPED_FIELDS.isdisjoint(event) and "record_error" in event:
+        return True
+    return STAMPED_FIELDS.isdisjoint(event) and {"valid_parent", "verdict", "reason"} <= set(event)
 
 
 def _generation_is_pending(row: dict[str, Any], needs_gate_record: bool) -> bool:
-    status = _recovery_evaluation_status(row)
+    status = evaluation_status(row)
     return status not in TERMINAL_STATUSES or needs_gate_record
-
-
-def _has_certified_evaluation(row: dict[str, Any]) -> bool:
-    return row.get(RECEIPT_CERTIFIED_FIELD) is True
-
-
-def _recovery_evaluation_status(row: dict[str, Any]) -> str | None:
-    if row.get("outcome") in CANONICAL_OUTCOMES and not _has_certified_evaluation(row):
-        return None
-    return evaluation_status(row)
 
 
 def _load_gate_payload(run_dir: Path) -> tuple[dict[str, Any] | None, OperatorOutputError | None]:

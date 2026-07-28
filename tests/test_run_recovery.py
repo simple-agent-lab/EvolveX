@@ -4,18 +4,8 @@ from pathlib import Path
 import pytest
 from conftest import init_workspace, rows_by_genid, smoke_agent_command
 
-from evolve import archive as archive_module
 from evolve import driver
-from evolve.archive import (
-    MECHANISM_EVAL_FIELD,
-    RECEIPT_CERTIFIED_FIELD,
-    RECORD_ATTEMPT_FIELD,
-    STAMPED_FIELDS,
-    archive_path,
-    eval_receipt_path,
-    mirror_path,
-    read_events,
-)
+from evolve.archive import STAMPED_FIELDS, archive_path, eval_receipt_path, mirror_path, read_events
 from evolve.branching import BranchIntent, create_branch_intent
 from evolve.config import experiment_id
 from evolve.driver import RunOptions, commit_child, doctor, fork_child, run
@@ -233,61 +223,8 @@ def test_tagged_candidate_starts_new_evaluation_attempt_after_partial_attempt(
     row = rows_by_genid(workspace)["1"]
     assert row["attempt"] == 2
     assert (partial / "partial-sentinel").read_text() == "interrupted\n"
-    assert "[evolve] gen/1 evaluation: attempting evaluation recovery" in capsys.readouterr().out
+    assert "[evolve] gen/1 evaluation: starting recovery attempt" in capsys.readouterr().out
     assert_completed_state_preserved(workspace, completed_before)
-
-
-def test_unreceipted_evaluation_is_ignored_and_retried_as_a_fresh_attempt(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    workspace, _ = init_workspace(tmp_path)
-    run(RunOptions(workspace, max_generations=0))
-    child = tmp_path / "child"
-    fork_child(workspace, "0", child)
-    target = child / "target" / "agent.py"
-    target.write_text(target.read_text() + "\n# candidate with interrupted receipt\n")
-    commit_child(workspace, child, "0", "1")
-
-    real_append_receipt = archive_module._append_eval_receipt
-    monkeypatch.setattr(
-        archive_module,
-        "_append_eval_receipt",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(KeyboardInterrupt("before evaluation receipt")),
-    )
-    with pytest.raises(KeyboardInterrupt, match="before evaluation receipt"):
-        driver.eval_child(workspace, "1")
-    monkeypatch.setattr(archive_module, "_append_eval_receipt", real_append_receipt)
-
-    interrupted_before = completed_state_snapshot(workspace)
-    receipts_before = set(eval_receipt_path(archive_path(workspace)).read_text().splitlines())
-    unreceipted = [
-        event
-        for event in read_events(archive_path(workspace))
-        if str(event.get("genid")) == "1" and event.get(MECHANISM_EVAL_FIELD) is True
-    ]
-    assert [event["attempt"] for event in unreceipted] == [1]
-
-    run(RunOptions(workspace, max_generations=1))
-
-    evaluations = [
-        event
-        for event in read_events(archive_path(workspace))
-        if str(event.get("genid")) == "1" and event.get(MECHANISM_EVAL_FIELD) is True
-    ]
-    row = rows_by_genid(workspace)["1"]
-    assert [event["attempt"] for event in evaluations] == [1, 2]
-    assert evaluations[1]["retry_of"] is None
-    assert row["attempt"] == 2
-    assert row[RECEIPT_CERTIFIED_FIELD] is True
-    assert row["pending_gate_record"] is False
-    receipts_after = set(eval_receipt_path(archive_path(workspace)).read_text().splitlines())
-    assert receipts_before <= receipts_after
-    assert archive_module._eval_receipt(evaluations[0]) not in receipts_after
-    assert archive_module._eval_receipt(evaluations[1]) in receipts_after
-    assert "[evolve] gen/1 evaluation: attempting evaluation recovery" in capsys.readouterr().out
-    assert_completed_state_preserved(workspace, interrupted_before)
 
 
 def _remove_gate_event(path: Path, genid: str) -> None:
@@ -332,46 +269,6 @@ def test_completed_evaluation_resumes_only_pending_gate_record(
     assert row["pending_gate_record"] is False
     assert row["status"] == "complete"
     assert "[evolve] gen/1 gate/record: resuming" in capsys.readouterr().out
-    assert_completed_state_preserved(workspace, completed_before)
-
-
-def test_gate_success_keeps_transaction_pending_until_record_is_durable(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    workspace, _ = init_workspace(tmp_path)
-    run(RunOptions(workspace, max_generations=0))
-    child = tmp_path / "child"
-    fork_child(workspace, "0", child)
-    target = child / "target" / "agent.py"
-    target.write_text(target.read_text() + "\n# gate-record crash candidate\n")
-    commit_child(workspace, child, "0", "1")
-    driver.eval_child(workspace, "1")
-    completed_before = completed_state_snapshot(workspace)
-    real_terminal_record = driver._run_terminal_record
-    monkeypatch.setattr(
-        driver,
-        "_run_terminal_record",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(KeyboardInterrupt("before record is durable")),
-    )
-
-    with pytest.raises(KeyboardInterrupt, match="before record is durable"):
-        run(RunOptions(workspace, max_generations=1))
-
-    assert rows_by_genid(workspace)["1"]["pending_gate_record"] is True
-    assert "1" in driver._evaluation_pending_gate_record_genids(workspace)
-    assert_completed_state_preserved(workspace, completed_before)
-
-    monkeypatch.setattr(driver, "_run_terminal_record", real_terminal_record)
-    run(RunOptions(workspace, max_generations=1))
-
-    row = rows_by_genid(workspace)["1"]
-    events = read_events(archive_path(workspace))
-    assert row["pending_gate_record"] is False
-    assert row["status"] == "complete"
-    assert any(str(event.get("genid")) == "1" and event.get(RECORD_ATTEMPT_FIELD) is True for event in events)
-    assert capsys.readouterr().out.count("[evolve] gen/1 gate/record: resuming") == 2
     assert_completed_state_preserved(workspace, completed_before)
 
 
