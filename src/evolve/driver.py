@@ -7,6 +7,7 @@ import tempfile
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TextIO
 
@@ -25,6 +26,7 @@ from .archive import (
     read_events,
     rows_by_genid,
 )
+from .branching import BranchIntent, consume_branch_intent, create_branch_intent, load_branch_intent
 from .candidate.snapshot import build_candidate_snapshot, commit_candidate_snapshot
 from .config import evaluator_anchor, evaluator_sampling, experiment_id, operator_blocks
 from .evaluation import (
@@ -50,6 +52,7 @@ from .frozen.interfaces import (
 from .git import (
     add_worktree,
     create_tag,
+    generation_tags,
     git,
     git_common_dir,
     git_stdout,
@@ -86,6 +89,7 @@ class RunOptions:
     workspace: Path
     max_generations: int
     children_per_gen: int = 1
+    from_generation: str | None = None
 
 
 @dataclass(frozen=True)
@@ -136,6 +140,8 @@ def _run_locked(options: RunOptions, workspace: Path) -> None:
     evaluator_sampling(workspace)
     _ensure_genesis_evaluated(workspace)
     operators_config = operator_blocks(workspace)
+    intent = _prepare_branch_intent(options, workspace)
+    _consume_completed_branch_intent(workspace, intent)
 
     for gen in range(1, options.max_generations + 1):
         genids = [
@@ -150,14 +156,16 @@ def _run_locked(options: RunOptions, workspace: Path) -> None:
             continue
 
         round_number = None
-        selected = _select_generation_parents(
-            workspace,
-            exp_id,
-            gen,
-            pending,
-            options.children_per_gen,
-            operators_config,
-        )
+        selected = _branch_parents(intent, gen, pending)
+        if selected is None:
+            selected = _select_generation_parents(
+                workspace,
+                exp_id,
+                gen,
+                pending,
+                options.children_per_gen,
+                operators_config,
+            )
         for genid in genids:
             row = rows_by_genid(workspace).get(genid, {})
             pending_eval_gate_record = genid in _evaluation_pending_gate_record_genids(workspace)
@@ -174,7 +182,137 @@ def _run_locked(options: RunOptions, workspace: Path) -> None:
                 _resume_tagged_child(workspace, exp_id, genid, parent, round_number, operators_config)
                 continue
             _run_child(workspace, exp_id, genid, parent, round_number, operators_config)
+        if intent is not None and gen == intent.target_generation:
+            _consume_completed_branch_intent(workspace, intent)
     _maybe_final_anchor(workspace, options.max_generations)
+
+
+def _next_generation_number(workspace: Path) -> int:
+    numbers = [generation_number(str(row.get("genid", ""))) for row in rows_by_genid(workspace).values()]
+    numbers.extend(generation_number(tag.removeprefix("gen/")) for tag in generation_tags(workspace))
+    return max((value for value in numbers if value is not None), default=0) + 1
+
+
+def _prepare_branch_intent(options: RunOptions, workspace: Path) -> BranchIntent | None:
+    existing = load_branch_intent(workspace)
+    if options.from_generation is None:
+        if existing is not None:
+            _validate_active_branch_intent(workspace, existing, options.children_per_gen)
+            print(
+                f"[evolve] branch intent resumed: gen/{existing.source_generation} "
+                f"-> generation {existing.target_generation}",
+                flush=True,
+            )
+        return existing
+    source = _validate_genid(options.from_generation)
+    _assert_valid_parent(workspace, source)
+    unfinished = _durable_unfinished_genids(workspace)
+    if unfinished:
+        raise RuntimeError(
+            "cannot create branch while generations need recovery: " + ", ".join(f"gen/{value}" for value in unfinished)
+        )
+    source_commit = git_stdout(workspace, "rev-parse", f"gen/{source}^{{commit}}")
+    target_generation = _next_generation_number(workspace)
+    if options.max_generations < target_generation:
+        raise RuntimeError(f"--max-generations must be at least {target_generation} to branch from gen/{source}")
+    target_genids = tuple(
+        format_genid(target_generation, index, options.children_per_gen) for index in range(options.children_per_gen)
+    )
+    requested = BranchIntent(
+        source_generation=source,
+        source_tag=f"gen/{source}",
+        source_commit=source_commit,
+        target_generation=target_generation,
+        target_genids=target_genids,
+        created_at=datetime.now(UTC).isoformat(),
+    )
+    if existing is not None:
+        same_request = (
+            existing.source_generation == requested.source_generation
+            and existing.source_commit == requested.source_commit
+            and existing.target_generation == requested.target_generation
+            and existing.target_genids == requested.target_genids
+        )
+        if not same_request:
+            raise RuntimeError(
+                f"conflicting branch intent: active gen/{existing.source_generation}, requested gen/{source}"
+            )
+        _validate_active_branch_intent(workspace, existing, options.children_per_gen)
+        print(
+            f"[evolve] branch intent resumed: gen/{existing.source_generation} "
+            f"-> generation {existing.target_generation}",
+            flush=True,
+        )
+        return existing
+    created = create_branch_intent(workspace, requested)
+    print(
+        f"[evolve] branch intent created: gen/{source} -> generation {target_generation}",
+        flush=True,
+    )
+    return created
+
+
+def _validate_active_branch_intent(
+    workspace: Path,
+    intent: BranchIntent,
+    children_per_gen: int,
+) -> None:
+    _assert_valid_parent(workspace, intent.source_generation)
+    actual_commit = git_stdout(
+        workspace,
+        "rev-parse",
+        f"gen/{intent.source_generation}^{{commit}}",
+    )
+    if actual_commit != intent.source_commit:
+        raise RuntimeError(f"branch intent source gen/{intent.source_generation} changed commit")
+    expected_genids = tuple(
+        format_genid(intent.target_generation, index, children_per_gen) for index in range(children_per_gen)
+    )
+    if expected_genids != intent.target_genids:
+        raise RuntimeError(
+            f"branch intent children-per-gen mismatch: expected {intent.target_genids}, requested {expected_genids}"
+        )
+
+
+def _durable_unfinished_genids(workspace: Path) -> list[str]:
+    rows = rows_by_genid(workspace)
+    pending_gate = _evaluation_pending_gate_record_genids(workspace)
+    genids = set(rows)
+    genids.update(tag.removeprefix("gen/") for tag in generation_tags(workspace))
+    return sorted(
+        (
+            genid
+            for genid in genids
+            if genid != "0" and _generation_is_pending(rows.get(genid, {}), genid in pending_gate)
+        ),
+        key=lambda value: (generation_number(value) or -1, value),
+    )
+
+
+def _branch_parents(
+    intent: BranchIntent | None,
+    generation: int,
+    pending: list[str],
+) -> dict[str, str] | None:
+    if intent is None or generation != intent.target_generation:
+        return None
+    unexpected = sorted(set(pending) - set(intent.target_genids))
+    if unexpected:
+        raise RuntimeError(f"branch intent target mismatch for generation {generation}: {', '.join(unexpected)}")
+    return {genid: intent.source_generation for genid in pending}
+
+
+def _consume_completed_branch_intent(workspace: Path, intent: BranchIntent | None) -> None:
+    if intent is None:
+        return
+    rows = rows_by_genid(workspace)
+    pending_gate = _evaluation_pending_gate_record_genids(workspace)
+    if all(not _generation_is_pending(rows.get(genid, {}), genid in pending_gate) for genid in intent.target_genids):
+        consume_branch_intent(workspace, intent)
+        print(
+            f"[evolve] branch intent consumed: generation {intent.target_generation}",
+            flush=True,
+        )
 
 
 def _maybe_final_anchor(workspace: Path, generation: int) -> None:
