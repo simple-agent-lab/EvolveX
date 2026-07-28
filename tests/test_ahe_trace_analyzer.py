@@ -50,7 +50,7 @@ def _ctx(tmp_path: Path, *, genid: str = "1", parent: str = "0") -> OperatorCont
             "max_tasks": 90,
             "max_concurrent": 2,
             "timeout_per_task": 30,
-            "retry_attempts": 3,
+            "debugger_max_retries": 2,
         },
         rng=random.Random(0),
     )
@@ -222,6 +222,53 @@ def test_ahe_debugger_retries_and_fails_visibly(tmp_path: Path, monkeypatch: pyt
     )
     with pytest.raises(AgentCommandError, match="failed"):
         module._run_debugger_job(ctx.checkout, ctx, job)
+
+
+def test_ahe_debugger_zero_retries_means_one_total_attempt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _module()
+    ctx = _ctx(tmp_path)
+    ctx.config["debugger_max_retries"] = 0
+    ctx.config.pop("retry_attempts", None)
+    job = module._build_jobs([_case("task-a", "failed", 0)], 90)[0]
+    calls = 0
+
+    def fail_once(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        raise AgentCommandError("failed", returncode=1)
+
+    monkeypatch.setattr(module, "run_readonly_agent", fail_once)
+
+    with pytest.raises(AgentCommandError, match="failed"):
+        module._run_debugger_job(ctx.checkout, ctx, job)
+
+    assert calls == 1
+
+
+def test_ahe_debugger_safe_wrapper_records_single_attempt_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _module()
+    ctx = _ctx(tmp_path)
+    ctx.config["debugger_max_retries"] = 0
+    job = module._build_jobs([_case("task-a", "failed", 0)], 90)[0]
+    calls = 0
+
+    def fail_once(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        raise AgentCommandError("debugger unavailable", returncode=1)
+
+    monkeypatch.setattr(module, "run_readonly_agent", fail_once)
+    result = module._run_debugger_job_safe(ctx.checkout, ctx, job)
+
+    assert calls == 1
+    assert result.error == "debugger unavailable"
+    assert result.response.startswith("ANALYSIS UNAVAILABLE:")
 
 
 def test_ahe_debugger_stage_keeps_all_tasks_when_individual_jobs_fail(
