@@ -159,6 +159,31 @@ def test_recipe_path_rejects_evaluator_assets_that_replace_generated_files(
     assert not (workspace / "evaluator" / reserved_name).exists()
 
 
+def test_recipe_path_rejects_case_variant_of_generated_evaluator_asset(
+    tmp_path: Path,
+) -> None:
+    recipe = tmp_path / "case-colliding-recipe"
+    shutil.copytree(Path(recipe_root()) / "hill_climb", recipe)
+    collision = recipe / "evaluator" / "EVAL.SH"
+    collision.parent.mkdir(parents=True, exist_ok=True)
+    collision.write_text("RECIPE MUST NOT REPLACE GENERATED CONTENT\n")
+    seed = write_locked_miniswe_seed(tmp_path / "case-collision-seed")
+    workspace = tmp_path / "case-collision-workspace"
+
+    result = run_evolve(
+        "init",
+        str(workspace),
+        "--recipe-path",
+        str(recipe),
+        "--seed",
+        str(seed),
+    )
+
+    assert result.returncode == 1
+    assert "recipe evaluator asset collides with generated file: evaluator/EVAL.SH" in result.stderr
+    assert not (workspace / "evaluator" / "eval.sh").exists()
+
+
 @pytest.mark.parametrize("recipe", sorted(CASES))
 def test_dataset_override_preserves_recipe_target_and_integrations(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, recipe: str

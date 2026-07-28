@@ -291,7 +291,12 @@ def _write_files(
         recipe,
         recipe_directory=recipe_directory,
     )
-    evaluator_collisions = sorted(files.keys() & recipe_evaluator_assets.keys())
+    generated_output_paths = {relative_path.casefold() for relative_path in files}
+    evaluator_collisions = sorted(
+        relative_path
+        for relative_path in recipe_evaluator_assets
+        if relative_path.casefold() in generated_output_paths
+    )
     if evaluator_collisions:
         raise ValueError(
             "recipe evaluator asset collides with generated file: "

@@ -86,7 +86,7 @@ def test_only_versioned_superpowers_specs_and_plans_are_allowed() -> None:
 
 def test_local_superpowers_artifacts_are_not_tracked() -> None:
     result = subprocess.run(
-        ["git", "ls-files", "--", ".superpowers"],
+        ["git", "ls-files", "--", ".superpowers", "docs/superpowers"],
         cwd=ROOT,
         check=True,
         capture_output=True,
