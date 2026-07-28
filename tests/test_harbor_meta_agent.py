@@ -1,3 +1,4 @@
+import asyncio
 import importlib.util
 import json
 import os
@@ -6,13 +7,19 @@ import shutil
 import stat
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from harbor.models.exec.config import ExecConfig
+from harbor.models.task.config import EnvironmentConfig, VerifierConfig
+from harbor.models.trial.result import ExceptionInfo
+from harbor.trial.errors import AgentTimeoutError
 from harbor.trial.queue import TrialQueue
+from harbor.trial.trial import Trial
 
 from evolve.agent import AgentCommandError
 from evolve.frozen.interfaces import OperatorContext
+from evolve.operators import _operator_deadline_s
 
 ROOT = Path(__file__).resolve().parents[1]
 FILE_TASK_AGENT = "evolve_harbor_agent:FileTaskMiniSweAgent"
@@ -565,7 +572,98 @@ def test_file_task_meta_agent_configures_per_attempt_timeout_and_timeout_retry(
     queue = TrialQueue(1, retry_config=job.retry)
     assert queue._should_retry_exception("AgentTimeoutError")
     assert queue._calculate_backoff_delay_sec(0) == 1
-    assert observed["process_timeout_s"] == 7205.0
+    assert observed["process_timeout_s"] == 13380.0
+
+
+def test_agent_timeout_retry_loop_fits_full_lifecycle_budgets(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = _harbor_runner_module()
+    retry = ExecConfig.model_validate(
+        {
+            "map": {
+                "compile": {
+                    "output_dir": str(tmp_path / "tasks"),
+                    "environments": [{"paths": [str(tmp_path)]}],
+                    "instructions": [{"text": "test"}],
+                },
+                "job": {
+                    "jobs_dir": str(tmp_path / "jobs"),
+                    "agents": [{"name": "mini-swe-agent"}],
+                    "retry": runner._retry_config({"max_retries": 1}),
+                },
+            }
+        }
+    ).map.job.retry
+    elapsed_s = 600.0  # task compilation
+    attempts: list[int] = []
+
+    class TimedTrial:
+        def __init__(self, attempt: int) -> None:
+            self.attempt = attempt
+            self.config = SimpleNamespace(agent=SimpleNamespace(n_concurrent=None))
+            self.paths = SimpleNamespace(trial_dir=tmp_path / f"trial-{attempt}")
+            self.paths.trial_dir.mkdir()
+
+        def add_hook(self, _event, _hook) -> None:
+            pass
+
+        async def run(self):
+            nonlocal elapsed_s
+            # Environment start (600), setup (360), agent (3600), verifier
+            # (600), artifact/log collection (600), and teardown (600).
+            elapsed_s += 6360.0
+            exception_info = (
+                ExceptionInfo.from_exception(AgentTimeoutError("first attempt timed out"))
+                if self.attempt == 0
+                else None
+            )
+            return SimpleNamespace(exception_info=exception_info)
+
+    async def create_trial(_config):
+        attempt = len(attempts)
+        attempts.append(attempt)
+        return TimedTrial(attempt)
+
+    real_rmtree = shutil.rmtree
+
+    def timed_rmtree(path, *, ignore_errors=False):
+        nonlocal elapsed_s
+        elapsed_s += 59.0  # failed-trial removal and recreation allowance
+        real_rmtree(path, ignore_errors=ignore_errors)
+
+    async def timed_sleep(delay_s):
+        nonlocal elapsed_s
+        elapsed_s += delay_s
+
+    monkeypatch.setattr(Trial, "create", staticmethod(create_trial))
+    monkeypatch.setattr("harbor.trial.queue.shutil.rmtree", timed_rmtree)
+    monkeypatch.setattr("harbor.trial.queue.asyncio.sleep", timed_sleep)
+
+    queue = TrialQueue(1, retry_config=retry)
+    result = asyncio.run(
+        queue._execute_trial_with_retries(
+            SimpleNamespace(agent=None, trial_name="timeout-then-success")
+        )
+    )
+
+    assert EnvironmentConfig().build_timeout_sec == 600
+    assert Trial._AGENT_SETUP_TIMEOUT_SEC == 360
+    assert VerifierConfig().timeout_sec == 600
+    assert attempts == [0, 1]
+    assert result.exception_info is None
+    assert elapsed_s == runner._meta_agent_process_timeout_s(
+        {"timeout_s": 3600, "max_retries": 1}
+    )
+    assert (
+        600.0 + elapsed_s + 600.0 + 60.0
+        == _operator_deadline_s(
+            "meta_agent",
+            {"runner": "harbor", "max_retries": 1},
+            3600,
+        )
+    )
 
 
 @pytest.mark.parametrize(

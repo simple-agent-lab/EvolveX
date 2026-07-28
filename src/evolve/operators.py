@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from evolve.meta_agent_budget import harbor_meta_agent_budget
+
 
 @dataclass(frozen=True)
 class OperatorResult:
@@ -28,13 +30,6 @@ sys.argv = sys.argv[1:]
 namespace = {"__name__": "__main__", "__file__": str(script), "__package__": None, "__cached__": None}
 exec(compile(script.read_bytes(), str(script), "exec"), namespace)
 """
-
-# Harbor 0.18 waits one second before the first retry; the remaining four
-# seconds cover removal/recreation of its single trial between attempts.
-_HARBOR_RETRY_TRANSITION_HEADROOM_S = 5.0
-_HARBOR_PROCESS_TERMINATION_GRACE_S = 5.0
-_OPERATOR_CHILD_EXIT_GRACE_S = 5.0
-
 
 def _text(value: object | None) -> str:
     if value is None:
@@ -56,12 +51,7 @@ def _operator_deadline_s(name: str, config_block: dict[str, Any], timeout_s: flo
         max_retries = max(0, int(config_block.get("max_retries", 0)))
     except (TypeError, ValueError):
         max_retries = 0
-    return (
-        timeout_s * (max_retries + 1)
-        + _HARBOR_RETRY_TRANSITION_HEADROOM_S * max_retries
-        + _HARBOR_PROCESS_TERMINATION_GRACE_S
-        + _OPERATOR_CHILD_EXIT_GRACE_S
-    )
+    return harbor_meta_agent_budget(timeout_s, max_retries).operator_s
 
 
 def run_operator(

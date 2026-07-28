@@ -117,8 +117,8 @@ def test_harbor_meta_agent_outer_timeout_budgets_every_retry(
 
     assert result.returncode == 0
     assert observed == {
-        "timeout": 7215.0,
-        "env_timeout": "7215.0",
+        "timeout": 14640.0,
+        "env_timeout": "14640.0",
     }
 
 

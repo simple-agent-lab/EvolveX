@@ -22,6 +22,7 @@ from evolve.agent import AgentCommandError, AgentRunResult
 from evolve.frozen.interfaces import OperatorContext
 from evolve.git import git, head_commit, working_tree_changed_paths
 from evolve.host_runtime import uv_run
+from evolve.meta_agent_budget import harbor_meta_agent_budget
 from evolve.patching import SurfacePolicy, load_surface_policy, patch_parent_ref
 from evolve.surface import check_paths
 from library.meta_agent.support.artifacts import ensure_artifact_layout
@@ -33,9 +34,6 @@ _READONLY_REPORT = "ahe-debugger-response.md"
 _EVAL_RECEIPT = ".evolve-eval-receipts.jsonl"
 _FILE_TASK_AGENT = "evolve_harbor_agent:FileTaskMiniSweAgent"
 _SAFE_INLINE_INSTRUCTION_BYTES = 96 * 1024
-# Harbor 0.18's first retry backoff is one second; reserve four more seconds
-# for deleting and recreating its single trial before the second attempt.
-_RETRY_TRANSITION_HEADROOM_S = 5.0
 _RETRY_EXCLUDE_EXCEPTIONS = (
     "VerifierTimeoutError",
     "RewardFileNotFoundError",
@@ -531,7 +529,7 @@ def _meta_agent_process_timeout_s(config: dict[str, Any]) -> float | None:
     if timeout_s is None:
         return None
     max_retries = _nonnegative_int(config.get("max_retries"), 0)
-    return timeout_s * (max_retries + 1) + _RETRY_TRANSITION_HEADROOM_S * max_retries
+    return harbor_meta_agent_budget(timeout_s, max_retries).harbor_process_s
 
 
 def _append_agent_env(command: list[str], config: dict[str, Any]) -> None:
