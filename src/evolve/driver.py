@@ -205,13 +205,25 @@ def _prepare_branch_intent(options: RunOptions, workspace: Path) -> BranchIntent
             )
         return existing
     source = _validate_genid(options.from_generation)
+    if existing is not None:
+        if source != existing.source_generation:
+            raise RuntimeError(
+                f"conflicting branch intent: active gen/{existing.source_generation}, requested gen/{source}"
+            )
+        _validate_active_branch_intent(workspace, existing, options.children_per_gen)
+        print(
+            f"[evolve] branch intent resumed: gen/{existing.source_generation} "
+            f"-> generation {existing.target_generation}",
+            flush=True,
+        )
+        return existing
     _assert_valid_parent(workspace, source)
+    source_commit = _certified_source_commit(workspace, source)
     unfinished = _durable_unfinished_genids(workspace)
     if unfinished:
         raise RuntimeError(
             "cannot create branch while generations need recovery: " + ", ".join(f"gen/{value}" for value in unfinished)
         )
-    source_commit = git_stdout(workspace, "rev-parse", f"gen/{source}^{{commit}}")
     target_generation = _next_generation_number(workspace)
     if options.max_generations < target_generation:
         raise RuntimeError(f"--max-generations must be at least {target_generation} to branch from gen/{source}")
@@ -226,24 +238,6 @@ def _prepare_branch_intent(options: RunOptions, workspace: Path) -> BranchIntent
         target_genids=target_genids,
         created_at=datetime.now(UTC).isoformat(),
     )
-    if existing is not None:
-        same_request = (
-            existing.source_generation == requested.source_generation
-            and existing.source_commit == requested.source_commit
-            and existing.target_generation == requested.target_generation
-            and existing.target_genids == requested.target_genids
-        )
-        if not same_request:
-            raise RuntimeError(
-                f"conflicting branch intent: active gen/{existing.source_generation}, requested gen/{source}"
-            )
-        _validate_active_branch_intent(workspace, existing, options.children_per_gen)
-        print(
-            f"[evolve] branch intent resumed: gen/{existing.source_generation} "
-            f"-> generation {existing.target_generation}",
-            flush=True,
-        )
-        return existing
     created = create_branch_intent(workspace, requested)
     print(
         f"[evolve] branch intent created: gen/{source} -> generation {target_generation}",
@@ -258,11 +252,10 @@ def _validate_active_branch_intent(
     children_per_gen: int,
 ) -> None:
     _assert_valid_parent(workspace, intent.source_generation)
-    actual_commit = git_stdout(
-        workspace,
-        "rev-parse",
-        f"gen/{intent.source_generation}^{{commit}}",
-    )
+    expected_tag = f"gen/{intent.source_generation}"
+    if intent.source_tag != expected_tag:
+        raise RuntimeError(f"branch intent source tag mismatch: expected {expected_tag}, got {intent.source_tag}")
+    actual_commit = _certified_source_commit(workspace, intent.source_generation)
     if actual_commit != intent.source_commit:
         raise RuntimeError(f"branch intent source gen/{intent.source_generation} changed commit")
     expected_genids = tuple(
@@ -272,6 +265,22 @@ def _validate_active_branch_intent(
         raise RuntimeError(
             f"branch intent children-per-gen mismatch: expected {intent.target_genids}, requested {expected_genids}"
         )
+
+
+def _certified_source_commit(workspace: Path, source_generation: str) -> str:
+    row = ArchiveView(workspace).row(source_generation) or {}
+    certified_commit = row.get("candidate_commit")
+    if not isinstance(certified_commit, str) or not certified_commit:
+        raise RuntimeError(
+            f"Git/archive contradiction for parent gen/{source_generation}: missing certified candidate_commit"
+        )
+    actual_commit = git_stdout(workspace, "rev-parse", f"gen/{source_generation}^{{commit}}")
+    if actual_commit != certified_commit:
+        raise RuntimeError(
+            f"Git/archive contradiction for parent gen/{source_generation}: "
+            f"tag commit {actual_commit} does not match certified candidate_commit {certified_commit}"
+        )
+    return actual_commit
 
 
 def _durable_unfinished_genids(workspace: Path) -> list[str]:
@@ -308,6 +317,15 @@ def _consume_completed_branch_intent(workspace: Path, intent: BranchIntent | Non
     rows = rows_by_genid(workspace)
     pending_gate = _evaluation_pending_gate_record_genids(workspace)
     if all(not _generation_is_pending(rows.get(genid, {}), genid in pending_gate) for genid in intent.target_genids):
+        for genid in intent.target_genids:
+            if (
+                tag_exists(workspace, f"gen/{genid}")
+                and str(rows.get(genid, {}).get("parent")) != intent.source_generation
+            ):
+                raise RuntimeError(
+                    f"branch intent target parent mismatch for gen/{genid}: "
+                    f"expected {intent.source_generation}, got {rows.get(genid, {}).get('parent')}"
+                )
         consume_branch_intent(workspace, intent)
         print(
             f"[evolve] branch intent consumed: generation {intent.target_generation}",
