@@ -1,3 +1,4 @@
+import subprocess
 import textwrap
 from pathlib import Path
 
@@ -86,6 +87,39 @@ def test_run_operator_nonzero_and_timeout(tmp_path):
     )
     assert timed_out.returncode == -1
     assert "timeout" in timed_out.stderr.lower()
+
+
+def test_harbor_meta_agent_outer_timeout_budgets_every_retry(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    checkout = tmp_path / "checkout"
+    _write_operator(checkout, "meta_agent", "pass\n")
+    observed: dict[str, object] = {}
+
+    def fake_run(*args, **kwargs):
+        observed["timeout"] = kwargs["timeout"]
+        observed["env_timeout"] = kwargs["env"]["EVOLVE_OPERATOR_TIMEOUT_S"]
+        return subprocess.CompletedProcess(args[0], 0, "", "")
+
+    monkeypatch.setattr("evolve.operators.subprocess.run", fake_run)
+
+    result = run_operator(
+        name="meta_agent",
+        checkout=checkout,
+        workspace=tmp_path,
+        genid="1",
+        parent=None,
+        run_dir=tmp_path / "r",
+        config_block={"runner": "harbor", "max_retries": 1},
+        timeout_s=3600,
+    )
+
+    assert result.returncode == 0
+    assert observed == {
+        "timeout": 7205.0,
+        "env_timeout": "7205.0",
+    }
 
 
 def test_guarded_operator_restores_archive_in_child_checkout(tmp_path: Path) -> None:

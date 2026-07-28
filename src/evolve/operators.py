@@ -29,6 +29,8 @@ namespace = {"__name__": "__main__", "__file__": str(script), "__package__": Non
 exec(compile(script.read_bytes(), str(script), "exec"), namespace)
 """
 
+_HARBOR_META_AGENT_HEADROOM_S = 5.0
+
 
 def _text(value: object | None) -> str:
     if value is None:
@@ -41,6 +43,16 @@ def _text(value: object | None) -> str:
 def _progress(message: str) -> None:
     if os.environ.get("EVOLVE_PROGRESS", "1") != "0":
         print(f"[evolve] {message}", flush=True)
+
+
+def _operator_deadline_s(name: str, config_block: dict[str, Any], timeout_s: float) -> float:
+    if name != "meta_agent" or config_block.get("runner") != "harbor":
+        return timeout_s
+    try:
+        max_retries = max(0, int(config_block.get("max_retries", 0)))
+    except (TypeError, ValueError):
+        max_retries = 0
+    return timeout_s * (max_retries + 1) + _HARBOR_META_AGENT_HEADROOM_S
 
 
 def run_operator(
@@ -57,6 +69,7 @@ def run_operator(
     operator_checkout: Path | None = None,
 ) -> OperatorResult:
     start = time.monotonic()
+    deadline_s = _operator_deadline_s(name, config_block, timeout_s)
     source_checkout = operator_checkout or checkout
     script = source_checkout / "operators" / f"{name}.py"
     if not script.exists():
@@ -79,7 +92,7 @@ def run_operator(
         **base_env,
         "EVOLVE_GENID": genid,
         "EVOLVE_PARENT": parent or "",
-        "EVOLVE_OPERATOR_TIMEOUT_S": str(timeout_s),
+        "EVOLVE_OPERATOR_TIMEOUT_S": str(deadline_s),
         "EVOLVE_RUN_DIR": str(run_dir.resolve()),
         "EVOLVE_WORKSPACE": str(workspace.resolve()),
         "EVOLVE_CHECKOUT": str(checkout.resolve()),
@@ -99,7 +112,7 @@ def run_operator(
             env=env,
             text=True,
             capture_output=not live_output,
-            timeout=timeout_s,
+            timeout=deadline_s,
             check=False,
         )
         result = OperatorResult(
@@ -115,7 +128,7 @@ def run_operator(
         stderr = _text(exc.stderr)
         if stderr:
             stderr = f"{stderr.rstrip()}\n"
-        stderr += f"timeout after {timeout_s}s"
+        stderr += f"timeout after {deadline_s}s"
         result = OperatorResult(
             name=name,
             returncode=-1,
