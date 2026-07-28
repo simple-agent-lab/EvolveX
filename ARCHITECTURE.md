@@ -22,7 +22,6 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `__main__.py` | 10 | `python -m evolve` entry |
 | `agent.py` | 200 | agent command execution and error/result types |
 | `archive.py` | 400 | append-only event store: merge semantics, stamped-field protection, mirroring, integrity fsck |
-| `branching.py` | 150 | durable branch-intent persistence and validation |
 | `candidate/__init__.py` | 10 | candidate-boundary package marker |
 | `candidate/smoke.py` | 150 | run evaluator smoke against an exact candidate snapshot and persist redacted diagnostics |
 | `candidate/snapshot.py` | 100 | exact candidate Git tree construction, temporary materialization, and reviewed-tree commit verification |
@@ -68,7 +67,7 @@ each workspace, immutable there because it sits outside the mutable surface
 | `frozen/interfaces.py` | 350 | operator ABCs (incl. trace analyzer, novelty, and reflect), the registry, result schemas, payload validation |
 | `frozen/sdk.py` | 300 | Python operator entrypoint and file-contract IO; no library algorithm policy |
 
-Total `src/evolve/` budget: **10080 lines**. The budget admits the explicit evaluation-package
+Total `src/evolve/` budget: **9930 lines**. The budget admits the explicit evaluation-package
 boundaries, failed-task repair, the opt-in in-place Harbor runtime, and the redacted trace-analysis
 boundary between rollout and feedback assembly; if the mechanism wants to
 grow past that, something belongs in a workspace operator instead —

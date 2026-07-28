@@ -32,10 +32,9 @@ recipe YAML
   -> generation-zero Git snapshot
 ```
 
-The framework has seven supported recipes: `aevolve`, `ahe`, `ahe_hle`,
-`gepa`, `hill_climb`, `hyperagents`, and `hyperagents_hle`. Development smoke
-recipes live under `tests/fixtures/recipes/`; research bridges live under
-`experiments/recipes/`. Neither is part of the public recipe inventory.
+The framework has five supported recipes: `aevolve`, `ahe`, `gepa`,
+`hill_climb`, and `hyperagents`. Development smoke recipes live under
+`tests/fixtures/recipes/` and are not part of the public recipe inventory.
 
 ## Source ownership
 
@@ -48,7 +47,6 @@ recipes live under `tests/fixtures/recipes/`; research bridges live under
 | `src/evolve/integrations/harbor/` | Harbor adapters owned by the framework |
 | `library/` | reference operator variants available in a workspace |
 | `tests/fixtures/` | deterministic test-only resources |
-| `experiments/` | unsupported research work |
 
 Harbor integrations are framework modules. A generated workspace vendors them
 as part of `.evolve/evolve/integrations/harbor/`; it does not receive standalone

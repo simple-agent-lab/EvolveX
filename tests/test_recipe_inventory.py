@@ -6,11 +6,9 @@ ROOT = Path(__file__).resolve().parents[1]
 SUPPORTED = {
     "aevolve",
     "ahe",
-    "ahe_hle",
     "gepa",
     "hill_climb",
     "hyperagents",
-    "hyperagents_hle",
 }
 
 
@@ -23,9 +21,8 @@ def test_repository_exposes_only_supported_recipes() -> None:
     assert set(RECIPE_NAMES) == SUPPORTED
 
 
-def test_non_public_recipes_are_classified() -> None:
+def test_recipe_fixtures_are_classified() -> None:
     assert _directories(ROOT / "tests/fixtures/recipes") == {
         "hill_climb-smoke",
         "hyperagents-smoke",
     }
-    assert _directories(ROOT / "experiments/recipes") == {"aevolve_tbench_bridge"}

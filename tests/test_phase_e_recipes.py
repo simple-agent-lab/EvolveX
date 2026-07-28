@@ -12,13 +12,11 @@ TERMINAL_BENCH_DATASET = ROOT / "terminal-bench-2-50-19-20"
 SUPPORTED_RECIPES = {
     "aevolve",
     "ahe",
-    "ahe_hle",
     "gepa",
     "hill_climb",
     "hyperagents",
-    "hyperagents_hle",
 }
-UV_SOURCE_RECIPES = {"ahe", "ahe_hle", "hill_climb", "hyperagents", "hyperagents_hle"}
+UV_SOURCE_RECIPES = {"ahe", "hill_climb", "hyperagents"}
 
 
 def _config(name: str) -> str:
@@ -88,17 +86,9 @@ def test_supported_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "editable_roots: [target]" in config
             assert "agent: target.agent:HarborAgent" in config
             assert "record: {variant: gepa" in config
-        elif name in {"ahe", "ahe_hle"}:
+        elif name == "ahe":
             assert "max_generations: 10" in config
-            expected_dataset = "hle_parity" if name == "ahe_hle" else "terminal-bench-2-50-19-20"
-            expected_tasks = 100 if name == "ahe_hle" else 50
-            expected_split = (
-                "{train: 0.40160642570281124, gate: 0.19678714859437751, "
-                "sealed: 0.40160642570281124, seed: 42}"
-                if name == "ahe_hle"
-                else "{train: 0.562, gate: 0.213, sealed: 0.225, seed: 0}"
-            )
-            assert f"dataset: {expected_dataset}" in config
+            assert "dataset: terminal-bench-2-50-19-20" in config
             assert "seed: https://github.com/SWE-agent/mini-swe-agent.git" in config
             assert "revision: 388da74aad620a384ab47669b17c52133e30e7c3" in config
             assert "generate_lock: true" in config
@@ -118,22 +108,14 @@ def test_supported_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "image: evolve-meta-agent-app:20260724-tools-mswe245" in config
             assert "task_scope: full" not in config
             assert "evaluation_split: train" in config
-            assert f"tasks_per_round: {expected_tasks}" in config
+            assert "tasks_per_round: 50" in config
             assert "k: 1" in config
             assert "n_concurrent: 25" in config
-            assert f"\n  split: {expected_split}" in config
+            assert "\n  split: {train: 0.562, gate: 0.213, sealed: 0.225, seed: 0}" in config
             assert "\n  anchor:" not in config
-        elif name in {"hyperagents", "hyperagents_hle"}:
+        elif name == "hyperagents":
             assert "max_generations: 10" in config
-            expected_dataset = "hle_parity" if name == "hyperagents_hle" else "terminal-bench-2-50-19-20"
-            expected_tasks = 100 if name == "hyperagents_hle" else 50
-            expected_split = (
-                "{train: 0.40160642570281124, gate: 0.19678714859437751, "
-                "sealed: 0.40160642570281124, seed: 42}"
-                if name == "hyperagents_hle"
-                else "{train: 0.562, gate: 0.213, sealed: 0.225, seed: 0}"
-            )
-            assert f"dataset: {expected_dataset}" in config
+            assert "dataset: terminal-bench-2-50-19-20" in config
             assert "seed: https://github.com/SWE-agent/mini-swe-agent.git" in config
             assert "revision: 388da74aad620a384ab47669b17c52133e30e7c3" in config
             assert "generate_lock: true" in config
@@ -154,10 +136,10 @@ def test_supported_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "image: evolve-meta-agent-app:20260724-tools-mswe245" in config
             assert "task_scope: full" not in config
             assert "evaluation_split: train" in config
-            assert f"tasks_per_round: {expected_tasks}" in config
+            assert "tasks_per_round: 50" in config
             assert "k: 1" in config
             assert "n_concurrent: 25" in config
-            assert f"\n  split: {expected_split}" in config
+            assert "\n  split: {train: 0.562, gate: 0.213, sealed: 0.225, seed: 0}" in config
             assert "\n  anchor:" not in config
             assert "budget_usd" not in config
         else:
@@ -227,11 +209,8 @@ def test_supported_uv_recipes_enable_candidate_runtime_and_task_retry() -> None:
         assert evaluator["benchmark_timeout_is_zero"] is True
 
 
-@pytest.mark.parametrize(
-    "name",
-    ["ahe", "ahe_hle", "hyperagents", "hyperagents_hle"],
-)
-def test_four_experiment_recipes_share_runtime_contract(name: str) -> None:
+@pytest.mark.parametrize("name", ["ahe", "hyperagents"])
+def test_method_recipes_share_runtime_contract(name: str) -> None:
     recipe = _parsed_config(name)
     evaluator = recipe["evaluator"]
     meta_agent = recipe["operators"]["meta_agent"]
@@ -247,9 +226,8 @@ def test_four_experiment_recipes_share_runtime_contract(name: str) -> None:
     assert meta_agent["max_retries"] == 1
 
 
-@pytest.mark.parametrize("name", ["ahe", "ahe_hle"])
-def test_ahe_recipes_disable_trace_debugger_whole_job_retries(name: str) -> None:
-    trace = _parsed_config(name)["operators"]["trace_analyzer"]
+def test_ahe_recipe_disables_trace_debugger_whole_job_retries() -> None:
+    trace = _parsed_config("ahe")["operators"]["trace_analyzer"]
 
     assert trace["debugger_max_retries"] == 0
     assert "retry_attempts" not in trace
@@ -347,14 +325,6 @@ def test_hyperagents_recipe_configures_reasoning_without_cost_caps() -> None:
         "MINISWE_REASONING_EFFORT": "high",
         "MINISWE_STEP_LIMIT": "100",
     }
-
-
-def test_hle_recipes_pin_supported_judge_model() -> None:
-    for name in ("ahe_hle", "hyperagents_hle"):
-        recipe = _parsed_config(name)
-        assert recipe["evaluator"]["verifier_env"] == {
-            "JUDGE_MODEL": "gpt-5.4-mini-2026-03-17"
-        }
 
 
 def test_all_recipes_disable_expensive_evaluator_retries() -> None:

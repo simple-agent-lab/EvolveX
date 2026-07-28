@@ -15,8 +15,6 @@
   `recipes/`: `aevolve`, `ahe`, `gepa`, `hill_climb`, or `hyperagents`.
 - **Test fixture** — deterministic test-only data under `tests/fixtures/`. It
   is not a supported recipe or seed.
-- **Experiment** — unsupported research configuration or code under
-  `experiments/`; it is intentionally outside the public recipe inventory.
 - **Evaluator / ruler** — the frozen scoring harness in `evaluator/`. It runs
   candidates and produces the results that the mechanism stamps into the archive.
 - **Mutable surface** — the `surface` include/exclude patterns in `evolve.yaml`
