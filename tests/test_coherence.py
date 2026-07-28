@@ -20,6 +20,7 @@ APPROVED_MODULES = {
     "__main__.py",
     "agent.py",
     "archive.py",
+    "branching.py",
     "candidate/__init__.py",
     "candidate/smoke.py",
     "candidate/snapshot.py",

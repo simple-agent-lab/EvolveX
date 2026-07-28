@@ -145,6 +145,13 @@ def eval_receipt_path(archive: Path) -> Path:
     return archive.with_name(".evolve-eval-receipts.jsonl")
 
 
+def certified_evaluation_events(path: Path) -> list[dict[str, Any]]:
+    receipts = _eval_receipts(path)
+    return [
+        event for event in read_events(path) if _has_evaluation_provenance(event, str(event.get("genid", "")), receipts)
+    ]
+
+
 def merged_rows(path: Path) -> list[dict[str, Any]]:
     rows: dict[str, dict[str, Any]] = {}
     evals_by_genid: dict[str, dict[str, dict[str, Any]]] = {}
