@@ -117,6 +117,7 @@ def test_ci_warms_clean_python_312_cache_before_offline_workspace_probes() -> No
     steps = job["steps"]
     setup_uv = next(step for step in steps if str(step.get("uses", "")).startswith("astral-sh/setup-uv@"))
     assert setup_uv["with"]["python-version"] == "3.12"
+    assert setup_uv["with"]["enable-cache"] is False
 
     indexes = {step.get("id"): index for index, step in enumerate(steps)}
     assert (
