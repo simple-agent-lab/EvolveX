@@ -121,6 +121,38 @@ def _copy_tree(source: Path, destination: Path, *, ignore=None) -> None:
         shutil.copy2(source, destination, follow_symlinks=False)
 
 
+def _ignored_checkout_paths(checkout: Path) -> set[str]:
+    result = git(
+        checkout,
+        "ls-files",
+        "--others",
+        "--ignored",
+        "--exclude-standard",
+        "--directory",
+        "-z",
+    )
+    return {path.rstrip("/") for path in result.stdout.split("\0") if path}
+
+
+def _checkout_copy_ignore(checkout: Path, ignored: set[str]):
+    root = checkout.resolve()
+
+    def ignore(directory: str, names: list[str]) -> set[str]:
+        relative = Path(directory).resolve().relative_to(root)
+        return {name for name in names if (relative / name).as_posix() in ignored}
+
+    return ignore
+
+
+def _copy_checkout_inputs(checkout: Path, workspace: Path, excluded_roots: set[str]) -> None:
+    ignored = _ignored_checkout_paths(checkout)
+    ignore = _checkout_copy_ignore(checkout, ignored)
+    for source in checkout.iterdir():
+        relative = source.relative_to(checkout).as_posix()
+        if source.name not in excluded_roots and relative not in ignored:
+            _copy_tree(source, workspace / source.name, ignore=ignore)
+
+
 def _runs_ignore(runs_root: Path):
     resolved_root = runs_root.resolve()
 
@@ -268,9 +300,11 @@ def _copy_full_workspace_inputs(checkout: Path, ctx: OperatorContext, workspace:
     for path in workspace.iterdir():
         if path.name != ".git":
             _remove(path)
-    for source in checkout.iterdir():
-        if source.name not in {".git", "runs", "archive.jsonl", _EVAL_RECEIPT}:
-            _copy_tree(source, workspace / source.name)
+    _copy_checkout_inputs(
+        checkout,
+        workspace,
+        {".git", "runs", "archive.jsonl", _EVAL_RECEIPT},
+    )
     archive = ctx.workspace / "archive.jsonl"
     if archive.is_file():
         _copy_tree(archive, workspace / "archive.jsonl")
@@ -320,9 +354,7 @@ def _prepare_bundle(
             _copy_full_workspace_inputs(checkout, ctx, workspace)
         else:
             workspace.mkdir()
-            for source in checkout.iterdir():
-                if source.name not in _HIDDEN_WORKSPACE_ROOTS:
-                    _copy_tree(source, workspace / source.name)
+            _copy_checkout_inputs(checkout, workspace, _HIDDEN_WORKSPACE_ROOTS)
             _copy_visible_run_inputs(ctx, workspace)
         _copy_artifact_inputs(ctx, workspace)
         if not _expose_gate_data(ctx.config):

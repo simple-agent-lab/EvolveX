@@ -1086,6 +1086,35 @@ def test_harbor_bundle_exposes_gate_data_only_when_enabled(tmp_path: Path) -> No
         shutil.rmtree(bundle.staging, ignore_errors=True)
 
 
+@pytest.mark.parametrize("expose_gate_data", [False, True])
+def test_harbor_bundle_omits_gitignored_checkout_state(
+    tmp_path: Path,
+    expose_gate_data: bool,
+) -> None:
+    checkout, run_dir = _checkout(tmp_path)
+    (checkout / ".gitignore").write_text("artifacts/\n.venv/\n.cache/\n")
+    (checkout / ".venv").mkdir()
+    (checkout / ".venv" / "framework-state.txt").write_text("host framework environment\n")
+    (checkout / ".cache").mkdir()
+    (checkout / ".cache" / "host-state.txt").write_text("host cache\n")
+    (checkout / "target" / ".venv").mkdir()
+    (checkout / "target" / ".venv" / "candidate-state.txt").write_text("host candidate environment\n")
+    runner = _harbor_runner_module()
+    surface = runner.load_surface_policy(checkout)
+    ctx = _ctx(checkout, run_dir)
+    ctx.config["expose_gate_data"] = expose_gate_data
+
+    bundle = runner._prepare_bundle(checkout, ctx, ["target"], surface)
+
+    try:
+        assert not (bundle.workspace / ".venv").exists()
+        assert not (bundle.workspace / ".cache").exists()
+        assert not (bundle.workspace / "target" / ".venv").exists()
+        assert (bundle.workspace / "target" / "agent.py").read_text() == "print('parent')\n"
+    finally:
+        shutil.rmtree(bundle.staging, ignore_errors=True)
+
+
 def test_harbor_bundle_rejects_non_boolean_gate_visibility(tmp_path: Path) -> None:
     checkout, run_dir = _checkout(tmp_path)
     ctx = _ctx(checkout, run_dir)
