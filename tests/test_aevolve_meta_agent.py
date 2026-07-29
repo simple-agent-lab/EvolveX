@@ -132,7 +132,8 @@ def test_aevolve_reproduces_recent_summary_draft_and_workspace_mutation_cycle(
         assert root == checkout and actual_ctx == ctx
         assert '"task_id": "task-prior"' in prompt
         assert '"task_id": "task-current"' in prompt
-        assert "infra-noise" not in prompt
+        assert '"task_id": "infra-noise"' in prompt
+        assert "DockerError: daemon unavailable" in prompt
         assert "A draft about verifying generated artifacts" in prompt
         assert "Current Skills (1)" in prompt and "- existing" in prompt
         assert "You CAN modify any file under `target/`" in prompt
@@ -177,7 +178,7 @@ def test_aevolve_reproduces_recent_summary_draft_and_workspace_mutation_cycle(
         "skills_after": 2,
         "skills_before": 1,
         "skills_removed": [],
-        "tasks_analyzed": 2,
+        "tasks_analyzed": 3,
         "usage": {"usd": 0.12},
     }
     assert "variant: aevolve" in result.notes

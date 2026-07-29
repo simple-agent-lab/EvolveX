@@ -6,6 +6,7 @@ import re
 import signal
 import subprocess
 import time
+from collections.abc import Iterable
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
@@ -53,14 +54,93 @@ def run_owned(
 
 
 def _terminate(process: subprocess.Popen[str]) -> tuple[str, str]:
-    with suppress(ProcessLookupError):
-        os.killpg(process.pid, signal.SIGTERM)
+    targets = _process_tree(process.pid)
+    _signal_process_tree(targets, signal.SIGTERM, fallback_group=process.pid)
     try:
-        return process.communicate(timeout=5)
+        output = process.communicate(timeout=5)
     except subprocess.TimeoutExpired:
-        with suppress(ProcessLookupError):
-            os.killpg(process.pid, signal.SIGKILL)
+        _signal_process_tree(
+            _process_tree(process.pid) | targets,
+            signal.SIGKILL,
+            fallback_group=process.pid,
+        )
         return process.communicate()
+    _wait_for_process_tree(targets - {process.pid}, timeout_s=5)
+    _signal_process_tree(_alive_pids(targets), signal.SIGKILL)
+    return output
+
+
+def _process_tree(root_pid: int) -> set[int]:
+    """Snapshot a process and all descendants, including children in new sessions."""
+    children: dict[int, list[int]] = {}
+    proc = Path("/proc")
+    try:
+        entries = list(proc.iterdir())
+    except OSError:
+        return {root_pid}
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        try:
+            status = (entry / "status").read_text()
+            parent_line = next(line for line in status.splitlines() if line.startswith("PPid:"))
+            parent = int(parent_line.split()[1])
+        except (OSError, StopIteration, ValueError):
+            continue
+        children.setdefault(parent, []).append(int(entry.name))
+    result = {root_pid}
+    pending = [root_pid]
+    while pending:
+        child_pids = children.get(pending.pop(), ())
+        for child_pid in child_pids:
+            if child_pid not in result:
+                result.add(child_pid)
+                pending.append(child_pid)
+    return result
+
+
+def _alive_pids(pids: Iterable[int]) -> set[int]:
+    alive: set[int] = set()
+    for pid in pids:
+        try:
+            os.kill(pid, 0)
+        except (ProcessLookupError, PermissionError):
+            continue
+        alive.add(pid)
+    return alive
+
+
+def _wait_for_process_tree(pids: Iterable[int], *, timeout_s: float) -> None:
+    pending = set(pids)
+    deadline = time.monotonic() + timeout_s
+    while pending and time.monotonic() < deadline:
+        pending = _alive_pids(pending)
+        if pending:
+            time.sleep(0.05)
+
+
+def _signal_process_tree(
+    pids: Iterable[int],
+    sig: signal.Signals,
+    *,
+    fallback_group: int | None = None,
+) -> None:
+    """Signal every process group represented in a captured descendant tree."""
+    process_ids = set(pids)
+    groups: set[int] = set()
+    own_group = os.getpgrp()
+    if fallback_group is not None and fallback_group != own_group:
+        groups.add(fallback_group)
+    for pid in process_ids:
+        try:
+            group = os.getpgid(pid)
+        except ProcessLookupError:
+            continue
+        if group != own_group:
+            groups.add(group)
+    for group in groups:
+        with suppress(ProcessLookupError):
+            os.killpg(group, sig)
 
 
 def owned_attempt_id(workspace: Path, run_dir: Path) -> str:

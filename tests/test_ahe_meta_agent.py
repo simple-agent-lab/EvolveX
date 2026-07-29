@@ -66,9 +66,7 @@ def _case(tmp_path: Path, *, genid: str = "1", parent: str = "0"):
     evidence.mkdir()
     (evidence / "overview.json").write_text(json.dumps({"cases": [{"task_name": "task-a"}]}))
     workspace.mkdir(exist_ok=True)
-    (workspace / "archive.jsonl").write_text(
-        '{"genid":"0","score":0,"sentinel":"ARCHIVE BODY MUST STAY ON DISK"}\n'
-    )
+    (workspace / "archive.jsonl").write_text('{"genid":"0","score":0,"sentinel":"ARCHIVE BODY MUST STAY ON DISK"}\n')
     handoff = workspace / "artifacts" / "generations" / parent / "handoff.md"
     handoff.parent.mkdir(parents=True)
     handoff.write_text("PARENT HANDOFF BODY MUST STAY ON DISK\n")

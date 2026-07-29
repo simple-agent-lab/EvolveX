@@ -69,6 +69,42 @@ def test_gepa_validation_replays_exact_parent_minibatch_and_accepts_improvement(
     assert comparison["delta"] == 1
 
 
+def test_gepa_validation_scores_infra_cases_as_zero_without_aborting(tmp_path: Path, monkeypatch) -> None:
+    module = _module("gepa_validate_infra_under_test", ROOT / "library/validate/minibatch_improvement.py")
+    ctx = _ctx(tmp_path, {"criterion": "strict", "n_concurrent": 2})
+    parent_cases = [
+        {"task_name": "task-a", "outcome": "infra_error", "reward": None},
+        {"task_name": "task-b", "outcome": "passed", "reward": 1},
+    ]
+    parent_path = ctx.run_dir / "rollout/cases.json"
+    parent_path.parent.mkdir(parents=True)
+    parent_path.write_text(json.dumps(parent_cases))
+
+    class FakeRollout:
+        def rollout(self, _checkout, child_ctx):
+            root = child_ctx.run_dir / "rollout"
+            root.mkdir(parents=True)
+            root.joinpath("cases.json").write_text(
+                json.dumps(
+                    [
+                        {"task_name": "task-a", "outcome": "passed", "reward": 1},
+                        {"task_name": "task-b", "outcome": "incomplete", "reward": None},
+                    ]
+                )
+            )
+            root.joinpath("harbor.log").write_text("one missing result\n")
+            return RolloutResult(summary={"infra_errors": 1}, artifacts=["rollout/cases.json"])
+
+    monkeypatch.setattr(module, "HarborRollout", FakeRollout)
+    result = module.MinibatchImprovementValidate().validate(tmp_path, ctx)
+
+    comparison = json.loads((ctx.run_dir / "validate/comparison.json").read_text())
+    assert result.accept is False
+    assert comparison["parent_total"] == comparison["child_total"] == 1
+    assert comparison["parent_infra_cases"] == ["task-a"]
+    assert comparison["child_infra_cases"] == ["task-b"]
+
+
 def test_gepa_record_points_to_evidence_and_comparison(tmp_path: Path) -> None:
     module = _module("gepa_record_under_test", ROOT / "library/record/gepa.py")
     ctx = _ctx(tmp_path)

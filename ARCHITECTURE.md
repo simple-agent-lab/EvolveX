@@ -31,8 +31,7 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `evaluation/results.py` | 170 | evaluation result types, outcome classification, and persisted record shape |
 | `evaluation/evidence.py` | 130 | evaluator-output validation and conversion into canonical trial results |
 | `evaluation/identity.py` | 150 | canonical task-set identity plus checkout and frozen-baseline comparability |
-| `evaluation/execution.py` | 280 | clean-checkout canonical evaluation: tree assertion, targeted task execution, lifecycle, artifacts, and score parsing |
-| `evaluation/repair.py` | 190 | target explicit infrastructure failures, merge repaired trials, and preserve attempt provenance |
+| `evaluation/execution.py` | 280 | clean-checkout canonical evaluation: tree assertion, single-run lifecycle, artifacts, and score parsing |
 | `candidate/__init__.py` | 10 | candidate-boundary package marker |
 | `candidate/snapshot.py` | 80 | exact candidate Git tree construction, temporary materialization, and reviewed-tree commit verification |
 | `candidate/smoke.py` | 130 | run evaluator smoke against an exact candidate snapshot and persist redacted diagnostics |
@@ -59,7 +58,7 @@ each workspace, immutable there because it sits outside the mutable surface
 | `frozen/meta_eval.py` | 130 | self-modification admission gate: confound-free replay of old vs new operator surface (mechanism 1) |
 
 Total `src/evolve/` budget: **7000 lines**. The budget admits the explicit evaluation-package
-boundaries, failed-task repair, the opt-in in-place Harbor runtime, and the redacted trace-analysis
+boundaries, the opt-in in-place Harbor runtime, and the redacted trace-analysis
 boundary between rollout and feedback assembly; if the mechanism wants to
 grow past that, something belongs in a workspace operator instead —
 that is the spec's rule, not a style preference.

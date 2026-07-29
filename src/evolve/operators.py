@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .runtime import _terminate
+
 
 @dataclass(frozen=True)
 class OperatorResult:
@@ -86,7 +88,7 @@ def run_operator(
     }
     try:
         live_output = os.environ.get("EVOLVE_LIVE_OUTPUT") == "1"
-        completed = subprocess.run(
+        process = subprocess.Popen(
             [
                 sys.executable,
                 "-c",
@@ -98,33 +100,47 @@ def run_operator(
             cwd=checkout,
             env=env,
             text=True,
-            capture_output=not live_output,
-            timeout=timeout_s,
-            check=False,
+            stdout=None if live_output else subprocess.PIPE,
+            stderr=None if live_output else subprocess.PIPE,
+            start_new_session=True,
         )
+        try:
+            stdout, stderr = process.communicate(timeout=timeout_s)
+        except subprocess.TimeoutExpired as exc:
+            terminated_stdout, terminated_stderr = _terminate(process)
+            stderr = _text(exc.stderr or terminated_stderr)
+            if stderr:
+                stderr = f"{stderr.rstrip()}\n"
+            stderr += f"timeout after {timeout_s}s"
+            result = OperatorResult(
+                name=name,
+                returncode=-1,
+                stdout=_text(exc.stdout or terminated_stdout),
+                stderr=stderr,
+                wall_s=time.monotonic() - start,
+            )
+            _progress(f"gen/{genid} {name}: timed out after {result.wall_s:.1f}s")
+            return result
+        except BaseException:
+            _terminate(process)
+            raise
         result = OperatorResult(
             name=name,
-            returncode=completed.returncode,
-            stdout=completed.stdout or "",
-            stderr=completed.stderr or "",
+            returncode=process.returncode or 0,
+            stdout=stdout or "",
+            stderr=stderr or "",
             wall_s=time.monotonic() - start,
         )
         _progress(f"gen/{genid} {name}: exit={result.returncode}, elapsed={result.wall_s:.1f}s")
         return result
-    except subprocess.TimeoutExpired as exc:
-        stderr = _text(exc.stderr)
-        if stderr:
-            stderr = f"{stderr.rstrip()}\n"
-        stderr += f"timeout after {timeout_s}s"
-        result = OperatorResult(
+    except OSError as error:
+        return OperatorResult(
             name=name,
-            returncode=-1,
-            stdout=_text(exc.stdout),
-            stderr=stderr,
+            returncode=127,
+            stdout="",
+            stderr=str(error),
             wall_s=time.monotonic() - start,
         )
-        _progress(f"gen/{genid} {name}: timed out after {result.wall_s:.1f}s")
-        return result
 
 
 def operator_timeout(operators_config: dict[str, Any], name: str) -> float:

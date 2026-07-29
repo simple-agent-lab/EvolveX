@@ -15,7 +15,6 @@ from evolve.evaluation.evidence import TaskVectorError
 from evolve.evaluation.execution import (
     _evaluation_artifact_reference,
     _read_task_vector,
-    _repair_task_selectors,
     _run_eval_script,
     _runtime_receipt_reference,
     evaluate,
@@ -359,34 +358,6 @@ def test_evaluator_validates_task_vectors_and_compacts_artifact_references(tmp_p
     vector_path.write_text('{"schema_version": 99, "tasks": {}}\n')
     with pytest.raises(TaskVectorError, match="unsupported task vector schema"):
         _read_task_vector(run_dir)
-
-
-def test_repair_maps_harbor_result_ids_back_to_frozen_local_task_selectors(tmp_path: Path) -> None:
-    evaluator = tmp_path / "evaluator"
-    evaluator.mkdir()
-    (evaluator / "splits.json").write_text(
-        json.dumps(
-            {
-                "tasks": {
-                    "gate": ["rstan-to-pystan", "sqlite-db-truncate"],
-                    "sealed": ["sealed-task"],
-                }
-            }
-        )
-    )
-
-    assert _repair_task_selectors(
-        tmp_path,
-        (),
-        "candidate",
-        ("terminal-bench/rstan-to-pystan",),
-    ) == ("rstan-to-pystan",)
-    assert _repair_task_selectors(
-        tmp_path,
-        (),
-        "anchor",
-        ("terminal-bench/sealed-task",),
-    ) == ("sealed-task",)
 
 
 def test_evaluator_tree_mismatch_does_not_consume_attempt_identity(tmp_path: Path) -> None:

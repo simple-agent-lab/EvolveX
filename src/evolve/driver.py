@@ -34,7 +34,6 @@ from .evaluation import (
     evaluation_status,
 )
 from .evaluation.execution import EvaluationInterrupted, evaluate
-from .evaluation.repair import evaluation_record_from_payload, repair_task_ids
 from .feedback import write_feedback_bundle
 from .frozen.interfaces import (
     ArchiveView,
@@ -74,6 +73,7 @@ TERMINAL_STATUSES = {
     "rejected_duplicate",
     "rejected_validation",
     Outcome.CANDIDATE_INVALID.value,
+    Outcome.INFRASTRUCTURE_FAILED.value,
     Outcome.TIMEOUT.value,
     Outcome.CANCELLED.value,
 }
@@ -87,10 +87,6 @@ class RunOptions:
     workspace: Path
     max_generations: int
     children_per_gen: int = 1
-
-
-class EvaluationPaused(RuntimeError):
-    """The same committed candidate exhausted its one infrastructure retry."""
 
 
 @dataclass(frozen=True)
@@ -467,7 +463,7 @@ def _resume_tagged_child(
     row = rows_by_genid(workspace).get(genid, {})
     needs_gate_record = genid in _evaluation_pending_gate_record_genids(workspace)
     canonical = row.get("outcome") in CANONICAL_OUTCOMES
-    if row.get("outcome") == Outcome.INFRASTRUCTURE_FAILED.value or not canonical:
+    if not canonical:
         eval_child(workspace, genid, round_number=round_number)
         row = rows_by_genid(workspace).get(genid, {})
         needs_gate_record = genid in _evaluation_pending_gate_record_genids(workspace)
@@ -725,12 +721,7 @@ def eval_child(
     rows = rows_by_genid(workspace)
     row = rows.get(genid, {})
     status = evaluation_status(row)
-    if (
-        not force
-        and round_number is None
-        and row.get("outcome") in CANONICAL_OUTCOMES
-        and row.get("outcome") != Outcome.INFRASTRUCTURE_FAILED.value
-    ):
+    if not force and round_number is None and row.get("outcome") in CANONICAL_OUTCOMES:
         return None
     if force:
         kind = "forced_eval"
@@ -749,7 +740,6 @@ def eval_child(
             [str(path) for path in mutated],
             round_number=round_number,
             kind=kind,
-            resume_infrastructure=not force,
         )
     return _finalize_child(workspace, exp_id, genid, parent, tag, round_number=round_number, kind=kind)
 
@@ -763,7 +753,6 @@ def _finalize_child(
     *,
     round_number: int | None = None,
     kind: str = "eval",
-    resume_infrastructure: bool = True,
 ) -> EvaluationRecord | None:
     parent_tag = f"gen/{parent}"
     mutated = git_stdout(workspace, "diff", "--name-only", parent_tag, tag).splitlines()
@@ -799,7 +788,6 @@ def _finalize_child(
         mutated,
         round_number=round_number,
         kind=kind,
-        resume_infrastructure=resume_infrastructure,
     )
 
 
@@ -812,7 +800,6 @@ def _stamp_evaluation(
     *,
     round_number: int | None = None,
     kind: str = "eval",
-    resume_infrastructure: bool = True,
 ) -> EvaluationRecord:
     metadata = {
         "parent": parent,
@@ -829,7 +816,6 @@ def _stamp_evaluation(
         metadata=metadata,
         round_number=round_number,
         pending_gate_on_complete=genid != "0",
-        resume_infrastructure=resume_infrastructure,
     )
 
 
@@ -840,10 +826,11 @@ def _ensure_genesis_evaluated(workspace: Path) -> None:
         return
     if status in {
         Outcome.CANDIDATE_INVALID.value,
+        Outcome.INFRASTRUCTURE_FAILED.value,
         Outcome.TIMEOUT.value,
         Outcome.CANCELLED.value,
     }:
-        raise RuntimeError(f"genesis {status}: repair seed before evolution")
+        raise RuntimeError(f"genesis {status}: fix the seed or infrastructure and initialize a new workspace")
     result = _evaluate_once(
         workspace,
         "gen/0",
@@ -859,7 +846,9 @@ def _ensure_genesis_evaluated(workspace: Path) -> None:
         },
     )
     if result.outcome is not Outcome.BENCHMARK_COMPLETE:
-        raise RuntimeError(f"genesis {result.outcome.value}: repair seed before evolution")
+        raise RuntimeError(
+            f"genesis {result.outcome.value}: fix the seed or infrastructure and initialize a new workspace"
+        )
 
 
 def _evaluate_once(
@@ -871,7 +860,6 @@ def _evaluate_once(
     metadata: dict[str, Any],
     round_number: int | None = None,
     pending_gate_on_complete: bool = False,
-    resume_infrastructure: bool = True,
 ) -> EvaluationRecord:
     def run_attempt(**kwargs: Any) -> EvaluationRecord:
         try:
@@ -883,23 +871,7 @@ def _evaluate_once(
         _append_lifecycle_evaluation(workspace, record, metadata, pending_gate_on_complete)
         return record
 
-    previous = _last_evaluation_event(workspace, genid, purpose, round_number) if resume_infrastructure else None
-    if previous is not None and previous.get("outcome") == Outcome.INFRASTRUCTURE_FAILED:
-        if previous.get("retry_of") is not None:
-            raise EvaluationPaused(f"gen/{genid} infrastructure failed twice")
-        first = evaluation_record_from_payload(previous)
-    else:
-        first = run_attempt()
-        if first.outcome is not Outcome.INFRASTRUCTURE_FAILED:
-            return first
-
-    failed_tasks = repair_task_ids(first)
-    second = run_attempt(repair_from=first) if failed_tasks else run_attempt(retry_of=first.attempt)
-    if second.candidate_commit != first.candidate_commit:
-        raise RuntimeError(f"gen/{genid} changed commit during infrastructure retry")
-    if second.outcome is Outcome.INFRASTRUCTURE_FAILED:
-        raise EvaluationPaused(f"gen/{genid} infrastructure failed twice")
-    return second
+    return run_attempt()
 
 
 def _append_lifecycle_evaluation(
@@ -918,23 +890,6 @@ def _append_lifecycle_evaluation(
         else {}
     )
     append_evaluation_record(workspace, record, metadata={**metadata, **gate_metadata})
-
-
-def _last_evaluation_event(
-    workspace: Path,
-    genid: str,
-    purpose: str,
-    round_number: int | None,
-) -> dict[str, Any] | None:
-    for event in reversed(read_events(archive_path(workspace))):
-        if (
-            event.get("event_type") == "evaluation"
-            and str(event.get("genid")) == genid
-            and event.get("purpose") == purpose
-            and event.get("round") == round_number
-        ):
-            return event
-    return None
 
 
 def _select_generation_parents(

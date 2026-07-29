@@ -35,10 +35,6 @@ if python3 -c 'import json,sys; raise SystemExit(0 if json.load(open(sys.argv[1]
   EVOLVE_HARBOR_TASK_FILE="$EVOLVE_RUN_DIR/task-names.txt"
   export EVOLVE_HARBOR_TASK_FILE
 fi
-if [ -n "${EVOLVE_REPAIR_TASK_FILE:-}" ]; then
-  EVOLVE_HARBOR_TASK_FILE=$EVOLVE_REPAIR_TASK_FILE
-  export EVOLVE_HARBOR_TASK_FILE
-fi
 : "${EVOLVE_UV_CACHE_DIR:=$HOME/.evolve/uv-cache}"
 runtime_mounts=${EVOLVE_CANDIDATE_RUNTIME_MOUNTS_JSON:-}
 runtime_env=${EVOLVE_CANDIDATE_RUNTIME_ENV_JSON:-}
@@ -164,9 +160,19 @@ for credential_name in OPENAI_API_KEY OPENAI_BASE_URL OPENAI_API_BASE; do
     set -- "$@" --ae "$credential_name=$credential_value"
   fi
 done
+agent_proxy_http=
+agent_proxy_https=
+agent_proxy_no=
 if [ -f evaluator/agent.env ]; then
   while IFS= read -r agent_entry || [ -n "$agent_entry" ]; do
-    [ -n "$agent_entry" ] && set -- "$@" --ae "$agent_entry"
+    if [ -n "$agent_entry" ]; then
+      set -- "$@" --ae "$agent_entry"
+      case "$agent_entry" in
+        http_proxy=*|HTTP_PROXY=*) agent_proxy_http=${agent_entry#*=} ;;
+        https_proxy=*|HTTPS_PROXY=*) agent_proxy_https=${agent_entry#*=} ;;
+        no_proxy=*|NO_PROXY=*) agent_proxy_no=${agent_entry#*=} ;;
+      esac
+    fi
   done < evaluator/agent.env
 fi
 while IFS= read -r runtime_entry || [ -n "$runtime_entry" ]; do
@@ -192,9 +198,9 @@ if [ -n "${EVOLVE_HARBOR_MAX_RETRIES:-}" ]; then
   set -- "$@" --retry-exclude EvolveCandidateInvalidError
   set -- "$@" --retry-exclude ApiUsageLimitError
 fi
-proxy_http=${EVOLVE_HARBOR_HTTP_PROXY:-${http_proxy:-${HTTP_PROXY:-}}}
-proxy_https=${EVOLVE_HARBOR_HTTPS_PROXY:-${https_proxy:-${HTTPS_PROXY:-}}}
-proxy_no=${EVOLVE_HARBOR_NO_PROXY:-${no_proxy:-${NO_PROXY:-}}}
+proxy_http=${EVOLVE_HARBOR_HTTP_PROXY:-${agent_proxy_http:-${http_proxy:-${HTTP_PROXY:-}}}}
+proxy_https=${EVOLVE_HARBOR_HTTPS_PROXY:-${agent_proxy_https:-${https_proxy:-${HTTPS_PROXY:-}}}}
+proxy_no=${EVOLVE_HARBOR_NO_PROXY:-${agent_proxy_no:-${no_proxy:-${NO_PROXY:-}}}}
 for proxy_entry in \
   "http_proxy=$proxy_http" "HTTP_PROXY=$proxy_http" \
   "https_proxy=$proxy_https" "HTTPS_PROXY=$proxy_https" \

@@ -30,7 +30,6 @@ APPROVED_MODULES = {
     "evaluation/evidence.py",
     "evaluation/execution.py",
     "evaluation/identity.py",
-    "evaluation/repair.py",
     "evaluation/results.py",
     "feedback.py",
     "git.py",

@@ -3,7 +3,6 @@ import json
 import random
 from pathlib import Path
 
-import pytest
 from conftest import init_workspace
 
 from evolve.feedback import write_feedback_bundle
@@ -115,19 +114,12 @@ def test_harbor_rollout_distinguishes_task_agent_and_infra_failures(tmp_path: Pa
     assert "json-secret" not in module._redact('{"OPENAI_API_KEY":"json-secret"}')
 
 
-def test_harbor_rollout_rejects_evidence_when_every_case_is_infrastructure_failure(tmp_path: Path) -> None:
+def test_harbor_rollout_accepts_infrastructure_failures_as_trace_evidence(tmp_path: Path) -> None:
     module = _harbor_rollout_module()
     harbor_log = tmp_path / "harbor.log"
 
-    with pytest.raises(SystemExit, match="only infrastructure failures"):
-        module.require_usable_cases(
-            [{"outcome": "infra_error"}, {"outcome": "incomplete"}],
-            returncode=1,
-            harbor_log=harbor_log,
-        )
-
-    module.require_usable_cases(
-        [{"outcome": "infra_error"}, {"outcome": "failed"}],
+    module.require_rollout_cases(
+        [{"outcome": "infra_error"}, {"outcome": "incomplete"}],
         returncode=1,
         harbor_log=harbor_log,
     )
@@ -149,6 +141,77 @@ def test_harbor_rollout_defaults_jobs_to_workspace_runs(tmp_path: Path, monkeypa
     )
 
     assert module._jobs_root(ctx) == tmp_path / "runs" / "harbor-rollouts"
+
+
+def test_harbor_rollout_reuses_only_a_complete_explicitly_enabled_stage(
+    tmp_path: Path,
+) -> None:
+    module = _harbor_rollout_module()
+    run_dir = tmp_path / "runs" / "gen-1"
+    rollout = run_dir / "rollout"
+    rollout.mkdir(parents=True)
+    summary = {
+        "variant": "harbor",
+        "tasks_observed": 1,
+        "infra_tasks": ["task-a"],
+    }
+    artifacts = ["rollout/harbor.log", "rollout/cases.json"]
+    (rollout / "summary.json").write_text(json.dumps(summary))
+    (rollout / "artifacts.json").write_text(json.dumps(artifacts))
+    (rollout / "cases.json").write_text(json.dumps([{"task_name": "task-a"}]))
+    ctx = OperatorContext(
+        workspace=tmp_path,
+        checkout=tmp_path,
+        run_dir=run_dir,
+        genid="1",
+        parent="0",
+        round=None,
+        fan_out=1,
+        config={"reuse_completed": True},
+        rng=random.Random(0),
+    )
+
+    reused = module._completed_rollout(ctx)
+
+    assert reused is not None
+    assert reused.summary == summary
+    assert reused.artifacts == artifacts
+    ctx.config["reuse_completed"] = False
+    assert module._completed_rollout(ctx) is None
+
+
+def test_harbor_rollout_preserves_missing_selected_results_as_trace_cases() -> None:
+    module = _harbor_rollout_module()
+
+    cases = module._with_missing_result_placeholders(
+        [
+            {
+                "task_name": "terminal-bench/task-a",
+                "reward": 1.0,
+                "outcome": "passed",
+            }
+        ],
+        ["task-a", "task-b"],
+    )
+
+    assert len(cases) == 2
+    missing = cases[1]
+    assert missing["task_name"] == "task-b"
+    assert missing["outcome"] == "incomplete"
+    assert missing["exception"]["type"] == "MissingRolloutResult"
+    assert "source_attempt" not in missing
+
+
+def test_harbor_rollout_preserves_batch_failure_when_no_task_result_exists(tmp_path: Path) -> None:
+    module = _harbor_rollout_module()
+    harbor_log = tmp_path / "harbor.log"
+    harbor_log.write_text("docker network unavailable\n")
+
+    case = module._batch_failure_case(harbor_log, 1, 2000)
+
+    assert case["outcome"] == "infra_error"
+    assert case["exception"]["type"] == "HarborBatchError"
+    assert "docker network unavailable" in case["raw_agent_output"]
 
 
 def test_harbor_rollout_reads_codex_session_jsonl_when_trajectory_is_absent(tmp_path: Path) -> None:

@@ -27,8 +27,7 @@ def test_hyperagents_recipe_initializes_broad_harbor_bundle(tmp_path: Path) -> N
     assert "- target" in config and "- operators" in config
     assert "agent_env" not in operator_blocks(workspace)["meta_agent"]
     assert (workspace / "evaluator/agent.env").read_text() == (
-        "MINISWE_COST_LIMIT=0\nMINISWE_ENV_TIMEOUT=30\nMINISWE_REASONING_EFFORT=high\n"
-        "MINISWE_STEP_LIMIT=100\n"
+        "MINISWE_COST_LIMIT=0\nMINISWE_ENV_TIMEOUT=30\nMINISWE_REASONING_EFFORT=high\nMINISWE_STEP_LIMIT=100\n"
     )
     assert "task_scope: full" in config
     assert "evaluation_split: train" in config

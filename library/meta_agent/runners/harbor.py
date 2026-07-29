@@ -164,6 +164,36 @@ def _tree_manifest(root: Path) -> dict[str, tuple[str, str]]:
     return manifest
 
 
+def _git_ignored(checkout: Path, relative: Path, *, directory: bool = False) -> bool:
+    candidates = [relative.as_posix()]
+    if directory:
+        candidates.append(relative.as_posix() + "/")
+    return any(
+        git(checkout, "check-ignore", "--quiet", "--", candidate, check=False).returncode == 0
+        for candidate in candidates
+    )
+
+
+def _nonignored_manifest_changes(
+    checkout: Path,
+    paths: list[str],
+    before: dict[str, tuple[str, str]],
+    after: dict[str, tuple[str, str]],
+) -> list[str]:
+    ignored_directories: list[str] = []
+    visible: list[str] = []
+    for path in sorted(paths, key=lambda item: (len(Path(item).parts), item)):
+        if any(path == root or path.startswith(root + "/") for root in ignored_directories):
+            continue
+        kind = (after.get(path) or before.get(path) or ("", ""))[0]
+        if _git_ignored(checkout, Path(path), directory=kind == "directory"):
+            if kind == "directory":
+                ignored_directories.append(path)
+            continue
+        visible.append(path)
+    return sorted(visible)
+
+
 def _initialize_sanitized_git(workspace: Path) -> None:
     git(workspace, "init", "--quiet")
     git(workspace, "config", "user.name", "Evolve Meta-Agent")
@@ -330,8 +360,7 @@ def _copy_returned_tree(checkout: Path, source: Path, destination: Path, relativ
     for child in source.iterdir():
         child_relative = relative / child.name
         mode = child.lstat().st_mode
-        ignore_path = child_relative.as_posix() + ("/" if stat.S_ISDIR(mode) else "")
-        if git(checkout, "check-ignore", "--quiet", "--", ignore_path, check=False).returncode == 0:
+        if _git_ignored(checkout, child_relative, directory=stat.S_ISDIR(mode)):
             continue
         if stat.S_ISLNK(mode):
             raise RuntimeError(f"Harbor meta-agent does not accept symlinks: {child}")
@@ -381,9 +410,8 @@ def _install_bundle(
     if returned_artifacts.exists() or returned_artifacts.is_symlink():
         _validate_tree(returned_artifacts)
     after = _tree_manifest(returned)
-    changed_workspace = sorted(
-        path for path in set(bundle.before) | set(after) if bundle.before.get(path) != after.get(path)
-    )
+    changed_workspace = [path for path in set(bundle.before) | set(after) if bundle.before.get(path) != after.get(path)]
+    changed_workspace = _nonignored_manifest_changes(checkout, changed_workspace, bundle.before, after)
     violations = check_paths(changed_workspace, surface.include, surface.exclude)
     if violations:
         raise RuntimeError("returned workspace mutated paths outside surface: " + ", ".join(violations))
@@ -491,24 +519,41 @@ def _append_agent_env(command: list[str], config: dict[str, Any]) -> None:
 
 def _agent_env(config: dict[str, Any]) -> dict[str, str]:
     values: dict[str, str] = {}
+    agent = str(config.get("agent") or "").strip().lower()
     for override, lower, upper in _PROXY_ENV:
         value = os.environ.get(override) or os.environ.get(lower) or os.environ.get(upper)
         if value:
             values[lower] = value
             values[upper] = value
-    for name in _CREDENTIAL_ENV:
-        value = os.environ.get(name)
-        if value:
-            values[name] = value
+    # Harbor's Codex agent mounts the host Codex home, including auth.json.
+    # Do not let evaluator/judge endpoints exported by the driver override
+    # that login. A custom Codex provider remains available through an
+    # explicit meta_agent.agent_env mapping.
+    if agent != "codex":
+        for name in _CREDENTIAL_ENV:
+            value = os.environ.get(name)
+            if value:
+                values[name] = value
     configured = config.get("agent_env")
     if isinstance(configured, dict):
         values.update({str(key): str(value) for key, value in configured.items()})
-    if str(config.get("agent") or "").strip().lower() == "codex":
-        values["CODEX_FORCE_AUTH_JSON"] = "1"
+    if agent == "codex":
+        # Harbor redacts literal values for environment keys containing
+        # "AUTH" when it persists a job. Keep this as a resolvable template
+        # so the trial receives a boolean value instead of "****".
+        values["CODEX_FORCE_AUTH_JSON"] = "${CODEX_FORCE_AUTH_JSON:-1}"
     force_auth = os.environ.get("CODEX_FORCE_AUTH_JSON")
     if force_auth and "CODEX_FORCE_AUTH_JSON" not in values:
         values["CODEX_FORCE_AUTH_JSON"] = force_auth
     return values
+
+
+def _harbor_process_env(config: dict[str, Any], values: dict[str, str]) -> dict[str, str]:
+    sanitized = dict(values)
+    if str(config.get("agent") or "").strip().lower() == "codex":
+        for name in _CREDENTIAL_ENV:
+            sanitized.pop(name, None)
+    return sanitized
 
 
 def _uv_cache_dir(workspace: Path) -> Path:
@@ -877,6 +922,7 @@ def run_readonly_agent(
                 "agent_pythonpath was removed; add the adapter to the workspace pyproject.toml and uv.lock"
             )
         harbor, harbor_env = uv_run(ctx.workspace, "harbor")
+        harbor_env = _harbor_process_env(ctx.config, harbor_env)
         task_root = output_dir / "task"
         prompt_path = output_dir / "prompt.md"
         jobs_root = output_dir / "jobs"
@@ -979,6 +1025,7 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
         if (jobs_root / job_name).exists():
             raise RuntimeError(f"Harbor meta-agent job already exists: {jobs_root / job_name}")
         harbor, harbor_env = uv_run(ctx.workspace, "harbor")
+        harbor_env = _harbor_process_env(ctx.config, harbor_env)
         prompt_path.parent.mkdir(parents=True, exist_ok=True)
         evidence_contract = (
             "It contains the selected parent, full Git history, configuration, archive, evaluator, and complete "
