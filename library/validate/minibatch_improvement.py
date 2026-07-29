@@ -53,8 +53,6 @@ class MinibatchImprovementValidate(ValidateOperator):
         if not parent_cases:
             raise SystemExit(f"GEPA validation requires parent Harbor cases: {parent_path}")
         parent_infra = _infra_cases(parent_cases)
-        if parent_infra:
-            raise SystemExit("GEPA parent minibatch contains infrastructure failures: " + ", ".join(parent_infra))
         parent_scores = _task_scores(parent_cases)
         if not parent_scores:
             raise SystemExit("GEPA parent minibatch contains no named tasks")
@@ -87,8 +85,6 @@ class MinibatchImprovementValidate(ValidateOperator):
         child_cases_path = child_run_dir / "rollout" / "cases.json"
         child_cases = _cases(child_cases_path)
         child_infra = _infra_cases(child_cases)
-        if child_infra or int(rollout_result.summary.get("infra_errors") or 0) > 0:
-            raise SystemExit("GEPA child minibatch contains infrastructure failures: " + ", ".join(child_infra))
         child_scores = _task_scores(child_cases)
         if set(child_scores) != set(parent_scores):
             missing = sorted(set(parent_scores) - set(child_scores))
@@ -113,6 +109,8 @@ class MinibatchImprovementValidate(ValidateOperator):
             "child_total": child_total,
             "delta": child_total - parent_total,
             "accepted": accept,
+            "parent_infra_cases": parent_infra,
+            "child_infra_cases": child_infra,
         }
         root = ctx.run_dir / "validate"
         _write_json(root / "comparison.json", comparison)

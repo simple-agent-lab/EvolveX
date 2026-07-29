@@ -53,10 +53,7 @@ def test_run_loads_workspace_dotenv_without_overriding_explicit_environment(
 ) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    (workspace / ".env").write_text(
-        "OPENAI_BASE_URL=https://dotenv.example/v1\n"
-        "OPENAI_API_KEY=dotenv-key\n"
-    )
+    (workspace / ".env").write_text("OPENAI_BASE_URL=https://dotenv.example/v1\nOPENAI_API_KEY=dotenv-key\n")
     monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
     monkeypatch.setenv("OPENAI_API_KEY", "explicit-key")
     captured: dict[str, str | None] = {}

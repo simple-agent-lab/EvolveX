@@ -34,8 +34,8 @@ decides parent eligibility from that evaluation rather than invoking a separate
 task partition. The evaluator is frozen with capacity for 10 workers; set
 `EVOLVE_HARBOR_N_CONCURRENT_OVERRIDE=5` for a five-worker generation-1 smoke,
 then omit the override for the full run.
-Candidate execution uses Harbor's `agent_timeout_multiplier: 2`, giving the
-100-step budget up to twice each task's declared agent timeout.
+Candidate execution uses Harbor's native task timeouts
+(`agent_timeout_multiplier: 1`).
 
 Build the workspace image once before running:
 

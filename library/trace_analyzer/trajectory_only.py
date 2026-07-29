@@ -5,6 +5,7 @@ from __future__ import annotations
 import concurrent.futures
 import hashlib
 import json
+import os
 import re
 from dataclasses import replace
 from pathlib import Path
@@ -53,12 +54,37 @@ _RUNNER_KEYS = (
     "agent_pythonpath",
 )
 
+_JUDGE_CREDENTIAL_ENV = (
+    ("EVOLVE_JUDGE_OPENAI_API_KEY", "OPENAI_API_KEY"),
+    ("EVOLVE_JUDGE_OPENAI_BASE_URL", "OPENAI_BASE_URL"),
+    ("EVOLVE_JUDGE_OPENAI_API_BASE", "OPENAI_API_BASE"),
+)
 
-def _runner_config(checkout: Path) -> dict[str, Any]:
+
+def _runner_config(checkout: Path, analyzer_config: dict[str, Any]) -> dict[str, Any]:
     meta = operator_blocks(checkout).get("meta_agent")
     if not isinstance(meta, dict):
         raise RuntimeError("trajectory_only judge requires operators.meta_agent configuration")
     config = {key: meta[key] for key in _RUNNER_KEYS if key in meta}
+    judge_agent = str(analyzer_config.get("judge_agent") or "").strip()
+    if judge_agent:
+        config["agent"] = judge_agent
+    judge_agent_kwargs = analyzer_config.get("judge_agent_kwargs")
+    if isinstance(judge_agent_kwargs, dict):
+        config["agent_kwargs"] = dict(judge_agent_kwargs)
+    judge_agent_env = analyzer_config.get("judge_agent_env")
+    if isinstance(judge_agent_env, dict):
+        config["agent_env"] = dict(judge_agent_env)
+    judge_model = str(analyzer_config.get("judge_model") or "").strip()
+    if judge_model:
+        config["model"] = judge_model
+    if analyzer_config.get("judge_inherit_openai_credentials"):
+        agent_env = dict(config.get("agent_env") or {})
+        for override, standard in _JUDGE_CREDENTIAL_ENV:
+            value = os.environ.get(override) or os.environ.get(standard)
+            if value:
+                agent_env[standard] = value
+        config["agent_env"] = agent_env
     config["max_retries"] = 0
     if not config.get("agent") or not config.get("model"):
         raise RuntimeError("trajectory_only judge requires meta-agent agent and model")
@@ -153,7 +179,7 @@ def _judge_one(
 def _judge_records(checkout: Path, ctx: OperatorContext, records: list[Case]) -> list[Case]:
     if not records:
         return []
-    config = _runner_config(checkout)
+    config = _runner_config(checkout, ctx.config)
     workers = _positive_int(ctx.config.get("judge_max_concurrent"), 4)
     verdicts: list[Case | None] = [None] * len(records)
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:

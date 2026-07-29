@@ -102,15 +102,15 @@ def _trace_mechanism(case: Case, cause: str) -> tuple[str, str, list[str]]:
     elif re.search(r"\b(error|failed|exception|traceback)\b", observations, re.I):
         mechanism = "tool_error_recovery"
         causal = "agent_behavior_contributing"
+    elif case.get("outcome") in {"infra_error", "incomplete"}:
+        mechanism = "runtime_or_harness_boundary"
+        causal = "causality_unresolved"
     elif not calls:
         mechanism = "insufficient_environment_interaction"
         causal = "agent_behavior_likely_causal"
     elif case.get("outcome") == "agent_error":
         mechanism = "agent_runtime_failure"
         causal = "agent_behavior_or_runtime"
-    elif case.get("outcome") == "infra_error":
-        mechanism = "external_infrastructure"
-        causal = "not_attributed_to_agent"
     else:
         mechanism = "task_strategy_or_verification"
         causal = "causality_unresolved"
@@ -122,7 +122,7 @@ def _trace_mechanism(case: Case, cause: str) -> tuple[str, str, list[str]]:
 def failure_records(cases: list[Case]) -> list[Case]:
     records: list[Case] = []
     for case in cases:
-        if case.get("outcome") not in {"failed", "agent_error"}:
+        if case.get("outcome") == "passed":
             continue
         cause = _failure_cause(case)
         mechanism, causal_status, symptoms = _trace_mechanism(case, cause)
@@ -232,7 +232,6 @@ def reflective_records(cases: list[Case]) -> list[Case]:
             },
         }
         for case in cases
-        if case.get("outcome") not in {"infra_error", "incomplete"}
     ]
 
 
@@ -408,6 +407,14 @@ def _compress_trajectory(case: Case) -> str:
             parts.append(f"  {event['name']}({event['command']})")
     if submissions:
         parts.append(f"\n[submitted] {submissions[-1].get('value') or ''}")
+    if case.get("outcome") in {"infra_error", "incomplete"}:
+        exception = case.get("exception")
+        if not isinstance(exception, dict):
+            exception = {}
+        exception_type = str(exception.get("type") or "RuntimeTermination")
+        message = str(exception.get("message") or case.get("raw_agent_output") or "").strip()
+        parts.append("\n--- Runtime termination ---")
+        parts.append(f"  {exception_type}: {_clip(message, 300)}")
     return "\n".join(parts)
 
 
@@ -420,7 +427,6 @@ def trajectory_signal_records(cases: list[Case]) -> list[Case]:
             "compressed_trajectory": _compress_trajectory(case),
         }
         for case in cases
-        if case.get("outcome") not in {"infra_error", "incomplete"}
     ]
 
 

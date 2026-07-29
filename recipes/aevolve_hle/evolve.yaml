@@ -1,5 +1,5 @@
 experiment:
-  id: aevolve-tbench-bridge
+  id: aevolve-hle
   max_generations: 10
   target_score: null
   budget_usd: 150
@@ -17,8 +17,9 @@ operators:
   select: {variant: greedy, timeout_s: 600}
   rollout:
     variant: harbor
-    budget_tasks: 10
-    n_concurrent: 10
+    budget_tasks: 100
+    reuse_completed: true
+    n_concurrent: 25
     agent_setup_timeout_multiplier: 1
     agent_timeout_multiplier: 1
     max_retries: 1
@@ -28,9 +29,12 @@ operators:
     history_cycles: 2
     max_observations: 30
     max_chars: 60000
-    judge_max_concurrent: 10
+    judge_max_concurrent: 25
     judge_retry_attempts: 1
     judge_timeout_s: 600
+    judge_agent: evolve_harbor_adapter:ResponsesCodexAgent
+    judge_model: gpt-5.4-mini-2026-03-17
+    judge_inherit_openai_credentials: true
     timeout_s: 7200
   meta_agent:
     variant: aevolve
@@ -63,7 +67,7 @@ operators:
   timeout_s: 600
 evaluator:
   engine: harbor
-  dataset: swe-bench-lite
+  dataset: hle-parity
   model: openai/gpt-5.4-2026-03-05
   agent: evolve_harbor_adapter:MiniSweSourceAgent
   candidate_runtime:
@@ -71,6 +75,8 @@ evaluator:
     project: target
     python: "3.12"
   agent_env:
+    OPENAI_BASE_URL: http://172.17.0.1:18788/v1
+    OPENAI_API_BASE: http://172.17.0.1:18788/v1
     NO_PROXY: 172.17.0.1,127.0.0.1,localhost
     no_proxy: 172.17.0.1,127.0.0.1,localhost
     MINISWE_CONFIG: mini
@@ -80,15 +86,15 @@ evaluator:
     MINISWE_COST_LIMIT: "3.0"
     MINISWE_ENV_TIMEOUT: "30"
   split:
-    train: 0.3333333333333333
-    gate: 0.3333333333333333
-    sealed: 0.3333333333333333
-    seed: 0
+    train: 0.40160642570281124
+    gate: 0.19678714859437751
+    sealed: 0.40160642570281124
+    seed: 42
   sampling: static
-  tasks_per_round: 10
+  tasks_per_round: 49
   anchor: {final: true, every_rounds: 0}
   k: 1
-  n_concurrent: 10
+  n_concurrent: 25
   agent_setup_timeout_multiplier: 1
   agent_timeout_multiplier: 1
   max_retries: 1

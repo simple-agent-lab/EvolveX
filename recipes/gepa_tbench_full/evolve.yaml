@@ -1,5 +1,5 @@
 experiment:
-  id: aevolve-tbench-bridge
+  id: gepa-tbench-full
   max_generations: 10
   target_score: null
   budget_usd: 150
@@ -14,27 +14,25 @@ surface:
     - target/**
   exclude: []
 operators:
-  select: {variant: greedy, timeout_s: 600}
+  select: {variant: pareto, seed: 0, timeout_s: 600}
   rollout:
     variant: harbor
-    budget_tasks: 10
-    n_concurrent: 10
+    budget_tasks: 50
+    task_sampling: generation_shuffle
+    n_concurrent: 25
     agent_setup_timeout_multiplier: 1
     agent_timeout_multiplier: 1
     max_retries: 1
     timeout_s: 43200
   trace_analyzer:
-    variant: trajectory_only
-    history_cycles: 2
-    max_observations: 30
-    max_chars: 60000
-    judge_max_concurrent: 10
-    judge_retry_attempts: 1
-    judge_timeout_s: 600
-    timeout_s: 7200
+    variant: gepa
+    components:
+      agent: target
+    max_cases: 10
+    field_limit: 6000
+    timeout_s: 600
   meta_agent:
-    variant: aevolve
-    trajectory_only: true
+    variant: gepa
     expose_gate_data: false
     runner: harbor
     agent: codex
@@ -42,24 +40,24 @@ operators:
     environment: docker
     image: evolve-meta-agent-app:ubuntu-latest
     editable_roots: [target]
-    evolve_prompts: true
-    evolve_skills: true
-    evolve_memory: true
-    evolve_tools: false
-    prompt_path: target/src/minisweagent/config/mini.yaml
-    skills_dir: target/skills
-    memory_dir: target/memory
-    tools_dir: target/tools
-    history_cycles: 2
-    max_observations: 30
-    feedback_chars: 600
-    evidence_chars: 50000
+    components:
+      agent: target
+    component_strategy: all
+    max_examples: 10
     max_retries: 1
     timeout_s: 7200
     agent_kwargs:
       reasoning_effort: xhigh
-  gate: {variant: hillclimb, strict: true, timeout_s: 43200}
-  record: {variant: jsonl, timeout_s: 600}
+  validate:
+    variant: minibatch_improvement
+    criterion: strict
+    n_concurrent: 25
+    agent_setup_timeout_multiplier: 1
+    agent_timeout_multiplier: 1
+    max_retries: 1
+    timeout_s: 43200
+  gate: {variant: parent_eligible, timeout_s: 43200}
+  record: {variant: gepa, timeout_s: 600}
   timeout_s: 600
 evaluator:
   engine: harbor
@@ -71,6 +69,8 @@ evaluator:
     project: target
     python: "3.12"
   agent_env:
+    OPENAI_BASE_URL: http://172.17.0.1:18788/v1
+    OPENAI_API_BASE: http://172.17.0.1:18788/v1
     NO_PROXY: 172.17.0.1,127.0.0.1,localhost
     no_proxy: 172.17.0.1,127.0.0.1,localhost
     MINISWE_CONFIG: mini
@@ -80,15 +80,15 @@ evaluator:
     MINISWE_COST_LIMIT: "3.0"
     MINISWE_ENV_TIMEOUT: "30"
   split:
-    train: 0.3333333333333333
-    gate: 0.3333333333333333
-    sealed: 0.3333333333333333
+    train: 0.5617977528089888
+    gate: 0.21348314606741572
+    sealed: 0.2247191011235955
     seed: 0
   sampling: static
-  tasks_per_round: 10
+  tasks_per_round: 19
   anchor: {final: true, every_rounds: 0}
   k: 1
-  n_concurrent: 10
+  n_concurrent: 25
   agent_setup_timeout_multiplier: 1
   agent_timeout_multiplier: 1
   max_retries: 1

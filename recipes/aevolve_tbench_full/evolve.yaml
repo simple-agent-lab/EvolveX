@@ -1,5 +1,5 @@
 experiment:
-  id: aevolve-tbench-bridge
+  id: aevolve-tbench-full
   max_generations: 10
   target_score: null
   budget_usd: 150
@@ -17,8 +17,8 @@ operators:
   select: {variant: greedy, timeout_s: 600}
   rollout:
     variant: harbor
-    budget_tasks: 10
-    n_concurrent: 10
+    budget_tasks: 50
+    n_concurrent: 25
     agent_setup_timeout_multiplier: 1
     agent_timeout_multiplier: 1
     max_retries: 1
@@ -28,7 +28,7 @@ operators:
     history_cycles: 2
     max_observations: 30
     max_chars: 60000
-    judge_max_concurrent: 10
+    judge_max_concurrent: 25
     judge_retry_attempts: 1
     judge_timeout_s: 600
     timeout_s: 7200
@@ -71,6 +71,8 @@ evaluator:
     project: target
     python: "3.12"
   agent_env:
+    OPENAI_BASE_URL: http://172.17.0.1:18788/v1
+    OPENAI_API_BASE: http://172.17.0.1:18788/v1
     NO_PROXY: 172.17.0.1,127.0.0.1,localhost
     no_proxy: 172.17.0.1,127.0.0.1,localhost
     MINISWE_CONFIG: mini
@@ -80,15 +82,15 @@ evaluator:
     MINISWE_COST_LIMIT: "3.0"
     MINISWE_ENV_TIMEOUT: "30"
   split:
-    train: 0.3333333333333333
-    gate: 0.3333333333333333
-    sealed: 0.3333333333333333
+    train: 0.5617977528089888
+    gate: 0.21348314606741572
+    sealed: 0.2247191011235955
     seed: 0
   sampling: static
-  tasks_per_round: 10
+  tasks_per_round: 19
   anchor: {final: true, every_rounds: 0}
   k: 1
-  n_concurrent: 10
+  n_concurrent: 25
   agent_setup_timeout_multiplier: 1
   agent_timeout_multiplier: 1
   max_retries: 1

@@ -1,6 +1,8 @@
 import textwrap
+import time
 from pathlib import Path
 
+from evolve import runtime as runtime_module
 from evolve.operators import OperatorResult, run_operator
 
 
@@ -85,3 +87,44 @@ def test_run_operator_nonzero_and_timeout(tmp_path):
     )
     assert timed_out.returncode == -1
     assert "timeout" in timed_out.stderr.lower()
+
+
+def test_run_operator_timeout_kills_descendant_in_new_session(tmp_path, monkeypatch):
+    checkout = tmp_path / "checkout"
+    pid_file = tmp_path / "detached.pid"
+    monkeypatch.setattr(runtime_module, "_proc_children", lambda: None)
+    _write_operator(
+        checkout,
+        "gate",
+        f"""
+        import pathlib, signal, subprocess, sys
+        child = subprocess.Popen(
+            [sys.executable, "-c", "import signal; signal.pause()"],
+            start_new_session=True,
+        )
+        pathlib.Path({str(pid_file)!r}).write_text(str(child.pid))
+        signal.pause()
+        """,
+    )
+
+    result = run_operator(
+        name="gate",
+        checkout=checkout,
+        workspace=tmp_path,
+        genid="1",
+        parent="0",
+        run_dir=tmp_path / "r3",
+        config_block={},
+        timeout_s=0.2,
+    )
+
+    assert result.returncode == -1
+    child_pid = int(pid_file.read_text())
+    for _ in range(100):
+        try:
+            Path(f"/proc/{child_pid}/status").read_text()
+        except OSError:
+            break
+        time.sleep(0.01)
+    else:
+        raise AssertionError(f"detached child still running: {child_pid}")

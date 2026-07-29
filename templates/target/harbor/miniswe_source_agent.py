@@ -160,10 +160,74 @@ def _apply_evolved_context(agent_kwargs, source_dir):
 """.strip()
 
 
+PIPE_SAFE_LOCAL_ENV_SETUP = r"""
+import inspect
+import os
+import signal
+import subprocess
+import tempfile
+
+import minisweagent.environments.local as _local_environment
+
+
+def _pipe_safe_run(command, cwd, env, timeout):
+    with tempfile.TemporaryFile(mode="w+t", encoding="utf-8", errors="replace") as output:
+        process = subprocess.Popen(
+            command,
+            shell=True,
+            text=True,
+            cwd=cwd,
+            env=env,
+            encoding="utf-8",
+            errors="replace",
+            stdout=output,
+            stderr=subprocess.STDOUT,
+            start_new_session=os.name == "posix",
+        )
+        try:
+            process.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(process.pid, signal.SIGKILL) if os.name == "posix" else process.kill()
+            except ProcessLookupError:
+                pass
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+            output.flush()
+            output.seek(0)
+            raise subprocess.TimeoutExpired(command, timeout, output=output.read())
+        output.flush()
+        output.seek(0)
+        return subprocess.CompletedProcess(command, process.returncode, stdout=output.read())
+
+
+def _install_pipe_safe_run():
+    try:
+        source = inspect.getsource(_local_environment._run)
+    except (OSError, TypeError):
+        return
+    known_unbounded_drain = (
+        "process.communicate(timeout=timeout)" in source
+        and "stdout, _ = process.communicate()" in source
+        and "os.killpg(process.pid" in source
+    )
+    if known_unbounded_drain:
+        _local_environment._run = _pipe_safe_run
+
+
+_install_pipe_safe_run()
+""".strip()
+
+
 RUNNER = (
     MODEL_SETUP
     + "\n\n"
     + EVOLVED_CONTEXT_SETUP
+    + "\n\n"
+    + PIPE_SAFE_LOCAL_ENV_SETUP
     + r"""
 import json
 from pathlib import Path

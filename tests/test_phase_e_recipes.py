@@ -5,6 +5,12 @@ from evolve.config import RECIPE_NAMES, load_config
 ROOT = Path(__file__).resolve().parents[1]
 RECIPES = ROOT / "recipes"
 REAL_RECIPES = {"aevolve", "aevolve_tbench_bridge", "ahe", "gepa", "hill_climb", "hyperagents"}
+FULL_BRIDGE_RECIPES = {
+    "aevolve_hle",
+    "aevolve_tbench_full",
+    "gepa_hle",
+    "gepa_tbench_full",
+}
 UV_SOURCE_RECIPES = {"ahe", "hill_climb", "hyperagents"}
 SMOKE_RECIPES = {"hill_climb-smoke", "hyperagents-smoke"}
 
@@ -20,7 +26,7 @@ def _parsed_config(name: str) -> dict[str, object]:
 def test_all_recipes_are_recipe_artifacts_only() -> None:
     recipe_names = tuple(path.name for path in sorted(RECIPES.iterdir()) if path.is_dir())
     assert set(recipe_names) == set(RECIPE_NAMES)
-    assert set(RECIPE_NAMES) == REAL_RECIPES | SMOKE_RECIPES
+    assert set(RECIPE_NAMES) == REAL_RECIPES | FULL_BRIDGE_RECIPES | SMOKE_RECIPES
     for name in RECIPE_NAMES:
         recipe = RECIPES / name
         assert (recipe / "evolve.yaml").is_file()
@@ -83,7 +89,7 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "evolve_tools: false" in config
             assert "agent: evolve_harbor_adapter:MiniSweSourceAgent" in config
             assert evaluator["candidate_runtime"] == {"variant": "uv", "project": "target", "python": "3.12"}
-            assert evaluator["max_retries"] == 15
+            assert evaluator["max_retries"] == 1
         elif name == "gepa":
             assert "dataset: swe-bench-lite" in config
             assert "seed: builtin-codex" in config
@@ -116,7 +122,7 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "budget_usd" not in config
             assert "agent: evolve_harbor_agent:FileTaskMiniSweAgent" in config
             assert "editable_roots: [target]" in config
-            assert "max_retries: 2" in config
+            assert "max_retries: 1" in config
             assert "agent: evolve_harbor_adapter:MiniSweSourceAgent" in config
             assert "image: evolve-meta-agent-app:20260724-tools-mswe245" in config
             assert "task_scope: full" in config
@@ -142,7 +148,7 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "runner: harbor" in config
             assert "agent: evolve_harbor_agent:FileTaskMiniSweAgent" in config
             assert "editable_roots: [target, operators]" in config
-            assert "max_retries: 2" in config
+            assert "max_retries: 1" in config
             assert "validate: {variant: hyperagents" in config
             assert "gate: {variant: parent_eligible}" in config
             assert "record: {variant: hyperagents}" in config
@@ -205,11 +211,28 @@ def test_real_uv_recipes_enable_candidate_runtime_and_task_retry() -> None:
         assert evaluator["benchmark_timeout_is_zero"] is True
 
 
-def test_shared_optimization_recipes_double_candidate_agent_timeout() -> None:
+def test_shared_optimization_recipes_use_native_candidate_agent_timeout() -> None:
     for name in ("ahe", "hyperagents"):
         evaluator = _parsed_config(name)["evaluator"]
         assert isinstance(evaluator, dict)
-        assert evaluator["agent_timeout_multiplier"] == 2
+        assert evaluator["agent_timeout_multiplier"] == 1
+
+
+def test_all_explicit_recipe_retry_and_multiplier_values_are_one() -> None:
+    def walk(value):
+        if isinstance(value, dict):
+            for key, item in value.items():
+                if "retry" in key or "retries" in key or "multiplier" in key:
+                    assert item == 1, f"{key} must be 1, got {item!r}"
+                walk(item)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
+
+    for name in RECIPE_NAMES:
+        config = _parsed_config(name)
+        walk(config)
+        assert "infra_repair_attempts" not in _config(name)
 
 
 def test_miniswe_method_agents_use_the_rollout_model_version() -> None:
@@ -226,9 +249,33 @@ def test_miniswe_method_agents_use_the_rollout_model_version() -> None:
         assert evaluator["model"] == expected_model
 
 
-def test_recipes_do_not_hardcode_openai_endpoint() -> None:
+def test_only_full_bridge_evaluators_configure_openai_endpoint() -> None:
     for name in RECIPE_NAMES:
-        assert "OPENAI_BASE_URL" not in _config(name)
+        config = _parsed_config(name)
+        operators = config["operators"]
+        assert isinstance(operators, dict)
+        meta_agent = operators["meta_agent"]
+        assert isinstance(meta_agent, dict)
+        assert "agent_env" not in meta_agent
+        if name in FULL_BRIDGE_RECIPES:
+            evaluator = config["evaluator"]
+            assert isinstance(evaluator, dict)
+            agent_env = evaluator["agent_env"]
+            assert isinstance(agent_env, dict)
+            assert agent_env["OPENAI_BASE_URL"] == "http://172.17.0.1:18788/v1"
+            assert agent_env["OPENAI_API_BASE"] == "http://172.17.0.1:18788/v1"
+        else:
+            assert "OPENAI_BASE_URL" not in _config(name)
+
+
+def test_aevolve_hle_uses_an_independent_trajectory_judge_endpoint() -> None:
+    config = _parsed_config("aevolve_hle")
+    operators = config["operators"]
+    assert isinstance(operators, dict)
+    analyzer = operators["trace_analyzer"]
+    assert isinstance(analyzer, dict)
+    assert analyzer["judge_model"] == "gpt-5.4-mini-2026-03-17"
+    assert analyzer["judge_inherit_openai_credentials"] is True
 
 
 def test_meta_agent_image_provides_harbor_workspace_parent() -> None:
