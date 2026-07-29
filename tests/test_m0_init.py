@@ -204,6 +204,32 @@ def test_init_accepts_generated_lock_for_local_candidate_project(tmp_path: Path,
     git(workspace, "cat-file", "-e", "gen/0:target/uv.lock")
 
 
+def test_init_removes_egg_info_created_during_lock_generation(tmp_path: Path, monkeypatch) -> None:
+    from evolve import workspace as workspace_module
+
+    seed = write_locked_miniswe_seed(tmp_path / "seed")
+    lock = (seed / "uv.lock").read_text()
+    (seed / "uv.lock").unlink()
+    _override_hill_target(
+        monkeypatch,
+        {"seed": str(seed), "generate_lock": True},
+    )
+
+    def generate_lock_with_metadata(target: Path) -> None:
+        (target / "uv.lock").write_text(lock)
+        egg_info = target / "src" / "mini_swe_agent.egg-info"
+        egg_info.mkdir()
+        (egg_info / "SOURCES.txt").write_text("src/minisweagent/__init__.py\n")
+
+    monkeypatch.setattr(workspace_module, "_generate_target_lock", generate_lock_with_metadata)
+    workspace = tmp_path / "workspace"
+
+    init_workspace(InitOptions(workspace=workspace, recipe="hill_climb"))
+
+    assert not (workspace / "target" / "src" / "mini_swe_agent.egg-info").exists()
+    assert git(workspace, "ls-files", "target/src/mini_swe_agent.egg-info") == ""
+
+
 def test_init_rejects_generate_lock_for_non_project_before_creating_workspace(tmp_path: Path, monkeypatch) -> None:
     seed = tmp_path / "seed"
     seed.mkdir()

@@ -103,6 +103,7 @@ def init_workspace(options: InitOptions) -> None:
         staging_workspace.mkdir()
         _write_target(staging_workspace, target)
         staged_target = staging_workspace / "target"
+        _remove_generated_target_metadata(staged_target)
         _validate_candidate_target_contract(staged_target, evaluator)
         workspace.mkdir(parents=True, exist_ok=True)
         _write_files(
@@ -743,6 +744,14 @@ def _generate_target_lock(target: Path) -> None:
         raise RuntimeError(f"target.generate_lock failed: {detail}")
     if not (target / "uv.lock").is_file():
         raise ValueError("target.generate_lock did not produce target/uv.lock")
+
+
+def _remove_generated_target_metadata(target: Path) -> None:
+    for path in target.rglob("*.egg-info"):
+        if path.is_dir() and not path.is_symlink():
+            shutil.rmtree(path)
+        else:
+            path.unlink()
 
 
 def _init_git(workspace: Path) -> None:
