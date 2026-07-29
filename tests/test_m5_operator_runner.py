@@ -2,6 +2,7 @@ import textwrap
 import time
 from pathlib import Path
 
+from evolve import runtime as runtime_module
 from evolve.operators import OperatorResult, run_operator
 
 
@@ -88,9 +89,10 @@ def test_run_operator_nonzero_and_timeout(tmp_path):
     assert "timeout" in timed_out.stderr.lower()
 
 
-def test_run_operator_timeout_kills_descendant_in_new_session(tmp_path):
+def test_run_operator_timeout_kills_descendant_in_new_session(tmp_path, monkeypatch):
     checkout = tmp_path / "checkout"
     pid_file = tmp_path / "detached.pid"
+    monkeypatch.setattr(runtime_module, "_proc_children", lambda: None)
     _write_operator(
         checkout,
         "gate",

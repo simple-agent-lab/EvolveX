@@ -75,12 +75,28 @@ def _terminate(process: subprocess.Popen[str]) -> tuple[str, str]:
 
 def _process_tree(root_pid: int) -> set[int]:
     """Snapshot a process and all descendants, including children in new sessions."""
+    children = _proc_children()
+    if children is None:
+        children = _ps_children()
+    result = {root_pid}
+    pending = [root_pid]
+    while pending:
+        child_pids = children.get(pending.pop(), ())
+        for child_pid in child_pids:
+            if child_pid not in result:
+                result.add(child_pid)
+                pending.append(child_pid)
+    return result
+
+
+def _proc_children() -> dict[int, list[int]] | None:
+    """Return the Linux procfs parent map, or ``None`` when procfs is unavailable."""
     children: dict[int, list[int]] = {}
     proc = Path("/proc")
     try:
         entries = list(proc.iterdir())
     except OSError:
-        return {root_pid}
+        return None
     for entry in entries:
         if not entry.name.isdigit():
             continue
@@ -91,15 +107,32 @@ def _process_tree(root_pid: int) -> set[int]:
         except (OSError, StopIteration, ValueError):
             continue
         children.setdefault(parent, []).append(int(entry.name))
-    result = {root_pid}
-    pending = [root_pid]
-    while pending:
-        child_pids = children.get(pending.pop(), ())
-        for child_pid in child_pids:
-            if child_pid not in result:
-                result.add(child_pid)
-                pending.append(child_pid)
-    return result
+    return children
+
+
+def _ps_children() -> dict[int, list[int]]:
+    """Return a portable parent map using the POSIX ``ps`` command."""
+    try:
+        output = subprocess.run(
+            ["ps", "-axo", "pid=,ppid="],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return {}
+    children: dict[int, list[int]] = {}
+    for line in output.splitlines():
+        fields = line.split()
+        if len(fields) != 2:
+            continue
+        try:
+            pid, parent = (int(field) for field in fields)
+        except ValueError:
+            continue
+        children.setdefault(parent, []).append(pid)
+    return children
 
 
 def _alive_pids(pids: Iterable[int]) -> set[int]:
