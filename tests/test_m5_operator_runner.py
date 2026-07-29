@@ -1,11 +1,12 @@
-import subprocess
 import textwrap
+import time
 from pathlib import Path
 
 import pytest
 
+from evolve import runtime as runtime_module
 from evolve.driver import _run_operator_guarded
-from evolve.operators import OperatorResult, run_operator
+from evolve.operators import OperatorResult, _operator_deadline_s, run_operator
 
 
 def _write_operator(root: Path, name: str, body: str) -> None:
@@ -99,80 +100,37 @@ def test_run_operator_nonzero_and_timeout(tmp_path):
     ],
 )
 def test_miniswe_source_harbor_meta_agent_outer_timeout_budgets_every_retry(
-    tmp_path: Path,
-    monkeypatch,
     agent: str,
 ) -> None:
-    checkout = tmp_path / "checkout"
-    _write_operator(checkout, "meta_agent", "pass\n")
-    observed: dict[str, object] = {}
-
-    def fake_run(*args, **kwargs):
-        observed["timeout"] = kwargs["timeout"]
-        observed["env_timeout"] = kwargs["env"]["EVOLVE_OPERATOR_TIMEOUT_S"]
-        return subprocess.CompletedProcess(args[0], 0, "", "")
-
-    monkeypatch.setattr("evolve.operators.subprocess.run", fake_run)
-
-    result = run_operator(
-        name="meta_agent",
-        checkout=checkout,
-        workspace=tmp_path,
-        genid="1",
-        parent=None,
-        run_dir=tmp_path / "r",
-        config_block={
+    assert (
+        _operator_deadline_s(
+            "meta_agent",
+            {
             "runner": "harbor",
             "agent": agent,
             "max_retries": 1,
             "timeout_s": 3600,
-        },
-        timeout_s=3600,
+            },
+            3600,
+        )
+        == 14640.0
     )
 
-    assert result.returncode == 0
-    assert observed == {
-        "timeout": 14640.0,
-        "env_timeout": "14640.0",
-    }
 
-
-def test_codex_harbor_meta_agent_keeps_whole_process_timeout(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    checkout = tmp_path / "checkout"
-    _write_operator(checkout, "meta_agent", "pass\n")
-    observed: dict[str, object] = {}
-
-    def fake_run(*args, **kwargs):
-        observed["timeout"] = kwargs["timeout"]
-        observed["env_timeout"] = kwargs["env"]["EVOLVE_OPERATOR_TIMEOUT_S"]
-        return subprocess.CompletedProcess(args[0], 0, "", "")
-
-    monkeypatch.setattr("evolve.operators.subprocess.run", fake_run)
-
-    result = run_operator(
-        name="meta_agent",
-        checkout=checkout,
-        workspace=tmp_path,
-        genid="1",
-        parent=None,
-        run_dir=tmp_path / "r",
-        config_block={
+def test_codex_harbor_meta_agent_keeps_whole_process_timeout() -> None:
+    assert (
+        _operator_deadline_s(
+            "meta_agent",
+            {
             "runner": "harbor",
             "agent": "codex",
             "max_retries": 1,
             "timeout_s": 3600,
-        },
-        timeout_s=3600,
+            },
+            3600,
+        )
+        == 3600
     )
-
-    assert result.returncode == 0
-    assert observed == {
-        "timeout": 3600,
-        "env_timeout": "3600",
-    }
 
 
 def test_guarded_operator_restores_archive_in_child_checkout(tmp_path: Path) -> None:
@@ -201,3 +159,44 @@ def test_guarded_operator_restores_archive_in_child_checkout(tmp_path: Path) -> 
     assert result.returncode == 0
     assert (workspace / "archive.jsonl").read_text() == live_archive
     assert (checkout / "archive.jsonl").read_text() == ""
+
+
+def test_run_operator_timeout_kills_descendant_in_new_session(tmp_path, monkeypatch):
+    checkout = tmp_path / "checkout"
+    pid_file = tmp_path / "detached.pid"
+    monkeypatch.setattr(runtime_module, "_proc_children", lambda: None)
+    _write_operator(
+        checkout,
+        "gate",
+        f"""
+        import pathlib, signal, subprocess, sys
+        child = subprocess.Popen(
+            [sys.executable, "-c", "import signal; signal.pause()"],
+            start_new_session=True,
+        )
+        pathlib.Path({str(pid_file)!r}).write_text(str(child.pid))
+        signal.pause()
+        """,
+    )
+
+    result = run_operator(
+        name="gate",
+        checkout=checkout,
+        workspace=tmp_path,
+        genid="1",
+        parent="0",
+        run_dir=tmp_path / "r3",
+        config_block={},
+        timeout_s=0.2,
+    )
+
+    assert result.returncode == -1
+    child_pid = int(pid_file.read_text())
+    for _ in range(100):
+        try:
+            Path(f"/proc/{child_pid}/status").read_text()
+        except OSError:
+            break
+        time.sleep(0.01)
+    else:
+        raise AssertionError(f"detached child still running: {child_pid}")

@@ -62,8 +62,13 @@ def test_candidate_infrastructure_failure_is_recorded_without_automatic_retry(
 
     run(RunOptions(workspace, max_generations=1, children_per_gen=1))
 
+    run(RunOptions(workspace, max_generations=1, children_per_gen=1))
+
     attempts = _evaluation_events(workspace, "1")
     assert [event["attempt"] for event in attempts] == [1]
-    assert attempts[0].get("retry_of") is None
+    assert attempts[0]["outcome"] == "infrastructure_failed"
+    assert attempts[0]["retry_of"] is None
+    assert "source_attempts" not in attempts[0]
+    assert "repaired_tasks" not in attempts[0]
     assert rows_by_genid(workspace)["1"]["attempt"] == 1
     assert rows_by_genid(workspace)["1"]["status"] == "infrastructure_failed"

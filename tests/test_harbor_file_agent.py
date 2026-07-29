@@ -24,9 +24,7 @@ def _load(monkeypatch, max_output_tokens: int | str | None = None):
             if output_budget is None:
                 output_budget = getattr(context, "max_output_tokens", None)
             output_budget_config = (
-                f" -c model.model_kwargs.max_output_tokens={output_budget}"
-                if output_budget is not None
-                else ""
+                f" -c model.model_kwargs.max_output_tokens={output_budget}" if output_budget is not None else ""
             )
             await self.exec_as_agent(
                 environment,
@@ -93,9 +91,7 @@ def test_file_task_agent_externalizes_large_miniswe_instruction(monkeypatch) -> 
     assert model_kwargs["max_output_tokens"] == 64_000
     assert model_kwargs["include"] == ["reasoning.encrypted_content"]
     assert model_kwargs["prompt_cache_key"].startswith("evolve-")
-    assert json.loads(model_kwargs["extra_headers"]["extra"]) == {
-        "session_id": model_kwargs["prompt_cache_key"]
-    }
+    assert json.loads(model_kwargs["extra_headers"]["extra"]) == {"session_id": model_kwargs["prompt_cache_key"]}
     assert "store" not in model_kwargs
     assert "unset HTTP_PROXY" not in runtime_command
     assert environment.envs[-1] == {"ROLE": "agent"}

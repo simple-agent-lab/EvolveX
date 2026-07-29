@@ -431,14 +431,9 @@ def collect_cases(jobs_dir: Path, field_limit: int = 2000, pass_threshold: float
     return cases
 
 
-def require_usable_cases(cases: list[dict[str, Any]], *, returncode: int, harbor_log: Path) -> None:
+def require_rollout_cases(cases: list[dict[str, Any]], *, returncode: int, harbor_log: Path) -> None:
     if not cases:
         raise SystemExit(f"harbor rollout produced no trial results (exit {returncode}); see {harbor_log}")
-    if all(case.get("outcome") in {"infra_error", "incomplete"} for case in cases):
-        raise SystemExit(
-            "harbor rollout produced only infrastructure failures; refusing to evolve the target from invalid "
-            f"evidence (exit {returncode}); see {harbor_log}"
-        )
 
 
 def _jobs_root(ctx: OperatorContext) -> Path:
@@ -457,6 +452,14 @@ def _positive_int(value: object, default: int) -> int:
     return max(1, parsed)
 
 
+def _nonnegative_int(value: object, default: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(0, parsed)
+
+
 def _float_value(value: object, default: float) -> float:
     try:
         return float(value)
@@ -470,6 +473,93 @@ def _run_timeout() -> float | None:
     except ValueError:
         return None
     return max(0.1, outer - min(5.0, max(0.5, outer * 0.05)))
+
+
+def _reset_directory(path: Path) -> None:
+    if path.exists():
+        shutil.rmtree(path)
+    path.mkdir(parents=True, exist_ok=True)
+
+
+def _task_leaf(task_name: str) -> str:
+    return task_name.rsplit("/", 1)[-1]
+
+
+def _with_missing_result_placeholders(cases: list[dict[str, Any]], selected_tasks: list[str]) -> list[dict[str, Any]]:
+    """Represent absent frozen-split results so trace analysis cannot silently ignore them."""
+    completed = [dict(case) for case in cases]
+    observed_leaves = {_task_leaf(str(case.get("task_name"))) for case in completed if case.get("task_name")}
+    for task_name in selected_tasks:
+        if _task_leaf(task_name) in observed_leaves:
+            continue
+        completed.append(
+            {
+                "trial_name": f"missing::{task_name}",
+                "task_name": task_name,
+                "reward": None,
+                "outcome": "incomplete",
+                "exception": {
+                    "type": "MissingRolloutResult",
+                    "message": "Harbor produced no result.json for the selected task",
+                },
+                "result_path": "",
+            }
+        )
+    return completed
+
+
+def _batch_failure_case(harbor_log: Path, returncode: int, field_limit: int) -> dict[str, Any]:
+    """Keep batch-level Harbor failures inspectable when no task result exists."""
+    message = _read_text(harbor_log, field_limit, tail=True)
+    return {
+        "trial_name": "harbor-batch",
+        "task_name": "harbor-batch",
+        "reward": None,
+        "outcome": "infra_error" if returncode else "incomplete",
+        "instruction": "",
+        "agent_messages": [],
+        "tool_calls": [],
+        "observations": [],
+        "events": [],
+        "trajectory_events": [],
+        "raw_agent_output": message,
+        "verifier_output": "",
+        "verifier_rewards": {},
+        "exception": {
+            "type": "HarborBatchError" if returncode else "MissingRolloutResult",
+            "message": message or f"Harbor produced no task result (exit {returncode})",
+        },
+        "usage": {},
+        "timing_s": {},
+        "artifact_inventory": {},
+        "result_path": "",
+    }
+
+
+def _batch_command(
+    base_command: list[str],
+    *,
+    jobs_dir: Path,
+    n_concurrent: int,
+    budget_tasks: int,
+    task_selectors: list[str],
+    include_task: object = None,
+) -> list[str]:
+    command = [
+        *base_command,
+        "--jobs-dir",
+        str(jobs_dir),
+        "-n",
+        str(min(n_concurrent, budget_tasks)),
+        "--n-tasks",
+        str(budget_tasks),
+    ]
+    if task_selectors:
+        for task_name in task_selectors:
+            command.extend(["--include-task-name", harbor_task_pattern(task_name)])
+    elif include_task:
+        command.extend(["--include-task-name", str(include_task)])
+    return command
 
 
 def _append_agent_env(command: list[str], checkout: Path, config: dict[str, Any]) -> None:
@@ -582,8 +672,34 @@ def _select_train_tasks(
     return normalized
 
 
+def _completed_rollout(ctx: OperatorContext) -> RolloutResult | None:
+    if ctx.config.get("reuse_completed") is not True:
+        return None
+    rollout_dir = ctx.run_dir / "rollout"
+    try:
+        summary = json.loads((rollout_dir / "summary.json").read_text())
+        artifacts = json.loads((rollout_dir / "artifacts.json").read_text())
+        cases = json.loads((rollout_dir / "cases.json").read_text())
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if (
+        not isinstance(summary, dict)
+        or summary.get("variant") != "harbor"
+        or not isinstance(artifacts, list)
+        or not all(isinstance(item, str) and item for item in artifacts)
+        or "rollout/cases.json" not in artifacts
+        or not isinstance(cases, list)
+        or not cases
+        or summary.get("tasks_observed") != len(cases)
+    ):
+        return None
+    return RolloutResult(summary=summary, artifacts=artifacts)
+
+
 class HarborRollout(RolloutOperator):
     def rollout(self, checkout: Path, ctx: OperatorContext) -> RolloutResult:
+        if completed := _completed_rollout(ctx):
+            return completed
         harbor, harbor_env = uv_run(ctx.workspace, "harbor")
         eval_env = _load_eval_env(checkout)
         dedicated_tasks = ctx.config.get("path") or os.environ.get("EVOLVE_HARBOR_ROLLOUT_TASKS")
@@ -633,19 +749,17 @@ class HarborRollout(RolloutOperator):
             ctx.config.get("agent_timeout_multiplier"),
             _float_value(eval_env.get("EVOLVE_HARBOR_AGENT_TIMEOUT_MULTIPLIER"), 1),
         )
-        max_retries = max(
+        max_retries = _nonnegative_int(
+            ctx.config.get("max_retries") or eval_env.get("EVOLVE_HARBOR_MAX_RETRIES"),
             0,
-            int(ctx.config.get("max_retries") or eval_env.get("EVOLVE_HARBOR_MAX_RETRIES") or 0),
         )
         field_limit = _positive_int(ctx.config.get("field_limit"), 2000)
         pass_threshold = _float_value(ctx.config.get("pass_threshold"), 1.0)
         jobs_root = _jobs_root(ctx)
         jobs_dir = jobs_root / f"gen-{ctx.genid}"
-        if jobs_dir.exists():
-            shutil.rmtree(jobs_dir)
-        jobs_dir.mkdir(parents=True, exist_ok=True)
+        _reset_directory(jobs_dir)
 
-        command = [
+        base_command = [
             *harbor,
             "run",
             "-p",
@@ -654,14 +768,8 @@ class HarborRollout(RolloutOperator):
             agent,
             "--ae",
             f"EVOLVE_CANDIDATE_SOURCE={(checkout / 'target').resolve()}",
-            "--jobs-dir",
-            str(jobs_dir),
             "--n-attempts",
             "1",
-            "-n",
-            str(n_concurrent),
-            "--n-tasks",
-            str(budget_tasks),
             "--agent-setup-timeout-multiplier",
             str(max(setup_timeout_multiplier, 1)),
             "--agent-timeout-multiplier",
@@ -672,15 +780,15 @@ class HarborRollout(RolloutOperator):
         ]
         environment = ctx.config.get("environment")
         if environment:
-            command.extend(["--env", str(environment)])
+            base_command.extend(["--env", str(environment)])
         environment_kwargs = ctx.config.get("environment_kwargs")
         if isinstance(environment_kwargs, dict):
             for key in sorted(environment_kwargs):
                 value = environment_kwargs[key]
-                command.extend(["--environment-kwarg", f"{key}={json.dumps(value, separators=(',', ':'))}"])
+                base_command.extend(["--environment-kwarg", f"{key}={json.dumps(value, separators=(',', ':'))}"])
         if os.environ.get("EVOLVE_LIVE_OUTPUT") != "1":
-            command.append("-q")
-        command.extend(["--ae", f"EVOLVE_CANDIDATE_SOURCE={(checkout / 'target').resolve()}"])
+            base_command.append("-q")
+        base_command.extend(["--ae", f"EVOLVE_CANDIDATE_SOURCE={(checkout / 'target').resolve()}"])
         configured_cache = eval_env.get("EVOLVE_UV_CACHE_DIR") or os.environ.get("EVOLVE_UV_CACHE_DIR")
         uv_cache = (
             Path(configured_cache).expanduser() if configured_cache else ctx.workspace / "runs" / "runtime" / "uv-cache"
@@ -704,36 +812,50 @@ class HarborRollout(RolloutOperator):
                     "target": "/installed-agent/uv-python",
                 }
             )
-        command.extend(
+        base_command.extend(
             [
                 "--mounts",
                 json.dumps(mounts),
             ]
         )
-        _append_agent_env(command, checkout, ctx.config)
-        command.extend(["--ae", "UV_CACHE_DIR=/opt/evolve/uv/cache"])
+        _append_agent_env(base_command, checkout, ctx.config)
+        base_command.extend(["--ae", "UV_CACHE_DIR=/opt/evolve/uv/cache"])
         if uv_python:
-            command.extend(["--ae", "UV_PYTHON_INSTALL_DIR=/installed-agent/uv-python"])
+            base_command.extend(["--ae", "UV_PYTHON_INSTALL_DIR=/installed-agent/uv-python"])
         model = ctx.config.get("model") or eval_env.get("EVOLVE_HARBOR_MODEL") or os.environ.get("EVOLVE_HARBOR_MODEL")
         if not model and os.environ.get("OPENAI_MODEL"):
             model = f"openai/{os.environ['OPENAI_MODEL']}"
         if model:
-            command.extend(["--model", str(model)])
+            base_command.extend(["--model", str(model)])
         include_task = ctx.config.get("include_task_name")
-        if split_task_names:
-            for task_name in split_task_names:
-                command.extend(["--include-task-name", harbor_task_pattern(task_name)])
-        elif include_task:
-            command.extend(["--include-task-name", str(include_task)])
 
         rollout_dir = ctx.run_dir / "rollout"
-        returncode = _run_harbor(command, checkout, rollout_dir / "harbor.log", harbor_env)
-        cases = collect_cases(jobs_dir, field_limit=field_limit, pass_threshold=pass_threshold)
+        initial_command = _batch_command(
+            base_command,
+            jobs_dir=jobs_dir,
+            n_concurrent=n_concurrent,
+            budget_tasks=budget_tasks,
+            task_selectors=split_task_names,
+            include_task=include_task,
+        )
+        returncode = _run_harbor(initial_command, checkout, rollout_dir / "harbor.log", harbor_env)
+        cases = _with_missing_result_placeholders(
+            collect_cases(jobs_dir, field_limit=field_limit, pass_threshold=pass_threshold),
+            split_task_names,
+        )
+        if not cases:
+            cases = [_batch_failure_case(rollout_dir / "harbor.log", returncode, field_limit)]
+
         _write_json(rollout_dir / "cases.json", cases)
-        require_usable_cases(cases, returncode=returncode, harbor_log=rollout_dir / "harbor.log")
+        require_rollout_cases(cases, returncode=returncode, harbor_log=rollout_dir / "harbor.log")
 
         rewards = [case["reward"] for case in cases if isinstance(case.get("reward"), (int, float))]
         counts = {name: sum(case["outcome"] == name for case in cases) for name in _OUTCOME_ORDER}
+        infra_tasks = [
+            str(case.get("task_name") or case.get("trial_name") or "unknown")
+            for case in cases
+            if case.get("outcome") in {"infra_error", "incomplete"}
+        ]
         summary = {
             "variant": "harbor",
             "split": "dedicated" if dedicated_tasks else "train",
@@ -744,6 +866,7 @@ class HarborRollout(RolloutOperator):
             "failed": counts["failed"],
             "agent_errors": counts["agent_error"],
             "infra_errors": counts["infra_error"] + counts["incomplete"],
+            "infra_tasks": infra_tasks,
             "mean_observed_reward": round(sum(rewards) / len(rewards), 6) if rewards else None,
             "jobs_dir": str(jobs_dir),
         }

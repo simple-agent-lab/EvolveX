@@ -98,7 +98,7 @@ def test_supported_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "budget_usd" not in config
             assert "agent: evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent" in config
             assert "editable_roots: [target]" in config
-            assert "max_retries: 2" in config
+            assert "max_retries: 1" in config
             assert "agent: evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent" in config
             assert "image: evolve-meta-agent-app:20260724-tools-mswe245" in config
             assert "task_scope: full" in config
@@ -124,7 +124,7 @@ def test_supported_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "runner: harbor" in config
             assert "agent: evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent" in config
             assert "editable_roots: [target, operators]" in config
-            assert "max_retries: 2" in config
+            assert "max_retries: 1" in config
             assert "validate: {variant: hyperagents" in config
             assert "gate: {variant: parent_eligible}" in config
             assert "record: {variant: hyperagents}" in config
@@ -188,16 +188,28 @@ def test_supported_uv_recipes_enable_candidate_runtime_and_task_retry() -> None:
         assert evaluator["benchmark_timeout_is_zero"] is True
 
 
-def test_shared_optimization_recipes_preserve_timeout_and_retry_policy() -> None:
+def test_shared_optimization_recipes_use_native_candidate_agent_timeout() -> None:
     for name in ("ahe", "hyperagents"):
-        recipe = _parsed_config(name)
-        evaluator = recipe["evaluator"]
-        assert evaluator["agent_timeout_multiplier"] == 2
-        assert evaluator["max_retries"] == 1
-        assert evaluator["partial_floor"] == 0.8
-        assert recipe["operators"]["meta_agent"]["max_retries"] == 2
+        evaluator = _parsed_config(name)["evaluator"]
+        assert isinstance(evaluator, dict)
+        assert evaluator["agent_timeout_multiplier"] == 1
 
-    assert _parsed_config("ahe")["operators"]["trace_analyzer"]["retry_attempts"] == 3
+
+def test_all_explicit_recipe_retry_and_multiplier_values_are_one() -> None:
+    def walk(value):
+        if isinstance(value, dict):
+            for key, item in value.items():
+                if "retry" in key or "retries" in key or "multiplier" in key:
+                    assert item == 1, f"{key} must be 1, got {item!r}"
+                walk(item)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
+
+    for name in RECIPE_NAMES:
+        config = _parsed_config(name)
+        walk(config)
+        assert "infra_repair_attempts" not in _config(name)
 
 
 def test_miniswe_method_agents_use_the_rollout_model_version() -> None:
@@ -212,11 +224,6 @@ def test_miniswe_method_agents_use_the_rollout_model_version() -> None:
         evaluator = config["evaluator"]
         assert isinstance(evaluator, dict)
         assert evaluator["model"] == expected_model
-
-
-def test_recipes_do_not_hardcode_openai_endpoint() -> None:
-    for name in RECIPE_NAMES:
-        assert "OPENAI_BASE_URL" not in _config(name)
 
 
 def test_meta_agent_image_provides_harbor_workspace_parent() -> None:

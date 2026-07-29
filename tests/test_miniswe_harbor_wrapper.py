@@ -2,7 +2,9 @@ import asyncio
 import importlib.util
 import json
 import os
+import subprocess
 import sys
+import time
 import types
 from pathlib import Path
 
@@ -14,6 +16,14 @@ ADAPTER = ROOT / "src" / "evolve" / "integrations" / "harbor" / "miniswe_candida
 CANDIDATE_AGENT = "evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent"
 
 
+def _known_unbounded_local_run(command, cwd, env, timeout):
+    process = subprocess.Popen(command, cwd=cwd, env=env)
+    process.communicate(timeout=timeout)
+    os.killpg(process.pid, 9)
+    stdout, _ = process.communicate()
+    return stdout
+
+
 @pytest.fixture
 def adapter_path() -> Path:
     return ADAPTER
@@ -23,7 +33,20 @@ def _install_fake_harbor(monkeypatch):
     root = types.ModuleType("harbor")
     agents = types.ModuleType("harbor.agents")
     installed = types.ModuleType("harbor.agents.installed")
+    codex = types.ModuleType("harbor.agents.installed.codex")
     mini = types.ModuleType("harbor.agents.installed.mini_swe_agent")
+
+    class Codex:
+        CLI_FLAGS = []
+
+        def __init__(self, *args, **kwargs) -> None:
+            self._extra_env = dict(kwargs.get("extra_env") or {})
+
+        def _get_env(self, name: str):
+            return self._extra_env.get(name) or os.environ.get(name)
+
+        def build_cli_flags(self) -> str:
+            return ""
 
     class MiniSweAgent:
         def __init__(self, *args, **kwargs) -> None:
@@ -54,10 +77,12 @@ def _install_fake_harbor(monkeypatch):
             environment.commands.append(command)
             environment.envs.append(env or {})
 
+    codex.Codex = Codex
     mini.MiniSweAgent = MiniSweAgent
     monkeypatch.setitem(sys.modules, "harbor", root)
     monkeypatch.setitem(sys.modules, "harbor.agents", agents)
     monkeypatch.setitem(sys.modules, "harbor.agents.installed", installed)
+    monkeypatch.setitem(sys.modules, "harbor.agents.installed.codex", codex)
     monkeypatch.setitem(sys.modules, "harbor.agents.installed.mini_swe_agent", mini)
     return MiniSweAgent
 
@@ -96,6 +121,19 @@ def _install_fake_miniswe_models(monkeypatch):
     return FakeLitellmModel, FakeLitellmResponseModel
 
 
+def _install_fake_miniswe_local(monkeypatch, run):
+    minisweagent = types.ModuleType("minisweagent")
+    minisweagent.__path__ = []
+    environments = types.ModuleType("minisweagent.environments")
+    environments.__path__ = []
+    local = types.ModuleType("minisweagent.environments.local")
+    local._run = run
+    monkeypatch.setitem(sys.modules, "minisweagent", minisweagent)
+    monkeypatch.setitem(sys.modules, "minisweagent.environments", environments)
+    monkeypatch.setitem(sys.modules, "minisweagent.environments.local", local)
+    return local
+
+
 def _load_model_factory(adapter_path: Path, monkeypatch):
     _install_fake_harbor(monkeypatch)
     module = _load(adapter_path)
@@ -129,9 +167,18 @@ def test_miniswe_wrapper_source_environment_contains_only_strings(adapter_path: 
     assert all(isinstance(value, str) for value in source_env.values())
 
 
-def test_miniswe_wrapper_uses_responses_reasoning_and_session_for_openai(
-    adapter_path: Path, monkeypatch
-) -> None:
+def test_candidate_adapter_disables_codex_websockets_for_responses_endpoint(monkeypatch) -> None:
+    _install_fake_harbor(monkeypatch)
+    module = _load(ADAPTER)
+
+    flags = module.ResponsesCodexAgent(extra_env={"OPENAI_BASE_URL": "http://bridge.example/v1"}).build_cli_flags()
+
+    assert 'model_provider="evolve_http"' in flags
+    assert 'model_providers.evolve_http.base_url="http://bridge.example/v1"' in flags
+    assert "model_providers.evolve_http.supports_websockets=false" in flags
+
+
+def test_miniswe_wrapper_uses_responses_reasoning_and_session_for_openai(adapter_path: Path, monkeypatch) -> None:
     _, build_model, (FakeLitellmModel, FakeLitellmResponseModel) = _load_model_factory(adapter_path, monkeypatch)
     monkeypatch.setenv("MSWEA_MODEL_NAME", "openai/gpt-5.4")
     monkeypatch.setenv("MINISWE_REASONING_EFFORT", "high")
@@ -157,16 +204,12 @@ def test_miniswe_wrapper_uses_responses_reasoning_and_session_for_openai(
     assert kwargs["reasoning"] == {"effort": "high"}
     assert kwargs["include"] == ["reasoning.encrypted_content"]
     assert kwargs["prompt_cache_key"].startswith("evolve-")
-    assert json.loads(kwargs["extra_headers"]["extra"]) == {
-        "session_id": kwargs["prompt_cache_key"]
-    }
+    assert json.loads(kwargs["extra_headers"]["extra"]) == {"session_id": kwargs["prompt_cache_key"]}
     assert "reasoning_effort" not in kwargs
     assert "store" not in kwargs
 
 
-def test_miniswe_wrapper_preserves_explicit_responses_output_budget(
-    adapter_path: Path, monkeypatch
-) -> None:
+def test_miniswe_wrapper_preserves_explicit_responses_output_budget(adapter_path: Path, monkeypatch) -> None:
     _, build_model, (_, FakeLitellmResponseModel) = _load_model_factory(adapter_path, monkeypatch)
     monkeypatch.setenv("MSWEA_MODEL_NAME", "openai/gpt-5.4")
     monkeypatch.setenv("MINISWE_REASONING_EFFORT", "high")
@@ -177,9 +220,7 @@ def test_miniswe_wrapper_preserves_explicit_responses_output_budget(
     assert model.kwargs["model_kwargs"]["max_output_tokens"] == 12_345
 
 
-def test_miniswe_wrapper_uses_responses_without_openai_reasoning(
-    adapter_path: Path, monkeypatch
-) -> None:
+def test_miniswe_wrapper_uses_responses_without_openai_reasoning(adapter_path: Path, monkeypatch) -> None:
     _, build_model, (FakeLitellmModel, FakeLitellmResponseModel) = _load_model_factory(adapter_path, monkeypatch)
     monkeypatch.setenv("MSWEA_MODEL_NAME", "openai/gpt-5.4")
     monkeypatch.delenv("MINISWE_REASONING_EFFORT", raising=False)
@@ -222,6 +263,48 @@ def test_miniswe_wrapper_reuses_model_setup_for_runner_and_preflight(adapter_pat
     assert "build_model(config)" in module.MODEL_PREFLIGHT
     compile(module.RUNNER, "<miniswe-runner>", "exec")
     compile(module.MINISWE_PREFLIGHT, "<miniswe-preflight>", "exec")
+
+
+def test_miniswe_wrapper_timeout_drain_does_not_wait_for_escaped_daemon(
+    adapter_path: Path,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _install_fake_harbor(monkeypatch)
+    module = _load(adapter_path)
+    local = _install_fake_miniswe_local(monkeypatch, _known_unbounded_local_run)
+    namespace = {}
+
+    exec(module.PIPE_SAFE_LOCAL_ENV_SETUP, namespace)
+
+    assert local._run is namespace["_pipe_safe_run"]
+    started = time.monotonic()
+    with pytest.raises(subprocess.TimeoutExpired):
+        local._run(
+            "setsid sh -c 'sleep 2' & sleep 5",
+            str(tmp_path),
+            os.environ.copy(),
+            0.1,
+        )
+    assert time.monotonic() - started < 1.5
+
+
+def test_miniswe_wrapper_preserves_candidate_modified_local_run(
+    adapter_path: Path,
+    monkeypatch,
+) -> None:
+    _install_fake_harbor(monkeypatch)
+    module = _load(adapter_path)
+
+    def candidate_run(command, cwd, env, timeout):
+        return subprocess.CompletedProcess(command, 0, stdout="candidate")
+
+    local = _install_fake_miniswe_local(monkeypatch, candidate_run)
+    namespace = {}
+
+    exec(module.PIPE_SAFE_LOCAL_ENV_SETUP, namespace)
+
+    assert local._run is candidate_run
 
 
 def test_miniswe_wrapper_loads_evolved_skills_and_memory_into_system_prompt(

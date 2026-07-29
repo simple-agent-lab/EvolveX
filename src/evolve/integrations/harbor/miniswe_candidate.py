@@ -5,6 +5,7 @@ import shlex
 import shutil
 from pathlib import Path
 
+from harbor.agents.installed.codex import Codex
 from harbor.agents.installed.mini_swe_agent import MiniSweAgent
 
 SOURCE_DIR = "/installed-agent/miniswe-source"
@@ -17,6 +18,39 @@ LOG_PATH = "/logs/agent/mini-swe-agent.txt"
 RUNTIME_EVIDENCE_PATH = "/logs/agent/evolve-runtime.json"
 HOST_UV_PATH = "/tmp/evolve-uv"
 PROXY_ENV_NAMES = ("HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy")
+
+
+class ResponsesCodexAgent(Codex):
+    """Codex adapter for an OpenAI-compatible HTTP Responses endpoint."""
+
+    async def install(self, environment) -> None:
+        local_codex = shutil.which("codex")
+        if local_codex:
+            remote_codex = "/tmp/evolve-host-codex"
+            await environment.upload_file(Path(local_codex).resolve(), remote_codex)
+            await self.exec_as_root(
+                environment,
+                command=f"install -m 755 {shlex.quote(remote_codex)} /usr/local/bin/codex",
+            )
+        await super().install(environment)
+
+    def build_cli_flags(self) -> str:
+        base_url = self._get_env("OPENAI_BASE_URL")
+        if not base_url:
+            raise ValueError("ResponsesCodexAgent requires OPENAI_BASE_URL")
+        configs = [
+            'model_provider="evolve_http"',
+            'forced_login_method="api"',
+            'model_providers.evolve_http.name="Evolve HTTP Responses"',
+            f'model_providers.evolve_http.base_url="{base_url}"',
+            'model_providers.evolve_http.env_key="OPENAI_API_KEY"',
+            'model_providers.evolve_http.wire_api="responses"',
+            'model_providers.evolve_http.env_http_headers={"api-key"="OPENAI_API_KEY"}',
+            "model_providers.evolve_http.supports_websockets=false",
+        ]
+        parts = [super().build_cli_flags()]
+        parts.extend(f"-c {shlex.quote(config)}" for config in configs)
+        return " ".join(part for part in parts if part)
 
 
 class EvolveCandidateInvalidError(RuntimeError):
@@ -160,10 +194,74 @@ def _apply_evolved_context(agent_kwargs, source_dir):
 """.strip()
 
 
+PIPE_SAFE_LOCAL_ENV_SETUP = r"""
+import inspect
+import os
+import signal
+import subprocess
+import tempfile
+
+import minisweagent.environments.local as _local_environment
+
+
+def _pipe_safe_run(command, cwd, env, timeout):
+    with tempfile.TemporaryFile(mode="w+t", encoding="utf-8", errors="replace") as output:
+        process = subprocess.Popen(
+            command,
+            shell=True,
+            text=True,
+            cwd=cwd,
+            env=env,
+            encoding="utf-8",
+            errors="replace",
+            stdout=output,
+            stderr=subprocess.STDOUT,
+            start_new_session=os.name == "posix",
+        )
+        try:
+            process.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(process.pid, signal.SIGKILL) if os.name == "posix" else process.kill()
+            except ProcessLookupError:
+                pass
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+            output.flush()
+            output.seek(0)
+            raise subprocess.TimeoutExpired(command, timeout, output=output.read())
+        output.flush()
+        output.seek(0)
+        return subprocess.CompletedProcess(command, process.returncode, stdout=output.read())
+
+
+def _install_pipe_safe_run():
+    try:
+        source = inspect.getsource(_local_environment._run)
+    except (OSError, TypeError):
+        return
+    known_unbounded_drain = (
+        "process.communicate(timeout=timeout)" in source
+        and "stdout, _ = process.communicate()" in source
+        and "os.killpg(process.pid" in source
+    )
+    if known_unbounded_drain:
+        _local_environment._run = _pipe_safe_run
+
+
+_install_pipe_safe_run()
+""".strip()
+
+
 RUNNER = (
     MODEL_SETUP
     + "\n\n"
     + EVOLVED_CONTEXT_SETUP
+    + "\n\n"
+    + PIPE_SAFE_LOCAL_ENV_SETUP
     + r"""
 import json
 from pathlib import Path

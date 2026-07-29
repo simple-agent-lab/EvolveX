@@ -77,10 +77,13 @@ def test_runner_locally_ignores_artifacts_in_existing_git_workspace(tmp_path: Pa
 
     runners.run_agent(ctx.checkout, "prompt", ctx)
 
-    assert subprocess.run(
-        ["git", "-C", str(tmp_path), "check-ignore", "-q", "artifacts/example.txt"],
-        check=False,
-    ).returncode == 0
+    assert (
+        subprocess.run(
+            ["git", "-C", str(tmp_path), "check-ignore", "-q", "artifacts/example.txt"],
+            check=False,
+        ).returncode
+        == 0
+    )
     assert not (tmp_path / ".gitignore").exists()
 
 

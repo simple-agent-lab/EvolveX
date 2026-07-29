@@ -62,24 +62,17 @@ class FileTaskMiniSweAgent(MiniSweAgent):
         cache_key = f"evolve-{uuid.uuid4().hex}"
         command_tokens = shlex.split(command)
         has_output_budget = any(
-            flag == "-c"
-            and re.fullmatch(r"model\.model_kwargs\.max_output_tokens=\d+", value)
+            flag == "-c" and re.fullmatch(r"model\.model_kwargs\.max_output_tokens=\d+", value)
             for flag, value in zip(command_tokens, command_tokens[1:], strict=False)
         )
         model_kwargs = {
             "include": ["reasoning.encrypted_content"],
             "prompt_cache_key": cache_key,
-            "extra_headers": {
-                "extra": json.dumps({"session_id": cache_key}, separators=(",", ":"))
-            },
+            "extra_headers": {"extra": json.dumps({"session_id": cache_key}, separators=(",", ":"))},
         }
         if not has_output_budget:
             model_kwargs["max_output_tokens"] = 64_000
-        responses_config = {
-            "model": {
-                "model_kwargs": model_kwargs
-            }
-        }
+        responses_config = {"model": {"model_kwargs": model_kwargs}}
         with tempfile.TemporaryDirectory(prefix="evolve-miniswe-task-") as tempdir:
             root = Path(tempdir)
             task_file = root / "task.md"
@@ -101,9 +94,7 @@ class FileTaskMiniSweAgent(MiniSweAgent):
             if exit_marker < 0:
                 raise RuntimeError("unable to locate MiniSWE exit flag")
             flags_after_task = (
-                flags_after_task[:exit_marker]
-                + f" -c {RESPONSES_CONFIG_PATH}"
-                + flags_after_task[exit_marker:]
+                flags_after_task[:exit_marker] + f" -c {RESPONSES_CONFIG_PATH}" + flags_after_task[exit_marker:]
             )
         file_launch = (
             'MSWEA_BIN="$(command -v mini-swe-agent)"; '

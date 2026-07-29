@@ -73,6 +73,7 @@ TERMINAL_STATUSES = {
     "rejected_duplicate",
     "rejected_validation",
     Outcome.CANDIDATE_INVALID.value,
+    Outcome.INFRASTRUCTURE_FAILED.value,
     Outcome.TIMEOUT.value,
     Outcome.CANCELLED.value,
 }
@@ -462,7 +463,7 @@ def _resume_tagged_child(
     row = rows_by_genid(workspace).get(genid, {})
     needs_gate_record = genid in _evaluation_pending_gate_record_genids(workspace)
     canonical = row.get("outcome") in CANONICAL_OUTCOMES
-    if row.get("outcome") == Outcome.INFRASTRUCTURE_FAILED.value or not canonical:
+    if not canonical:
         eval_child(workspace, genid, round_number=round_number)
         row = rows_by_genid(workspace).get(genid, {})
         needs_gate_record = genid in _evaluation_pending_gate_record_genids(workspace)
@@ -720,12 +721,7 @@ def eval_child(
     rows = rows_by_genid(workspace)
     row = rows.get(genid, {})
     status = evaluation_status(row)
-    if (
-        not force
-        and round_number is None
-        and row.get("outcome") in CANONICAL_OUTCOMES
-        and row.get("outcome") != Outcome.INFRASTRUCTURE_FAILED.value
-    ):
+    if not force and round_number is None and row.get("outcome") in CANONICAL_OUTCOMES:
         return None
     if force:
         kind = "forced_eval"
@@ -744,7 +740,6 @@ def eval_child(
             [str(path) for path in mutated],
             round_number=round_number,
             kind=kind,
-            resume_infrastructure=not force,
         )
     return _finalize_child(workspace, exp_id, genid, parent, tag, round_number=round_number, kind=kind)
 
@@ -758,7 +753,6 @@ def _finalize_child(
     *,
     round_number: int | None = None,
     kind: str = "eval",
-    resume_infrastructure: bool = True,
 ) -> EvaluationRecord | None:
     parent_tag = f"gen/{parent}"
     mutated = git_stdout(workspace, "diff", "--name-only", parent_tag, tag).splitlines()
@@ -794,7 +788,6 @@ def _finalize_child(
         mutated,
         round_number=round_number,
         kind=kind,
-        resume_infrastructure=resume_infrastructure,
     )
 
 
@@ -807,7 +800,6 @@ def _stamp_evaluation(
     *,
     round_number: int | None = None,
     kind: str = "eval",
-    resume_infrastructure: bool = True,
 ) -> EvaluationRecord:
     metadata = {
         "parent": parent,
@@ -824,7 +816,6 @@ def _stamp_evaluation(
         metadata=metadata,
         round_number=round_number,
         pending_gate_on_complete=genid != "0",
-        resume_infrastructure=resume_infrastructure,
     )
 
 
@@ -835,10 +826,11 @@ def _ensure_genesis_evaluated(workspace: Path) -> None:
         return
     if status in {
         Outcome.CANDIDATE_INVALID.value,
+        Outcome.INFRASTRUCTURE_FAILED.value,
         Outcome.TIMEOUT.value,
         Outcome.CANCELLED.value,
     }:
-        raise RuntimeError(f"genesis {status}: repair seed before evolution")
+        raise RuntimeError(f"genesis {status}: fix the seed or infrastructure and initialize a new workspace")
     result = _evaluate_once(
         workspace,
         "gen/0",
@@ -854,7 +846,9 @@ def _ensure_genesis_evaluated(workspace: Path) -> None:
         },
     )
     if result.outcome is not Outcome.BENCHMARK_COMPLETE:
-        raise RuntimeError(f"genesis {result.outcome.value}: repair seed before evolution")
+        raise RuntimeError(
+            f"genesis {result.outcome.value}: fix the seed or infrastructure and initialize a new workspace"
+        )
 
 
 def _evaluate_once(
@@ -866,7 +860,6 @@ def _evaluate_once(
     metadata: dict[str, Any],
     round_number: int | None = None,
     pending_gate_on_complete: bool = False,
-    resume_infrastructure: bool = True,
 ) -> EvaluationRecord:
     """Run one evaluation attempt and preserve its evidence.
 

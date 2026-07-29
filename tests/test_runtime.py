@@ -78,6 +78,7 @@ def test_owned_process_cleans_group_before_propagating_cancellation(
     process = InterruptedProcess()
     signals: list[tuple[int, signal.Signals]] = []
     monkeypatch.setattr(runtime_module.subprocess, "Popen", lambda *args, **kwargs: process)
+    monkeypatch.setattr(runtime_module, "_process_tree", lambda pid: {pid})
     monkeypatch.setattr(runtime_module.os, "killpg", lambda pid, sig: signals.append((pid, sig)))
 
     with pytest.raises(KeyboardInterrupt) as excinfo:
@@ -111,6 +112,7 @@ def test_owned_process_escalates_cleanup_timeout_before_propagating_cancellation
     process = SlowCleanupProcess()
     signals: list[tuple[int, signal.Signals]] = []
     monkeypatch.setattr(runtime_module.subprocess, "Popen", lambda *args, **kwargs: process)
+    monkeypatch.setattr(runtime_module, "_process_tree", lambda pid: {pid})
     monkeypatch.setattr(runtime_module.os, "killpg", lambda pid, sig: signals.append((pid, sig)))
 
     with pytest.raises(KeyboardInterrupt) as excinfo:
@@ -119,6 +121,42 @@ def test_owned_process_escalates_cleanup_timeout_before_propagating_cancellation
     assert excinfo.value is cancellation
     assert signals == [(43, signal.SIGTERM), (43, signal.SIGKILL)]
     assert process.completed is True
+
+
+def test_signal_process_tree_uses_known_root_group_without_resolving_pid(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lookups: list[int] = []
+    signals: list[tuple[int, signal.Signals]] = []
+
+    def getpgid(pid: int) -> int:
+        lookups.append(pid)
+        return pid
+
+    monkeypatch.setattr(runtime_module.os, "getpgrp", lambda: 100)
+    monkeypatch.setattr(runtime_module.os, "getpgid", getpgid)
+    monkeypatch.setattr(runtime_module.os, "killpg", lambda pid, sig: signals.append((pid, sig)))
+
+    runtime_module._signal_process_tree({42, 44}, signal.SIGTERM, fallback_group=42)
+
+    assert lookups == [44]
+    assert set(signals) == {(42, signal.SIGTERM), (44, signal.SIGTERM)}
+
+
+def test_signal_process_tree_ignores_inaccessible_process_groups(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def inaccessible(_pid: int) -> int:
+        raise PermissionError
+
+    def denied(_group: int, _sig: signal.Signals) -> None:
+        raise PermissionError
+
+    monkeypatch.setattr(runtime_module.os, "getpgrp", lambda: 100)
+    monkeypatch.setattr(runtime_module.os, "getpgid", inaccessible)
+    monkeypatch.setattr(runtime_module.os, "killpg", denied)
+
+    runtime_module._signal_process_tree({42, 44}, signal.SIGTERM, fallback_group=42)
 
 
 def test_attempt_ids_include_full_attempt_and_workspace_identity(tmp_path: Path) -> None:

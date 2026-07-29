@@ -59,7 +59,7 @@ def test_gepa_trace_analyzer_builds_component_reflective_dataset(tmp_path: Path)
 
     dataset = json.loads((run_dir / "trace_analyzer/evidence/reflective_dataset.json").read_text())
     assert list(dataset) == ["prompt", "skill"]
-    assert len(dataset["prompt"]) == len(dataset["skill"]) == 1
+    assert len(dataset["prompt"]) == len(dataset["skill"]) == 2
     record = dataset["prompt"][0]
     assert record["Inputs"] == {"instruction": "Fix A", "task_id": "task-a"}
     assert record["Generated Outputs"]["ordered_events"] == [
@@ -68,12 +68,15 @@ def test_gepa_trace_analyzer_builds_component_reflective_dataset(tmp_path: Path)
     ]
     assert record["Feedback"]["verifier_output"] == "assertion failed"
     assert record["Scores (Higher is Better)"] == {"reward": 0.0}
+    infra_record = dataset["prompt"][1]
+    assert infra_record["Inputs"]["task_id"] == "task-b"
+    assert infra_record["Feedback"]["outcome"] == "infra_error"
     manifest = json.loads((run_dir / "trace_analyzer/evidence/manifest.json").read_text())
     assert manifest["component_evidence"] == {
-        "prompt": {"file": "reflection/00-prompt.json", "paths": ["target/prompt.md"], "records": 1},
-        "skill": {"file": "reflection/01-skill.json", "paths": ["target/skills/task/SKILL.md"], "records": 1},
+        "prompt": {"file": "reflection/00-prompt.json", "paths": ["target/prompt.md"], "records": 2},
+        "skill": {"file": "reflection/01-skill.json", "paths": ["target/skills/task/SKILL.md"], "records": 2},
     }
     prompt_records = json.loads((run_dir / "trace_analyzer/evidence/reflection/00-prompt.json").read_text())
     assert prompt_records == dataset["prompt"]
     assert "trace_analyzer/evidence/reflection/00-prompt.json" in result.artifacts
-    assert result.summary["usable_cases"] == 1
+    assert result.summary["usable_cases"] == 2

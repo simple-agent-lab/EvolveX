@@ -14,8 +14,8 @@ surface:
   exclude: []
 operators:
   select: {variant: greedy, timeout_s: 600}
-  rollout: {variant: harbor, budget_tasks: 10, n_concurrent: 4, agent_setup_timeout_multiplier: 3, max_retries: 1, timeout_s: 3600}
-  trace_analyzer: {variant: trajectory_only, history_cycles: 2, max_observations: 30, max_chars: 30000, judge_max_concurrent: 4, judge_retry_attempts: 3, judge_timeout_s: 600, timeout_s: 3600}
+  rollout: {variant: harbor, budget_tasks: 10, n_concurrent: 4, agent_setup_timeout_multiplier: 1, max_retries: 1, timeout_s: 3600}
+  trace_analyzer: {variant: trajectory_only, history_cycles: 2, max_observations: 30, max_chars: 30000, judge_max_concurrent: 4, judge_retry_attempts: 1, judge_timeout_s: 600, timeout_s: 3600}
   meta_agent:
     variant: aevolve
     trajectory_only: true
@@ -36,7 +36,7 @@ operators:
     history_cycles: 2
     max_observations: 30
     feedback_chars: 300
-    max_retries: 0
+    max_retries: 1
     timeout_s: 3600
   gate: {variant: hillclimb, strict: true, timeout_s: 600}
   record: {variant: jsonl, timeout_s: 600}
@@ -51,6 +51,6 @@ evaluator:
   anchor: {final: true, every_rounds: 0}
   k: 1
   n_concurrent: 4
-  agent_setup_timeout_multiplier: 3
-  max_retries: 0
-  partial_floor: 0.9
+  agent_setup_timeout_multiplier: 1
+  max_retries: 1
+  partial_floor: 0.8

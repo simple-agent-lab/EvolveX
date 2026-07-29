@@ -189,14 +189,17 @@ For a local Harbor dataset, init deterministically freezes disjoint
 rollout consumes only `train`, canonical evaluation consumes only `gate`, and
 sealed anchor results are auxiliary records that never enter meta-agent feedback.
 
-Canonical evaluation repairs explicit infrastructure-owned task failures once
-without rerunning successful tasks. The retry is restricted to failed task IDs;
-the resulting ledger keeps each trial's `source_attempt`, marks replaced slots
-with `repaired_from_attempt`, and points to a composite artifact manifest that
-references both raw attempts. Failures without task-level evidence still use one
-full retry because there is no safe subset to target. With `k > 1`, Harbor may
-rerun every trial for a selected failed task, but the merge replaces only the
-failed `(task_id, trial)` slots and keeps previously successful siblings.
+Canonical evaluation performs one Evolve-owned evaluation attempt. Harbor may
+retry an individual job according to `max_retries`, but the framework does not
+launch a second repair batch or merge results across attempts. An infrastructure
+failure is retained as the candidate's canonical outcome and makes that
+candidate ineligible for selection.
+
+Harbor train rollout follows the same rule: there is no outer failed-task repair
+loop. `infra_error`, `incomplete`, and missing-result placeholders remain in
+`rollout/cases.json`; trace analysis and the meta-agent still run so the editing
+agent can inspect the evidence and decide whether the mutable harness can address
+it. The rollout summary records the affected task names in `infra_tasks`.
 
 Inspect the population and the claim checklist:
 

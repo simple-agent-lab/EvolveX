@@ -40,14 +40,38 @@ def _harbor_runner_module():
 def test_codex_meta_agent_always_uses_host_auth_json(monkeypatch: pytest.MonkeyPatch) -> None:
     module = _harbor_runner_module()
     monkeypatch.delenv("CODEX_FORCE_AUTH_JSON", raising=False)
+    for override, lower, upper in module._PROXY_ENV:
+        monkeypatch.delenv(override, raising=False)
+        monkeypatch.delenv(lower, raising=False)
+        monkeypatch.delenv(upper, raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", "judge-key")
+    monkeypatch.setenv("OPENAI_BASE_URL", "http://judge-bridge.example/v1")
+    monkeypatch.setenv("OPENAI_API_BASE", "http://judge-bridge.example/v1")
 
-    assert module._agent_env({"agent": "codex"})["CODEX_FORCE_AUTH_JSON"] == "1"
+    env = module._agent_env({"agent": "codex"})
+    assert env == {"CODEX_FORCE_AUTH_JSON": "${CODEX_FORCE_AUTH_JSON:-1}"}
+    assert module._agent_env(
+        {
+            "agent": "codex",
+            "agent_env": {"OPENAI_BASE_URL": "https://configured.example/v1"},
+        }
+    ) == {
+        "CODEX_FORCE_AUTH_JSON": "${CODEX_FORCE_AUTH_JSON:-1}",
+        "OPENAI_BASE_URL": "https://configured.example/v1",
+        "no_proxy": "configured.example",
+        "NO_PROXY": "configured.example",
+    }
     assert "CODEX_FORCE_AUTH_JSON" not in module._agent_env({"agent": "mini-swe-agent"})
 
 
 def test_harbor_meta_agent_forwards_openai_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     module = _harbor_runner_module()
-    for name in ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY", "no_proxy", "NO_PROXY"):
+    for override, lower, upper in module._PROXY_ENV:
+        monkeypatch.delenv(override, raising=False)
+        monkeypatch.delenv(lower, raising=False)
+        monkeypatch.delenv(upper, raising=False)
+    monkeypatch.delenv("EVOLVE_HARBOR_NO_PROXY", raising=False)
+    for name in module._BYPASS_ENV:
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("OPENAI_API_KEY", "workspace-key")
     monkeypatch.setenv("OPENAI_BASE_URL", "https://workspace.example/v1")
@@ -146,6 +170,19 @@ def test_harbor_meta_agent_child_creates_private_files(tmp_path: Path) -> None:
     assert returncode == 0
     assert stat.S_IMODE(output.stat().st_mode) == 0o600
     assert stat.S_IMODE(log.stat().st_mode) == 0o600
+
+
+def test_codex_harbor_process_cannot_fall_back_to_host_openai_environment() -> None:
+    module = _harbor_runner_module()
+    host = {
+        "PATH": "/usr/bin",
+        "OPENAI_API_KEY": "judge-key",
+        "OPENAI_BASE_URL": "http://judge-bridge.example/v1",
+        "OPENAI_API_BASE": "http://judge-bridge.example/v1",
+    }
+
+    assert module._harbor_process_env({"agent": "codex"}, host) == {"PATH": "/usr/bin"}
+    assert module._harbor_process_env({"agent": "mini-swe-agent"}, host) == host
 
 
 def test_harbor_rejects_oversized_instruction_with_unsafe_agent(tmp_path: Path) -> None:
@@ -1048,6 +1085,8 @@ def test_harbor_bundle_never_exposes_gate_or_sealed_data(tmp_path: Path, traject
         assert (bundle.workspace / "runs" / "gen-1" / "trace_analyzer" / "evidence" / "raw_traces.jsonl").is_file()
         assert (bundle.workspace / "target" / "agent.py").is_file()
         assert _git(bundle.workspace, "status", "--short") == ""
+        assert _git(bundle.workspace, "config", "--get", "maintenance.auto") == "false"
+        assert _git(bundle.workspace, "config", "--get", "gc.auto") == "0"
         assert _git(bundle.workspace, "log", "--all", "--", "evaluator/splits.json") == ""
         assert "evaluator/splits.json" not in _git(bundle.workspace, "rev-list", "--all", "--objects")
         visible = "\n".join(
@@ -1286,6 +1325,7 @@ def test_install_bundle_omits_ignored_runtime_tree_with_symlinks(tmp_path: Path)
 
 def test_install_bundle_ignores_workspace_runtime_environment(tmp_path: Path) -> None:
     checkout, run_dir = _checkout(tmp_path)
+
     runner = _harbor_runner_module()
     surface = runner.load_surface_policy(checkout)
     bundle = runner._prepare_bundle(checkout, _ctx(checkout, run_dir), ["target"], surface)
@@ -1295,6 +1335,32 @@ def test_install_bundle_ignores_workspace_runtime_environment(tmp_path: Path) ->
     python = returned / ".venv" / "bin" / "python"
     python.parent.mkdir(parents=True)
     python.symlink_to("/runtime/python")
+
+    try:
+        changed = runner._install_bundle(checkout, returned, bundle, "gen/0", surface)
+    finally:
+        shutil.rmtree(bundle.staging, ignore_errors=True)
+
+    assert changed == ["target/agent.py"]
+    assert (checkout / "target" / "agent.py").read_text() == "print('child')\n"
+    assert not (checkout / ".venv").exists()
+
+
+def test_install_bundle_ignores_new_root_virtual_environment(tmp_path: Path) -> None:
+    checkout, run_dir = _checkout(tmp_path)
+    (checkout / ".gitignore").write_text(".venv/\n")
+    _git(checkout, "add", ".gitignore")
+    _git(checkout, "commit", "-qm", "ignore framework environment")
+    _git(checkout, "tag", "-f", "gen/0")
+    runner = _harbor_runner_module()
+    surface = runner.load_surface_policy(checkout)
+    bundle = runner._prepare_bundle(checkout, _ctx(checkout, run_dir), ["target"], surface)
+    returned = tmp_path / "returned"
+    shutil.copytree(bundle.workspace, returned)
+    (returned / "target" / "agent.py").write_text("print('child')\n")
+    python = returned / ".venv" / "bin" / "python"
+    python.parent.mkdir(parents=True)
+    python.write_text("container-only runtime\n")
 
     try:
         changed = runner._install_bundle(checkout, returned, bundle, "gen/0", surface)

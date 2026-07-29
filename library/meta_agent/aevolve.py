@@ -138,7 +138,6 @@ def _case_summaries(ctx: OperatorContext) -> list[dict[str, Any]]:
             "feedback": _case_feedback(case, feedback_limit),
         }
         for case in cases[-maximum:]
-        if case.get("outcome") not in {"infra_error", "incomplete"}
     ]
 
 

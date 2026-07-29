@@ -12,11 +12,9 @@ from ..config import evaluator_boolean, evaluator_sampling, experiment_id, load_
 from ..git import evaluator_tree, git, git_stdout
 from ..host_runtime import clean_python_env
 from ..runtime import OwnedResult, attempt_dir, next_attempt, owned_attempt_id, run_owned
-from ..splits import harbor_task_pattern
 from ..uv_runtime import CandidateRuntimeResult, prepare_candidate_runtime
 from .evidence import trial_results, validate_task_vector
 from .identity import effective_task_set_identity, evaluation_split_name
-from .repair import finalize_repair, repair_task_ids
 from .results import EvaluationRecord, Outcome, classify_evaluation
 
 
@@ -31,9 +29,7 @@ def evaluate(
     *,
     purpose: str = "candidate",
     attempt: int | None = None,
-    retry_of: int | None = None,
     task_limit: int | None = None,
-    repair_from: EvaluationRecord | None = None,
 ) -> EvaluationRecord:
     evaluator_sampling(workspace)
     start = time.monotonic()
@@ -50,15 +46,10 @@ def evaluate(
             timeout_zero = evaluator_boolean(evaluator, "benchmark_timeout_is_zero")
             task_set = effective_task_set_identity(checkout, evaluator, purpose=purpose)
             runtime_fingerprint = hashlib.sha256((checkout / "evaluator" / "runtime.pin").read_bytes()).hexdigest()
-            repair_tasks = repair_task_ids(repair_from) if repair_from is not None else ()
-            if repair_from is not None and not repair_tasks:
-                raise ValueError("failed-task repair requires explicit infrastructure-failed trial evidence")
-            repair_selectors = _repair_task_selectors(checkout, task_set.members, purpose, repair_tasks)
-            effective_limit = len(repair_tasks) if repair_tasks else task_limit
             expected = _expected_trials(
                 evaluator,
-                effective_limit,
-                selected_tasks=len(repair_tasks) or (len(task_set.members) if task_set.members else None),
+                task_limit,
+                selected_tasks=len(task_set.members) if task_set.members else None,
             )
             if attempt is None:
                 attempt = next_attempt(
@@ -85,7 +76,6 @@ def evaluate(
                 "task_set_hash": task_set.digest,
                 "runtime_fingerprint": runtime_fingerprint,
                 "expected_trials": expected,
-                "retry_of": repair_from.attempt if repair_from is not None else retry_of,
             }
             try:
                 try:
@@ -114,11 +104,10 @@ def evaluate(
                             checkout,
                             run_dir,
                             genid,
-                            effective_limit,
+                            task_limit,
                             purpose,
                             evaluation_split_name(evaluator, purpose),
                             runtime,
-                            task_names=repair_selectors,
                         )
                         setup_outcome, setup_reason = _setup_evidence(run_dir)
                         try:
@@ -176,17 +165,7 @@ def evaluate(
                 )
                 raise EvaluationInterrupted(record, error) from error
             _write_attempt_summary(run_dir, record)
-            return (
-                finalize_repair(
-                    workspace,
-                    run_dir,
-                    repair_from,
-                    record,
-                    benchmark_timeout_is_zero=timeout_zero,
-                )
-                if repair_from is not None
-                else record
-            )
+            return record
         finally:
             if cleanup_needed:
                 git(workspace, "worktree", "remove", "--force", str(checkout), check=False)
@@ -251,32 +230,6 @@ def _expected_trials(evaluator: dict[str, Any], task_limit: int | None, *, selec
     return max(1, tasks) * attempts
 
 
-def _repair_task_selectors(
-    checkout: Path,
-    configured_members: tuple[str, ...],
-    purpose: str,
-    task_ids: tuple[str, ...],
-) -> tuple[str, ...]:
-    members = configured_members or _split_members(checkout, "sealed" if purpose == "anchor" else "gate")
-    selectors: list[str] = []
-    for task_id in task_ids:
-        matches = [task_id] if task_id in members else [member for member in members if task_id.endswith(f"/{member}")]
-        if len(matches) > 1:
-            raise ValueError(f"ambiguous repair task selector for {task_id}: {matches}")
-        selectors.append(matches[0] if matches else task_id)
-    return tuple(selectors)
-
-
-def _split_members(checkout: Path, split: str) -> tuple[str, ...]:
-    path = checkout / "evaluator" / "splits.json"
-    if not path.exists():
-        return ()
-    payload = json.loads(path.read_text())
-    tasks = payload.get("tasks") if isinstance(payload, dict) else None
-    members = tasks.get(split, []) if isinstance(tasks, dict) else []
-    return tuple(str(member) for member in members) if isinstance(members, list) else ()
-
-
 def _run_eval_script(
     checkout: Path,
     run_dir: Path,
@@ -285,8 +238,6 @@ def _run_eval_script(
     purpose: str,
     evaluation_split: str,
     runtime: CandidateRuntimeResult,
-    *,
-    task_names: tuple[str, ...] = (),
 ) -> OwnedResult:
     runs_dir = next(parent for parent in run_dir.parents if parent.name == "runs")
     env: dict[str, str] = {
@@ -311,10 +262,6 @@ def _run_eval_script(
     env["EVOLVE_UV_CACHE_DIR"] = str(uv_cache)
     if task_limit is not None:
         env["EVOLVE_TASK_LIMIT"] = str(task_limit)
-    if task_names:
-        task_file = run_dir / "repair-task-names.txt"
-        task_file.write_text("".join(f"{harbor_task_pattern(name)}\n" for name in task_names))
-        env["EVOLVE_REPAIR_TASK_FILE"] = str(task_file)
     result = run_owned([str(checkout / "evaluator" / "eval.sh")], cwd=checkout, env=env)
     (run_dir / "stdout.log").write_text(result.stdout)
     (run_dir / "stderr.log").write_text(result.stderr)

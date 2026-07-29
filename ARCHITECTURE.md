@@ -32,14 +32,13 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `evaluation/evidence.py` | 150 | evaluator-output validation and conversion into canonical trial results |
 | `evaluation/execution.py` | 350 | clean-checkout canonical evaluation: tree assertion, targeted task execution, lifecycle, artifacts, and score parsing |
 | `evaluation/identity.py` | 150 | canonical task-set identity plus checkout and frozen-baseline comparability |
-| `evaluation/repair.py` | 200 | target explicit infrastructure failures, merge repaired trials, and preserve attempt provenance |
 | `evaluation/results.py` | 200 | evaluation result types, outcome classification, and persisted record shape |
 | `feedback.py` | 250 | assemble current and historical rollout evidence plus ledger-derived feedback for the meta-agent |
 | `operators.py` | 200 | subprocess runner for workspace operator scripts (contract: env vars, --config, timeout) |
 | `patching.py` | 150 | mutable-surface patch creation and parent-reference selection |
 | `population.py` | 100 | genid/lineage bookkeeping for fan-out generations |
 | `report.py` | 200 | status/report rendering, best-ever recomputation, claim checklist |
-| `runtime.py` | 150 | generated-workspace runtime entrypoint helpers |
+| `runtime.py` | 250 | generated-workspace runtime entrypoint helpers |
 | `splits.py` | 250 | freeze deterministic train/gate/sealed Harbor task membership and materialize exact runtime selections |
 | `surface.py` | 150 | mutable-surface pattern matching and violation checks |
 | `trace_analysis.py` | 750 | deterministic shared transforms used by the independent trace-analyzer operator variants |
@@ -50,7 +49,7 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `host_runtime.py` | 100 | host-side locked runtime process helpers |
 | `integrations/__init__.py` | 10 | external runtime integration package boundary |
 | `integrations/harbor/__init__.py` | 10 | Harbor integration package boundary |
-| `integrations/harbor/miniswe_candidate.py` | 450 | exact-candidate MiniSWE Harbor evaluator agent |
+| `integrations/harbor/miniswe_candidate.py` | 550 | exact-candidate MiniSWE Harbor evaluator agent |
 | `integrations/harbor/miniswe_task_file.py` | 130 | large-task MiniSWE meta-agent transport |
 | `meta_agent_budget.py` | 150 | shared Harbor meta-agent retry and timeout budget calculations |
 
@@ -68,7 +67,7 @@ each workspace, immutable there because it sits outside the mutable surface
 | `frozen/sdk.py` | 300 | Python operator entrypoint and file-contract IO; no library algorithm policy |
 
 Total `src/evolve/` budget: **9930 lines**. The budget admits the explicit evaluation-package
-boundaries, failed-task repair, the opt-in in-place Harbor runtime, and the redacted trace-analysis
+boundaries, the opt-in in-place Harbor runtime, and the redacted trace-analysis
 boundary between rollout and feedback assembly; if the mechanism wants to
 grow past that, something belongs in a workspace operator instead —
 that is the spec's rule, not a style preference.

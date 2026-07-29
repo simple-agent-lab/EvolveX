@@ -35,10 +35,6 @@ if python3 -c 'import json,sys; raise SystemExit(0 if json.load(open(sys.argv[1]
   EVOLVE_HARBOR_TASK_FILE="$EVOLVE_RUN_DIR/task-names.txt"
   export EVOLVE_HARBOR_TASK_FILE
 fi
-if [ -n "${EVOLVE_REPAIR_TASK_FILE:-}" ]; then
-  EVOLVE_HARBOR_TASK_FILE=$EVOLVE_REPAIR_TASK_FILE
-  export EVOLVE_HARBOR_TASK_FILE
-fi
 : "${EVOLVE_UV_CACHE_DIR:=$HOME/.evolve/uv-cache}"
 runtime_mounts=${EVOLVE_CANDIDATE_RUNTIME_MOUNTS_JSON:-}
 runtime_env=${EVOLVE_CANDIDATE_RUNTIME_ENV_JSON:-}
@@ -164,45 +160,21 @@ for credential_name in OPENAI_API_KEY OPENAI_BASE_URL OPENAI_API_BASE; do
     set -- "$@" --ae "$credential_name=$credential_value"
   fi
 done
-model_base=${OPENAI_BASE_URL:-${OPENAI_API_BASE:-}}
-proxy_bypass=$(
-  "$EVOLVE_FRAMEWORK_PYTHON" - "$model_base" "${EVOLVE_HARBOR_NO_PROXY-}" "${no_proxy-}" "${NO_PROXY-}" <<'PY'
-import sys
-from urllib.parse import urlsplit
-
-base_url, override, *configured = sys.argv[1:]
-entries = []
-for value in ([override] if override else configured):
-    for entry in value.split(","):
-        entry = entry.strip()
-        if entry and entry not in entries:
-            entries.append(entry)
-if base_url:
-    hostname = urlsplit(base_url).hostname
-    if not hostname:
-        raise SystemExit("configured model base URL has no hostname")
-    if hostname not in entries:
-        entries.append(hostname)
-print(",".join(entries))
-PY
-)
-proxy_http=${EVOLVE_HARBOR_HTTP_PROXY:-${http_proxy:-${HTTP_PROXY:-}}}
-proxy_https=${EVOLVE_HARBOR_HTTPS_PROXY:-${https_proxy:-${HTTPS_PROXY:-}}}
-for proxy_entry in \
-  "http_proxy=$proxy_http" "HTTP_PROXY=$proxy_http" \
-  "https_proxy=$proxy_https" "HTTPS_PROXY=$proxy_https"; do
-  if [ -n "${proxy_entry#*=}" ]; then
-    set -- "$@" --ae "$proxy_entry" --ve "$proxy_entry"
-  fi
-done
-if [ -n "$proxy_bypass" ]; then
-  for bypass_name in no_proxy NO_PROXY; do
-    set -- "$@" --ae "$bypass_name=$proxy_bypass" --ve "$bypass_name=$proxy_bypass"
-  done
-fi
+agent_proxy_http=
+agent_proxy_https=
+agent_proxy_no=
+agent_model_base=
 if [ -f evaluator/agent.env ]; then
   while IFS= read -r agent_entry || [ -n "$agent_entry" ]; do
-    [ -n "$agent_entry" ] && set -- "$@" --ae "$agent_entry"
+    if [ -n "$agent_entry" ]; then
+      set -- "$@" --ae "$agent_entry"
+      case "$agent_entry" in
+        http_proxy=*|HTTP_PROXY=*) agent_proxy_http=${agent_entry#*=} ;;
+        https_proxy=*|HTTPS_PROXY=*) agent_proxy_https=${agent_entry#*=} ;;
+        no_proxy=*|NO_PROXY=*) agent_proxy_no=${agent_entry#*=} ;;
+        OPENAI_BASE_URL=*|OPENAI_API_BASE=*) agent_model_base=${agent_entry#*=} ;;
+      esac
+    fi
   done < evaluator/agent.env
 fi
 if [ -f evaluator/verifier.env ]; then
@@ -241,6 +213,37 @@ if [ -n "${EVOLVE_HARBOR_MAX_RETRIES:-}" ]; then
   set -- "$@" --retry-exclude EvolveCandidateInvalidError
   set -- "$@" --retry-exclude ApiUsageLimitError
 fi
+model_base=${agent_model_base:-${OPENAI_BASE_URL:-${OPENAI_API_BASE:-}}}
+proxy_no_configured=${EVOLVE_HARBOR_NO_PROXY:-${agent_proxy_no:-}}
+proxy_bypass=$(
+  "$EVOLVE_FRAMEWORK_PYTHON" - "$model_base" "$proxy_no_configured" "${no_proxy-}" "${NO_PROXY-}" <<'PY'
+import sys
+from urllib.parse import urlsplit
+
+base_url, override, *configured = sys.argv[1:]
+entries = []
+for value in ([override] if override else configured):
+    for entry in value.split(","):
+        entry = entry.strip()
+        if entry and entry not in entries:
+            entries.append(entry)
+if base_url:
+    hostname = urlsplit(base_url).hostname
+    if not hostname:
+        raise SystemExit("configured model base URL has no hostname")
+    if hostname not in entries:
+        entries.append(hostname)
+print(",".join(entries))
+PY
+)
+proxy_http=${EVOLVE_HARBOR_HTTP_PROXY:-${agent_proxy_http:-${http_proxy:-${HTTP_PROXY:-}}}}
+proxy_https=${EVOLVE_HARBOR_HTTPS_PROXY:-${agent_proxy_https:-${https_proxy:-${HTTPS_PROXY:-}}}}
+for proxy_entry in \
+  "http_proxy=$proxy_http" "HTTP_PROXY=$proxy_http" \
+  "https_proxy=$proxy_https" "HTTPS_PROXY=$proxy_https" \
+  "no_proxy=$proxy_bypass" "NO_PROXY=$proxy_bypass"; do
+  if [ -n "${proxy_entry#*=}" ]; then set -- "$@" --ae "$proxy_entry" --ve "$proxy_entry"; fi
+done
 set -- "$@" --job-name "$EVOLVE_ATTEMPT_ID" --jobs-dir "$jobs_dir" --n-attempts "${EVOLVE_HARBOR_ATTEMPTS:-1}" -n "${EVOLVE_HARBOR_N_CONCURRENT:-$EVOLVE_HARBOR_N}" -y -q
 if [ -n "${EVOLVE_CANDIDATE_SMOKE_MODE:-}" ]; then
   "$UV" run --project "$EVOLVE_WORKSPACE" --frozen harbor "$@"

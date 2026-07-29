@@ -68,7 +68,9 @@ def render_artifact_guidance(ctx: OperatorContext, repository: Path) -> str:
                 "No selected-parent handoff is available; this is non-fatal, so continue using the other evidence."
             )
     else:
-        lines.append("No selected-parent handoff is available; this is non-fatal, so continue using the other evidence.")
+        lines.append(
+            "No selected-parent handoff is available; this is non-fatal, so continue using the other evidence."
+        )
     lines.append(
         f"At the end, you may write an optional free-form `handoff.md` at `{current / HANDOFF_NAME}` "
         "for a future child meta-agent."

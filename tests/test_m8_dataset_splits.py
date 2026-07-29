@@ -175,7 +175,13 @@ def test_harbor_rollout_uses_only_frozen_train_task_names(tmp_path: Path, monkey
         module, "uv_run", lambda _workspace, *_command: (["uv", "run", "harbor"], {"LOCKED_RUNTIME": "1"})
     )
     monkeypatch.setattr(module, "_run_harbor", fake_run)
-    monkeypatch.setattr(module, "collect_cases", lambda *_args, **_kwargs: [{"reward": 1.0, "outcome": "passed"}])
+    monkeypatch.setattr(
+        module,
+        "collect_cases",
+        lambda *_args, **_kwargs: [
+            {"task_name": name, "reward": 1.0, "outcome": "passed"} for name in manifest["tasks"]["train"][:3]
+        ],
+    )
     context = OperatorContext(
         workspace=checkout,
         checkout=checkout,
@@ -222,6 +228,93 @@ def test_harbor_rollout_uses_only_frozen_train_task_names(tmp_path: Path, monkey
     assert captured[captured.index("--env") + 1] == "custom.local:Environment"
     assert captured[captured.index("--environment-kwarg") + 1] == 'workdir="/workspace"'
     assert result.summary["split"] == "train"
+
+
+def test_harbor_rollout_keeps_infra_tasks_without_outer_repair(tmp_path: Path, monkeypatch) -> None:
+    from test_m7_harbor_rollout import _harbor_rollout_module
+
+    module = _harbor_rollout_module()
+    checkout = tmp_path / "checkout"
+    evaluator = checkout / "evaluator"
+    evaluator.mkdir(parents=True)
+    dataset = _dataset(tmp_path / "tasks")
+    manifest = build_manifest(
+        dataset.as_posix(),
+        {"train": 0.5, "gate": 0.3, "sealed": 0.2, "seed": 3},
+        base_dir=tmp_path,
+        sampling="static",
+        gate_limit=3,
+    )
+    selected = manifest["tasks"]["train"][:2]
+    (evaluator / "splits.json").write_text(json.dumps(manifest))
+    (evaluator / "eval.env").write_text(
+        f"EVOLVE_HARBOR_TASKS={dataset}\nEVOLVE_HARBOR_AGENT=target.agent:HarborAgent\n"
+    )
+    commands: list[list[str]] = []
+
+    def fake_run(command, _checkout, log_path, _env):
+        commands.append(command)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_path.write_text("ok\n")
+        return 0
+
+    def fake_cases(jobs_dir, **_kwargs):
+        return [
+            {
+                "task_name": f"terminal-bench/{selected[0]}",
+                "reward": 1.0,
+                "outcome": "passed",
+                "result_path": str(jobs_dir / selected[0] / "result.json"),
+            },
+            {
+                "task_name": f"terminal-bench/{selected[1]}",
+                "reward": None,
+                "outcome": "infra_error",
+                "exception": {
+                    "type": "VerifierTimeoutError",
+                    "message": "verifier timed out",
+                },
+                "result_path": str(jobs_dir / selected[1] / "result.json"),
+            },
+        ]
+
+    monkeypatch.setattr(module, "uv_run", lambda *_args: (["harbor"], {}))
+    monkeypatch.setattr(module, "_run_harbor", fake_run)
+    monkeypatch.setattr(module, "collect_cases", fake_cases)
+    context = OperatorContext(
+        workspace=checkout,
+        checkout=checkout,
+        run_dir=checkout / "runs" / "gen-1",
+        genid="1",
+        parent="0",
+        round=None,
+        fan_out=1,
+        config={
+            "budget_tasks": 2,
+            "n_concurrent": 2,
+            "jobs_dir": str(tmp_path / "jobs"),
+        },
+        rng=random.Random(0),
+    )
+
+    result = module.HarborRollout().rollout(checkout, context)
+
+    assert len(commands) == 1
+    initial_includes = [
+        commands[0][index + 1] for index, value in enumerate(commands[0]) if value == "--include-task-name"
+    ]
+    assert initial_includes == selected
+
+    cases = json.loads((context.run_dir / "rollout/cases.json").read_text())
+    by_task = {case["task_name"]: case for case in cases}
+    assert by_task[f"terminal-bench/{selected[0]}"]["outcome"] == "passed"
+    infra = by_task[f"terminal-bench/{selected[1]}"]
+    assert infra["outcome"] == "infra_error"
+    assert infra["exception"]["type"] == "VerifierTimeoutError"
+    assert not (context.run_dir / "rollout/repair").exists()
+    assert result.summary["infra_errors"] == 1
+    assert result.summary["infra_tasks"] == [f"terminal-bench/{selected[1]}"]
+    assert result.summary["tasks_observed"] == 2
 
 
 def test_harbor_rollout_exact_task_replay_is_limited_to_frozen_train_split(tmp_path: Path, monkeypatch) -> None:

@@ -49,12 +49,18 @@ Select it in a recipe before `evolve init`:
 
 ```yaml
 operators:
-  rollout: {variant: harbor, path: /path/to/train-tasks, budget_tasks: 8, n_concurrent: 2}
+  rollout: {variant: harbor, path: /path/to/train-tasks, budget_tasks: 8, n_concurrent: 2, max_retries: 1}
 ```
+
+`max_retries` controls Harbor's internal retry policy for one job.
+The operator does not run an outer repair batch. Cases normalized as
+`infra_error` or `incomplete` remain in the rollout evidence and flow through
+the configured trace analyzer to the meta-agent.
 
 The train `path` is required in config or through `EVOLVE_HARBOR_ROLLOUT_TASKS`.
 Optional keys are `agent`, `model`, `include_task_name`, `jobs_dir`,
-`field_limit`, and `pass_threshold` (default `1.0`). The custom checkout agent
+`max_retries`, `field_limit`, and `pass_threshold`
+(default `1.0`). The custom checkout agent
 defaults to `evaluator/eval.env`; `EVOLVE_HARBOR_MODEL` and
 `EVOLVE_ROLLOUT_JOBS_DIR` are additional environment overrides.
 

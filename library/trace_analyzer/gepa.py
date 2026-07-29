@@ -68,7 +68,7 @@ class GepaTraceAnalyzer(TraceAnalyzerOperator):
         cases = [case for case in payload if isinstance(case, dict)] if isinstance(payload, list) else []
         maximum = max(1, int(ctx.config.get("max_cases", 32)))
         field_limit = max(1, int(ctx.config.get("field_limit", 4000)))
-        usable = [case for case in cases if case.get("outcome") not in {"infra_error", "incomplete"}][:maximum]
+        usable = cases[:maximum]
         records = [reflective_record(case, field_limit) for case in usable]
         dataset = {name: records for name in components}
         root = ctx.run_dir / "trace_analyzer" / "evidence"
@@ -107,7 +107,7 @@ class GepaTraceAnalyzer(TraceAnalyzerOperator):
             "components": components,
             "component_evidence": component_evidence,
             "reflective_dataset": "reflective_dataset.json",
-            "excluded_outcomes": ["infra_error", "incomplete"],
+            "excluded_outcomes": [],
         }
         _write_json(root / "manifest.json", manifest)
         selected = (

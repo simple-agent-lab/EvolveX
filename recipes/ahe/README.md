@@ -38,8 +38,8 @@ evaluation; it does not invoke a separate task partition. The evaluator is
 frozen with capacity for 10 workers; set
 `EVOLVE_HARBOR_N_CONCURRENT_OVERRIDE=5` for a five-worker generation-1 smoke,
 then omit the override for the full run.
-Candidate execution uses Harbor's `agent_timeout_multiplier: 2`, giving the
-100-step budget up to twice each task's declared agent timeout.
+Candidate execution uses Harbor's native task timeouts
+(`agent_timeout_multiplier: 1`).
 
 ```bash
 export EVOLVE_RUNTIME_DIGEST="sha256:replace-with-your-immutable-evaluator-image-digest"
