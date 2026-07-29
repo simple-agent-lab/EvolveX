@@ -807,6 +807,8 @@ def test_harbor_bundle_never_exposes_gate_or_sealed_data(tmp_path: Path, traject
         assert (bundle.workspace / "runs" / "gen-1" / "trace_analyzer" / "evidence" / "raw_traces.jsonl").is_file()
         assert (bundle.workspace / "target" / "agent.py").is_file()
         assert _git(bundle.workspace, "status", "--short") == ""
+        assert _git(bundle.workspace, "config", "--get", "maintenance.auto") == "false"
+        assert _git(bundle.workspace, "config", "--get", "gc.auto") == "0"
         assert _git(bundle.workspace, "log", "--all", "--", "evaluator/splits.json") == ""
         assert "evaluator/splits.json" not in _git(bundle.workspace, "rev-list", "--all", "--objects")
         visible = "\n".join(

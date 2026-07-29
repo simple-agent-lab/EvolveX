@@ -198,6 +198,12 @@ def _initialize_sanitized_git(workspace: Path) -> None:
     git(workspace, "init", "--quiet")
     git(workspace, "config", "user.name", "Evolve Meta-Agent")
     git(workspace, "config", "user.email", "meta-agent@evolve.invalid")
+    # This repository is copied into the Harbor task immediately after the
+    # baseline commit.  Git may otherwise detach automatic maintenance on
+    # platforms such as macOS, racing that copy as maintenance.lock appears
+    # and disappears underneath shutil/tar.
+    git(workspace, "config", "maintenance.auto", "false")
+    git(workspace, "config", "gc.auto", "0")
     git(workspace, "add", "--all")
     git(workspace, "commit", "--quiet", "--no-gpg-sign", "-m", "sanitized meta-agent baseline")
 
