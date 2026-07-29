@@ -65,8 +65,11 @@ def _terminate(process: subprocess.Popen[str]) -> tuple[str, str]:
             fallback_group=process.pid,
         )
         return process.communicate()
-    _wait_for_process_tree(targets - {process.pid}, timeout_s=5)
-    _signal_process_tree(_alive_pids(targets), signal.SIGKILL)
+    descendants = targets - {process.pid}
+    _wait_for_process_tree(descendants, timeout_s=5)
+    # ``communicate`` reaped the root process. Never probe its PID again here:
+    # the operating system may already have reused it for an unrelated process.
+    _signal_process_tree(_alive_pids(descendants), signal.SIGKILL)
     return output
 
 
@@ -129,17 +132,23 @@ def _signal_process_tree(
     process_ids = set(pids)
     groups: set[int] = set()
     own_group = os.getpgrp()
-    if fallback_group is not None and fallback_group != own_group:
+    if fallback_group is not None:
+        # ``run_owned`` starts its root process in a new session, so its PID is
+        # already the authoritative process-group ID. Do not resolve it again:
+        # the process may have exited (and its PID may have been reused) between
+        # the process-tree snapshot and cleanup.
+        process_ids.discard(fallback_group)
+    if fallback_group is not None and fallback_group > 0 and fallback_group != own_group:
         groups.add(fallback_group)
     for pid in process_ids:
         try:
             group = os.getpgid(pid)
-        except ProcessLookupError:
+        except (ProcessLookupError, PermissionError):
             continue
-        if group != own_group:
+        if group > 0 and group != own_group:
             groups.add(group)
     for group in groups:
-        with suppress(ProcessLookupError):
+        with suppress(ProcessLookupError, PermissionError):
             os.killpg(group, sig)
 
 
