@@ -572,6 +572,85 @@ def test_setup_requires_runtime_env_before_creating_workspace(
     assert not workspace.exists()
 
 
+def test_setup_rejects_existing_runtime_mirror_without_touching_it(
+    tmp_path: Path,
+) -> None:
+    fake_evolve = tmp_path / "evolve"
+    _write_fake_evolve(fake_evolve)
+    dataset, manifest, _ = _tb2_fixture(tmp_path)
+    experiment_root = tmp_path / "experiments"
+    runtime_home = tmp_path / "runtime-evolve-home"
+    name = "mirror-collision"
+    workspace = experiment_root / "workspaces" / name
+    mirror = runtime_home / "mirrors" / name
+    mirror.mkdir(parents=True)
+    sentinel = mirror / "sentinel.bin"
+    sentinel_bytes = b"\x00existing-mirror\xff\n"
+    sentinel.write_bytes(sentinel_bytes)
+
+    result = _run_setup(
+        "ahe",
+        "codex",
+        "terminal-bench-2",
+        name,
+        "25",
+        env_overrides={
+            "EVOLVE_EXPERIMENT_ROOT": str(experiment_root),
+            "EVOLVE_CLI": str(fake_evolve),
+            "EVOLVE_PYTHON": sys.executable,
+            "FAKE_RECIPE_ROOT": str(ROOT / "recipes"),
+            "EVOLVE_HOME": str(tmp_path / "parent-evolve-home"),
+            "TB2_DATASET": str(dataset),
+            "TB2_MANIFEST": str(manifest),
+        },
+        runtime_contents=(
+            "EVOLVE_RUNTIME_DIGEST=sha256:test-runtime\n"
+            f"EVOLVE_HOME={runtime_home}\n"
+        ),
+    )
+
+    assert result.returncode != 0
+    assert not workspace.exists()
+    assert sentinel.read_bytes() == sentinel_bytes
+
+
+def test_setup_uses_runtime_home_and_succeeds_without_runtime_mirror(
+    tmp_path: Path,
+) -> None:
+    fake_evolve = tmp_path / "evolve"
+    _write_fake_evolve(fake_evolve)
+    dataset, manifest, _ = _tb2_fixture(tmp_path)
+    experiment_root = tmp_path / "experiments"
+    runtime_home = tmp_path / "runtime-evolve-home"
+    parent_home = tmp_path / "parent-evolve-home"
+    name = "fresh-runtime-home"
+    (parent_home / "mirrors" / name).mkdir(parents=True)
+
+    result = _run_setup(
+        "ahe",
+        "codex",
+        "terminal-bench-2",
+        name,
+        "25",
+        env_overrides={
+            "EVOLVE_EXPERIMENT_ROOT": str(experiment_root),
+            "EVOLVE_CLI": str(fake_evolve),
+            "EVOLVE_PYTHON": sys.executable,
+            "FAKE_RECIPE_ROOT": str(ROOT / "recipes"),
+            "EVOLVE_HOME": str(parent_home),
+            "TB2_DATASET": str(dataset),
+            "TB2_MANIFEST": str(manifest),
+        },
+        runtime_contents=(
+            "EVOLVE_RUNTIME_DIGEST=sha256:test-runtime\n"
+            f"EVOLVE_HOME={runtime_home}\n"
+        ),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert (experiment_root / "workspaces" / name).is_dir()
+
+
 def test_setup_renders_terminal_bench_without_tau3_simulator(
     tmp_path: Path,
 ) -> None:

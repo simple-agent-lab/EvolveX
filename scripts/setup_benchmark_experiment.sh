@@ -119,8 +119,19 @@ if [[ ! -f "$runtime_env" ]]; then
   exit 1
 fi
 
+set -a
+. "$runtime_env"
+set +a
+
 if [[ -e "$workspace" ]]; then
   printf 'workspace already exists: %s\n' "$workspace" >&2
+  exit 1
+fi
+
+evolve_home=${EVOLVE_HOME:-${HOME}/.evolve}
+mirror="$evolve_home/mirrors/$name"
+if [[ -e "$mirror" || -L "$mirror" ]]; then
+  printf 'experiment mirror already exists: %s; resume it or recoverably quarantine the complete workspace/mirror pair\n' "$mirror" >&2
   exit 1
 fi
 
@@ -152,9 +163,6 @@ PY
 elif [[ -n "${EVOLVE_TARGET_SEED:-}" ]]; then
   init_args+=(--seed "$EVOLVE_TARGET_SEED")
 fi
-set -a
-. "$runtime_env"
-set +a
 "$evolve_cli" "${init_args[@]}"
 
 EVOLVE_SETUP_WORKSPACE="$workspace" \
