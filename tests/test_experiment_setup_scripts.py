@@ -906,6 +906,173 @@ def _write_smoke_manifest(
     return path
 
 
+def _setup_smoke_workspace(tmp_path: Path, name: str) -> tuple[Path, Path]:
+    fake_evolve = tmp_path / "setup-evolve"
+    _write_fake_evolve(fake_evolve)
+    dataset, manifest, _ = _tau3_fixture(tmp_path)
+    root = tmp_path / "experiments"
+    setup = _run_setup(
+        "ahe",
+        "codex",
+        "tau3",
+        name,
+        "25",
+        env_overrides={
+            "EVOLVE_EXPERIMENT_ROOT": str(root),
+            "EVOLVE_CLI": str(fake_evolve),
+            "EVOLVE_PYTHON": sys.executable,
+            "FAKE_RECIPE_ROOT": str(ROOT / "recipes"),
+            "TAU3_DATASET": str(dataset),
+            "TAU3_MANIFEST": str(manifest),
+        },
+    )
+    assert setup.returncode == 0, setup.stderr
+    return (
+        root / "workspaces" / name,
+        _write_smoke_manifest(
+            tmp_path / "smoke-tasks.json",
+            "tau3",
+            [
+                "tau3-airline-000",
+                "tau3-banking_knowledge-task-001",
+                "tau3-retail-002",
+            ],
+        ),
+    )
+
+
+def _write_smoke_verify_cli(path: Path, invocation_log: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        f"#!{sys.executable}\n"
+        "import sys\n"
+        "from pathlib import Path\n\n"
+        "if len(sys.argv) != 3 or sys.argv[1] != 'verify':\n"
+        "    raise SystemExit(f'unexpected evolve arguments: {sys.argv[1:]}')\n"
+        f"Path({str(invocation_log)!r}).write_text(sys.argv[0] + '\\n' + sys.argv[2] + '\\n')\n"
+    )
+    path.chmod(0o755)
+
+
+def _workspace_state(workspace: Path) -> tuple[str, str, str, dict[str, bytes]]:
+    def git(*args: str) -> str:
+        return subprocess.run(
+            ["git", "-C", str(workspace), *args],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+
+    return (
+        git("rev-parse", "HEAD"),
+        git("status", "--porcelain"),
+        git("rev-parse", "refs/tags/gen/0"),
+        {
+            str(path.relative_to(workspace)): path.read_bytes()
+            for path in workspace.rglob("*")
+            if path.is_file() and ".git" not in path.parts
+        },
+    )
+
+
+def _run_smoke(
+    workspace: Path,
+    smoke_manifest: Path,
+    *,
+    env_overrides: dict[str, str],
+) -> subprocess.CompletedProcess[str]:
+    env = {**os.environ, "EVOLVE_PYTHON": sys.executable, **env_overrides}
+    for name in ("EVOLVE_CLI", "EVOLVE_FRAMEWORK"):
+        if name not in env_overrides:
+            env.pop(name, None)
+    return subprocess.run(
+        ["bash", str(SMOKE), str(workspace), str(smoke_manifest), "tau3"],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def test_smoke_config_uses_framework_venv_cli_when_bare_evolve_is_unavailable(
+    tmp_path: Path,
+) -> None:
+    workspace, smoke_manifest = _setup_smoke_workspace(tmp_path, "framework-cli")
+    framework_cli = tmp_path / "framework" / ".venv" / "bin" / "evolve"
+    invocation_log = tmp_path / "framework-invocation.log"
+    _write_smoke_verify_cli(framework_cli, invocation_log)
+
+    configured = _run_smoke(
+        workspace,
+        smoke_manifest,
+        env_overrides={
+            "EVOLVE_FRAMEWORK": str(framework_cli.parents[2]),
+            "PATH": "/usr/bin:/bin",
+        },
+    )
+
+    assert configured.returncode == 0, configured.stderr
+    assert invocation_log.read_text().splitlines() == [
+        str(framework_cli),
+        str(workspace),
+    ]
+
+
+def test_smoke_config_prefers_explicit_cli_over_framework_venv_cli(
+    tmp_path: Path,
+) -> None:
+    workspace, smoke_manifest = _setup_smoke_workspace(tmp_path, "explicit-cli")
+    framework_cli = tmp_path / "framework" / ".venv" / "bin" / "evolve"
+    explicit_cli = tmp_path / "explicit-evolve"
+    framework_log = tmp_path / "framework-invocation.log"
+    explicit_log = tmp_path / "explicit-invocation.log"
+    _write_smoke_verify_cli(framework_cli, framework_log)
+    _write_smoke_verify_cli(explicit_cli, explicit_log)
+
+    configured = _run_smoke(
+        workspace,
+        smoke_manifest,
+        env_overrides={
+            "EVOLVE_CLI": str(explicit_cli),
+            "EVOLVE_FRAMEWORK": str(framework_cli.parents[2]),
+            "PATH": "/usr/bin:/bin",
+        },
+    )
+
+    assert configured.returncode == 0, configured.stderr
+    assert explicit_log.read_text().splitlines()[0] == str(explicit_cli)
+    assert not framework_log.exists()
+
+
+@pytest.mark.parametrize("kind", ["missing", "non-executable", "directory"])
+def test_smoke_config_rejects_unusable_cli_before_mutating_workspace(
+    tmp_path: Path, kind: str
+) -> None:
+    workspace, smoke_manifest = _setup_smoke_workspace(tmp_path, f"bad-cli-{kind}")
+    framework = tmp_path / "framework"
+    framework_cli = framework / ".venv" / "bin" / "evolve"
+    if kind == "non-executable":
+        _write_smoke_verify_cli(framework_cli, tmp_path / "unexpected.log")
+        framework_cli.chmod(0o644)
+    elif kind == "directory":
+        framework_cli.mkdir(parents=True)
+    before = _workspace_state(workspace)
+
+    configured = _run_smoke(
+        workspace,
+        smoke_manifest,
+        env_overrides={
+            "EVOLVE_FRAMEWORK": str(framework),
+            "PATH": "/usr/bin:/bin",
+        },
+    )
+
+    assert configured.returncode != 0
+    assert "evolve" in configured.stderr
+    assert _workspace_state(workspace) == before
+
+
 @pytest.mark.parametrize(
     ("method", "trace_variant"),
     [("ahe", "ahe"), ("hyperagents", "trace_browser")],

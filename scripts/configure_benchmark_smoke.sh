@@ -31,8 +31,29 @@ done
 
 workspace=$(cd "$workspace" && pwd)
 task_manifest=$(cd "$(dirname "$task_manifest")" && pwd)/$(basename "$task_manifest")
-evolve_cli=${EVOLVE_CLI:-evolve}
+if [[ -n ${EVOLVE_CLI:-} ]]; then
+  evolve_cli=$EVOLVE_CLI
+elif [[ -n ${EVOLVE_FRAMEWORK:-} ]]; then
+  evolve_cli="$EVOLVE_FRAMEWORK/.venv/bin/evolve"
+else
+  evolve_cli=evolve
+fi
 evolve_python=${EVOLVE_PYTHON:-python3}
+
+case "$evolve_cli" in
+  */*)
+    if [[ ! -f "$evolve_cli" || ! -x "$evolve_cli" ]]; then
+      printf 'Evolve CLI is not executable: %s\n' "$evolve_cli" >&2
+      exit 1
+    fi
+    ;;
+  *)
+    if ! command -v "$evolve_cli" >/dev/null 2>&1; then
+      printf 'Evolve CLI is not available: %s\n' "$evolve_cli" >&2
+      exit 1
+    fi
+    ;;
+esac
 
 for required in \
   "$workspace/evolve.yaml" \
