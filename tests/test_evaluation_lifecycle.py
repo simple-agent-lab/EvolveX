@@ -20,7 +20,7 @@ def _lifecycle_workspace(tmp_path: Path, outcomes: dict[str, list[str]]) -> Path
         "run_dir = Path(os.environ['EVOLVE_RUN_DIR'])\n"
         "run_dir.mkdir(parents=True, exist_ok=True)\n"
         "purpose = os.environ['EVOLVE_EVAL_KIND']\n"
-        "attempt = int(run_dir.name.removeprefix('attempt-'))\n"
+        "attempt = int(run_dir.name[len('attempt-'):])\n"
         "sequence = outcomes.get(purpose, outcomes.get('candidate', ['benchmark_complete']))\n"
         "outcome = sequence[min(attempt - 1, len(sequence) - 1)]\n"
         "owner = 'candidate' if outcome == 'candidate_invalid' else 'benchmark_agent'\n"
@@ -47,7 +47,7 @@ def _evaluation_events(workspace: Path, genid: str) -> list[dict[str, object]]:
     ]
 
 
-def test_candidate_infrastructure_failure_is_recorded_once_without_batch_replay(
+def test_candidate_infrastructure_failure_is_recorded_without_automatic_retry(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

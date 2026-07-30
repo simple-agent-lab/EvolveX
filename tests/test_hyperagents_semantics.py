@@ -1,7 +1,7 @@
 import sys
 from pathlib import Path
 
-from conftest import git, git_show, rows_by_genid, run_evolve
+from conftest import git, git_show, init_fixture_workspace, rows_by_genid
 
 from evolve.driver import RunOptions
 from evolve.driver import run as driver_run
@@ -11,14 +11,7 @@ from evolve.population import valid_parent_rows
 def _init_hyperagents_smoke(tmp_path: Path) -> tuple[Path, Path]:
     workspace = tmp_path / "hyperagents-smoke"
     evolve_home = tmp_path / "evolve-home"
-    result = run_evolve(
-        "init",
-        str(workspace),
-        "--recipe",
-        "hyperagents-smoke",
-        env={"EVAL_STUB": "1", "EVOLVE_HOME": str(evolve_home)},
-    )
-    assert result.returncode == 0, result.stderr
+    init_fixture_workspace(workspace, "hyperagents-smoke")
     return workspace, evolve_home
 
 

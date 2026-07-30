@@ -4,8 +4,8 @@ This recipe keeps the AHE strategy independent from the target agent. It uses
 the local `terminal-bench-2-10-10-10` dataset. Workspace initialization freezes
 all 30 curated instances as one optimization set without synthesizing train,
 gate, and sealed partitions. Each candidate is evaluated on those same 30 tasks
-with one trial per task. That certified evaluation is replayed as the
-next AHE debugger input, so its score
+with one trial per task. That certified evaluation is replayed as the next AHE
+debugger input, so its score
 and debugger evidence come from the same retained Harbor trajectories rather
 than a separate rollout run. Each task receives one required LLM debugger
 analysis using the same model and runner as the meta-agent. The debugger uses
@@ -42,8 +42,10 @@ Candidate execution uses Harbor's native task timeouts
 (`agent_timeout_multiplier: 1`).
 
 ```bash
+export EVOLVE_RUNTIME_DIGEST="sha256:replace-with-your-immutable-evaluator-image-digest"
+export HARBOR_TASKS="/absolute/path/to/terminal-bench-2-10-10-10"
 cd /path/to/simple-evolve-agent
-evolve init /path/to/ahe-run --recipe ahe
+evolve init /path/to/ahe-run --recipe ahe --dataset "$HARBOR_TASKS"
 cd /path/to/ahe-run
 ./evolve run . --max-generations 1
 ```

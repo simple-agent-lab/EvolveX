@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from conftest import init_fixture_workspace
 
 from evolve import workspace as workspace_module
 from evolve.workspace import InitOptions, _eval_env, init_workspace
@@ -14,11 +15,11 @@ def test_eval_env_uses_configured_harbor_agent() -> None:
         tasks_per_round=3,
         trials=1,
         partial_floor=0.8,
-        agent="evolve_harbor_adapter:MiniSweSourceAgent",
+        agent="evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent",
         model="openai/gpt-5.4-2026-03-05",
     )
 
-    assert "EVOLVE_HARBOR_AGENT=evolve_harbor_adapter:MiniSweSourceAgent\n" in env
+    assert "EVOLVE_HARBOR_AGENT=evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent\n" in env
     assert "EVOLVE_HARBOR_MODEL=openai/gpt-5.4-2026-03-05\n" in env
     assert "CheckoutTargetAgent" not in env
 
@@ -31,7 +32,7 @@ def test_eval_env_freezes_configured_model() -> None:
         tasks_per_round=30,
         trials=1,
         partial_floor=0.8,
-        agent="evolve_harbor_adapter:MiniSweSourceAgent",
+        agent="evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent",
         model="openai/gpt-5.4-2026-03-05",
     )
 
@@ -46,11 +47,47 @@ def test_eval_env_freezes_agent_timeout_multiplier() -> None:
         tasks_per_round=30,
         trials=1,
         partial_floor=0.8,
-        agent="evolve_harbor_adapter:MiniSweSourceAgent",
+        agent="evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent",
         agent_timeout_multiplier=4,
     )
 
     assert "EVOLVE_HARBOR_AGENT_TIMEOUT_MULTIPLIER=4\n" in env
+
+
+def test_eval_env_freezes_verifier_timeout_multiplier() -> None:
+    env = _eval_env(
+        "exp",
+        "terminal-bench-2",
+        n_concurrent=8,
+        tasks_per_round=30,
+        trials=1,
+        partial_floor=0.8,
+        agent="evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent",
+        verifier_timeout_multiplier=2,
+    )
+
+    assert "EVOLVE_HARBOR_VERIFIER_TIMEOUT_MULTIPLIER=2\n" in env
+
+
+def test_eval_env_omits_neutral_harbor_controls() -> None:
+    env = _eval_env(
+        "exp",
+        "terminal-bench-2",
+        n_concurrent=1,
+        tasks_per_round=1,
+        trials=1,
+        partial_floor=0.9,
+        agent="custom:Agent",
+        setup_timeout_multiplier=1,
+        agent_timeout_multiplier=1,
+        verifier_timeout_multiplier=1,
+        max_retries=0,
+    )
+
+    assert "EVOLVE_HARBOR_AGENT_SETUP_TIMEOUT_MULTIPLIER" not in env
+    assert "EVOLVE_HARBOR_AGENT_TIMEOUT_MULTIPLIER" not in env
+    assert "EVOLVE_HARBOR_VERIFIER_TIMEOUT_MULTIPLIER" not in env
+    assert "EVOLVE_HARBOR_MAX_RETRIES" not in env
 
 
 def test_eval_env_and_environment_kwargs_render_local_backend() -> None:
@@ -131,10 +168,10 @@ def test_init_real_harbor_recipe_requires_evaluator_agent(
 def test_init_writes_recipe_harbor_agent_to_eval_env(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
 
-    init_workspace(InitOptions(workspace=workspace, recipe="hill_climb-smoke"))
+    init_fixture_workspace(workspace)
 
     env = (workspace / "evaluator" / "eval.env").read_text()
-    assert "EVOLVE_HARBOR_AGENT=evolve_harbor_adapter:MiniSweSourceAgent\n" in env
+    assert "EVOLVE_HARBOR_AGENT=target.agent:HarborAgent\n" in env
     assert "CheckoutTargetAgent" not in env
     assert (workspace / "evaluator" / "agent.env").read_text() == ""
     assert not (workspace / "evaluator" / "checkout_agent.py").exists()

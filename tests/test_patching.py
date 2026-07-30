@@ -29,7 +29,8 @@ def _repo(tmp_path: Path) -> Path:
         "target:\n  seed: builtin-dummy\n"
         "surface:\n  include:\n    - target/**\n  exclude:\n    - target/tmp/**\n"
         "operators:\n  meta_agent: {timeout_s: 30}\n"
-        "evaluator:\n  engine: harbor\n  dataset: pass@k\n  agent: target.harbor_agent:MiniSweSourceAgent\n"
+        "evaluator:\n  engine: harbor\n  dataset: pass@k\n"
+        "  agent: evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent\n"
     )
     _git(root, "add", ".")
     _git(root, "commit", "-qm", "parent")
@@ -104,6 +105,59 @@ def test_create_candidate_patch_reports_remaining_violation_when_repair_disabled
     assert patch.notes == []
 
 
+def test_create_candidate_patch_ignores_unchanged_injected_live_archive(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    root = _repo(tmp_path)
+    live_archive = '{"genid":"0","score":0.5}\n'
+    (workspace / "archive.jsonl").write_text(live_archive)
+    (root / "archive.jsonl").write_text(live_archive)
+    (root / "target" / "agent.py").write_text("print('child')\n")
+    monkeypatch.setenv("EVOLVE_WORKSPACE", str(workspace))
+    monkeypatch.setenv("EVOLVE_CHECKOUT", str(root))
+
+    patch = create_candidate_patch(
+        checkout=root,
+        parent_ref="gen/0",
+        surface=SurfacePolicy(include=["target/**"], exclude=[]),
+        repair=False,
+    )
+
+    assert patch.changed_paths == ["target/agent.py"]
+    assert patch.surface_report == {"ok": True, "mutated": ["target/agent.py"], "violations": []}
+    assert "archive.jsonl" not in patch.diff
+    assert not (root / "archive.jsonl").exists()
+
+
+def test_create_candidate_patch_keeps_agent_modified_injected_archive_as_violation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    root = _repo(tmp_path)
+    (workspace / "archive.jsonl").write_text('{"genid":"0","score":0.5}\n')
+    (root / "archive.jsonl").write_text('{"genid":"0","score":0.9}\n')
+    monkeypatch.setenv("EVOLVE_WORKSPACE", str(workspace))
+    monkeypatch.setenv("EVOLVE_CHECKOUT", str(root))
+
+    patch = create_candidate_patch(
+        checkout=root,
+        parent_ref="gen/0",
+        surface=SurfacePolicy(include=["target/**"], exclude=[]),
+        repair=False,
+    )
+
+    assert patch.changed_paths == ["archive.jsonl"]
+    assert patch.surface_report == {
+        "ok": False,
+        "mutated": ["archive.jsonl"],
+        "violations": ["archive.jsonl"],
+    }
+    assert (root / "archive.jsonl").exists()
+
+
 def test_create_candidate_patch_rejects_already_staged_path(tmp_path: Path) -> None:
     root = _repo(tmp_path)
     (root / "target" / "agent.py").write_text("print('child')\n")
@@ -125,8 +179,8 @@ def test_load_surface_policy_reads_workspace_surface_lists(tmp_path: Path) -> No
     assert policy == SurfacePolicy(include=["target/**"], exclude=["target/tmp/**"])
 
 
-def test_harbor_wrapper_is_implicitly_protected() -> None:
-    assert check_paths(["target/harbor_agent.py"], ["target/**"], []) == ["target/harbor_agent.py"]
+def test_harbor_agent_file_is_no_longer_implicitly_protected() -> None:
+    assert check_paths(["target/harbor_agent.py"], ["target/**"], []) == []
 
 
 def test_patch_parent_ref_prefers_context_parent(tmp_path: Path) -> None:

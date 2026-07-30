@@ -9,6 +9,7 @@ import shlex
 import shutil
 import stat
 import subprocess
+import sys
 import tempfile
 from dataclasses import dataclass
 from importlib.resources.abc import Traversable
@@ -23,9 +24,12 @@ from .config import (
     SOURCE_ROOT,
     default_config,
     library_root,
+    load_config,
     recipe_root,
     render_yaml,
     resource_root,
+    scaffold_root,
+    seed_root,
 )
 from .host_runtime import uv_executable
 from .splits import build_manifest
@@ -44,14 +48,16 @@ _SEED_IGNORE_PATTERNS = (
 )
 _ENV_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _GIT_COMMIT = re.compile(r"[0-9a-fA-F]{40}")
+_MINISWE_CANDIDATE_AGENT = "evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent"
 
 
 @dataclass(frozen=True)
 class InitOptions:
     workspace: Path
-    recipe: str
+    recipe: str | None = None
     seed: str | None = None
     dataset: str | None = None
+    recipe_path: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -64,21 +70,23 @@ class _OperatorBinding:
 
 def init_workspace(options: InitOptions) -> None:
     workspace = options.workspace
+    if options.recipe is not None and options.recipe_path is not None:
+        raise ValueError("cannot combine --recipe with --recipe-path")
+    if options.seed == "builtin-dummy":
+        raise ValueError("builtin-dummy is test-only; pass a local seed directory instead")
     if workspace.exists() and any(workspace.iterdir()):
         raise ValueError(f"workspace is not empty: {workspace}")
 
-    workspace.mkdir(parents=True, exist_ok=True)
-    config = default_config(options.recipe, workspace.name)
+    if options.recipe_path is None:
+        recipe = options.recipe or "hill_climb"
+        recipe_directory: Path | Traversable | None = None
+        config = default_config(recipe, workspace.name)
+    else:
+        recipe, recipe_directory, config = _path_recipe(options.recipe_path, workspace.name)
     target = config["target"]
     assert isinstance(target, dict)
     if options.seed:
         target["seed"] = options.seed
-        target.pop("revision", None)
-        target.pop("generate_lock", None)
-    elif options.dataset:
-        # Dataset-backed experiments should be self-contained and must not need
-        # a network clone merely to freeze their evaluator split.
-        target["seed"] = "builtin-codex"
         target.pop("revision", None)
         target.pop("generate_lock", None)
     if options.dataset:
@@ -86,8 +94,26 @@ def init_workspace(options: InitOptions) -> None:
         assert isinstance(evaluator, dict)
         evaluator["dataset"] = options.dataset
 
-    _write_files(workspace, config, recipe=options.recipe, init_cwd=Path.cwd())
-    _write_target(workspace, target)
+    evaluator = config["evaluator"]
+    assert isinstance(evaluator, dict)
+    _validate_evaluator_config(evaluator)
+    _validate_target_config(target)
+    with tempfile.TemporaryDirectory(prefix="evolve-target-") as tmp:
+        staging_workspace = Path(tmp) / "workspace"
+        staging_workspace.mkdir()
+        _write_target(staging_workspace, target)
+        staged_target = staging_workspace / "target"
+        _remove_generated_target_metadata(staged_target)
+        _validate_candidate_target_contract(staged_target, evaluator)
+        workspace.mkdir(parents=True, exist_ok=True)
+        _write_files(
+            workspace,
+            config,
+            recipe=recipe,
+            recipe_directory=recipe_directory,
+            init_cwd=Path.cwd(),
+        )
+        shutil.copytree(staged_target, workspace / "target")
     _vendor_mechanism(workspace)
     _make_executable(
         workspace / "operators" / "engines" / "local.sh",
@@ -99,6 +125,19 @@ def init_workspace(options: InitOptions) -> None:
     )
     _init_git(workspace)
     _write_gen0_archive(workspace)
+
+
+def _path_recipe(recipe_path: Path, experiment_id: str) -> tuple[str, Path, dict[str, Any]]:
+    source = recipe_path.expanduser()
+    if not source.is_absolute():
+        source = Path.cwd() / source
+    source = source.resolve()
+    config_path = source / "evolve.yaml" if source.is_dir() else source
+    if config_path.name != "evolve.yaml" or not config_path.is_file():
+        raise ValueError("--recipe-path must name a recipe directory or its evolve.yaml")
+    config = copy.deepcopy(load_config(config_path))
+    config["experiment"]["id"] = experiment_id
+    return config_path.parent.name, config_path.parent, config
 
 
 _CONSOLE = """#!/usr/bin/env bash
@@ -126,12 +165,19 @@ def _vendor_mechanism(workspace: Path) -> None:
         workspace / ".evolve" / "evolve",
         ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
     )
-    (workspace / ".evolve" / "launch_evolve.py").write_text(_template("workspace/launch_evolve.py"))
-    (workspace / ".evolve" / "launch_splits.py").write_text(_template("workspace/launch_splits.py"))
+    (workspace / ".evolve" / "launch_evolve.py").write_text(_workspace_scaffold("launch_evolve.py"))
+    (workspace / ".evolve" / "launch_splits.py").write_text(_workspace_scaffold("launch_splits.py"))
     (workspace / "evolve").write_text(_CONSOLE)
 
 
-def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, init_cwd: Path) -> None:
+def _write_files(
+    workspace: Path,
+    config: dict[str, object],
+    *,
+    recipe: str,
+    recipe_directory: Path | Traversable | None = None,
+    init_cwd: Path,
+) -> None:
     assert isinstance(config["evaluator"], dict)
     evaluator = cast("dict[str, Any]", config["evaluator"])
     evaluator_engine = str(evaluator["engine"])
@@ -148,9 +194,10 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
     tasks_per_round = int(evaluator.get("tasks_per_round", evaluator_trials))
     evaluator_n = int(evaluator.get("n_concurrent", evaluator_trials))
     evaluator_environment = str(evaluator.get("environment") or "")
-    partial_floor = float(evaluator.get("partial_floor", 0.8))
+    partial_floor = float(evaluator.get("partial_floor", 0.9))
     setup_timeout_multiplier = float(evaluator.get("agent_setup_timeout_multiplier", 1))
     agent_timeout_multiplier = float(evaluator.get("agent_timeout_multiplier", 1))
+    verifier_timeout_multiplier = float(evaluator.get("verifier_timeout_multiplier", 1))
     max_retries = int(evaluator.get("max_retries", 0))
     task_scope = str(evaluator.get("task_scope", "partitioned"))
     split = evaluator.get("split")
@@ -171,23 +218,22 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
     )
     evaluator_dataset = str(split_manifest["dataset"])
     files = {
-        "pyproject.toml": _template("workspace/pyproject.toml"),
-        "uv.lock": _template("workspace/uv.lock"),
-        ".python-version": _template("workspace/.python-version"),
-        "evolve_harbor_adapter/__init__.py": _template("workspace/evolve_harbor_adapter/__init__.py"),
-        "evolve_harbor_agent/__init__.py": _template("workspace/evolve_harbor_agent/__init__.py"),
+        "pyproject.toml": _workspace_scaffold("pyproject.toml"),
+        "uv.lock": _workspace_scaffold("uv.lock"),
+        ".python-version": _workspace_scaffold(".python-version"),
+        ".evolve-components.json": json.dumps(_component_manifest(recipe, config), indent=2, sort_keys=True) + "\n",
         "evolve.yaml": render_yaml(_runtime_config(config)),
-        "README.md": _template("workspace/README.md"),
-        "AGENTS.md": _template("workspace/AGENTS.md"),
-        "program.md": _template("workspace/program.md"),
-        ".gitignore": _template("workspace/.gitignore"),
+        "README.md": _workspace_scaffold("README.md"),
+        "AGENTS.md": _workspace_scaffold("AGENTS.md"),
+        "program.md": _workspace_scaffold("program.md"),
+        ".gitignore": _workspace_scaffold(".gitignore"),
         ".evolve-protocol-version": "1\n",
         "operators/engines/local.sh": _shell_script("operator local engine"),
         "operators/preflight.sh": _shell_script("operator preflight"),
-        "operators/select.md": _template("workspace/operators/select.md"),
-        "operators/rollout.md": _template("workspace/operators/rollout.md"),
-        "operators/gate.md": _template("workspace/operators/gate.md"),
-        "operators/record.md": _template("workspace/operators/record.md"),
+        "operators/select.md": _workspace_scaffold("operators/select.md"),
+        "operators/rollout.md": _workspace_scaffold("operators/rollout.md"),
+        "operators/gate.md": _workspace_scaffold("operators/gate.md"),
+        "operators/record.md": _workspace_scaffold("operators/record.md"),
         "skills/evolve-workspace/SKILL.md": _skill("evolve-workspace/SKILL.md"),
         "PROTOCOL.md": (library_root() / "PROTOCOL.md").read_text(),
         "evaluator/eval.sh": _eval_sh(evaluator_engine, evaluator_dataset),
@@ -205,31 +251,58 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
             task_file=str(evaluator["task_file"]) if "task_file" in evaluator else None,
             setup_timeout_multiplier=setup_timeout_multiplier,
             agent_timeout_multiplier=agent_timeout_multiplier,
+            verifier_timeout_multiplier=verifier_timeout_multiplier,
             max_retries=max_retries,
         ),
         "evaluator/agent.env": _agent_env(evaluator.get("agent_env")),
+        "evaluator/verifier.env": _agent_env(evaluator.get("verifier_env")),
         "evaluator/environment.kwargs": _environment_kwargs(evaluator.get("environment_kwargs")),
         "evaluator/splits.json": json.dumps(split_manifest, indent=2, sort_keys=True) + "\n",
         "evaluator/dataset.pin": f"dataset={evaluator_dataset}\nchecksum=sha256:stub\n",
         "evaluator/runtime.pin": f"{runtime_digest}\n",
-        "evaluator/harbor_artifacts.py": _template("evaluator/harbor_artifacts.py"),
-        "evaluator/parse_score.py": _template("evaluator/parse_score.py"),
-        "evaluator/stub_eval.py": _template("evaluator/stub_eval.py"),
+        "evaluator/stub_eval.py": _workspace_scaffold("evaluator/stub_eval.py"),
         "evaluator/engines/local.sh": _shell_script("canonical local engine"),
         "archive.jsonl": "",
     }
     if evaluator_engine == "harbor":
-        files["evaluator/cleanup_harbor.py"] = _template("evaluator/cleanup_harbor.py")
-        files["evaluator/smoke.sh"] = _template("evaluator/smoke.sh")
-    bindings = _operator_bindings(config, recipe=recipe, init_cwd=init_cwd)
+        files.update(
+            {
+                "evaluator/cleanup_harbor.py": _evaluator_scaffold("harbor", "cleanup_harbor.py"),
+                "evaluator/harbor_artifacts.py": _evaluator_scaffold("harbor", "harbor_artifacts.py"),
+                "evaluator/parse_score.py": _evaluator_scaffold("harbor", "parse_score.py"),
+                "evaluator/smoke.sh": _evaluator_scaffold("harbor", "smoke.sh"),
+            }
+        )
+    bindings = _operator_bindings(
+        config,
+        recipe=recipe,
+        recipe_directory=recipe_directory,
+        init_cwd=init_cwd,
+    )
     for binding in bindings:
         files[f"operators/{binding.kind}.py"] = _with_provenance(binding.kind, binding.source, binding.text)
         if binding.companion_text is not None:
             files[f"operators/{binding.kind}.md"] = binding.companion_text
-    if any(binding.kind == "novelty" for binding in bindings):
-        files["operators/novelty.md"] = _template("workspace/operators/novelty.md")
-    files["operators/README.md"] = _operator_index(bindings, recipe)
-    files.update(_operator_palette(recipe) | _operator_assets(recipe) | _recipe_evaluator_assets(recipe))
+    recipe_evaluator_assets = _recipe_evaluator_assets(
+        recipe,
+        recipe_directory=recipe_directory,
+    )
+    generated_output_paths = {relative_path.casefold() for relative_path in files}
+    evaluator_collisions = sorted(
+        relative_path for relative_path in recipe_evaluator_assets if relative_path.casefold() in generated_output_paths
+    )
+    if evaluator_collisions:
+        raise ValueError("recipe evaluator asset collides with generated file: " + ", ".join(evaluator_collisions))
+    files["operators/README.md"] = _operator_index(
+        bindings,
+        recipe,
+        recipe_directory=recipe_directory,
+    )
+    files.update(
+        _operator_palette(recipe, recipe_directory=recipe_directory)
+        | _operator_assets(recipe, recipe_directory=recipe_directory)
+        | recipe_evaluator_assets
+    )
     for relative_path, content in files.items():
         path = workspace / relative_path
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -239,7 +312,13 @@ def _write_files(workspace: Path, config: dict[str, object], *, recipe: str, ini
     (workspace / "artifacts" / "generations").mkdir(parents=True, exist_ok=True)
 
 
-def _operator_bindings(config: dict[str, object], *, recipe: str, init_cwd: Path) -> list[_OperatorBinding]:
+def _operator_bindings(
+    config: dict[str, object],
+    *,
+    recipe: str,
+    recipe_directory: Path | Traversable | None = None,
+    init_cwd: Path,
+) -> list[_OperatorBinding]:
     operators = config.get("operators")
     if not isinstance(operators, dict):
         raise ValueError("operators section must be a mapping")
@@ -262,14 +341,23 @@ def _operator_bindings(config: dict[str, object], *, recipe: str, init_cwd: Path
             companion_text = companion.read_text() if companion.is_file() else None
             bindings.append(_OperatorBinding(kind, str(source_path), source_path.read_text(), companion_text))
             continue
-        source = _resolve_operator_variant(recipe, kind, str(variant or "default"))
+        source = _resolve_operator_variant(
+            recipe,
+            kind,
+            str(variant or "default"),
+            recipe_directory=recipe_directory,
+        )
         companion = source.with_suffix(".md")
         companion_text = companion.read_text() if companion.is_file() else None
         bindings.append(_OperatorBinding(kind, _source_label(source), source.read_text(), companion_text))
     return bindings
 
 
-def _operator_palette(recipe: str) -> dict[str, str]:
+def _operator_palette(
+    recipe: str,
+    *,
+    recipe_directory: Path | Traversable | None = None,
+) -> dict[str, str]:
     """Vendor the per-kind variant catalog into the workspace's own `library/`,
     mirroring the framework's `library/`. `operators/` holds only the active
     scripts the driver runs; `library/<kind>/` holds the swap-in alternatives a
@@ -277,7 +365,7 @@ def _operator_palette(recipe: str) -> dict[str, str]:
     trees is what makes `operators/` scannable at a glance."""
     palette: dict[str, str] = {}
     for kind in (*OPERATOR_KINDS, *OPTIONAL_OPERATOR_KINDS):
-        for directory in (recipe_root() / recipe / "operators" / kind, library_root() / kind):
+        for directory in (_recipe_directory(recipe, recipe_directory) / "operators" / kind, library_root() / kind):
             if not directory.is_dir():
                 continue
             for path in sorted(directory.iterdir()):
@@ -321,10 +409,14 @@ def _root_python_helpers(root: Path | Traversable):
             continue
 
 
-def _operator_assets(recipe: str) -> dict[str, str]:
+def _operator_assets(
+    recipe: str,
+    *,
+    recipe_directory: Path | Traversable | None = None,
+) -> dict[str, str]:
     assets: dict[str, str] = {}
     for kind in (*OPERATOR_KINDS, *OPTIONAL_OPERATOR_KINDS):
-        for directory in (recipe_root() / recipe / "operators" / kind, library_root() / kind):
+        for directory in (_recipe_directory(recipe, recipe_directory) / "operators" / kind, library_root() / kind):
             if directory.is_dir():
                 for relative, text in _text_files(directory):
                     if relative.suffix != ".py" or len(relative.parts) > 1:
@@ -332,18 +424,35 @@ def _operator_assets(recipe: str) -> dict[str, str]:
     return assets | {f"library/{name}": text for name, text in _root_python_helpers(library_root())}
 
 
-def _recipe_evaluator_assets(recipe: str) -> dict[str, str]:
-    root = recipe_root() / recipe / "evaluator"
+def _recipe_evaluator_assets(
+    recipe: str,
+    *,
+    recipe_directory: Path | Traversable | None = None,
+) -> dict[str, str]:
+    root = _recipe_directory(recipe, recipe_directory) / "evaluator"
     return (
         {} if not root.is_dir() else {f"evaluator/{relative.as_posix()}": text for relative, text in _text_files(root)}
     )
 
 
-def _operator_index(bindings: list[_OperatorBinding], recipe: str) -> str:
+def _operator_index(
+    bindings: list[_OperatorBinding],
+    recipe: str,
+    *,
+    recipe_directory: Path | Traversable | None = None,
+) -> str:
     rows = []
     for binding in bindings:
         active = Path(binding.source).stem
-        alts = [v for v in _available_operator_variants(recipe, binding.kind) if v != active]
+        alts = [
+            variant
+            for variant in _available_operator_variants(
+                recipe,
+                binding.kind,
+                recipe_directory=recipe_directory,
+            )
+            if variant != active
+        ]
         rows.append(
             f"| {binding.kind} | {active}.py | {_first_docstring_line(binding.text)} "
             f"| {', '.join(alts) if alts else '—'} |"
@@ -374,21 +483,36 @@ def _first_docstring_line(source_text: str) -> str:
     return "(no description)"
 
 
-def _resolve_operator_variant(recipe: str, kind: str, variant: str):
+def _resolve_operator_variant(
+    recipe: str,
+    kind: str,
+    variant: str,
+    *,
+    recipe_directory: Path | Traversable | None = None,
+):
     for candidate in (
-        recipe_root() / recipe / "operators" / kind / f"{variant}.py",
+        _recipe_directory(recipe, recipe_directory) / "operators" / kind / f"{variant}.py",
         library_root() / kind / f"{variant}.py",
     ):
         if candidate.is_file():
             return candidate
-    available = _available_operator_variants(recipe, kind)
+    available = _available_operator_variants(
+        recipe,
+        kind,
+        recipe_directory=recipe_directory,
+    )
     suffix = f" available: {', '.join(available)}" if available else " no variants available"
     raise ValueError(f"unknown {kind} variant: {variant};{suffix}")
 
 
-def _available_operator_variants(recipe: str, kind: str) -> list[str]:
+def _available_operator_variants(
+    recipe: str,
+    kind: str,
+    *,
+    recipe_directory: Path | Traversable | None = None,
+) -> list[str]:
     names: set[str] = set()
-    for directory in (recipe_root() / recipe / "operators" / kind, library_root() / kind):
+    for directory in (_recipe_directory(recipe, recipe_directory) / "operators" / kind, library_root() / kind):
         if not directory.is_dir():
             continue
         names.update(
@@ -397,6 +521,13 @@ def _available_operator_variants(recipe: str, kind: str) -> list[str]:
             if path.is_file() and path.name.endswith(".py") and not path.name.startswith("_")
         )
     return sorted(names)
+
+
+def _recipe_directory(
+    recipe: str,
+    recipe_directory: Path | Traversable | None,
+) -> Path | Traversable:
+    return recipe_root() / recipe if recipe_directory is None else recipe_directory
 
 
 def _with_provenance(kind: str, source: str, source_text: str) -> str:
@@ -419,48 +550,108 @@ def _runtime_config(config: dict[str, object]) -> dict[str, object]:
     return runtime
 
 
-def _write_target(workspace: Path, target_config: dict[str, Any]) -> None:
-    harbor_agent = str(target_config.get("harbor_agent") or "")
-    if harbor_agent not in ("", "miniswe-source"):
-        raise ValueError(f"unsupported target.harbor_agent: {harbor_agent}")
-    seed = target_config.get("seed")
-    seed_text = str(seed) if seed else None
-    revision_value = target_config.get("revision")
-    revision = str(revision_value) if revision_value else None
-    generate_lock = target_config.get("generate_lock", False)
+def _component_manifest(recipe: str, config: dict[str, object]) -> dict[str, object]:
+    evaluator = cast("dict[str, Any]", config["evaluator"])
+    operators = cast("dict[str, Any]", config["operators"])
+    meta_agent = cast("dict[str, Any]", operators["meta_agent"])
+    references = (str(evaluator.get("agent") or ""), str(meta_agent.get("agent") or ""))
+    return {
+        "recipe": recipe,
+        "target_seed": cast("dict[str, Any]", config["target"]).get("seed"),
+        "evaluator_engine": evaluator.get("engine"),
+        "integrations": sorted(
+            {reference.split(":", 1)[0] for reference in references if reference.startswith("evolve.integrations.")}
+        ),
+    }
+
+
+def _validate_evaluator_config(evaluator: dict[str, Any]) -> None:
+    engine = str(evaluator.get("engine") or "")
+    _evaluator_scaffold(engine, "engine.sh")
+    if engine == "harbor" and not evaluator.get("agent"):
+        raise ValueError("evaluator.agent is required for harbor recipes")
+
+
+def _validate_target_config(target: dict[str, Any]) -> None:
+    seed = target.get("seed")
+    if not seed:
+        raise ValueError("target.seed is required")
+    if not isinstance(seed, str):
+        raise ValueError("target.seed must be a string")
+    if seed == "builtin-dummy":
+        raise ValueError("builtin-dummy is test-only; pass a local seed directory instead")
+
+    revision = target.get("revision")
+    if revision is not None and (not isinstance(revision, str) or _GIT_COMMIT.fullmatch(revision) is None):
+        raise ValueError("target.revision must be a full 40-character git commit")
+    generate_lock = target.get("generate_lock", False)
     if not isinstance(generate_lock, bool):
         raise ValueError("target.generate_lock must be a boolean")
-    if revision is not None and _GIT_COMMIT.fullmatch(revision) is None:
-        raise ValueError("target.revision must be a full 40-character git commit")
-    if not seed_text or seed_text == "builtin-dummy":
-        target = workspace / "target"
-        target.mkdir(parents=True, exist_ok=True)
-        (target / "agent.py").write_text(_template("target/agent.py"))
-        (target / "README.md").write_text("# Seed Target\n\nA tiny stdlib-only seed target for Evolve.\n")
-        (target / "UPSTREAM.json").write_text(
-            json.dumps({"kind": "builtin", "seed": "builtin-dummy"}, sort_keys=True) + "\n"
-        )
+
+    if seed == "builtin-codex" or _looks_like_git_url(seed):
         return
+    if revision is not None:
+        raise ValueError("target.revision requires a git URL seed")
+    if not Path(seed).expanduser().is_dir():
+        raise ValueError(f"seed is not a local directory or git URL: {seed}")
+
+
+def _validate_candidate_target_contract(prepared_target: Path, evaluator: dict[str, Any]) -> None:
+    if evaluator.get("agent") != _MINISWE_CANDIDATE_AGENT:
+        return
+    missing = [relative for relative in ("pyproject.toml", "uv.lock") if not (prepared_target / relative).is_file()]
+    if missing:
+        raise ValueError(
+            "MiniSWE candidate target is incomplete; the prepared target must "
+            f"contain target/{' and target/'.join(missing)}"
+        )
+    if not ((prepared_target / "src" / "minisweagent").is_dir() or (prepared_target / "minisweagent").is_dir()):
+        raise ValueError(
+            "MiniSWE candidate target is incomplete; the prepared target must "
+            "contain target/src/minisweagent or target/minisweagent"
+        )
+    checked = subprocess.run(
+        [
+            uv_executable(),
+            "lock",
+            "--check",
+            "--python",
+            sys.executable,
+            "--project",
+            str(prepared_target),
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if checked.returncode:
+        detail = checked.stderr.strip() or checked.stdout.strip() or "invalid lock"
+        raise ValueError(f"MiniSWE candidate uv lock --check failed: {detail}")
+
+
+def _write_target(workspace: Path, target_config: dict[str, Any]) -> None:
+    _validate_target_config(target_config)
+    seed_text = cast(str, target_config["seed"])
+    revision_value = target_config.get("revision")
+    revision = cast(str | None, revision_value)
+    generate_lock = target_config.get("generate_lock", False)
     if seed_text == "builtin-codex":
-        _copy_resource_tree(resource_root("templates") / "target" / "codex", workspace / "target")
+        _copy_resource_tree(seed_root() / "codex", workspace / "target")
         (workspace / "target" / "UPSTREAM.json").write_text(
             json.dumps({"kind": "builtin", "seed": "builtin-codex"}, sort_keys=True) + "\n"
         )
-        return
-    if _looks_like_git_url(seed_text):
+    elif _looks_like_git_url(seed_text):
         with tempfile.TemporaryDirectory(prefix="evolve-seed-") as tmp:
             checkout = Path(tmp) / "seed"
             _git_clone(seed_text, checkout, revision=revision)
             _vendor_seed(workspace, checkout, seed_text)
-        if generate_lock:
-            _generate_target_lock(workspace / "target")
-        return
-    if revision is not None:
-        raise ValueError("target.revision requires a git URL seed")
-    source = Path(seed_text).expanduser()
-    if not source.is_dir():
-        raise ValueError(f"seed is not a local directory or git URL: {seed_text}")
-    _vendor_seed(workspace, source.resolve(), str(source.resolve()))
+    else:
+        if revision is not None:
+            raise ValueError("target.revision requires a git URL seed")
+        source = Path(seed_text).expanduser()
+        if not source.is_dir():
+            raise ValueError(f"seed is not a local directory or git URL: {seed_text}")
+        _vendor_seed(workspace, source.resolve(), str(source.resolve()))
     if generate_lock:
         _generate_target_lock(workspace / "target")
 
@@ -501,31 +692,66 @@ def _git_clone(url: str, destination: Path, *, revision: str | None = None) -> N
     git = shutil.which("git")
     if git is None:
         raise RuntimeError("git is required for evolve init")
-    commands = (
-        [[git, "clone", "--depth", "1", url, str(destination)]]
-        if revision is None
-        else [
+    if revision is None:
+        commands = [[git, "clone", "--depth", "1", url, str(destination)]]
+    else:
+        commands = [
             [git, "init", str(destination)],
             [git, "-C", str(destination), "remote", "add", "origin", url],
-            [git, "-C", str(destination), "fetch", "--depth", "1", "origin", revision],
-            [git, "-C", str(destination), "checkout", "--detach", "FETCH_HEAD"],
         ]
-    )
     for command in commands:
         result = subprocess.run(command, text=True, capture_output=True, check=False)
         if result.returncode != 0:
             raise RuntimeError(result.stderr.strip() or "git clone failed")
+    if revision is None:
+        return
+    fetch = subprocess.run(
+        [git, "-C", str(destination), "fetch", "--depth", "1", "origin", revision],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if fetch.returncode != 0:
+        fetch = subprocess.run(
+            [git, "-C", str(destination), "fetch", "origin"],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    if fetch.returncode != 0:
+        raise RuntimeError(fetch.stderr.strip() or "git fetch failed")
+    checkout = subprocess.run(
+        [git, "-C", str(destination), "checkout", "--detach", revision],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if checkout.returncode != 0:
+        raise RuntimeError(checkout.stderr.strip() or "git checkout failed")
 
 
 def _generate_target_lock(target: Path) -> None:
+    if not (target / "pyproject.toml").is_file():
+        raise ValueError("target.generate_lock requires the prepared target to contain target/pyproject.toml")
     result = subprocess.run(
-        [uv_executable(), "lock", "--project", str(target)],
+        [uv_executable(), "lock", "--python", sys.executable, "--project", str(target)],
         text=True,
         capture_output=True,
         check=False,
     )
     if result.returncode != 0:
-        raise RuntimeError(result.stderr.strip() or "target lock generation failed")
+        detail = result.stderr.strip() or "uv lock failed"
+        raise RuntimeError(f"target.generate_lock failed: {detail}")
+    if not (target / "uv.lock").is_file():
+        raise ValueError("target.generate_lock did not produce target/uv.lock")
+
+
+def _remove_generated_target_metadata(target: Path) -> None:
+    for path in target.rglob("*.egg-info"):
+        if path.is_dir() and not path.is_symlink():
+            shutil.rmtree(path)
+        else:
+            path.unlink()
 
 
 def _init_git(workspace: Path) -> None:
@@ -646,6 +872,7 @@ def _eval_env(
     task_file: str | None = None,
     setup_timeout_multiplier: float = 1,
     agent_timeout_multiplier: float = 1,
+    verifier_timeout_multiplier: float = 1,
     max_retries: int = 0,
 ) -> str:
     expected_trials = tasks_per_round * max(trials, 1)
@@ -666,6 +893,8 @@ def _eval_env(
         text += f"EVOLVE_HARBOR_AGENT_SETUP_TIMEOUT_MULTIPLIER={setup_timeout_multiplier}\n"
     if agent_timeout_multiplier > 1:
         text += f"EVOLVE_HARBOR_AGENT_TIMEOUT_MULTIPLIER={agent_timeout_multiplier}\n"
+    if verifier_timeout_multiplier > 1:
+        text += f"EVOLVE_HARBOR_VERIFIER_TIMEOUT_MULTIPLIER={verifier_timeout_multiplier}\n"
     if max_retries > 0:
         text += f"EVOLVE_HARBOR_MAX_RETRIES={max_retries}\n"
     if model:
@@ -674,17 +903,23 @@ def _eval_env(
 
 
 def _eval_sh(engine: str, _dataset: str) -> str:
-    if engine != "harbor":
-        raise ValueError(f"unsupported evaluator.engine: {engine}")
-    return _template("evaluator/eval-prefix.sh") + _template("evaluator/engines/harbor.sh")
+    return _workspace_scaffold("evaluator/eval-prefix.sh") + _evaluator_scaffold(engine, "engine.sh")
 
 
 def _shell_script(label: str) -> str:
     return f"#!/bin/sh\nset -eu\nprintf '%s\\n' '{label}'\n"
 
 
-def _template(relative_path: str) -> str:
-    return (resource_root("templates") / relative_path).read_text()
+def _workspace_scaffold(relative_path: str) -> str:
+    return (scaffold_root() / "workspace" / relative_path).read_text()
+
+
+def _evaluator_scaffold(engine: str, relative_path: str) -> str:
+    root = scaffold_root() / "evaluators" / engine
+    path = root / relative_path
+    if not path.is_file():
+        raise ValueError(f"unsupported evaluator.engine: {engine}")
+    return path.read_text()
 
 
 def _skill(relative_path: str) -> str:

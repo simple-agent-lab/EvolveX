@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from evolve.meta_agent_budget import harbor_meta_agent_budget, uses_harbor_per_attempt_timeout
+
 from .runtime import _terminate
 
 
@@ -31,7 +33,6 @@ namespace = {"__name__": "__main__", "__file__": str(script), "__package__": Non
 exec(compile(script.read_bytes(), str(script), "exec"), namespace)
 """
 
-
 def _text(value: object | None) -> str:
     if value is None:
         return ""
@@ -43,6 +44,16 @@ def _text(value: object | None) -> str:
 def _progress(message: str) -> None:
     if os.environ.get("EVOLVE_PROGRESS", "1") != "0":
         print(f"[evolve] {message}", flush=True)
+
+
+def _operator_deadline_s(name: str, config_block: dict[str, Any], timeout_s: float) -> float:
+    if name != "meta_agent" or not uses_harbor_per_attempt_timeout(config_block) or timeout_s <= 0:
+        return timeout_s
+    try:
+        max_retries = max(0, int(config_block.get("max_retries", 0)))
+    except (TypeError, ValueError):
+        max_retries = 0
+    return harbor_meta_agent_budget(timeout_s, max_retries).operator_s
 
 
 def run_operator(
@@ -59,6 +70,7 @@ def run_operator(
     operator_checkout: Path | None = None,
 ) -> OperatorResult:
     start = time.monotonic()
+    deadline_s = _operator_deadline_s(name, config_block, timeout_s)
     source_checkout = operator_checkout or checkout
     script = source_checkout / "operators" / f"{name}.py"
     if not script.exists():
@@ -81,7 +93,7 @@ def run_operator(
         **base_env,
         "EVOLVE_GENID": genid,
         "EVOLVE_PARENT": parent or "",
-        "EVOLVE_OPERATOR_TIMEOUT_S": str(timeout_s),
+        "EVOLVE_OPERATOR_TIMEOUT_S": str(deadline_s),
         "EVOLVE_RUN_DIR": str(run_dir.resolve()),
         "EVOLVE_WORKSPACE": str(workspace.resolve()),
         "EVOLVE_CHECKOUT": str(checkout.resolve()),
@@ -105,13 +117,13 @@ def run_operator(
             start_new_session=True,
         )
         try:
-            stdout, stderr = process.communicate(timeout=timeout_s)
+            stdout, stderr = process.communicate(timeout=deadline_s)
         except subprocess.TimeoutExpired as exc:
             terminated_stdout, terminated_stderr = _terminate(process)
             stderr = _text(exc.stderr or terminated_stderr)
             if stderr:
                 stderr = f"{stderr.rstrip()}\n"
-            stderr += f"timeout after {timeout_s}s"
+            stderr += f"timeout after {deadline_s}s"
             result = OperatorResult(
                 name=name,
                 returncode=-1,

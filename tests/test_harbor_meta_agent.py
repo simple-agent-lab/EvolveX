@@ -1,18 +1,29 @@
+import asyncio
 import importlib.util
 import json
 import os
 import random
 import shutil
+import stat
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+from harbor.models.exec.config import ExecConfig
+from harbor.models.task.config import EnvironmentConfig, VerifierConfig
+from harbor.models.trial.result import ExceptionInfo
+from harbor.trial.errors import AgentTimeoutError
+from harbor.trial.queue import TrialQueue
+from harbor.trial.trial import Trial
 
 from evolve.agent import AgentCommandError
 from evolve.frozen.interfaces import OperatorContext
+from evolve.operators import _operator_deadline_s
 
 ROOT = Path(__file__).resolve().parents[1]
-FILE_TASK_AGENT = "evolve_harbor_agent:FileTaskMiniSweAgent"
+FILE_TASK_AGENT = "evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent"
+CANDIDATE_AGENT = "evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent"
 
 
 def _harbor_runner_module():
@@ -47,6 +58,8 @@ def test_codex_meta_agent_always_uses_host_auth_json(monkeypatch: pytest.MonkeyP
     ) == {
         "CODEX_FORCE_AUTH_JSON": "${CODEX_FORCE_AUTH_JSON:-1}",
         "OPENAI_BASE_URL": "https://configured.example/v1",
+        "no_proxy": "configured.example",
+        "NO_PROXY": "configured.example",
     }
     assert "CODEX_FORCE_AUTH_JSON" not in module._agent_env({"agent": "mini-swe-agent"})
 
@@ -57,12 +70,17 @@ def test_harbor_meta_agent_forwards_openai_environment(monkeypatch: pytest.Monke
         monkeypatch.delenv(override, raising=False)
         monkeypatch.delenv(lower, raising=False)
         monkeypatch.delenv(upper, raising=False)
+    monkeypatch.delenv("EVOLVE_HARBOR_NO_PROXY", raising=False)
+    for name in module._BYPASS_ENV:
+        monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("OPENAI_API_KEY", "workspace-key")
     monkeypatch.setenv("OPENAI_BASE_URL", "https://workspace.example/v1")
 
     assert module._agent_env({"agent": "mini-swe-agent"}) == {
         "OPENAI_API_KEY": "workspace-key",
         "OPENAI_BASE_URL": "https://workspace.example/v1",
+        "no_proxy": "workspace.example",
+        "NO_PROXY": "workspace.example",
     }
     assert (
         module._agent_env(
@@ -73,6 +91,85 @@ def test_harbor_meta_agent_forwards_openai_environment(monkeypatch: pytest.Monke
         )["OPENAI_BASE_URL"]
         == "https://configured.example/v1"
     )
+
+
+def test_harbor_meta_agent_forwards_dependency_proxies_with_model_bypass(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _harbor_runner_module()
+    monkeypatch.setenv("OPENAI_API_KEY", "workspace-key")
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://workspace.example/v1")
+    monkeypatch.setenv("http_proxy", "http://dependency-proxy.example:8118")
+    monkeypatch.setenv("HTTPS_PROXY", "http://dependency-proxy.example:8118")
+    monkeypatch.setenv("no_proxy", ".internal.example")
+    monkeypatch.setenv("NO_PROXY", ".upper.example")
+
+    assert module._agent_env({"agent": "mini-swe-agent"}) == {
+        "OPENAI_API_KEY": "workspace-key",
+        "OPENAI_BASE_URL": "https://workspace.example/v1",
+        "http_proxy": "http://dependency-proxy.example:8118",
+        "HTTP_PROXY": "http://dependency-proxy.example:8118",
+        "https_proxy": "http://dependency-proxy.example:8118",
+        "HTTPS_PROXY": "http://dependency-proxy.example:8118",
+        "no_proxy": ".internal.example,.upper.example,workspace.example",
+        "NO_PROXY": ".internal.example,.upper.example,workspace.example",
+    }
+
+
+def test_harbor_meta_agent_redacts_configured_proxy_literal(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _harbor_runner_module()
+    proxy = "http://private-user:private-password@proxy.example.invalid:8118"
+    monkeypatch.setenv("HTTPS_PROXY", proxy)
+
+    redacted = module._redact(f"dependency download through {proxy} timed out")
+
+    assert proxy not in redacted
+    assert redacted == "dependency download through [REDACTED] timed out"
+
+
+def test_harbor_meta_agent_redacts_config_only_proxy_from_command_record(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checkout, run_dir = _checkout(tmp_path)
+    bin_dir = tmp_path / "bin"
+    _install_fake_harbor(bin_dir)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    for name in (
+        "EVOLVE_HARBOR_HTTP_PROXY",
+        "EVOLVE_HARBOR_HTTPS_PROXY",
+        "http_proxy",
+        "HTTP_PROXY",
+        "https_proxy",
+        "HTTPS_PROXY",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    proxy = "http://config-user:config-password@proxy.example.invalid:8118"
+    ctx = _ctx(checkout, run_dir)
+    ctx.config["agent_env"] = {"HTTPS_PROXY": proxy}
+
+    _harbor_runner_module().run_agent(checkout, "failure evidence", ctx)
+
+    command = json.loads((run_dir / "meta_agent" / "harbor" / "command.json").read_text())
+    assert all(proxy not in argument for argument in command)
+    assert "HTTPS_PROXY=[REDACTED]" in command
+
+
+def test_harbor_meta_agent_child_creates_private_files(tmp_path: Path) -> None:
+    module = _harbor_runner_module()
+    output = tmp_path / "child-output"
+    log = tmp_path / "harbor.log"
+
+    returncode, _wall_s = module._run_harbor(
+        ["/bin/sh", "-c", 'printf private > "$OUTPUT_PATH"'],
+        tmp_path,
+        log,
+        {**os.environ, "OUTPUT_PATH": str(output)},
+    )
+
+    assert returncode == 0
+    assert stat.S_IMODE(output.stat().st_mode) == 0o600
+    assert stat.S_IMODE(log.stat().st_mode) == 0o600
 
 
 def test_codex_harbor_process_cannot_fall_back_to_host_openai_environment() -> None:
@@ -139,7 +236,7 @@ def _checkout(tmp_path: Path) -> tuple[Path, Path]:
         "surface:\n  include:\n    - target/**\n    - operators/**\n  exclude: []\n"
         "operators:\n  meta_agent: {variant: hyperagents, runner: harbor, timeout_s: 30}\n"
         "evaluator:\n  engine: harbor\n  dataset: pass@k\n"
-        "  agent: target.harbor_agent:MiniSweSourceAgent\n"
+        f"  agent: {CANDIDATE_AGENT}\n"
     )
     _git(checkout, "init", "-q")
     _git(checkout, "config", "user.name", "test")
@@ -209,7 +306,10 @@ if "--config" in sys.argv:
     jobs_dir = Path(job_config["jobs_dir"])
     job_name = job_config["job_name"]
     agent_config = job_config["agents"][0]
-    if agent_config["name"] != "evolve_harbor_adapter:MiniSweSourceAgent":
+    if agent_config["name"] not in (
+        "evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent",
+        "evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent",
+    ):
         raise SystemExit("unexpected config agent")
     if agent_config["model_name"] != "gpt-test":
         raise SystemExit("expected config model")
@@ -230,9 +330,9 @@ else:
     if option("--workdir") != "/app":
         raise SystemExit("expected /app workdir")
     agent_name = option("--agent")
-    if agent_name not in ("mini-swe-agent", "evolve_harbor_agent:FileTaskMiniSweAgent"):
+    if agent_name not in ("codex", "mini-swe-agent", "evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent"):
         raise SystemExit("unexpected agent")
-    miniswe = agent_name in ("mini-swe-agent", "evolve_harbor_agent:FileTaskMiniSweAgent")
+    miniswe = agent_name in ("mini-swe-agent", "evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent")
     if option("--model") != "gpt-test":
         raise SystemExit("expected gpt-test model")
     source = Path(option("--path", "-p"))
@@ -473,7 +573,7 @@ def test_harbor_meta_agent_injects_staged_miniswe_candidate_source(
     _install_fake_harbor(bin_dir)
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
     ctx = _ctx(checkout, run_dir)
-    ctx.config["agent"] = "evolve_harbor_adapter:MiniSweSourceAgent"
+    ctx.config["agent"] = CANDIDATE_AGENT
 
     _harbor_runner_module().run_agent(checkout, "failure evidence", ctx)
 
@@ -495,11 +595,189 @@ def test_harbor_meta_agent_injects_staged_miniswe_candidate_source(
     ]
 
 
+def test_file_task_meta_agent_configures_per_attempt_timeout_and_timeout_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checkout, run_dir = _checkout(tmp_path)
+    bin_dir = tmp_path / "bin"
+    _install_fake_harbor(bin_dir)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    ctx = _ctx(checkout, run_dir)
+    ctx.config.update(
+        {
+            "agent": FILE_TASK_AGENT,
+            "image": "evolve-meta-agent:test",
+            "max_retries": 1,
+            "timeout_s": 3600,
+        }
+    )
+    runner = _harbor_runner_module()
+    observed: dict[str, object] = {}
+    real_run_harbor = runner._run_harbor
+
+    def capture_run_harbor(*args, timeout_s=None, **kwargs):
+        observed["process_timeout_s"] = timeout_s
+        return real_run_harbor(*args, timeout_s=timeout_s, **kwargs)
+
+    monkeypatch.setattr(runner, "_run_harbor", capture_run_harbor)
+
+    runner.run_agent(checkout, "failure evidence", ctx)
+
+    harbor_root = run_dir / "meta_agent" / "harbor"
+    config = ExecConfig.model_validate_json((harbor_root / "exec-config.json").read_text())
+    job = config.map.job
+    assert config.map.compile.environments[0].docker_image == "evolve-meta-agent:test"
+    assert job.agents[0].override_timeout_sec == 3600
+    assert job.n_attempts == 1
+    assert job.retry.max_retries == 1
+    assert job.retry.exclude_exceptions == {
+        "VerifierTimeoutError",
+        "RewardFileNotFoundError",
+        "RewardFileEmptyError",
+        "VerifierOutputParseError",
+        "ApiUsageLimitError",
+    }
+    queue = TrialQueue(1, retry_config=job.retry)
+    assert queue._should_retry_exception("AgentTimeoutError")
+    assert queue._calculate_backoff_delay_sec(0) == 1
+    assert observed["process_timeout_s"] == 13380.0
+
+
+def test_codex_meta_agent_keeps_harbor_whole_process_timeout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checkout, run_dir = _checkout(tmp_path)
+    bin_dir = tmp_path / "bin"
+    _install_fake_harbor(bin_dir)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    ctx = _ctx(checkout, run_dir)
+    ctx.config.update(
+        {
+            "agent": "codex",
+            "max_retries": 1,
+            "timeout_s": 3600,
+        }
+    )
+    runner = _harbor_runner_module()
+    observed: dict[str, object] = {}
+    real_run_harbor = runner._run_harbor
+
+    def capture_run_harbor(*args, timeout_s=None, **kwargs):
+        observed["process_timeout_s"] = timeout_s
+        return real_run_harbor(*args, timeout_s=timeout_s, **kwargs)
+
+    monkeypatch.setattr(runner, "_run_harbor", capture_run_harbor)
+
+    runner.run_agent(checkout, "failure evidence", ctx)
+
+    command = json.loads((run_dir / "meta_agent" / "harbor" / "command.json").read_text())
+    assert "--config" not in command
+    assert command[command.index("--agent") + 1] == "codex"
+    assert observed["process_timeout_s"] is None
+
+
+def test_agent_timeout_retry_loop_fits_full_lifecycle_budgets(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = _harbor_runner_module()
+    retry = ExecConfig.model_validate(
+        {
+            "map": {
+                "compile": {
+                    "output_dir": str(tmp_path / "tasks"),
+                    "environments": [{"paths": [str(tmp_path)]}],
+                    "instructions": [{"text": "test"}],
+                },
+                "job": {
+                    "jobs_dir": str(tmp_path / "jobs"),
+                    "agents": [{"name": "mini-swe-agent"}],
+                    "retry": runner._retry_config({"max_retries": 1}),
+                },
+            }
+        }
+    ).map.job.retry
+    elapsed_s = 600.0  # task compilation
+    attempts: list[int] = []
+
+    class TimedTrial:
+        def __init__(self, attempt: int) -> None:
+            self.attempt = attempt
+            self.config = SimpleNamespace(agent=SimpleNamespace(n_concurrent=None))
+            self.paths = SimpleNamespace(trial_dir=tmp_path / f"trial-{attempt}")
+            self.paths.trial_dir.mkdir()
+
+        def add_hook(self, _event, _hook) -> None:
+            pass
+
+        async def run(self):
+            nonlocal elapsed_s
+            # Environment start (600), setup (360), agent (3600), verifier
+            # (600), artifact/log collection (600), and teardown (600).
+            elapsed_s += 6360.0
+            exception_info = (
+                ExceptionInfo.from_exception(AgentTimeoutError("first attempt timed out"))
+                if self.attempt == 0
+                else None
+            )
+            return SimpleNamespace(exception_info=exception_info)
+
+    async def create_trial(_config):
+        attempt = len(attempts)
+        attempts.append(attempt)
+        return TimedTrial(attempt)
+
+    real_rmtree = shutil.rmtree
+
+    def timed_rmtree(path, *, ignore_errors=False):
+        nonlocal elapsed_s
+        elapsed_s += 59.0  # failed-trial removal and recreation allowance
+        real_rmtree(path, ignore_errors=ignore_errors)
+
+    async def timed_sleep(delay_s):
+        nonlocal elapsed_s
+        elapsed_s += delay_s
+
+    monkeypatch.setattr(Trial, "create", staticmethod(create_trial))
+    monkeypatch.setattr("harbor.trial.queue.shutil.rmtree", timed_rmtree)
+    monkeypatch.setattr("harbor.trial.queue.asyncio.sleep", timed_sleep)
+
+    queue = TrialQueue(1, retry_config=retry)
+    result = asyncio.run(
+        queue._execute_trial_with_retries(SimpleNamespace(agent=None, trial_name="timeout-then-success"))
+    )
+
+    assert EnvironmentConfig().build_timeout_sec == 600
+    assert Trial._AGENT_SETUP_TIMEOUT_SEC == 360
+    assert VerifierConfig().timeout_sec == 600
+    assert attempts == [0, 1]
+    assert result.exception_info is None
+    assert elapsed_s == runner._meta_agent_process_timeout_s(
+        {
+            "runner": "harbor",
+            "agent": FILE_TASK_AGENT,
+            "timeout_s": 3600,
+            "max_retries": 1,
+        }
+    )
+    assert 600.0 + elapsed_s + 600.0 + 60.0 == _operator_deadline_s(
+        "meta_agent",
+        {
+            "runner": "harbor",
+            "agent": FILE_TASK_AGENT,
+            "max_retries": 1,
+        },
+        3600,
+    )
+
+
 @pytest.mark.parametrize(
     "agent",
     [
-        "evolve_harbor_adapter:MiniSweSourceAgent",
-        "evolve_harbor_agent:FileTaskMiniSweAgent",
+        CANDIDATE_AGENT,
+        FILE_TASK_AGENT,
     ],
 )
 def test_harbor_meta_agent_rejects_unsuccessful_miniswe_exit(
@@ -874,6 +1152,52 @@ def test_harbor_bundle_exposes_gate_data_only_when_enabled(tmp_path: Path) -> No
         shutil.rmtree(bundle.staging, ignore_errors=True)
 
 
+@pytest.mark.parametrize("expose_gate_data", [False, True])
+def test_harbor_bundle_omits_gitignored_checkout_state(
+    tmp_path: Path,
+    expose_gate_data: bool,
+) -> None:
+    checkout, run_dir = _checkout(tmp_path)
+    (checkout / ".gitignore").write_text("artifacts/\n.venv/\n.cache/\n")
+    (checkout / ".venv").mkdir()
+    (checkout / ".venv" / "framework-state.txt").write_text("host framework environment\n")
+    (checkout / ".cache").mkdir()
+    (checkout / ".cache" / "host-state.txt").write_text("host cache\n")
+    (checkout / "target" / ".venv").mkdir()
+    (checkout / "target" / ".venv" / "candidate-state.txt").write_text("host candidate environment\n")
+    runner = _harbor_runner_module()
+    surface = runner.load_surface_policy(checkout)
+    ctx = _ctx(checkout, run_dir)
+    ctx.config["expose_gate_data"] = expose_gate_data
+
+    bundle = runner._prepare_bundle(checkout, ctx, ["target"], surface)
+
+    try:
+        assert not (bundle.workspace / ".venv").exists()
+        assert not (bundle.workspace / ".cache").exists()
+        assert not (bundle.workspace / "target" / ".venv").exists()
+        assert (bundle.workspace / "target" / "agent.py").read_text() == "print('parent')\n"
+    finally:
+        shutil.rmtree(bundle.staging, ignore_errors=True)
+
+
+def test_sanitized_harbor_bundle_disables_background_git_maintenance(tmp_path: Path) -> None:
+    checkout, run_dir = _checkout(tmp_path)
+    runner = _harbor_runner_module()
+    bundle = runner._prepare_bundle(
+        checkout,
+        _ctx(checkout, run_dir),
+        ["target"],
+        runner.load_surface_policy(checkout),
+    )
+
+    try:
+        assert _git(bundle.workspace, "config", "--get", "gc.auto") == "0"
+        assert _git(bundle.workspace, "config", "--get", "maintenance.auto") == "false"
+    finally:
+        shutil.rmtree(bundle.staging, ignore_errors=True)
+
+
 def test_harbor_bundle_rejects_non_boolean_gate_visibility(tmp_path: Path) -> None:
     checkout, run_dir = _checkout(tmp_path)
     ctx = _ctx(checkout, run_dir)
@@ -997,6 +1321,29 @@ def test_install_bundle_omits_ignored_runtime_tree_with_symlinks(tmp_path: Path)
     assert changed == ["target/agent.py"]
     assert (checkout / "target" / "agent.py").read_text() == "print('child')\n"
     assert not (checkout / "target" / ".venv").exists()
+
+
+def test_install_bundle_ignores_workspace_runtime_environment(tmp_path: Path) -> None:
+    checkout, run_dir = _checkout(tmp_path)
+
+    runner = _harbor_runner_module()
+    surface = runner.load_surface_policy(checkout)
+    bundle = runner._prepare_bundle(checkout, _ctx(checkout, run_dir), ["target"], surface)
+    returned = tmp_path / "returned"
+    shutil.copytree(bundle.workspace, returned)
+    (returned / "target" / "agent.py").write_text("print('child')\n")
+    python = returned / ".venv" / "bin" / "python"
+    python.parent.mkdir(parents=True)
+    python.symlink_to("/runtime/python")
+
+    try:
+        changed = runner._install_bundle(checkout, returned, bundle, "gen/0", surface)
+    finally:
+        shutil.rmtree(bundle.staging, ignore_errors=True)
+
+    assert changed == ["target/agent.py"]
+    assert (checkout / "target" / "agent.py").read_text() == "print('child')\n"
+    assert not (checkout / ".venv").exists()
 
 
 def test_install_bundle_ignores_new_root_virtual_environment(tmp_path: Path) -> None:

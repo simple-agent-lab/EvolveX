@@ -3,8 +3,8 @@ import importlib.util
 import json
 from pathlib import Path
 
-TEMPLATE_EVALUATOR = Path(__file__).resolve().parents[1] / "templates" / "evaluator"
-spec = importlib.util.spec_from_file_location("harbor_artifacts", TEMPLATE_EVALUATOR / "harbor_artifacts.py")
+HARBOR_EVALUATOR = Path(__file__).resolve().parents[1] / "scaffolds" / "evaluators" / "harbor"
+spec = importlib.util.spec_from_file_location("harbor_artifacts", HARBOR_EVALUATOR / "harbor_artifacts.py")
 assert spec is not None and spec.loader is not None
 harbor_artifacts = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(harbor_artifacts)
@@ -63,6 +63,90 @@ def test_collect_harbor_artifacts_groups_trials_and_classifies_infra(tmp_path: P
     assert scoring_rewards == [1.0, 0.0]
     assert artifacts["jobs_dir"] == str(jobs.resolve())
     assert "config" not in json.dumps(artifacts).lower()
+
+
+def test_verifier_uv_tool_cache_miss_is_infrastructure_not_reward_zero(tmp_path: Path) -> None:
+    jobs = tmp_path / "jobs"
+    trial_dir = jobs / "case-a__one"
+    write_trial(trial_dir, task="case-a", trial="one", reward=0.0)
+    verifier = trial_dir / "verifier"
+    verifier.mkdir()
+    (verifier / "test-stdout.txt").write_text(
+        "× No solution found when resolving tool dependencies:\n"
+        "╰─▶ Because pytest was not found in the cache and you require pytest==8.4.1,\n"
+        "    we can conclude that your requirements are unsatisfiable.\n"
+        "hint: Packages were unavailable because the network was disabled.\n"
+    )
+
+    vector, _artifacts, scoring_rewards = collect_harbor_artifacts(jobs)
+
+    trial = vector["tasks"]["case-a"]["trials"][0]
+    assert trial["status"] == "infrastructure_failed"
+    assert trial["reward"] is None
+    assert trial["owner"] == "evaluator"
+    assert trial["exception_type"] == "VerifierDependencyError"
+    assert scoring_rewards == []
+
+
+def test_verifier_uv_tool_download_failure_is_infrastructure_not_reward_zero(tmp_path: Path) -> None:
+    jobs = tmp_path / "jobs"
+    trial_dir = jobs / "case-a__one"
+    write_trial(trial_dir, task="case-a", trial="one", reward=0.0)
+    verifier = trial_dir / "verifier"
+    verifier.mkdir()
+    (verifier / "test-stdout.txt").write_text(
+        "error: Failed to download: https://files.pythonhosted.org/packages/pytest.whl\n"
+        "  Caused by: Request failed after 3 retries\n"
+        "  Caused by: operation timed out\n"
+    )
+
+    vector, _artifacts, scoring_rewards = collect_harbor_artifacts(jobs)
+
+    trial = vector["tasks"]["case-a"]["trials"][0]
+    assert trial["status"] == "infrastructure_failed"
+    assert trial["reward"] is None
+    assert trial["owner"] == "evaluator"
+    assert trial["exception_type"] == "VerifierDependencyError"
+    assert scoring_rewards == []
+
+
+def test_verifier_bootstrap_http_failure_is_infrastructure_not_reward_zero(tmp_path: Path) -> None:
+    jobs = tmp_path / "jobs"
+    trial_dir = jobs / "case-a__one"
+    write_trial(trial_dir, task="case-a", trial="one", reward=0.0)
+    verifier = trial_dir / "verifier"
+    verifier.mkdir()
+    (verifier / "test-stdout.txt").write_text("curl: (22) The requested URL returned error: 504\n")
+
+    vector, _artifacts, scoring_rewards = collect_harbor_artifacts(jobs)
+
+    trial = vector["tasks"]["case-a"]["trials"][0]
+    assert trial["status"] == "infrastructure_failed"
+    assert trial["reward"] is None
+    assert trial["owner"] == "evaluator"
+    assert trial["exception_type"] == "VerifierDependencyError"
+    assert scoring_rewards == []
+
+
+def test_positive_verifier_reward_wins_over_recovered_bootstrap_output(tmp_path: Path) -> None:
+    jobs = tmp_path / "jobs"
+    trial_dir = jobs / "case-a__one"
+    write_trial(trial_dir, task="case-a", trial="one", reward=1.0)
+    verifier = trial_dir / "verifier"
+    verifier.mkdir()
+    (verifier / "test-stdout.txt").write_text(
+        "curl: (22) The requested URL returned error: 504\n"
+        "retry succeeded\n"
+    )
+
+    vector, _artifacts, scoring_rewards = collect_harbor_artifacts(jobs)
+
+    trial = vector["tasks"]["case-a"]["trials"][0]
+    assert trial["status"] == "benchmark_complete"
+    assert trial["reward"] == 1.0
+    assert trial["owner"] == "benchmark"
+    assert "exception_type" not in trial
+    assert scoring_rewards == [1.0]
 
 
 def test_collect_harbor_artifacts_scores_agent_timeouts_as_zero(tmp_path: Path) -> None:
@@ -196,6 +280,29 @@ def test_candidate_error_code_uses_only_explicit_marker() -> None:
     )
 
 
+def test_missing_tool_output_history_is_candidate_invalid(tmp_path: Path) -> None:
+    jobs = tmp_path / "jobs"
+    write_trial(
+        jobs / "case-a__one",
+        task="case-a",
+        trial="one",
+        reward=None,
+        exception_type="NonZeroAgentExitCodeError",
+        exception_message=(
+            "litellm.BadRequestError: invalid request: "
+            "No tool output found for function call call_123."
+        ),
+    )
+
+    vector, _artifacts, rewards = collect_harbor_artifacts(jobs)
+
+    trial = vector["tasks"]["case-a"]["trials"][0]
+    assert trial["status"] == "candidate_invalid"
+    assert trial["owner"] == "candidate"
+    assert trial["reward"] is None
+    assert rewards == []
+
+
 def test_collect_harbor_artifacts_omits_traceback_text_from_exception_messages(tmp_path: Path) -> None:
     jobs = tmp_path / "jobs"
     trial = jobs / "case-a__one"
@@ -208,6 +315,29 @@ def test_collect_harbor_artifacts_omits_traceback_text_from_exception_messages(t
     vector, _artifacts, _scoring_rewards = collect_harbor_artifacts(jobs)
 
     assert "exception_message" not in vector["tasks"]["case-a"]["trials"][0]
+
+
+def test_collect_harbor_artifacts_redacts_configured_proxy_literal(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    proxy = "http://private-user:private-password@proxy.example.invalid:8118"
+    monkeypatch.setenv("HTTPS_PROXY", proxy)
+    jobs = tmp_path / "jobs"
+    write_trial(
+        jobs / "case-a__one",
+        task="case-a",
+        trial="one",
+        reward=None,
+        exception_type="RuntimeError",
+        exception_message=f"dependency download through {proxy} timed out",
+    )
+
+    vector, _artifacts, _scoring_rewards = collect_harbor_artifacts(jobs)
+
+    message = vector["tasks"]["case-a"]["trials"][0]["exception_message"]
+    assert proxy not in message
+    assert message == "dependency download through [REDACTED] timed out"
 
 
 def test_write_harbor_artifacts_indexes_only_retained_safe_files(tmp_path: Path) -> None:

@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from conftest import run_evolve, write_locked_miniswe_seed
@@ -46,18 +47,23 @@ def test_ahe_recipe_initializes_harbor_miniswe_composition(tmp_path: Path) -> No
         "library/meta_agent/support/evidence.py",
     ):
         assert (workspace / relative).is_file(), relative
-    assert (workspace / "evolve_harbor_adapter/__init__.py").is_file()
-    assert (workspace / "evolve_harbor_agent/__init__.py").is_file()
-    assert not (workspace / "target/harbor_agent.py").exists()
+    assert (workspace / ".evolve/evolve/integrations/harbor/miniswe_candidate.py").is_file()
+    assert (workspace / ".evolve/evolve/integrations/harbor/miniswe_task_file.py").is_file()
+    assert not (workspace / "evolve_harbor_adapter").exists()
+    assert not (workspace / "evolve_harbor_agent").exists()
     assert not (workspace / "library/meta_agent/support/ahe_manifest.py").exists()
+    assert json.loads((workspace / ".evolve-components.json").read_text())["integrations"] == [
+        "evolve.integrations.harbor.miniswe_candidate",
+        "evolve.integrations.harbor.miniswe_task_file",
+    ]
     assert (workspace / "evaluator/agent.env").read_text() == (
         "MINISWE_COST_LIMIT=0\nMINISWE_ENV_TIMEOUT=30\nMINISWE_REASONING_EFFORT=high\nMINISWE_STEP_LIMIT=100\n"
     )
     config = (workspace / "evolve.yaml").read_text()
     assert "variant: ahe" in config
     assert "runner: harbor" in config
-    assert "expose_gate_data: true" in config
-    assert "agent: evolve_harbor_agent:FileTaskMiniSweAgent" in config
+    assert "expose_gate_data: false" in config
+    assert "agent: evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent" in config
     assert "editable_roots:" in config
     operators = operator_blocks(workspace)
     assert "agent_env" not in operators["meta_agent"]

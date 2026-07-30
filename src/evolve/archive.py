@@ -364,5 +364,4 @@ def _can_replace_stamped(current: dict[str, Any], event: dict[str, Any]) -> bool
         and all(event.get(key) == current.get(key) for key in ("generation", "candidate_commit", "purpose"))
         and all(isinstance(values.get("attempt"), int) for values in (current, event))
         and event["attempt"] > current["attempt"]
-        and event.get("retry_of") == current["attempt"]
     )

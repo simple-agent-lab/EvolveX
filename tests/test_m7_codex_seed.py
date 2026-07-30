@@ -75,6 +75,8 @@ def test_builtin_codex_wrapper_injects_skills_and_opt_in_compaction(tmp_path: Pa
     result = run_evolve(
         "init",
         str(workspace),
+        "--recipe",
+        "aevolve",
         "--seed",
         "builtin-codex",
         env={"EVOLVE_HOME": str(tmp_path / "home")},

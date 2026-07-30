@@ -17,7 +17,7 @@ def _replace(workspace: Path, relative_path: str, old: str, new: str) -> None:
 
 def test_per_round_sampling_is_rejected_clearly(tmp_path: Path) -> None:
     workspace, _evolve_home = init_workspace(tmp_path)
-    _replace(workspace, "evolve.yaml", "  partial_floor: 0.8\n", "  partial_floor: 0.8\n  sampling: per_round\n")
+    _replace(workspace, "evolve.yaml", "  partial_floor: 0.9\n", "  partial_floor: 0.9\n  sampling: per_round\n")
     git(workspace, "add", "evolve.yaml")
     git(workspace, "commit", "-m", "configure unsupported sampling")
     git(workspace, "tag", "-f", "gen/0")

@@ -861,6 +861,11 @@ def _evaluate_once(
     round_number: int | None = None,
     pending_gate_on_complete: bool = False,
 ) -> EvaluationRecord:
+    """Run one evaluation attempt and preserve its evidence.
+
+    A later explicit resume is the operator-controlled retry boundary.
+    """
+
     def run_attempt(**kwargs: Any) -> EvaluationRecord:
         try:
             record = evaluate(workspace, tag, genid, purpose=purpose, **kwargs)
@@ -1295,7 +1300,9 @@ def _run_operator_guarded(
 ) -> OperatorResult:
     before = _archive_line_snapshots(workspace, exp_id)
     if checkout.resolve() != workspace.resolve():
-        _write_archive_lines(archive_path(checkout), before[archive_path(workspace)])
+        checkout_archive = archive_path(checkout)
+        before[checkout_archive] = _archive_lines(checkout_archive)
+        _write_archive_lines(checkout_archive, before[archive_path(workspace)])
         receipts = _archive_lines(eval_receipt_path(archive_path(workspace)))
         if receipts:
             _write_archive_lines(eval_receipt_path(archive_path(checkout)), receipts)

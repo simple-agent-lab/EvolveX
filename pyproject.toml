@@ -1,7 +1,7 @@
 [project]
 name = "evolve-framework"
 version = "0.1.0"
-description = "Mechanism CLI for file-based agent evolution workspaces."
+description = "File-based framework for evolving coding agents."
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
 requires-python = ">=3.12"
@@ -56,7 +56,8 @@ packages = ["src/evolve", "library"]
 [tool.hatch.build.targets.wheel.force-include]
 "library" = "evolve/library"
 "recipes" = "evolve/recipes"
-"templates" = "evolve/templates"
+"scaffolds" = "evolve/scaffolds"
+"seeds" = "evolve/seeds"
 "skills" = "evolve/skills"
 
 [tool.pytest.ini_options]

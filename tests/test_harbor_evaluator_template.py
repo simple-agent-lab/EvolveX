@@ -5,7 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from evolve.config import resource_root
+from evolve.config import scaffold_root
 from evolve.workspace import _eval_env, _eval_sh
 
 
@@ -16,7 +16,7 @@ def _write_executable(path: Path, text: str) -> None:
 
 def _write_evaluator_helpers(evaluator: Path) -> None:
     for name in ("harbor_artifacts.py", "parse_score.py", "cleanup_harbor.py"):
-        (evaluator / name).write_text((resource_root("templates") / "evaluator" / name).read_text())
+        (evaluator / name).write_text((scaffold_root() / "evaluators" / "harbor" / name).read_text())
 
 
 def _write_fake_uv(bin_dir: Path) -> None:
@@ -45,6 +45,90 @@ def test_harbor_evaluator_passes_agent_timeout_multiplier() -> None:
     text = _eval_sh("harbor", "fixture")
 
     assert '--agent-timeout-multiplier "$EVOLVE_HARBOR_AGENT_TIMEOUT_MULTIPLIER"' in text
+
+
+def test_harbor_evaluator_passes_verifier_timeout_multiplier() -> None:
+    text = _eval_sh("harbor", "fixture")
+
+    assert '--verifier-timeout-multiplier "$EVOLVE_HARBOR_VERIFIER_TIMEOUT_MULTIPLIER"' in text
+
+
+def test_harbor_evaluator_ignores_ambient_frozen_control_overrides(tmp_path: Path) -> None:
+    evaluator = tmp_path / "evaluator"
+    evaluator.mkdir()
+    _write_executable(evaluator / "eval.sh", _eval_sh("harbor", "fixture"))
+    (evaluator / "eval.env").write_text(
+        _eval_env(
+            "experiment",
+            "fixture",
+            n_concurrent=1,
+            tasks_per_round=1,
+            trials=1,
+            partial_floor=0.9,
+            agent="custom:Agent",
+            setup_timeout_multiplier=1,
+            agent_timeout_multiplier=1,
+            verifier_timeout_multiplier=1,
+            max_retries=0,
+        )
+    )
+    (evaluator / "agent.env").write_text("")
+    (evaluator / "verifier.env").write_text("")
+    (evaluator / "environment.kwargs").write_text("")
+    (evaluator / "splits.json").write_text('{"resolved":false}\n')
+    _write_evaluator_helpers(evaluator)
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    _write_fake_uv(fake_bin)
+    _write_executable(
+        fake_bin / "harbor",
+        "#!/bin/sh\n"
+        'printf \'%s\\n\' "$@" > "$HARBOR_ARGS_CAPTURE"\n'
+        "jobs_dir=\n"
+        'while [ "$#" -gt 0 ]; do\n'
+        '  if [ "$1" = "--jobs-dir" ]; then shift; jobs_dir=$1; fi\n'
+        "  shift || true\n"
+        "done\n"
+        'mkdir -p "$jobs_dir/trial"\n'
+        'printf \'%s\\n\' \'{"task_name":"task","trial_name":"trial","verifier_result":{"rewards":{"reward":1}}}\' > "$jobs_dir/trial/result.json"\n',
+    )
+    _write_executable(fake_bin / "docker", "#!/bin/sh\nexit 0\n")
+
+    args_capture = tmp_path / "args"
+    run_dir = tmp_path / "run"
+    env = {
+        **os.environ,
+        "HOME": str(tmp_path / "home"),
+        "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
+        "HARBOR_ARGS_CAPTURE": str(args_capture),
+        "EVOLVE_RUN_DIR": str(run_dir),
+        "EVOLVE_ATTEMPT_ID": "ambient-override-test",
+        "EVOLVE_FRAMEWORK_PYTHON": sys.executable,
+        "EVOLVE_CANDIDATE_RUNTIME_ENV_JSON": "{}",
+        "EVOLVE_CANDIDATE_RUNTIME_MOUNTS_JSON": "[]",
+        "EVOLVE_HARBOR_N_CONCURRENT_OVERRIDE": "2",
+        "EVOLVE_HARBOR_AGENT_SETUP_TIMEOUT_MULTIPLIER": "9",
+        "EVOLVE_HARBOR_AGENT_TIMEOUT_MULTIPLIER": "9",
+        "EVOLVE_HARBOR_VERIFIER_TIMEOUT_MULTIPLIER": "9",
+        "EVOLVE_HARBOR_MAX_RETRIES": "9",
+    }
+
+    result = subprocess.run(
+        [str(evaluator / "eval.sh")],
+        cwd=tmp_path,
+        env=env,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    args = args_capture.read_text().splitlines()
+    assert args[args.index("-n") + 1] == "2"
+    assert "--agent-setup-timeout-multiplier" not in args
+    assert "--agent-timeout-multiplier" not in args
+    assert "--verifier-timeout-multiplier" not in args
+    assert "--max-retries" not in args
 
 
 def test_harbor_evaluator_forwards_workspace_openai_environment() -> None:
@@ -121,7 +205,9 @@ def test_harbor_evaluator_prefers_explicit_agent_proxy_over_ambient_proxy(
     assert f"no_proxy={expected}" in verifier_environment
 
 
-def test_harbor_evaluator_forwards_custom_environment_and_skips_docker_cleanup(tmp_path: Path) -> None:
+def test_harbor_evaluator_forwards_dependency_proxies_with_model_bypass_and_skips_docker_cleanup(
+    tmp_path: Path,
+) -> None:
     evaluator = tmp_path / "evaluator"
     evaluator.mkdir()
     _write_executable(evaluator / "eval.sh", _eval_sh("harbor", "fixture"))
@@ -138,6 +224,7 @@ def test_harbor_evaluator_forwards_custom_environment_and_skips_docker_cleanup(t
         )
     )
     (evaluator / "environment.kwargs").write_text('workdir="/workspace"\n')
+    (evaluator / "verifier.env").write_text("JUDGE_MODEL=gpt-5.4-mini-2026-03-17\n")
     _write_evaluator_helpers(evaluator)
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
@@ -165,6 +252,11 @@ def test_harbor_evaluator_forwards_custom_environment_and_skips_docker_cleanup(t
         "EVOLVE_RUN_DIR": str(tmp_path / "run"),
         "EVOLVE_ATTEMPT_ID": "local-attempt",
         "EVOLVE_FRAMEWORK_PYTHON": sys.executable,
+        "OPENAI_BASE_URL": "https://model.example/v1",
+        "http_proxy": "http://dependency-proxy.example:8118",
+        "https_proxy": "http://dependency-proxy.example:8118",
+        "no_proxy": ".internal.example",
+        "NO_PROXY": ".upper.example",
     }
 
     result = subprocess.run([str(evaluator / "eval.sh")], cwd=tmp_path, env=env, text=True, capture_output=True)
@@ -173,7 +265,26 @@ def test_harbor_evaluator_forwards_custom_environment_and_skips_docker_cleanup(t
     args = args_capture.read_text().splitlines()
     assert args[args.index("--env") + 1] == "evolve.harbor_local:LocalEnvironment"
     assert args[args.index("--environment-kwarg") + 1] == 'workdir="/workspace"'
+    agent_environment = [args[index + 1] for index, value in enumerate(args) if value == "--ae"]
+    verifier_environment = [args[index + 1] for index, value in enumerate(args) if value == "--ve"]
+    expected_proxy_environment = {
+        "http_proxy=http://dependency-proxy.example:8118",
+        "HTTP_PROXY=http://dependency-proxy.example:8118",
+        "https_proxy=http://dependency-proxy.example:8118",
+        "HTTPS_PROXY=http://dependency-proxy.example:8118",
+        "no_proxy=.internal.example,.upper.example,model.example",
+        "NO_PROXY=.internal.example,.upper.example,model.example",
+    }
+    assert expected_proxy_environment.issubset(agent_environment)
+    assert expected_proxy_environment.issubset(verifier_environment)
+    assert "JUDGE_MODEL=gpt-5.4-mini-2026-03-17" in verifier_environment
+    assert "JUDGE_MODEL=gpt-5.4-mini-2026-03-17" not in agent_environment
     assert not docker_marker.exists()
+    run_dir = tmp_path / "run"
+    assert stat.S_IMODE(run_dir.stat().st_mode) == 0o700
+    assert stat.S_IMODE((run_dir / "candidate-runtime.env").stat().st_mode) == 0o600
+    assert stat.S_IMODE((run_dir / "jobs").stat().st_mode) == 0o700
+    assert stat.S_IMODE((run_dir / "jobs" / "trial" / "result.json").stat().st_mode) == 0o600
 
 
 def test_harbor_stage_limit_and_anchor_task_file_override(tmp_path: Path) -> None:
@@ -253,7 +364,7 @@ def test_harbor_smoke_is_install_only_and_exposes_raw_diagnostics(tmp_path: Path
             tasks_per_round=8,
             trials=2,
             partial_floor=0.8,
-            agent="evolve_harbor_adapter:MiniSweSourceAgent",
+            agent="evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent",
         )
     )
     _write_evaluator_helpers(evaluator)
@@ -324,8 +435,13 @@ def test_harbor_smoke_is_install_only_and_exposes_raw_diagnostics(tmp_path: Path
     mounts = json.loads(args[args.index("--mounts") + 1])
     assert mounts == runtime_mounts
     agent_environment = [args[index + 1] for index, value in enumerate(args) if value == "--ae"]
+    verifier_environment = [args[index + 1] for index, value in enumerate(args) if value == "--ve"]
     for key, value in runtime_env.items():
         assert f"{key}={value}" in agent_environment
+        if key == "UV_OFFLINE":
+            assert f"{key}={value}" not in verifier_environment
+        else:
+            assert f"{key}={value}" in verifier_environment
     assert not (run_dir / "harbor-result.json").exists()
     assert not (run_dir / "score").exists()
 

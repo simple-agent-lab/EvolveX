@@ -13,13 +13,21 @@ import subprocess
 import tempfile
 import threading
 import time
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, SupportsFloat, SupportsIndex, cast
+from urllib.parse import urlsplit
 
 from evolve.agent import AgentCommandError, AgentRunResult
 from evolve.frozen.interfaces import OperatorContext
 from evolve.git import git, head_commit, working_tree_changed_paths
 from evolve.host_runtime import uv_run
+from evolve.meta_agent_budget import (
+    HARBOR_FILE_TASK_AGENT,
+    harbor_agent_supports_per_attempt_timeout,
+    harbor_meta_agent_budget,
+    uses_harbor_per_attempt_timeout,
+)
 from evolve.patching import SurfacePolicy, load_surface_policy, patch_parent_ref
 from evolve.surface import check_paths
 from library.meta_agent.support.artifacts import ensure_artifact_layout
@@ -29,21 +37,29 @@ _ARTIFACT_SOURCE = "/app/task/workspace"
 _READONLY_ARTIFACT_SOURCE = "/logs/artifacts"
 _READONLY_REPORT = "ahe-debugger-response.md"
 _EVAL_RECEIPT = ".evolve-eval-receipts.jsonl"
-_FILE_TASK_AGENT = "evolve_harbor_agent:FileTaskMiniSweAgent"
+_FILE_TASK_AGENT = HARBOR_FILE_TASK_AGENT
 _SAFE_INLINE_INSTRUCTION_BYTES = 96 * 1024
+_RETRY_EXCLUDE_EXCEPTIONS = (
+    "VerifierTimeoutError",
+    "RewardFileNotFoundError",
+    "RewardFileEmptyError",
+    "VerifierOutputParseError",
+    "ApiUsageLimitError",
+)
 _VISIBLE_RUN_INPUTS = ("rollout", "trace_analyzer", "feedback")
-_HIDDEN_WORKSPACE_ROOTS = {".git", "runs", "artifacts", "archive.jsonl", _EVAL_RECEIPT, "evaluator"}
+_HIDDEN_WORKSPACE_ROOTS = {".git", ".venv", "runs", "artifacts", "archive.jsonl", _EVAL_RECEIPT, "evaluator"}
 _SECRET_ASSIGNMENT = re.compile(
     r"(?i)\b([a-z0-9_-]*(?:api[_-]?key|access[_-]?token|auth(?:orization)?|secret|password))\b"
     r"([\"']?)(\s*[:=]\s*)([^\s,;}]+)"
 )
 _BEARER = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+")
+_SENSITIVE_ENV_NAME = re.compile(r"(?i)(?:proxy|api[_-]?key|access[_-]?token|token|secret|password|authorization|auth)")
+_CREDENTIAL_ENV = ("OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_API_BASE")
 _PROXY_ENV = (
     ("EVOLVE_HARBOR_HTTP_PROXY", "http_proxy", "HTTP_PROXY"),
     ("EVOLVE_HARBOR_HTTPS_PROXY", "https_proxy", "HTTPS_PROXY"),
-    ("EVOLVE_HARBOR_NO_PROXY", "no_proxy", "NO_PROXY"),
 )
-_CREDENTIAL_ENV = ("OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_API_BASE")
+_BYPASS_ENV = ("no_proxy", "NO_PROXY")
 
 
 class _WorkspaceBundle:
@@ -103,6 +119,38 @@ def _copy_tree(source: Path, destination: Path, *, ignore=None) -> None:
         shutil.copy2(source, destination, follow_symlinks=False)
 
 
+def _ignored_checkout_paths(checkout: Path) -> set[str]:
+    result = git(
+        checkout,
+        "ls-files",
+        "--others",
+        "--ignored",
+        "--exclude-standard",
+        "--directory",
+        "-z",
+    )
+    return {path.rstrip("/") for path in result.stdout.split("\0") if path}
+
+
+def _checkout_copy_ignore(checkout: Path, ignored: set[str]):
+    root = checkout.resolve()
+
+    def ignore(directory: str, names: list[str]) -> set[str]:
+        relative = Path(directory).resolve().relative_to(root)
+        return {name for name in names if (relative / name).as_posix() in ignored}
+
+    return ignore
+
+
+def _copy_checkout_inputs(checkout: Path, workspace: Path, excluded_roots: set[str]) -> None:
+    ignored = _ignored_checkout_paths(checkout)
+    ignore = _checkout_copy_ignore(checkout, ignored)
+    for source in checkout.iterdir():
+        relative = source.relative_to(checkout).as_posix()
+        if source.name not in excluded_roots and relative not in ignored:
+            _copy_tree(source, workspace / source.name, ignore=ignore)
+
+
 def _runs_ignore(runs_root: Path):
     resolved_root = runs_root.resolve()
 
@@ -125,7 +173,7 @@ def _runs_ignore(runs_root: Path):
 def _manifest_ignored(relative: Path) -> bool:
     if not relative.parts:
         return False
-    return relative.parts[0] in {".git", "runs", "artifacts"} or relative.as_posix() in {
+    return relative.parts[0] in {".git", ".venv", "runs", "artifacts"} or relative.as_posix() in {
         "archive.jsonl",
         _EVAL_RECEIPT,
     }
@@ -286,9 +334,11 @@ def _copy_full_workspace_inputs(checkout: Path, ctx: OperatorContext, workspace:
     for path in workspace.iterdir():
         if path.name != ".git":
             _remove(path)
-    for source in checkout.iterdir():
-        if source.name not in {".git", "runs", "archive.jsonl", _EVAL_RECEIPT}:
-            _copy_tree(source, workspace / source.name)
+    _copy_checkout_inputs(
+        checkout,
+        workspace,
+        {".git", "runs", "archive.jsonl", _EVAL_RECEIPT},
+    )
     archive = ctx.workspace / "archive.jsonl"
     if archive.is_file():
         _copy_tree(archive, workspace / "archive.jsonl")
@@ -338,9 +388,7 @@ def _prepare_bundle(
             _copy_full_workspace_inputs(checkout, ctx, workspace)
         else:
             workspace.mkdir()
-            for source in checkout.iterdir():
-                if source.name not in _HIDDEN_WORKSPACE_ROOTS:
-                    _copy_tree(source, workspace / source.name)
+            _copy_checkout_inputs(checkout, workspace, _HIDDEN_WORKSPACE_ROOTS)
             _copy_visible_run_inputs(ctx, workspace)
         _copy_artifact_inputs(ctx, workspace)
         if not _expose_gate_data(ctx.config):
@@ -485,6 +533,7 @@ def _install_bundle(
 def _write_json(path: Path, payload: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    path.chmod(0o600)
 
 
 def _instruction_transport(agent: str, prompt_path: Path) -> dict[str, object]:
@@ -506,9 +555,17 @@ def _read_json(path: Path) -> object:
         return None
 
 
-def _redact(text: str) -> str:
+def _redact(text: str, environment: Mapping[str, str] | None = None) -> str:
+    configured = os.environ if environment is None else environment
+    values = {value for name, value in configured.items() if _SENSITIVE_ENV_NAME.search(name) and len(value) >= 8}
+    for value in sorted(values, key=len, reverse=True):
+        text = text.replace(value, "[REDACTED]")
     text = _BEARER.sub("Bearer [REDACTED]", text)
     return _SECRET_ASSIGNMENT.sub(lambda match: f"{match.group(1)}{match.group(2)}{match.group(3)}[REDACTED]", text)
+
+
+def _redaction_environment(config: dict[str, Any]) -> dict[str, str]:
+    return {**os.environ, **_agent_env(config)}
 
 
 def _nonnegative_int(value: object, default: int) -> int:
@@ -516,6 +573,34 @@ def _nonnegative_int(value: object, default: int) -> int:
         return max(0, int(value))
     except (TypeError, ValueError):
         return default
+
+
+def _positive_float(value: object) -> float | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        parsed = float(cast(str | SupportsFloat | SupportsIndex, value))
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
+def _retry_config(config: dict[str, Any]) -> dict[str, Any]:
+    max_retries = _nonnegative_int(config.get("max_retries"), 0)
+    retry: dict[str, Any] = {"max_retries": max_retries}
+    if max_retries:
+        retry["exclude_exceptions"] = list(_RETRY_EXCLUDE_EXCEPTIONS)
+    return retry
+
+
+def _meta_agent_process_timeout_s(config: dict[str, Any]) -> float | None:
+    if not uses_harbor_per_attempt_timeout(config):
+        return None
+    timeout_s = _positive_float(config.get("timeout_s"))
+    if timeout_s is None:
+        return None
+    max_retries = _nonnegative_int(config.get("max_retries"), 0)
+    return harbor_meta_agent_budget(timeout_s, max_retries).harbor_process_s
 
 
 def _append_agent_env(command: list[str], config: dict[str, Any]) -> None:
@@ -529,8 +614,14 @@ def _agent_env(config: dict[str, Any]) -> dict[str, str]:
     for override, lower, upper in _PROXY_ENV:
         value = os.environ.get(override) or os.environ.get(lower) or os.environ.get(upper)
         if value:
-            values[lower] = value
-            values[upper] = value
+            values.update({lower: value, upper: value})
+    for name in _BYPASS_ENV:
+        value = os.environ.get(name)
+        if value:
+            values[name] = value
+    bypass_override = os.environ.get("EVOLVE_HARBOR_NO_PROXY")
+    if bypass_override:
+        values.update({name: bypass_override for name in _BYPASS_ENV})
     # Harbor's Codex agent mounts the host Codex home, including auth.json.
     # Do not let evaluator/judge endpoints exported by the driver override
     # that login. A custom Codex provider remains available through an
@@ -543,6 +634,26 @@ def _agent_env(config: dict[str, Any]) -> dict[str, str]:
     configured = config.get("agent_env")
     if isinstance(configured, dict):
         values.update({str(key): str(value) for key, value in configured.items()})
+    for _, lower, upper in _PROXY_ENV:
+        value = values.get(lower) or values.get(upper)
+        if value:
+            values.update({lower: value, upper: value})
+    base_url = values.get("OPENAI_BASE_URL") or values.get("OPENAI_API_BASE")
+    bypass_entries: list[str] = []
+    for name in _BYPASS_ENV:
+        for entry in values.get(name, "").split(","):
+            entry = entry.strip()
+            if entry and entry not in bypass_entries:
+                bypass_entries.append(entry)
+    if base_url:
+        hostname = urlsplit(base_url).hostname
+        if not hostname:
+            raise ValueError("configured model base URL has no hostname")
+        if hostname not in bypass_entries:
+            bypass_entries.append(hostname)
+    if bypass_entries:
+        bypass = ",".join(bypass_entries)
+        values.update({name: bypass for name in _BYPASS_ENV})
     if agent == "codex":
         # Harbor redacts literal values for environment keys containing
         # "AUTH" when it persists a job. Keep this as a resolvable template
@@ -584,6 +695,7 @@ def _miniswe_config_command(
     candidate_source: Path,
     artifact: str | None,
     uv_cache_dir: Path,
+    agent_timeout_s: float | None,
 ) -> list[str]:
     agent_env = _agent_env(config)
     agent_env.setdefault("EVOLVE_CANDIDATE_SOURCE", str(candidate_source.resolve()))
@@ -591,6 +703,8 @@ def _miniswe_config_command(
         "name": str(config.get("agent")),
         "env": agent_env,
     }
+    if agent_timeout_s is not None:
+        agent["override_timeout_sec"] = agent_timeout_s
     model = config.get("model")
     if model:
         agent["model_name"] = str(model)
@@ -601,7 +715,7 @@ def _miniswe_config_command(
     compile_environment: dict[str, Any] = {"paths": [str(source.resolve())]}
     image = config.get("image")
     if image:
-        compile_environment["image"] = str(image)
+        compile_environment["docker_image"] = str(image)
     workdir = str(config.get("workdir") or "/app")
     if workdir != "/app":
         compile_environment["workdir"] = workdir
@@ -623,12 +737,15 @@ def _miniswe_config_command(
             }
         ],
     }
+    environment_kwargs = config.get("environment_kwargs")
+    if isinstance(environment_kwargs, dict):
+        environment["kwargs"] = environment_kwargs
     job_config: dict[str, Any] = {
         "job_name": job_name,
         "jobs_dir": str(jobs_root.resolve()),
         "n_concurrent_trials": 1,
         "quiet": os.environ.get("EVOLVE_LIVE_OUTPUT") != "1",
-        "retry": {"max_retries": _nonnegative_int(config.get("max_retries"), 0)},
+        "retry": _retry_config(config),
         "environment": environment,
         "agents": [agent],
     }
@@ -708,7 +825,7 @@ def _build_command(
     uv_cache_dir: Path | None = None,
 ) -> list[str]:
     agent = str(config.get("agent") or "codex")
-    if agent.endswith(":MiniSweSourceAgent"):
+    if harbor_agent_supports_per_attempt_timeout(agent):
         if "target" not in bundle.roots:
             raise ValueError("MiniSweSourceAgent requires target in editable_roots")
         return _miniswe_config_command(
@@ -722,6 +839,7 @@ def _build_command(
             candidate_source=bundle.workspace / "target",
             artifact=_ARTIFACT_SOURCE,
             uv_cache_dir=uv_cache_dir or _uv_cache_dir(bundle.task_root),
+            agent_timeout_s=_positive_float(config.get("timeout_s")),
         )
     command = _base_command(harbor, bundle.task_root, prompt_path, jobs_root, tasks_dir, job_name, config)
     workdir_index = command.index("--workdir")
@@ -746,6 +864,7 @@ def _run_harbor(
     env: dict[str, str],
     *,
     timeout_s: float | None = None,
+    redaction_environment: Mapping[str, str] | None = None,
 ) -> tuple[int, float]:
     start = time.monotonic()
     process = subprocess.Popen(
@@ -757,6 +876,7 @@ def _run_harbor(
         stderr=subprocess.STDOUT,
         start_new_session=True,
         bufsize=1,
+        umask=0o077,
     )
     chunks: list[str] = []
 
@@ -765,7 +885,7 @@ def _run_harbor(
         for line in process.stdout:
             chunks.append(line)
             if os.environ.get("EVOLVE_LIVE_OUTPUT") == "1":
-                print(_redact(line), end="", flush=True)
+                print(_redact(line, redaction_environment), end="", flush=True)
 
     reader = threading.Thread(target=consume_output, daemon=True)
     reader.start()
@@ -785,7 +905,8 @@ def _run_harbor(
     reader.join()
     wall_s = round(time.monotonic() - start, 6)
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    log_path.write_text(_redact(f"wall_s={wall_s}\n{''.join(chunks)}"))
+    log_path.write_text(_redact(f"wall_s={wall_s}\n{''.join(chunks)}", redaction_environment))
+    log_path.chmod(0o600)
     return (process.returncode if process.returncode is not None else 1), wall_s
 
 
@@ -922,11 +1043,13 @@ def run_readonly_agent(
     usage: dict[str, Any] = {"usd": 0, "wall_s": 0}
     output = ""
     returncode = 1
+    redaction_environment: Mapping[str, str] = os.environ
     try:
         if "agent_pythonpath" in ctx.config:
             raise ValueError(
                 "agent_pythonpath was removed; add the adapter to the workspace pyproject.toml and uv.lock"
             )
+        redaction_environment = _redaction_environment(ctx.config)
         harbor, harbor_env = uv_run(ctx.workspace, "harbor")
         harbor_env = _harbor_process_env(ctx.config, harbor_env)
         task_root = output_dir / "task"
@@ -960,16 +1083,21 @@ def run_readonly_agent(
                 candidate_source=checkout / "target",
                 artifact=None,
                 uv_cache_dir=_uv_cache_dir(ctx.workspace),
+                agent_timeout_s=timeout_s,
             )
         else:
             command = _base_command(harbor, task_root, prompt_path, jobs_root, tasks_dir, job_name, ctx.config)
-        _write_json(output_dir / "command.json", [_redact(arg) for arg in command])
+        _write_json(
+            output_dir / "command.json",
+            [_redact(arg, redaction_environment) for arg in command],
+        )
         returncode, wall_s = _run_harbor(
             command,
             checkout,
             output_dir / "harbor.log",
             harbor_env,
             timeout_s=timeout_s,
+            redaction_environment=redaction_environment,
         )
         usage["wall_s"] = wall_s
         trial_dir, trial = _trial_result(jobs_root / job_name)
@@ -983,7 +1111,9 @@ def run_readonly_agent(
         if returncode != 0:
             raise RuntimeError(f"harbor exec exited {returncode}")
         if trial.get("exception_info") not in (None, {}):
-            raise RuntimeError(f"Harbor read-only trial failed: {_redact(str(trial.get('exception_info')))}")
+            raise RuntimeError(
+                f"Harbor read-only trial failed: {_redact(str(trial.get('exception_info')), redaction_environment)}"
+            )
         if not output:
             raise RuntimeError("Harbor read-only trial returned no agent response")
         return AgentRunResult(
@@ -996,7 +1126,7 @@ def run_readonly_agent(
         )
     except Exception as exc:
         raise AgentCommandError(
-            f"{exc.__class__.__name__}: {_redact(str(exc))}",
+            f"{exc.__class__.__name__}: {_redact(str(exc), redaction_environment)}",
             output=output,
             usage=usage,
             returncode=returncode,
@@ -1016,11 +1146,13 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
     output = ""
     returncode = 1
     bundle: _WorkspaceBundle | None = None
+    redaction_environment: Mapping[str, str] = os.environ
     try:
         if "agent_pythonpath" in ctx.config:
             raise ValueError(
                 "agent_pythonpath was removed; add the adapter to the workspace pyproject.toml and uv.lock"
             )
+        redaction_environment = _redaction_environment(ctx.config)
         bundle = _prepare_bundle(
             checkout,
             ctx,
@@ -1066,8 +1198,18 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
             ctx.config,
             _uv_cache_dir(ctx.workspace),
         )
-        _write_json(harbor_root / "command.json", [_redact(arg) for arg in command])
-        returncode, wall_s = _run_harbor(command, checkout, harbor_root / "harbor.log", harbor_env)
+        _write_json(
+            harbor_root / "command.json",
+            [_redact(arg, redaction_environment) for arg in command],
+        )
+        returncode, wall_s = _run_harbor(
+            command,
+            checkout,
+            harbor_root / "harbor.log",
+            harbor_env,
+            timeout_s=_meta_agent_process_timeout_s(ctx.config),
+            redaction_environment=redaction_environment,
+        )
         usage["wall_s"] = wall_s
         trial_dir, trial = _trial_result(jobs_root / job_name)
         usage = _usage(trial, wall_s)
@@ -1085,7 +1227,9 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
         if returncode != 0:
             raise RuntimeError(f"harbor exec exited {returncode}; see {harbor_root / 'harbor.log'}")
         if trial.get("exception_info") not in (None, {}):
-            raise RuntimeError(f"Harbor meta-agent trial failed: {_redact(str(trial.get('exception_info')))}")
+            raise RuntimeError(
+                f"Harbor meta-agent trial failed: {_redact(str(trial.get('exception_info')), redaction_environment)}"
+            )
         if str(ctx.config.get("agent") or "").endswith(":MiniSweSourceAgent") or _uses_miniswe_artifact(
             ctx.config.get("agent")
         ):
@@ -1093,7 +1237,7 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
             if exit_status != "Submitted":
                 raise RuntimeError(
                     "Harbor MiniSwe meta-agent did not submit successfully: "
-                    f"exit_status={_redact(str(exit_status or 'missing'))}"
+                    f"exit_status={_redact(str(exit_status or 'missing'), redaction_environment)}"
                 )
         artifact, manifest = _artifact_candidate(trial_dir)
         _write_json(harbor_root / "artifact-manifest.json", manifest)
@@ -1119,13 +1263,13 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
         _write_json(
             harbor_root / "error.json",
             {
-                "message": _redact(str(exc)),
+                "message": _redact(str(exc), redaction_environment),
                 "returncode": returncode,
                 "type": exc.__class__.__name__,
             },
         )
         raise AgentCommandError(
-            f"{exc.__class__.__name__}: {_redact(str(exc))}",
+            f"{exc.__class__.__name__}: {_redact(str(exc), redaction_environment)}",
             output=output,
             usage=usage,
             returncode=returncode,

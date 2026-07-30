@@ -22,10 +22,42 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v6
         with:
-          enable-cache: true
+          enable-cache: false
+          python-version: "3.12"
 
-      - name: Install dev dependencies
-        run: uv sync --dev
+      - name: Configure clean uv cache
+        id: configure-uv-cache
+        run: echo "UV_CACHE_DIR=$RUNNER_TEMP/evolve-clean-uv-cache" >> "$GITHUB_ENV"
+
+      - name: Install Python 3.12
+        id: install-python-312
+        run: uv python install 3.12
+
+      - name: Reset uv cache for hermetic probe
+        id: reset-uv-cache
+        run: rm -rf "$UV_CACHE_DIR"
+
+      - name: Warm root Python 3.12 runtime
+        id: warm-root-runtime
+        run: uv sync --dev --python 3.12
+
+      - name: Warm scaffold Python 3.12 runtime
+        id: warm-scaffold-runtime
+        env:
+          UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}/evolve-scaffold-venv
+        run: uv sync --project scaffolds/workspace --frozen --no-install-project --python 3.12
+
+      - name: Check scaffold lock offline
+        id: check-scaffold-lock
+        env:
+          UV_OFFLINE: "1"
+        run: uv lock --project scaffolds/workspace --check --offline
+
+      - name: Probe generated workspaces offline
+        id: offline-workspace-probe
+        env:
+          UV_OFFLINE: "1"
+        run: uv run --offline pytest -q tests/test_recipe_composition.py
 
       # Safety net: workspaces set their own per-repo git identity, but a bare CI
       # runner has no global one — configure it so any stray git op still works.

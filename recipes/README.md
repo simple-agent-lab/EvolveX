@@ -1,18 +1,13 @@
-# Recipes
+# Supported recipes
 
-These recipes are small, inspectable loop shapes. Each recipe keeps its
-operator routing in `evolve.yaml`; the recipe README links each routing line to
-the resolved file under `library/`.
+Recipes are the public configuration inventory. Each YAML file selects its
+target, evaluator, and operator variants; the recipe README explains the
+workflow it represents.
 
-Recipe names may describe a research loop, but `variant:` values are canonical
-library file names. If a recipe says `gate: {variant: parent_eligible}`, the
-file is `library/gate/parent_eligible.py`.
-
-- [Hill Climb](hill_climb/README.md)
-- `hill_climb-smoke` — deterministic local counterpart
 - [A-Evolve](aevolve/README.md)
-- [A-Evolve Terminal-Bench Bridge](aevolve_tbench_bridge/README.md)
 - [Agentic Harness Engineering](ahe/README.md)
 - [GEPA](gepa/README.md)
+- [Hill Climb](hill_climb/README.md)
 - [HyperAgents](hyperagents/README.md)
-- `hyperagents-smoke` — deterministic local counterpart
+
+Development-only recipe fixtures live under `tests/fixtures/recipes/`.

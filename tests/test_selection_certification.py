@@ -202,6 +202,22 @@ def test_receipted_same_hash_retry_replaces_canonical_failure(tmp_path, monkeypa
     assert row["valid_parent"] is True
 
 
+def test_receipted_forced_repair_replaces_older_canonical_failure(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("EVOLVE_HOME", str(tmp_path / "home"))
+    workspace = tmp_path / "workspace"
+    original_failure = replace(_record(Outcome.INFRASTRUCTURE_FAILED), attempt=2, retry_of=1)
+    forced_failure = replace(_record(Outcome.INFRASTRUCTURE_FAILED), attempt=3, retry_of=None)
+    forced_repair = replace(_record(Outcome.BENCHMARK_COMPLETE), attempt=4, retry_of=3)
+    append_evaluation_record(workspace, original_failure)
+    append_evaluation_record(workspace, forced_failure)
+    append_evaluation_record(workspace, forced_repair)
+
+    row = rows_by_genid(workspace)["1"]
+    assert row["attempt"] == 4
+    assert row["outcome"] == "benchmark_complete"
+    assert row["valid_parent"] is True
+
+
 @pytest.mark.parametrize(
     "outcome",
     [Outcome.CANDIDATE_INVALID, Outcome.INFRASTRUCTURE_FAILED, Outcome.TIMEOUT, Outcome.CANCELLED],

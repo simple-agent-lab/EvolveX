@@ -12,6 +12,7 @@ import signal
 import subprocess
 import threading
 import time
+from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -36,6 +37,9 @@ _SECRET_ASSIGNMENT = re.compile(
     r"([\"']?)(\s*[:=]\s*)([^\s,;}]+)"
 )
 _BEARER = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+")
+_SENSITIVE_ENV_NAME = re.compile(
+    r"(?i)(?:proxy|api[_-]?key|access[_-]?token|token|secret|password|authorization|auth)"
+)
 _TRACE_EVENT_LIMIT = 32
 _PROXY_ENV = (
     ("EVOLVE_HARBOR_HTTP_PROXY", "http_proxy", "HTTP_PROXY"),
@@ -49,7 +53,15 @@ def _write_json(path: Path, payload: object) -> None:
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
 
 
-def _redact(text: str) -> str:
+def _redact(text: str, environment: Mapping[str, str] | None = None) -> str:
+    configured = os.environ if environment is None else environment
+    values = {
+        value
+        for name, value in configured.items()
+        if _SENSITIVE_ENV_NAME.search(name) and len(value) >= 8
+    }
+    for value in sorted(values, key=len, reverse=True):
+        text = text.replace(value, "[REDACTED]")
     text = _BEARER.sub("Bearer [REDACTED]", text)
     return _SECRET_ASSIGNMENT.sub(lambda match: f"{match.group(1)}{match.group(2)}{match.group(3)}[REDACTED]", text)
 
@@ -583,6 +595,7 @@ def _run_harbor(command: list[str], checkout: Path, log_path: Path, env: dict[st
         stderr=subprocess.STDOUT,
         start_new_session=True,
         bufsize=1,
+        umask=0o077,
     )
     chunks: list[str] = []
 
@@ -608,6 +621,7 @@ def _run_harbor(command: list[str], checkout: Path, log_path: Path, env: dict[st
     output = "".join(chunks)
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log_path.write_text(_redact(f"wall_s={time.monotonic() - start:.3f}\n{output or ''}"))
+    log_path.chmod(0o600)
     return process.returncode if process.returncode is not None else 1
 
 

@@ -11,7 +11,7 @@ Frozen lives in TWO physical homes, because the ruler is per-experiment:
        - interfaces.py : the operator contract (types + OPERATORS registry + validation)
        - sdk.py        : the operator contract's runtime (context IO, output validation)
 
-  2. Experiment-side (workspace `evaluator/`, from templates/evaluator/) — the
+  2. Experiment-side (workspace `evaluator/`, from scaffolds/evaluators/harbor/) — the
      ruler: eval + splits + score stamping. Frozen because it is excluded from
      the mutable surface AND every eval asserts its tree still matches gen/0
      (a changed ruler fails the eval). The stamp lives in archive.py

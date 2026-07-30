@@ -42,7 +42,8 @@ def _checkout(tmp_path: Path) -> tuple[Path, Path]:
         "target:\n  seed: builtin-dummy\n"
         "surface:\n  include:\n    - target/**\n    - operators/**\n  exclude: []\n"
         "operators:\n  meta_agent: {timeout_s: 30}\n"
-        "evaluator:\n  engine: harbor\n  dataset: pass@k\n  agent: target.harbor_agent:MiniSweSourceAgent\n"
+        "evaluator:\n  engine: harbor\n  dataset: pass@k\n"
+        "  agent: evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent\n"
     )
     (checkout / "target").mkdir(parents=True)
     (checkout / "operators").mkdir()

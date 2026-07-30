@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from conftest import git, init_workspace, rows_by_genid, smoke_agent_command
+from conftest import git, init_fixture_workspace, init_workspace, rows_by_genid, smoke_agent_command
 
 from evolve.driver import RunOptions, record_fields
 from evolve.driver import run as driver_run
@@ -140,7 +140,7 @@ def test_record_rejects_stamped_and_identity_fields(tmp_path):
     ws = tmp_path / "ws"
     home = tmp_path / "home"
     env = {"EVAL_STUB": "1", "EVOLVE_HOME": str(home), "EVOLVE_AGENT_COMMAND": smoke_agent_command()}
-    assert _evolve(["init", str(ws), "--recipe", "hill_climb-smoke"], tmp_path, env).returncode == 0
+    init_fixture_workspace(ws)
     before = (ws / "archive.jsonl").read_text()
     forbidden = (
         {"score": 99.0},

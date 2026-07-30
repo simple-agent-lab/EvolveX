@@ -4,15 +4,14 @@ from evolve.config import RECIPE_NAMES, load_config
 
 ROOT = Path(__file__).resolve().parents[1]
 RECIPES = ROOT / "recipes"
-REAL_RECIPES = {"aevolve", "aevolve_tbench_bridge", "ahe", "gepa", "hill_climb", "hyperagents"}
-FULL_BRIDGE_RECIPES = {
-    "aevolve_hle",
-    "aevolve_tbench_full",
-    "gepa_hle",
-    "gepa_tbench_full",
+SUPPORTED_RECIPES = {
+    "aevolve",
+    "ahe",
+    "gepa",
+    "hill_climb",
+    "hyperagents",
 }
 UV_SOURCE_RECIPES = {"ahe", "hill_climb", "hyperagents"}
-SMOKE_RECIPES = {"hill_climb-smoke", "hyperagents-smoke"}
 
 
 def _config(name: str) -> str:
@@ -26,12 +25,11 @@ def _parsed_config(name: str) -> dict[str, object]:
 def test_all_recipes_are_recipe_artifacts_only() -> None:
     recipe_names = tuple(path.name for path in sorted(RECIPES.iterdir()) if path.is_dir())
     assert set(recipe_names) == set(RECIPE_NAMES)
-    assert set(RECIPE_NAMES) == REAL_RECIPES | FULL_BRIDGE_RECIPES | SMOKE_RECIPES
+    assert set(RECIPE_NAMES) == SUPPORTED_RECIPES
     for name in RECIPE_NAMES:
         recipe = RECIPES / name
         assert (recipe / "evolve.yaml").is_file()
-        if not name.endswith("-smoke"):
-            assert (recipe / "README.md").is_file()
+        assert (recipe / "README.md").is_file()
         assert {path.name for path in recipe.iterdir()} <= {
             "README.md",
             "evolve.yaml",
@@ -46,8 +44,8 @@ def test_all_recipes_are_recipe_artifacts_only() -> None:
         assert top_level_sections == ["experiment", "target", "surface", "operators", "evaluator"]
 
 
-def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
-    for name in REAL_RECIPES:
+def test_supported_recipes_use_harbor_and_method_meta_agent() -> None:
+    for name in SUPPORTED_RECIPES:
         config = _config(name)
         assert "engine: harbor" in config
         assert "target/**" in config
@@ -68,28 +66,6 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "evolve_memory: false" in config
             assert "evolve_tools: false" in config
             assert "agent: target.agent:HarborAgent" in config
-        elif name == "aevolve_tbench_bridge":
-            parsed = _parsed_config(name)
-            evaluator = parsed["evaluator"]
-            assert isinstance(evaluator, dict)
-            assert "max_generations: 10" in config
-            assert "seed: builtin-codex" in config
-            assert "harbor_agent: miniswe-source" in config
-            assert "rollout:\n    variant: harbor" in config
-            assert "variant: trajectory_only" in config
-            assert "trajectory_only: true" in config
-            assert "expose_gate_data: false" in config
-            assert "variant: aevolve" in config
-            assert "runner: harbor" in config
-            assert "agent: codex" in config
-            assert "editable_roots: [target]" in config
-            assert "evolve_prompts: true" in config
-            assert "evolve_skills: true" in config
-            assert "evolve_memory: true" in config
-            assert "evolve_tools: false" in config
-            assert "agent: evolve_harbor_adapter:MiniSweSourceAgent" in config
-            assert evaluator["candidate_runtime"] == {"variant": "uv", "project": "target", "python": "3.12"}
-            assert evaluator["max_retries"] == 1
         elif name == "gepa":
             assert "dataset: swe-bench-lite" in config
             assert "seed: builtin-codex" in config
@@ -114,16 +90,16 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "rollout: {variant: evaluation_replay" in config
             assert "trace_analyzer: {variant: ahe" in config
             assert "meta_agent: {variant: ahe, runner: harbor" in config
-            assert "expose_gate_data: true" in config
+            assert "expose_gate_data: false" in config
             assert "select: {variant: ahe_latest" in config
             assert "gate: {variant: ahe_artifact_valid" in config
             assert "max_tasks: 30" in config
             assert "max_cases" not in config
             assert "budget_usd" not in config
-            assert "agent: evolve_harbor_agent:FileTaskMiniSweAgent" in config
+            assert "agent: evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent" in config
             assert "editable_roots: [target]" in config
             assert "max_retries: 1" in config
-            assert "agent: evolve_harbor_adapter:MiniSweSourceAgent" in config
+            assert "agent: evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent" in config
             assert "image: evolve-meta-agent-app:20260724-tools-mswe245" in config
             assert "task_scope: full" in config
             assert "evaluation_split: train" in config
@@ -144,9 +120,9 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "rollout: {variant: evaluation_replay" in config
             assert "trace_analyzer: {variant: trace_browser" in config
             assert "meta_agent: {variant: hyperagents" in config
-            assert "expose_gate_data: true" in config
+            assert "expose_gate_data: false" in config
             assert "runner: harbor" in config
-            assert "agent: evolve_harbor_agent:FileTaskMiniSweAgent" in config
+            assert "agent: evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent" in config
             assert "editable_roots: [target, operators]" in config
             assert "max_retries: 1" in config
             assert "validate: {variant: hyperagents" in config
@@ -172,8 +148,8 @@ def test_real_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "variant: noop" not in config
         assert "mutate:" not in config
         if name not in {"aevolve", "gepa"}:
-            assert "agent: evolve_harbor_adapter:MiniSweSourceAgent" in config
-            assert "harbor_agent: miniswe-source" in config
+            assert "agent: evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent" in config
+            assert "harbor_agent:" not in config
         assert "variant: fixed" not in config
 
 
@@ -196,13 +172,14 @@ def test_terminal_bench_method_recipes_use_full_curated_dataset() -> None:
         assert evaluator["evaluation_split"] == "train"
         assert evaluator["k"] == 1
         assert evaluator["n_concurrent"] == 10
+        assert recipe["operators"]["meta_agent"]["expose_gate_data"] is False
 
     ahe = _parsed_config("ahe")
     assert ahe["operators"]["trace_analyzer"]["max_tasks"] == 30
     assert ahe["operators"]["trace_analyzer"]["max_concurrent"] == 10
 
 
-def test_real_uv_recipes_enable_candidate_runtime_and_task_retry() -> None:
+def test_supported_uv_recipes_enable_candidate_runtime_and_task_retry() -> None:
     for name in UV_SOURCE_RECIPES:
         evaluator = _parsed_config(name)["evaluator"]
         assert isinstance(evaluator, dict)
@@ -247,35 +224,6 @@ def test_miniswe_method_agents_use_the_rollout_model_version() -> None:
         evaluator = config["evaluator"]
         assert isinstance(evaluator, dict)
         assert evaluator["model"] == expected_model
-
-
-def test_only_full_bridge_evaluators_configure_openai_endpoint() -> None:
-    for name in RECIPE_NAMES:
-        config = _parsed_config(name)
-        operators = config["operators"]
-        assert isinstance(operators, dict)
-        meta_agent = operators["meta_agent"]
-        assert isinstance(meta_agent, dict)
-        assert "agent_env" not in meta_agent
-        if name in FULL_BRIDGE_RECIPES:
-            evaluator = config["evaluator"]
-            assert isinstance(evaluator, dict)
-            agent_env = evaluator["agent_env"]
-            assert isinstance(agent_env, dict)
-            assert agent_env["OPENAI_BASE_URL"] == "http://172.17.0.1:18788/v1"
-            assert agent_env["OPENAI_API_BASE"] == "http://172.17.0.1:18788/v1"
-        else:
-            assert "OPENAI_BASE_URL" not in _config(name)
-
-
-def test_aevolve_hle_uses_an_independent_trajectory_judge_endpoint() -> None:
-    config = _parsed_config("aevolve_hle")
-    operators = config["operators"]
-    assert isinstance(operators, dict)
-    analyzer = operators["trace_analyzer"]
-    assert isinstance(analyzer, dict)
-    assert analyzer["judge_model"] == "gpt-5.4-mini-2026-03-17"
-    assert analyzer["judge_inherit_openai_credentials"] is True
 
 
 def test_meta_agent_image_provides_harbor_workspace_parent() -> None:
@@ -353,39 +301,14 @@ def test_hyperagents_recipe_configures_reasoning_without_cost_caps() -> None:
     }
 
 
+def test_recipe_retry_and_partial_floor_defaults_remain_method_specific() -> None:
+    for name in ("ahe", "hill_climb", "hyperagents"):
+        evaluator = _parsed_config(name)["evaluator"]
+        assert evaluator["max_retries"] == 1
+        assert evaluator["partial_floor"] == 0.8
+
+
 def test_harbor_evaluator_accepts_validated_runtime_concurrency_override() -> None:
-    contents = (ROOT / "templates/evaluator/engines/harbor.sh").read_text()
+    contents = (ROOT / "scaffolds/evaluators/harbor/engine.sh").read_text()
     assert "EVOLVE_HARBOR_N_CONCURRENT_OVERRIDE" in contents
     assert "invalid EVOLVE_HARBOR_N_CONCURRENT_OVERRIDE" in contents
-
-
-def test_smoke_recipes_are_explicitly_named_and_deterministic() -> None:
-    for name in SMOKE_RECIPES:
-        config = _config(name)
-        evaluator = _parsed_config(name)["evaluator"]
-        assert isinstance(evaluator, dict)
-        assert "candidate_runtime" not in evaluator
-        assert "engine: harbor" in config
-        assert "dataset: pass@k" in config
-        assert "seed: builtin-dummy" in config
-        assert "agent: evolve_harbor_adapter:MiniSweSourceAgent" in config
-        assert "mutate:" not in config
-        if name == "hyperagents-smoke":
-            assert "    - operators/**" in config
-            assert "    - operators/meta_agent.py" not in config
-            assert "select: {variant: score_child_prop" in config
-            assert "rollout: {variant: noop}" in config
-            assert "trace_analyzer:" not in config
-            assert "meta_agent: {variant: hyperagents" in config
-            assert "runner: local" in config
-            assert "editable_roots: [target, operators]" in config
-            assert "validate: {variant: hyperagents" in config
-            assert "record: {variant: hyperagents}" in config
-            assert "budget_usd: 1" in config
-            assert "tasks_per_round: 8" in config
-        else:
-            assert "rollout: {variant: failure_focused" in config
-            assert "trace_analyzer:" not in config
-            assert "meta_agent: {variant: hyperagents, runner: local" in config
-            assert "variant: noop" not in config
-        assert "variant: fixed" not in config

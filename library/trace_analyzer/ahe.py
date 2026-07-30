@@ -61,6 +61,13 @@ def _positive_int(value: object, default: int) -> int:
         return default
 
 
+def _nonnegative_int(value: object, default: int) -> int:
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return default
+
+
 def _redact(text: str) -> str:
     text = _BEARER.sub("Bearer [REDACTED]", text)
     text = _SECRET_DOUBLE_QUOTED.sub(r'\1\2\3"[REDACTED]"', text)
@@ -377,7 +384,8 @@ def _safe_task_name(task_name: str) -> str:
 
 
 def _run_debugger_job(checkout: Path, ctx: OperatorContext, job: TaskAnalysisJob) -> DebuggerResult:
-    attempts = _positive_int(ctx.config.get("retry_attempts"), 3)
+    max_retries = _nonnegative_int(ctx.config.get("debugger_max_retries"), 0)
+    attempts = max_retries + 1
     timeout_s = float(ctx.config.get("timeout_per_task") or 600)
     runner_config = _debugger_runner_config(checkout, ctx.config)
     runner_ctx = replace(ctx, config=runner_config)
@@ -586,6 +594,17 @@ def _change_evaluation(ctx: OperatorContext, cases: list[Case], field_limit: int
 
 def _task_vector_outcome(task: Case) -> str:
     trials = _list(task.get("trials"))
+    rewards = [
+        float(trial["reward"])
+        for trial in trials
+        if isinstance(trial, dict)
+        and isinstance(trial.get("reward"), (int, float))
+        and not isinstance(trial.get("reward"), bool)
+    ]
+    if rewards and len(rewards) == len(trials) and all(reward > 0 for reward in rewards):
+        return "pass"
+    if rewards:
+        return "fail"
     statuses = [str(trial.get("status") or "") for trial in trials if isinstance(trial, dict)]
     if statuses and all(status == "passed" for status in statuses):
         return "pass"

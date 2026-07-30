@@ -1,13 +1,59 @@
+import copy
 import json
 import os
 import shlex
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
+from unittest.mock import patch
 
 import pytest
 
 from evolve.archive import merged_rows as mechanism_merged_rows
+from evolve.config import load_config
+from evolve.workspace import InitOptions
+from evolve.workspace import init_workspace as create_workspace
+
+ROOT = Path(__file__).resolve().parents[1]
+FIXTURE_RECIPES = ROOT / "tests" / "fixtures" / "recipes"
+FIXTURE_SEEDS = ROOT / "tests" / "fixtures" / "seeds"
+
+
+def _uv_directory(*arguments: str) -> str:
+    result = subprocess.run(
+        ["uv", *arguments],
+        text=True,
+        capture_output=True,
+        check=False,
+        env=os.environ.copy(),
+    )
+    assert result.returncode == 0, result.stderr
+    return result.stdout.strip()
+
+
+_UV_RUNTIME_ENV = {
+    "UV_PYTHON_INSTALL_DIR": _uv_directory("python", "dir"),
+    "UV_CACHE_DIR": _uv_directory("cache", "dir"),
+}
+
+
+def generated_workspace_uv_env() -> dict[str, str]:
+    return {**os.environ, **_UV_RUNTIME_ENV}
+
+
+def fixture_recipe_config(name: str, experiment_id: str) -> dict[str, Any]:
+    config = copy.deepcopy(load_config(FIXTURE_RECIPES / name / "evolve.yaml"))
+    config["experiment"]["id"] = experiment_id
+    config["target"]["seed"] = str(FIXTURE_SEEDS / "dummy")
+    return config
+
+
+def init_fixture_workspace(workspace: Path, name: str = "hill_climb-smoke") -> Path:
+    config = fixture_recipe_config(name, workspace.name)
+    with patch("evolve.workspace.default_config", return_value=config):
+        create_workspace(InitOptions(workspace=workspace, recipe=name))
+    return workspace
 
 
 @pytest.fixture(autouse=True)
@@ -94,14 +140,7 @@ def git(workspace: Path, *args: str) -> str:
 def init_workspace(tmp_path: Path, experiment: str = "experiment") -> tuple[Path, Path]:
     workspace = tmp_path / experiment
     evolve_home = tmp_path / "evolve-home"
-    result = run_evolve(
-        "init",
-        str(workspace),
-        "--recipe",
-        "hill_climb-smoke",
-        env={"EVAL_STUB": "1", "EVOLVE_HOME": str(evolve_home)},
-    )
-    assert result.returncode == 0, result.stderr
+    init_fixture_workspace(workspace)
     return workspace, evolve_home
 
 

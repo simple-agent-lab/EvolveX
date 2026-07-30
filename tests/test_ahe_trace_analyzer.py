@@ -32,7 +32,7 @@ def _ctx(tmp_path: Path, *, genid: str = "1", parent: str = "0") -> OperatorCont
         "  meta_agent:\n"
         "    variant: ahe\n"
         "    runner: harbor\n"
-        "    agent: evolve_harbor_agent:FileTaskMiniSweAgent\n"
+        "    agent: evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent\n"
         "    model: gpt-test\n"
         "    environment: docker\n"
         "    editable_roots: [target]\n"
@@ -50,7 +50,7 @@ def _ctx(tmp_path: Path, *, genid: str = "1", parent: str = "0") -> OperatorCont
             "max_tasks": 90,
             "max_concurrent": 2,
             "timeout_per_task": 30,
-            "retry_attempts": 3,
+            "debugger_max_retries": 2,
         },
         rng=random.Random(0),
     )
@@ -141,7 +141,7 @@ def test_ahe_debugger_reuses_only_allowlisted_meta_agent_config(tmp_path: Path) 
     config = module._debugger_runner_config(ctx.checkout, ctx.config)
 
     assert config == {
-        "agent": "evolve_harbor_agent:FileTaskMiniSweAgent",
+        "agent": "evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent",
         "model": "gpt-test",
         "environment": "docker",
         "agent_kwargs": {"reasoning_effort": "high", "max_tokens": 64000},
@@ -161,7 +161,9 @@ def test_ahe_miniswe_debugger_prompt_includes_submission_protocol() -> None:
     assert "Every response must include a Bash tool call" in prompt
     assert "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT" in prompt
     assert "first write the complete requested report as reasoning text" not in prompt
-    file_agent_prompt = module._debugger_runner_prompt(job, {"agent": "evolve_harbor_agent:FileTaskMiniSweAgent"})
+    file_agent_prompt = module._debugger_runner_prompt(
+        job, {"agent": "evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent"}
+    )
     assert "/logs/artifacts/ahe-debugger-response.md" in file_agent_prompt
     assert module._debugger_runner_prompt(job, {"agent": "codex"}) == module._debugger_prompt(job)
 
@@ -222,6 +224,53 @@ def test_ahe_debugger_retries_and_fails_visibly(tmp_path: Path, monkeypatch: pyt
     )
     with pytest.raises(AgentCommandError, match="failed"):
         module._run_debugger_job(ctx.checkout, ctx, job)
+
+
+def test_ahe_debugger_zero_retries_means_one_total_attempt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _module()
+    ctx = _ctx(tmp_path)
+    ctx.config["debugger_max_retries"] = 0
+    ctx.config.pop("retry_attempts", None)
+    job = module._build_jobs([_case("task-a", "failed", 0)], 90)[0]
+    calls = 0
+
+    def fail_once(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        raise AgentCommandError("failed", returncode=1)
+
+    monkeypatch.setattr(module, "run_readonly_agent", fail_once)
+
+    with pytest.raises(AgentCommandError, match="failed"):
+        module._run_debugger_job(ctx.checkout, ctx, job)
+
+    assert calls == 1
+
+
+def test_ahe_debugger_safe_wrapper_records_single_attempt_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _module()
+    ctx = _ctx(tmp_path)
+    ctx.config["debugger_max_retries"] = 0
+    job = module._build_jobs([_case("task-a", "failed", 0)], 90)[0]
+    calls = 0
+
+    def fail_once(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        raise AgentCommandError("debugger unavailable", returncode=1)
+
+    monkeypatch.setattr(module, "run_readonly_agent", fail_once)
+    result = module._run_debugger_job_safe(ctx.checkout, ctx, job)
+
+    assert calls == 1
+    assert result.error == "debugger unavailable"
+    assert result.response.startswith("ANALYSIS UNAVAILABLE:")
 
 
 def test_ahe_debugger_stage_keeps_all_tasks_when_individual_jobs_fail(
@@ -341,6 +390,51 @@ def test_ahe_archive_analysis_marks_two_observation_flip_as_possibly_unstable(tm
 
     assert analysis["stability"]["possibly_unstable"] == ["flip"]
     assert analysis["stability"]["unstable"] == []
+
+
+def test_ahe_archive_analysis_classifies_canonical_benchmark_complete_rewards(tmp_path: Path) -> None:
+    module = _module()
+    ctx = _ctx(tmp_path, genid="2", parent="1")
+    rows = []
+    for genid, passing_reward in (("0", 1.0), ("1", 0.0)):
+        rows.append(
+            {
+                "genid": genid,
+                "score": passing_reward,
+                "selection_eligible": True,
+                "task_vector": {
+                    "schema_version": 1,
+                    "tasks": {
+                        "flip": {
+                            "trials": [
+                                {
+                                    "status": "benchmark_complete",
+                                    "reward": passing_reward,
+                                    "owner": "benchmark",
+                                }
+                            ]
+                        },
+                        "always-fail": {
+                            "trials": [
+                                {"status": "benchmark_complete", "reward": 0.0, "owner": "benchmark"}
+                            ]
+                        },
+                        "infra": {
+                            "trials": [
+                                {"status": "infrastructure_failed", "reward": None, "owner": "infrastructure"}
+                            ]
+                        },
+                    },
+                },
+            }
+        )
+    _write_archive(ctx, rows)
+
+    analysis = module._archive_analysis(ctx)
+
+    assert analysis["stability"]["possibly_unstable"] == ["flip"]
+    assert analysis["stability"]["stable_fail"] == ["always-fail"]
+    assert analysis["stability"]["infra_only"] == ["infra"]
 
 
 def test_ahe_analyzer_renders_archive_analysis_in_overview(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

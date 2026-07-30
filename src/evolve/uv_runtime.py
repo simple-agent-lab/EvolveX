@@ -133,6 +133,23 @@ def _uv_version(uv: str, checkout: Path, env: dict[str, str]) -> str | None:
     return completed.stdout.strip() or None
 
 
+def _normalize_managed_python_links(python_dir: Path) -> None:
+    """Keep uv-managed aliases valid when their directory is bind-mounted."""
+    for link in python_dir.iterdir():
+        if not link.is_symlink():
+            continue
+        target = link.readlink()
+        if not target.is_absolute():
+            continue
+        try:
+            relative = target.relative_to(python_dir)
+        except ValueError:
+            continue
+        temporary = link.with_name(f".{link.name}.relative")
+        temporary.symlink_to(relative)
+        temporary.replace(link)
+
+
 def _write_receipt(
     run_dir: Path,
     config: UvRuntimeConfig,
@@ -314,6 +331,7 @@ def prepare_candidate_runtime(
                 uv_version=None,
                 secret_environment=command_env,
             )
+        _normalize_managed_python_links(python_dir)
         checked = run_owned(
             [uv, "lock", "--check", "--project", str(project)],
             cwd=checkout,

@@ -50,13 +50,18 @@ The command must edit files in its current working directory and exit zero.
 Because it is a trusted host command, it can access inherited credentials,
 network, Git metadata, and paths outside the candidate. The mutable-surface
 repair only constrains observable candidate changes; it is not a host sandbox.
+That includes Git-ignored files: a local meta-agent can overwrite the
+workspace's `.venv`, caches, or other untracked state. Use `runner: harbor` when
+the editing agent must not be able to mutate the framework environment.
 
 ## `runner: harbor`: isolated agent with artifact return
 
 The Harbor runner builds a disposable writable experiment workspace at
 `/app/task/workspace`. Gate visibility is controlled by
 `operators.meta_agent.expose_gate_data`, which must be a boolean and defaults to
-`false`.
+`false`. Git-ignored host state, including nested `.venv` directories and
+caches, is omitted from the disposable copy. A meta-agent may create new
+ignored paths inside the task, but they are not imported into the host checkout.
 
 With `expose_gate_data: false`, the task receives the selected parent,
 configuration, a clean Git baseline, and the `rollout`, `trace_analyzer`, and
@@ -72,10 +77,10 @@ including gate/sealed evaluations. Enable this only for methods whose intended
 feedback contract includes those results. The real host workspace is never
 mounted in either mode.
 
-The bundled recipes make this choice explicitly: A-Evolve, GEPA, and hill
-climb use `false` because gate is held out from mutation; AHE and HyperAgents
-use `true` because their recipe definitions optimize on retained
-full-benchmark evaluations rather than a held-out gate.
+The bundled recipes make this choice explicitly. All real recipes use `false`
+so gate and sealed data remain held out from mutation. AHE and HyperAgents
+still receive their retained training evaluations through the normalized
+rollout, trace-analyzer, and feedback inputs.
 Harbor returns the complete disposable workspace; the runner compares it with a
 trusted pre-run manifest, rejects protected changes, symlinks, and special files,
 then transactionally imports configured `editable_roots` and the current
@@ -156,6 +161,12 @@ Harbor and the framework are always launched with `uv run --project
 `sys.path` edits are no longer supported. A folder containing only an
 arbitrary executable is not a Harbor agent adapter; use `local` for that
 executable, or package a Harbor adapter class.
+
+`uv --frozen` guarantees that the declared lock is respected; it is not a
+filesystem permission boundary. Isolation comes from the Harbor copy-and-import
+contract above. Candidate dependency preparation directs `uv sync` to a
+temporary environment under the run directory rather than `target/.venv`, and
+removes that temporary environment after preparation.
 
 Codex authentication always uses a host `auth.json`: run `codex login` before
 starting the experiment. For `agent: codex`, the Harbor runner automatically

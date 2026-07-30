@@ -7,7 +7,8 @@ import types
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-ADAPTER = ROOT / "templates" / "workspace" / "evolve_harbor_agent" / "__init__.py"
+ADAPTER = ROOT / "src" / "evolve" / "integrations" / "harbor" / "miniswe_task_file.py"
+FILE_TASK_AGENT = "evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent"
 
 
 def _load(monkeypatch, max_output_tokens: int | str | None = None):
@@ -38,17 +39,17 @@ def _load(monkeypatch, max_output_tokens: int | str | None = None):
                 env={"ROLE": "agent"},
             )
 
-        async def exec_as_agent(self, environment, command, env=None, **kwargs):
-            del kwargs
+        async def exec_as_agent(self, environment, command, env=None, cwd=None, timeout_sec=None):
             environment.commands.append(command)
             environment.envs.append(env or {})
+            environment.execution_options.append((cwd, timeout_sec))
 
     mini.MiniSweAgent = MiniSweAgent
     monkeypatch.setitem(sys.modules, "harbor", harbor)
     monkeypatch.setitem(sys.modules, "harbor.agents", agents)
     monkeypatch.setitem(sys.modules, "harbor.agents.installed", installed)
     monkeypatch.setitem(sys.modules, "harbor.agents.installed.mini_swe_agent", mini)
-    spec = importlib.util.spec_from_file_location("evolve_harbor_agent_under_test", ADAPTER)
+    spec = importlib.util.spec_from_file_location("evolve.integrations.harbor.miniswe_task_file", ADAPTER)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -59,6 +60,7 @@ class Environment:
     def __init__(self):
         self.commands = []
         self.envs = []
+        self.execution_options = []
         self.uploads = []
 
     async def upload_file(self, source, destination):
@@ -91,8 +93,43 @@ def test_file_task_agent_externalizes_large_miniswe_instruction(monkeypatch) -> 
     assert model_kwargs["prompt_cache_key"].startswith("evolve-")
     assert json.loads(model_kwargs["extra_headers"]["extra"]) == {"session_id": model_kwargs["prompt_cache_key"]}
     assert "store" not in model_kwargs
-    assert "unset HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy;" in runtime_command
+    assert "unset HTTP_PROXY" not in runtime_command
     assert environment.envs[-1] == {"ROLE": "agent"}
+
+
+def test_file_task_agent_forwards_execution_options_for_passthrough_and_rewritten_commands(monkeypatch) -> None:
+    module = _load(monkeypatch)
+    environment = Environment()
+    agent = module.FileTaskMiniSweAgent()
+
+    async def execute() -> None:
+        await agent.exec_as_agent(
+            environment,
+            command="echo passthrough",
+            env={"ROLE": "passthrough"},
+            cwd="/work/passthrough",
+            timeout_sec=11,
+        )
+        await agent.exec_as_agent(
+            environment,
+            command=(
+                "mini-swe-agent --yolo --task='rewrite me' --output=/logs/trajectory.json "
+                "--exit-immediately"
+            ),
+            env={"ROLE": "rewritten"},
+            cwd="/work/rewritten",
+            timeout_sec=29,
+        )
+
+    asyncio.run(execute())
+
+    assert environment.commands[0] == "echo passthrough"
+    assert "--task-file=" + module.TASK_PATH in environment.commands[1]
+    assert environment.envs == [{"ROLE": "passthrough"}, {"ROLE": "rewritten"}]
+    assert environment.execution_options == [
+        ("/work/passthrough", 11),
+        ("/work/rewritten", 29),
+    ]
 
 
 def test_file_task_agent_preserves_explicit_output_budget(monkeypatch) -> None:
