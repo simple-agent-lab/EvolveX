@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import os
 import json
+import shlex
 import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 import yaml
 
 
@@ -44,9 +46,12 @@ def _values(result: subprocess.CompletedProcess[str]) -> dict[str, str]:
 
 
 def test_tau3_dry_run_resolves_frozen_counts_and_simulator() -> None:
-    values = _values(_run_setup("ahe", "tau3", "ahe-tau3", "25", "--dry-run"))
+    values = _values(
+        _run_setup("ahe", "miniswe", "tau3", "ahe-tau3", "25", "--dry-run")
+    )
 
     assert values["method"] == "ahe"
+    assert values["target"] == "miniswe"
     assert values["benchmark"] == "tau3"
     assert values["tasks_per_round"] == "100"
     assert values["train_count"] == "100"
@@ -61,6 +66,7 @@ def test_terminal_bench_dry_run_resolves_frozen_counts() -> None:
     values = _values(
         _run_setup(
             "hyperagents",
+            "miniswe",
             "terminal-bench-2",
             "hyperagents-terminal-bench-2",
             "25",
@@ -69,6 +75,7 @@ def test_terminal_bench_dry_run_resolves_frozen_counts() -> None:
     )
 
     assert values["method"] == "hyperagents"
+    assert values["target"] == "miniswe"
     assert values["benchmark"] == "terminal-bench-2"
     assert values["tasks_per_round"] == "50"
     assert values["train_count"] == "50"
@@ -81,26 +88,50 @@ def test_terminal_bench_dry_run_resolves_frozen_counts() -> None:
 
 def test_setup_rejects_unknown_method_and_benchmark() -> None:
     invalid_method = _run_setup(
-        "gepa", "tau3", "gepa-tau3", "25", "--dry-run"
+        "gepa", "miniswe", "tau3", "gepa-tau3", "25", "--dry-run"
     )
     invalid_benchmark = _run_setup(
-        "ahe", "hle", "ahe-hle", "25", "--dry-run"
+        "ahe", "miniswe", "hle", "ahe-hle", "25", "--dry-run"
+    )
+    invalid_target = _run_setup(
+        "ahe", "unknown", "tau3", "ahe-tau3", "25", "--dry-run"
     )
 
     assert invalid_method.returncode == 2
     assert invalid_benchmark.returncode == 2
+    assert invalid_target.returncode == 2
+
+
+def test_codex_dry_run_resolves_explicit_target_profile() -> None:
+    values = _values(
+        _run_setup(
+            "hyperagents",
+            "codex",
+            "terminal-bench-2",
+            "hyperagents-codex-terminal-bench-2",
+            "25",
+            "--dry-run",
+        )
+    )
+
+    assert values["target"] == "codex"
+    assert values["workspace"].endswith(
+        "/workspaces/hyperagents-codex-terminal-bench-2"
+    )
 
 
 def test_setup_rejects_unsafe_name_and_nonpositive_concurrency() -> None:
     unsafe_name = _run_setup(
-        "ahe", "tau3", "../ahe-tau3", "25", "--dry-run"
+        "ahe", "miniswe", "tau3", "../ahe-tau3", "25", "--dry-run"
     )
     zero_concurrency = _run_setup(
-        "ahe", "tau3", "ahe-tau3", "0", "--dry-run"
+        "ahe", "miniswe", "tau3", "ahe-tau3", "0", "--dry-run"
     )
+    missing_concurrency = _run_setup("ahe", "miniswe", "tau3", "ahe-tau3")
 
     assert unsafe_name.returncode == 2
     assert zero_concurrency.returncode == 2
+    assert missing_concurrency.returncode == 2
 
 
 def _write_fake_evolve(path: Path) -> None:
@@ -118,11 +149,21 @@ if args[0] == "verify":
 if args[0] != "init":
     raise SystemExit(f"unsupported fake command: {args}")
 workspace = Path(args[1])
-recipe = args[args.index("--recipe") + 1]
+if "--recipe" in args:
+    recipe_path = Path(os.environ["FAKE_RECIPE_ROOT"]) / args[args.index("--recipe") + 1] / "evolve.yaml"
+elif "--recipe-path" in args:
+    recipe_path = Path(args[args.index("--recipe-path") + 1])
+else:
+    raise SystemExit(f"missing fake recipe input: {args}")
 workspace.mkdir(parents=True)
+(workspace / "init.args").write_text("\\n".join(args) + "\\n")
+(workspace / "target").mkdir()
+(workspace / "target" / "seed.txt").write_text(
+    f"{args[args.index('--seed') + 1] if '--seed' in args else 'recipe-default'}\\n"
+)
 (workspace / "evaluator").mkdir()
 shutil.copy(
-    Path(os.environ["FAKE_RECIPE_ROOT"]) / recipe / "evolve.yaml",
+    recipe_path,
     workspace / "evolve.yaml",
 )
 (workspace / "evaluator" / "eval.env").write_text("EVOLVE_HARBOR_N_CONCURRENT=10\\n")
@@ -152,6 +193,14 @@ subprocess.run(
 )
 subprocess.run(["git", "-C", str(workspace), "tag", "gen/0"], check=True)
 """
+    )
+    path.chmod(0o755)
+
+
+def _write_real_evolve(path: Path) -> None:
+    path.write_text(
+        "#!/usr/bin/env bash\n"
+        f"exec {shlex.quote(sys.executable)} -m evolve \"$@\"\n"
     )
     path.chmod(0o755)
 
@@ -230,6 +279,7 @@ def test_setup_renders_train_only_tau3_workspace_with_simulator(
 
     result = _run_setup(
         "ahe",
+        "miniswe",
         "tau3",
         "ahe-tau3",
         "25",
@@ -290,6 +340,150 @@ def test_setup_renders_train_only_tau3_workspace_with_simulator(
     }
 
 
+@pytest.mark.parametrize(
+    ("method", "surface", "editable_roots"),
+    [
+        ("ahe", ["target/**"], ["target"]),
+        (
+            "hyperagents",
+            ["target/**", "operators/**"],
+            ["target", "operators"],
+        ),
+    ],
+)
+def test_setup_renders_codex_target_contract(
+    tmp_path: Path,
+    method: str,
+    surface: list[str],
+    editable_roots: list[str],
+) -> None:
+    fake_evolve = tmp_path / "evolve"
+    _write_fake_evolve(fake_evolve)
+    dataset, manifest, _ = _tau3_fixture(tmp_path)
+    experiment_root = tmp_path / "experiments"
+
+    result = _run_setup(
+        method,
+        "codex",
+        "tau3",
+        f"{method}-codex-tau3",
+        "25",
+        env_overrides={
+            "EVOLVE_EXPERIMENT_ROOT": str(experiment_root),
+            "EVOLVE_CLI": str(fake_evolve),
+            "EVOLVE_PYTHON": sys.executable,
+            "FAKE_RECIPE_ROOT": str(ROOT / "recipes"),
+            "TAU3_DATASET": str(dataset),
+            "TAU3_MANIFEST": str(manifest),
+            "EVOLVE_TARGET_SEED": "external-miniswe-seed",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    workspace = experiment_root / "workspaces" / f"{method}-codex-tau3"
+    config = yaml.safe_load((workspace / "evolve.yaml").read_text())
+    evaluator = config["evaluator"]
+    meta = config["operators"]["meta_agent"]
+    eval_env = dict(
+        line.split("=", 1)
+        for line in (workspace / "evaluator" / "eval.env").read_text().splitlines()
+    )
+
+    assert config["target"] == {"seed": "builtin-codex"}
+    init_args = (workspace / "init.args").read_text().splitlines()
+    assert init_args[:3] == [
+        "init",
+        str(workspace),
+        "--recipe-path",
+    ]
+    assert Path(init_args[3]).name == "evolve.yaml"
+    assert init_args[4:] == [
+        "--dataset",
+        str(dataset),
+        "--seed",
+        "builtin-codex",
+    ]
+    assert (workspace / "target" / "seed.txt").read_text() == "builtin-codex\n"
+    assert config["surface"]["include"] == surface
+    assert evaluator["agent"] == "target.agent:HarborAgent"
+    assert evaluator["model"] == "gpt-5.4"
+    assert "candidate_runtime" not in evaluator
+    assert evaluator["agent_env"] == {}
+    assert meta["prompt_path"] == "target/prompt.md"
+    assert meta["skills_dir"] == "target/skills"
+    assert meta["editable_roots"] == editable_roots
+    assert "memory_dir" not in meta
+    assert "tools_dir" not in meta
+    assert (workspace / "evaluator" / "agent.kwargs").read_text() == (
+        "reasoning_effort=high\n"
+    )
+    assert eval_env["EVOLVE_HARBOR_CODEX_SUBSCRIPTION"] == "1"
+    assert eval_env["EVOLVE_HARBOR_MODEL"] == "gpt-5.4"
+    assert eval_env["EVOLVE_HARBOR_AGENT"] == "target.agent:HarborAgent"
+
+    if method == "ahe":
+        assert config["operators"]["select"]["variant"] == "ahe_latest"
+        assert config["operators"]["trace_analyzer"]["variant"] == "ahe"
+        assert config["operators"]["gate"]["variant"] == "ahe_artifact_valid"
+        assert config["operators"]["record"]["variant"] == "jsonl"
+        assert "validate" not in config["operators"]
+    else:
+        assert config["operators"]["select"]["variant"] == "score_child_prop"
+        assert config["operators"]["trace_analyzer"]["variant"] == "trace_browser"
+        assert config["operators"]["validate"]["variant"] == "hyperagents"
+        assert config["operators"]["gate"]["variant"] == "parent_eligible"
+        assert config["operators"]["record"]["variant"] == "hyperagents"
+
+
+@pytest.mark.parametrize(
+    ("method", "select_variant"),
+    [("ahe", "ahe_latest"), ("hyperagents", "score_child_prop")],
+)
+def test_codex_setup_initializes_builtin_profile_with_method_operators(
+    tmp_path: Path,
+    method: str,
+    select_variant: str,
+) -> None:
+    evolve = tmp_path / "evolve"
+    _write_real_evolve(evolve)
+    dataset, manifest, _ = _tb2_fixture(tmp_path)
+    experiment_root = tmp_path / "experiments"
+
+    result = _run_setup(
+        method,
+        "codex",
+        "terminal-bench-2",
+        f"{method}-codex-terminal-bench-2",
+        "25",
+        env_overrides={
+            "EVOLVE_EXPERIMENT_ROOT": str(experiment_root),
+            "EVOLVE_FRAMEWORK": str(ROOT),
+            "EVOLVE_CLI": str(evolve),
+            "EVOLVE_PYTHON": sys.executable,
+            "EVOLVE_RUNTIME_DIGEST": "sha256:test-runtime",
+            "EVOLVE_HOME": str(tmp_path / "evolve-home"),
+            "TB2_DATASET": str(dataset),
+            "TB2_MANIFEST": str(manifest),
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    workspace = experiment_root / "workspaces" / f"{method}-codex-terminal-bench-2"
+    config = yaml.safe_load((workspace / "evolve.yaml").read_text())
+    eval_env = dict(
+        line.split("=", 1)
+        for line in (workspace / "evaluator" / "eval.env").read_text().splitlines()
+    )
+
+    assert (workspace / "target" / "prompt.md").is_file()
+    assert config["target"] == {"seed": "builtin-codex"}
+    assert config["evaluator"]["agent"] == "target.agent:HarborAgent"
+    assert eval_env["EVOLVE_HARBOR_AGENT"] == "target.agent:HarborAgent"
+    assert f"source=library/select/{select_variant}.py" in (
+        workspace / "operators" / "select.py"
+    ).read_text()
+
+
 def test_setup_renders_terminal_bench_without_tau3_simulator(
     tmp_path: Path,
 ) -> None:
@@ -300,6 +494,7 @@ def test_setup_renders_terminal_bench_without_tau3_simulator(
 
     result = _run_setup(
         "hyperagents",
+        "miniswe",
         "terminal-bench-2",
         "hyperagents-terminal-bench-2",
         "25",
@@ -442,6 +637,7 @@ def test_smoke_config_selects_exact_train_subset_and_disables_anchor(
     root = tmp_path / "experiments"
     setup = _run_setup(
         "ahe",
+        "miniswe",
         "tau3",
         "ahe-tau3-smoke-5x3",
         "25",

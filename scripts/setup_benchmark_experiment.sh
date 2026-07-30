@@ -2,17 +2,26 @@
 set -euo pipefail
 
 usage() {
-  printf 'usage: %s {ahe|hyperagents} {tau3|terminal-bench-2} WORKSPACE_NAME [N_CONCURRENT] [--dry-run]\n' "$0" >&2
+  printf 'usage: %s {ahe|hyperagents} {miniswe|codex} {tau3|terminal-bench-2} WORKSPACE_NAME N_CONCURRENT [--dry-run]\n' "$0" >&2
 }
 
 method=${1:-}
-benchmark=${2:-}
-name=${3:-}
-n_concurrent=${4:-25}
-mode=${5:-}
+target=${2:-}
+benchmark=${3:-}
+name=${4:-}
+n_concurrent=${5:-}
+mode=${6:-}
 
 case "$method" in
   ahe|hyperagents) ;;
+  *)
+    usage
+    exit 2
+    ;;
+esac
+
+case "$target" in
+  miniswe|codex) ;;
   *)
     usage
     exit 2
@@ -75,6 +84,7 @@ fi
 workspace="$root/workspaces/$name"
 
 printf 'method=%s\n' "$method"
+printf 'target=%s\n' "$target"
 printf 'benchmark=%s\n' "$benchmark"
 printf 'workspace=%s\n' "$workspace"
 printf 'framework=%s\n' "$framework"
@@ -110,7 +120,30 @@ fi
 
 mkdir -p "$root/workspaces"
 init_args=(init "$workspace" --recipe "$method" --dataset "$dataset")
-if [[ -n "${EVOLVE_TARGET_SEED:-}" ]]; then
+if [[ "$target" == "codex" ]]; then
+  profile_dir=$(mktemp -d "${TMPDIR:-/tmp}/evolve-codex-profile.XXXXXX")
+  trap 'rm -rf "$profile_dir"' EXIT
+  script_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+  "$evolve_python" - "$script_root/recipes/$method/evolve.yaml" "$profile_dir/evolve.yaml" <<'PY'
+from pathlib import Path
+import sys
+
+import yaml
+
+
+source, destination = map(Path, sys.argv[1:])
+config = yaml.safe_load(source.read_text())
+config["target"] = {"seed": "builtin-codex"}
+evaluator = config["evaluator"]
+evaluator["agent"] = "target.agent:HarborAgent"
+evaluator["model"] = "gpt-5.4"
+evaluator.pop("candidate_runtime", None)
+evaluator["agent_env"] = {}
+destination.write_text(yaml.safe_dump(config, sort_keys=False))
+PY
+  init_args=(init "$workspace" --recipe-path "$profile_dir/evolve.yaml" --dataset "$dataset")
+  init_args+=(--seed builtin-codex)
+elif [[ -n "${EVOLVE_TARGET_SEED:-}" ]]; then
   init_args+=(--seed "$EVOLVE_TARGET_SEED")
 fi
 "$evolve_cli" "${init_args[@]}"
@@ -121,6 +154,7 @@ EVOLVE_SETUP_MANIFEST="$manifest" \
 EVOLVE_SETUP_BENCHMARK="$benchmark" \
 EVOLVE_SETUP_NAME="$name" \
 EVOLVE_SETUP_METHOD="$method" \
+EVOLVE_SETUP_TARGET="$target" \
 EVOLVE_SETUP_TRAIN_COUNT="$train_count" \
 EVOLVE_SETUP_GATE_COUNT="$gate_count" \
 EVOLVE_SETUP_SEALED_COUNT="$sealed_count" \
@@ -142,6 +176,7 @@ dataset = Path(os.environ["EVOLVE_SETUP_DATASET"]).resolve()
 manifest_path = Path(os.environ["EVOLVE_SETUP_MANIFEST"])
 benchmark = os.environ["EVOLVE_SETUP_BENCHMARK"]
 method = os.environ["EVOLVE_SETUP_METHOD"]
+target = os.environ["EVOLVE_SETUP_TARGET"]
 name = os.environ["EVOLVE_SETUP_NAME"]
 expected_counts = {
     "train": int(os.environ["EVOLVE_SETUP_TRAIN_COUNT"]),
@@ -265,6 +300,17 @@ evaluator["agent_env"] = {
     "MINISWE_ENV_TIMEOUT": "30",
     "MINISWE_MAX_OUTPUT_LIMIT": "10000",
 }
+if target == "codex":
+    config["target"] = {"seed": "builtin-codex"}
+    meta["prompt_path"] = "target/prompt.md"
+    meta["skills_dir"] = "target/skills"
+    meta.pop("memory_dir", None)
+    meta.pop("tools_dir", None)
+
+    evaluator["agent"] = "target.agent:HarborAgent"
+    evaluator["model"] = "gpt-5.4"
+    evaluator.pop("candidate_runtime", None)
+    evaluator["agent_env"] = {}
 config_path.write_text(yaml.safe_dump(config, sort_keys=False))
 
 evaluator_dir = workspace / "evaluator"
@@ -282,6 +328,12 @@ agent_env_path = evaluator_dir / "agent.env"
 agent_env_path.write_text(
     "".join(f"{key}={value}\n" for key, value in sorted(evaluator["agent_env"].items()))
 )
+
+agent_kwargs_path = evaluator_dir / "agent.kwargs"
+if target == "codex":
+    agent_kwargs_path.write_text("reasoning_effort=high\n")
+elif agent_kwargs_path.exists():
+    agent_kwargs_path.unlink()
 
 eval_env_path = evaluator_dir / "eval.env"
 eval_env = {}
@@ -301,6 +353,12 @@ eval_env.update(
         "EVOLVE_HARBOR_ANCHOR_TASK_FILE": "evaluator/tasks/sealed.txt",
     }
 )
+if target == "codex":
+    eval_env["EVOLVE_HARBOR_CODEX_SUBSCRIPTION"] = "1"
+    eval_env["EVOLVE_HARBOR_MODEL"] = "gpt-5.4"
+else:
+    eval_env.pop("EVOLVE_HARBOR_CODEX_SUBSCRIPTION", None)
+eval_env["EVOLVE_HARBOR_AGENT"] = evaluator["agent"]
 eval_env_path.write_text(
     "".join(f"{key}={value}\n" for key, value in sorted(eval_env.items()))
 )
