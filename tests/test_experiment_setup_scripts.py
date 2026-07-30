@@ -628,18 +628,31 @@ with open(os.environ["FAKE_EVOLVE_LOG"], "a") as handle:
     assert calls[1]["concurrency_override"] == "5"
 
 
-def test_smoke_config_selects_exact_train_subset_and_disables_anchor(
+def _write_smoke_manifest(
+    path: Path, benchmark: str, approved_tasks: list[str]
+) -> Path:
+    path.write_text(json.dumps({benchmark: approved_tasks}))
+    return path
+
+
+@pytest.mark.parametrize(
+    ("method", "trace_variant"),
+    [("ahe", "ahe"), ("hyperagents", "trace_browser")],
+)
+def test_smoke_config_uses_exact_manifest_and_preserves_codex_contract(
     tmp_path: Path,
+    method: str,
+    trace_variant: str,
 ) -> None:
     fake_evolve = tmp_path / "evolve"
     _write_fake_evolve(fake_evolve)
     dataset, manifest, original_tasks = _tau3_fixture(tmp_path)
     root = tmp_path / "experiments"
     setup = _run_setup(
-        "ahe",
-        "miniswe",
+        method,
+        "codex",
         "tau3",
-        "ahe-tau3-smoke-5x3",
+        f"{method}-codex-tau3-smoke",
         "25",
         env_overrides={
             "EVOLVE_EXPERIMENT_ROOT": str(root),
@@ -651,10 +664,26 @@ def test_smoke_config_selects_exact_train_subset_and_disables_anchor(
         },
     )
     assert setup.returncode == 0, setup.stderr
-    workspace = root / "workspaces" / "ahe-tau3-smoke-5x3"
+    workspace = root / "workspaces" / f"{method}-codex-tau3-smoke"
+    approved_tasks = [
+        "tau3-airline-000",
+        "tau3-banking_knowledge-task-001",
+        "tau3-retail-002",
+    ]
+    smoke_manifest = _write_smoke_manifest(
+        tmp_path / "smoke-tasks.json", "tau3", approved_tasks
+    )
 
     configured = subprocess.run(
-        ["bash", str(SMOKE), str(workspace), "5", "3", "5"],
+        [
+            "bash",
+            str(SMOKE),
+            str(workspace),
+            str(smoke_manifest),
+            "tau3",
+            "2",
+            "3",
+        ],
         cwd=ROOT,
         env={
             **os.environ,
@@ -669,25 +698,21 @@ def test_smoke_config_selects_exact_train_subset_and_disables_anchor(
     assert configured.returncode == 0, configured.stderr
     config = yaml.safe_load((workspace / "evolve.yaml").read_text())
     rendered = json.loads((workspace / "evaluator" / "splits.json").read_text())
-    selected = [
-        "tau3-airline-000",
-        "tau3-banking_knowledge-task-001",
-        "tau3-retail-002",
-        "tau3-telecom-case-003",
-        "tau3-airline-004",
-    ]
-    assert config["experiment"]["max_generations"] == 3
-    assert config["evaluator"]["tasks_per_round"] == 5
-    assert config["evaluator"]["task_names"] == selected
-    assert config["evaluator"]["agent_env"]["MINISWE_STEP_LIMIT"] == "12"
+    assert config["experiment"]["max_generations"] == 2
+    assert config["evaluator"]["task_names"] == approved_tasks
+    assert config["evaluator"]["tasks_per_round"] == 3
+    assert config["evaluator"]["n_concurrent"] == 3
     assert config["evaluator"]["anchor"]["final"] is False
-    assert config["operators"]["trace_analyzer"]["max_tasks"] == 1
-    assert config["operators"]["trace_analyzer"]["max_concurrent"] == 1
+    assert config["evaluator"]["agent_env"] == {}
+    assert config["operators"]["trace_analyzer"]["variant"] == trace_variant
+    if method == "ahe":
+        assert config["operators"]["trace_analyzer"]["max_tasks"] == 3
+        assert config["operators"]["trace_analyzer"]["max_concurrent"] == 3
     agent_env = dict(
         line.split("=", 1)
         for line in (workspace / "evaluator" / "agent.env").read_text().splitlines()
     )
-    assert agent_env["MINISWE_STEP_LIMIT"] == "12"
+    assert agent_env == {}
     eval_env = dict(
         line.split("=", 1)
         for line in (workspace / "evaluator" / "eval.env").read_text().splitlines()
@@ -696,9 +721,9 @@ def test_smoke_config_selects_exact_train_subset_and_disables_anchor(
     assert "--environment-build-timeout-multiplier" in (
         workspace / "evaluator" / "eval.sh"
     ).read_text()
-    assert rendered["tasks"]["train"] == selected
-    assert set(rendered["tasks"]["train"]).isdisjoint(rendered["tasks"]["gate"])
-    assert set(rendered["tasks"]["train"]).isdisjoint(rendered["tasks"]["sealed"])
+    assert rendered["tasks"]["train"] == approved_tasks
+    assert set(approved_tasks).isdisjoint(rendered["tasks"]["gate"])
+    assert set(approved_tasks).isdisjoint(rendered["tasks"]["sealed"])
     assert sorted(
         rendered["tasks"]["train"]
         + rendered["tasks"]["gate"]
@@ -710,4 +735,98 @@ def test_smoke_config_selects_exact_train_subset_and_disables_anchor(
     )
     assert (
         workspace / "evaluator" / "smoke-task-names.txt"
-    ).read_text().splitlines() == selected
+    ).read_text().splitlines() == approved_tasks
+
+
+@pytest.mark.parametrize(
+    ("benchmark", "approved_tasks", "expected_error"),
+    [
+        (
+            "tau3",
+            [
+                "tau3-airline-000",
+                "tau3-banking_knowledge-task-001",
+                "tau3-not-in-train",
+            ],
+            "outside frozen train",
+        ),
+        (
+            "tau3",
+            [
+                "tau3-airline-000",
+                "tau3-banking_knowledge-task-001",
+                "tau3-telecom-case-103",
+            ],
+            "outside frozen train",
+        ),
+        (
+            "terminal-bench-2",
+            [
+                "tau3-airline-000",
+                "tau3-banking_knowledge-task-001",
+                "tau3-retail-002",
+            ],
+            "KeyError",
+        ),
+        (
+            "tau3",
+            [
+                "tau3-airline-000",
+                "tau3-airline-000",
+                "tau3-retail-002",
+            ],
+            "exactly three unique tasks",
+        ),
+        (
+            "tau3",
+            ["tau3-airline-000", "tau3-banking_knowledge-task-001"],
+            "exactly three unique tasks",
+        ),
+    ],
+)
+def test_smoke_config_rejects_invalid_task_manifest(
+    tmp_path: Path,
+    benchmark: str,
+    approved_tasks: list[str],
+    expected_error: str,
+) -> None:
+    fake_evolve = tmp_path / "evolve"
+    _write_fake_evolve(fake_evolve)
+    dataset, manifest, _ = _tau3_fixture(tmp_path)
+    root = tmp_path / "experiments"
+    setup = _run_setup(
+        "ahe",
+        "codex",
+        "tau3",
+        "ahe-codex-tau3-invalid-smoke",
+        "25",
+        env_overrides={
+            "EVOLVE_EXPERIMENT_ROOT": str(root),
+            "EVOLVE_CLI": str(fake_evolve),
+            "EVOLVE_PYTHON": sys.executable,
+            "FAKE_RECIPE_ROOT": str(ROOT / "recipes"),
+            "TAU3_DATASET": str(dataset),
+            "TAU3_MANIFEST": str(manifest),
+        },
+    )
+    assert setup.returncode == 0, setup.stderr
+    workspace = root / "workspaces" / "ahe-codex-tau3-invalid-smoke"
+    smoke_manifest = _write_smoke_manifest(
+        tmp_path / "smoke-tasks.json", benchmark, approved_tasks
+    )
+
+    configured = subprocess.run(
+        ["bash", str(SMOKE), str(workspace), str(smoke_manifest), "tau3"],
+        cwd=ROOT,
+        env={
+            **os.environ,
+            "EVOLVE_CLI": str(fake_evolve),
+            "EVOLVE_PYTHON": sys.executable,
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert configured.returncode != 0
+    assert expected_error in configured.stderr
