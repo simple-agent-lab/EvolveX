@@ -48,6 +48,7 @@ _RETRY_EXCLUDE_EXCEPTIONS = (
 )
 _VISIBLE_RUN_INPUTS = ("rollout", "trace_analyzer", "feedback")
 _HIDDEN_WORKSPACE_ROOTS = {".git", ".venv", "runs", "artifacts", "archive.jsonl", _EVAL_RECEIPT, "evaluator"}
+_TASK_IDENTIFIER_CHARACTERS = rb"A-Za-z0-9_.-"
 _SECRET_ASSIGNMENT = re.compile(
     r"(?i)\b([a-z0-9_-]*(?:api[_-]?key|access[_-]?token|auth(?:orization)?|secret|password))\b"
     r"([\"']?)(\s*[:=]\s*)([^\s,;}]+)"
@@ -295,31 +296,45 @@ def _private_task_names(workspace: Path) -> tuple[str, ...]:
     return tuple(sorted(names))
 
 
-def _contains_private_task_name(path: Path, encoded_names: tuple[bytes, ...]) -> bool:
-    overlap = max((len(name) for name in encoded_names), default=1) - 1
+def _contains_private_task_name(
+    path: Path,
+    pattern: re.Pattern[bytes],
+    overlap: int,
+) -> bool:
     tail = b""
     try:
         with path.open("rb") as stream:
             while chunk := stream.read(1024 * 1024):
                 content = tail + chunk
-                if any(name in content for name in encoded_names):
+                match = pattern.search(content)
+                if match is not None and match.end() < len(content):
                     return True
-                tail = content[-overlap:] if overlap else b""
+                tail = content[-overlap:]
     except OSError:
         return False
-    return False
+    return pattern.search(tail) is not None
 
 
 def _assert_private_tasks_absent(workspace: Path, prompt: str, private_names: tuple[str, ...]) -> None:
     if not private_names:
         return
-    if any(name in prompt for name in private_names):
-        raise RuntimeError("Harbor meta-agent prompt contains a private gate/sealed task identifier")
     encoded_names = tuple(name.encode() for name in private_names)
+    pattern = re.compile(
+        rb"(?<!["
+        + _TASK_IDENTIFIER_CHARACTERS
+        + rb"])(?:"
+        + rb"|".join(re.escape(name) for name in encoded_names)
+        + rb")(?!["
+        + _TASK_IDENTIFIER_CHARACTERS
+        + rb"])"
+    )
+    if pattern.search(prompt.encode()):
+        raise RuntimeError("Harbor meta-agent prompt contains a private gate/sealed task identifier")
+    overlap = max(len(name) for name in encoded_names) + 1
     for path in workspace.rglob("*"):
         if not path.is_file() or ".git" in path.relative_to(workspace).parts:
             continue
-        if _contains_private_task_name(path, encoded_names):
+        if _contains_private_task_name(path, pattern, overlap):
             raise RuntimeError("Harbor meta-agent workspace contains a private gate/sealed task identifier")
 
 
