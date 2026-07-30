@@ -7,6 +7,7 @@ from pathlib import Path
 
 from evolve.config import scaffold_root
 from evolve.workspace import _eval_env, _eval_sh
+from harbor.agents.installed.codex import Codex
 
 
 def _write_executable(path: Path, text: str) -> None:
@@ -171,6 +172,10 @@ def test_harbor_evaluator_isolates_codex_subscription_from_ambient_api_credentia
     _write_executable(
         fake_bin / "harbor",
         "#!/bin/sh\n"
+        '[ "$OPENAI_API_KEY" = "ambient-api-key" ] || exit 81\n'
+        '[ "$OPENAI_BASE_URL" = "https://ambient-base.invalid/v1" ] || exit 82\n'
+        '[ "$OPENAI_API_BASE" = "https://ambient-api-base.invalid/v1" ] || exit 83\n'
+        'touch "$HARBOR_PARENT_ENV_MARKER"\n'
         "printf '%s\\n' \"$@\" > \"$HARBOR_ARGS_CAPTURE\"\n"
         "jobs_dir=\n"
         'while [ "$#" -gt 0 ]; do\n'
@@ -183,11 +188,13 @@ def test_harbor_evaluator_isolates_codex_subscription_from_ambient_api_credentia
     _write_executable(fake_bin / "docker", "#!/bin/sh\nexit 0\n")
 
     args_capture = tmp_path / "args"
+    parent_env_marker = tmp_path / "parent-env-retained"
     env = {
         **os.environ,
         "HOME": str(tmp_path / "home"),
         "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
         "HARBOR_ARGS_CAPTURE": str(args_capture),
+        "HARBOR_PARENT_ENV_MARKER": str(parent_env_marker),
         "EVOLVE_RUN_DIR": str(tmp_path / "run"),
         "EVOLVE_ATTEMPT_ID": "subscription-isolation",
         "EVOLVE_FRAMEWORK_PYTHON": sys.executable,
@@ -198,8 +205,9 @@ def test_harbor_evaluator_isolates_codex_subscription_from_ambient_api_credentia
         {
             "EVOLVE_HARBOR_CODEX_SUBSCRIPTION": "1",
             "CODEX_FORCE_AUTH_JSON": "1",
-            "OPENAI_API_KEY": "not-for-codex",
-            "OPENAI_BASE_URL": "http://model-bridge.invalid/v1",
+            "OPENAI_API_KEY": "ambient-api-key",
+            "OPENAI_BASE_URL": "https://ambient-base.invalid/v1",
+            "OPENAI_API_BASE": "https://ambient-api-base.invalid/v1",
             "HTTP_PROXY": "http://proxy.invalid:8118",
             "HTTPS_PROXY": "http://proxy.invalid:8118",
         }
@@ -221,11 +229,40 @@ def test_harbor_evaluator_isolates_codex_subscription_from_ambient_api_credentia
         for index, value in enumerate(args)
         if value == "--ae"
     ]
-    assert "OPENAI_API_KEY=not-for-codex" not in agent_environment
-    assert "OPENAI_BASE_URL=http://model-bridge.invalid/v1" not in agent_environment
+    openai_names = {"OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_API_BASE"}
+    assert [
+        entry
+        for entry in agent_environment
+        if entry.partition("=")[0] in openai_names
+    ] == [
+        "OPENAI_API_KEY=",
+        "OPENAI_BASE_URL=",
+        "OPENAI_API_BASE=",
+    ]
+    for ambient_value in (
+        "ambient-api-key",
+        "https://ambient-base.invalid/v1",
+        "https://ambient-api-base.invalid/v1",
+    ):
+        assert all(ambient_value not in entry for entry in agent_environment)
+    assert parent_env_marker.exists()
     assert "CODEX_FORCE_AUTH_JSON=1" in agent_environment
     assert "HTTP_PROXY=http://proxy.invalid:8118" in agent_environment
     assert "HTTPS_PROXY=http://proxy.invalid:8118" in agent_environment
+
+
+def test_installed_harbor_codex_empty_extra_env_shadows_parent_base_url(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://ambient-base.invalid/v1")
+
+    agent = Codex(
+        logs_dir=tmp_path,
+        extra_env={"OPENAI_BASE_URL": ""},
+    )
+
+    assert agent._get_env("OPENAI_BASE_URL") == ""
 
 
 def test_harbor_evaluator_prefers_explicit_agent_proxy_over_ambient_proxy(

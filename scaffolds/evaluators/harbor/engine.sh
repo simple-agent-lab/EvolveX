@@ -161,6 +161,9 @@ set -- "$@" --ae "EVOLVE_CANDIDATE_SOURCE=$PWD/target"
 set -- "$@" --mounts "$runtime_mounts"
 if [ "${EVOLVE_HARBOR_CODEX_SUBSCRIPTION:-0}" = "1" ]; then
   set -- "$@" --ae "CODEX_FORCE_AUTH_JSON=${CODEX_FORCE_AUTH_JSON:-1}"
+  for credential_name in OPENAI_API_KEY OPENAI_BASE_URL OPENAI_API_BASE; do
+    set -- "$@" --ae "$credential_name="
+  done
 else
   for credential_name in OPENAI_API_KEY OPENAI_BASE_URL OPENAI_API_BASE; do
     eval "credential_value=\${$credential_name-}"
