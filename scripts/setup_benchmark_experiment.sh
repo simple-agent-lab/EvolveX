@@ -128,8 +128,15 @@ if [[ -e "$workspace" ]]; then
   exit 1
 fi
 
-evolve_home=${EVOLVE_HOME:-${HOME}/.evolve}
-mirror="$evolve_home/mirrors/$name"
+mirror=$("$evolve_python" - "$name" <<'PY'
+import sys
+
+from evolve.archive import mirror_path
+
+
+print(mirror_path(sys.argv[1]).parent)
+PY
+)
 if [[ -e "$mirror" || -L "$mirror" ]]; then
   printf 'experiment mirror already exists: %s; resume it or recoverably quarantine the complete workspace/mirror pair\n' "$mirror" >&2
   exit 1

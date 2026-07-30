@@ -22,6 +22,7 @@ def _run_setup(
     env_overrides: dict[str, str] | None = None,
     runtime_digest: str | None = "sha256:test-runtime",
     runtime_contents: str | None = None,
+    cwd: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
     if runtime_digest is not None and "--dry-run" not in args:
         if not env_overrides or "EVOLVE_EXPERIMENT_ROOT" not in env_overrides:
@@ -44,7 +45,7 @@ def _run_setup(
         )
     return subprocess.run(
         ["bash", str(SETUP), *args],
-        cwd=ROOT,
+        cwd=cwd or ROOT,
         env=env,
         capture_output=True,
         text=True,
@@ -649,6 +650,50 @@ def test_setup_uses_runtime_home_and_succeeds_without_runtime_mirror(
 
     assert result.returncode == 0, result.stderr
     assert (experiment_root / "workspaces" / name).is_dir()
+
+
+def test_setup_rejects_relative_mirror_when_runtime_home_is_explicitly_empty(
+    tmp_path: Path,
+) -> None:
+    fake_evolve = tmp_path / "evolve"
+    _write_fake_evolve(fake_evolve)
+    dataset, manifest, _ = _tb2_fixture(tmp_path)
+    experiment_root = tmp_path / "experiments"
+    run_cwd = tmp_path / "run-cwd"
+    run_cwd.mkdir()
+    name = "explicit-empty-evolve-home"
+    workspace = experiment_root / "workspaces" / name
+    mirror = run_cwd / "mirrors" / name
+    mirror.mkdir(parents=True)
+    sentinel = mirror / "sentinel.bin"
+    sentinel_bytes = b"\x00relative-existing-mirror\xff\n"
+    sentinel.write_bytes(sentinel_bytes)
+
+    result = _run_setup(
+        "ahe",
+        "codex",
+        "terminal-bench-2",
+        name,
+        "25",
+        env_overrides={
+            "EVOLVE_EXPERIMENT_ROOT": str(experiment_root),
+            "EVOLVE_CLI": str(fake_evolve),
+            "EVOLVE_PYTHON": sys.executable,
+            "FAKE_RECIPE_ROOT": str(ROOT / "recipes"),
+            "EVOLVE_HOME": str(tmp_path / "parent-evolve-home"),
+            "TB2_DATASET": str(dataset),
+            "TB2_MANIFEST": str(manifest),
+        },
+        runtime_contents=(
+            "EVOLVE_RUNTIME_DIGEST=sha256:test-runtime\n"
+            "EVOLVE_HOME=\n"
+        ),
+        cwd=run_cwd,
+    )
+
+    assert result.returncode != 0
+    assert not workspace.exists()
+    assert sentinel.read_bytes() == sentinel_bytes
 
 
 def test_setup_renders_terminal_bench_without_tau3_simulator(
