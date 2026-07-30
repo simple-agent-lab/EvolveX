@@ -78,9 +78,50 @@ case "$workspace_concurrency" in
     ;;
 esac
 
-export CODEX_FORCE_AUTH_JSON=1
+codex_subscription=$(
+  sed -n 's/^EVOLVE_HARBOR_CODEX_SUBSCRIPTION=//p' \
+    "$workspace/evaluator/eval.env" 2>/dev/null | tail -1
+)
+if [[ "$codex_subscription" == "1" ]]; then
+  export CODEX_FORCE_AUTH_JSON=1
+  codex_auth_json=${CODEX_AUTH_JSON_PATH:-$HOME/.codex/auth.json}
+  if ! "$framework_python" - "$codex_auth_json" <<'PY'
+from pathlib import Path
+import stat
+import sys
+
+path = Path(sys.argv[1])
+try:
+    valid = (
+        path.is_file()
+        and path.stat().st_size > 0
+        and stat.S_IMODE(path.stat().st_mode) == 0o600
+    )
+except OSError:
+    valid = False
+raise SystemExit(0 if valid else 1)
+PY
+  then
+    printf 'Codex auth file is not a non-empty regular file with mode 0600\n' >&2
+    exit 1
+  fi
+
+  for proxy_name in http_proxy https_proxy HTTP_PROXY HTTPS_PROXY no_proxy NO_PROXY; do
+    if [[ -z "${!proxy_name:-}" ]]; then
+      printf 'missing required proxy environment variable: %s\n' "$proxy_name" >&2
+      exit 1
+    fi
+  done
+
+  printf 'codex_auth=present\n'
+  printf 'codex_proxies=present\n'
+fi
+
 export EVOLVE_FRAMEWORK_PYTHON="$framework_python"
 export EVOLVE_HARBOR_N_CONCURRENT_OVERRIDE="$workspace_concurrency"
 
 "$runner" verify "$workspace"
+if [[ "$codex_subscription" == "1" ]]; then
+  "$runner" candidate-smoke --full --checkout "$workspace"
+fi
 exec "$runner" run "$workspace" --max-generations "$max_generations"

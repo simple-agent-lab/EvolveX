@@ -534,6 +534,17 @@ def _run_workspace(
         "EVOLVE_FRAMEWORK": "/tmp/evolve-framework",
         **(env_overrides or {}),
     }
+    for name in (
+        "CODEX_AUTH_JSON_PATH",
+        "http_proxy",
+        "https_proxy",
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "no_proxy",
+        "NO_PROXY",
+    ):
+        env.pop(name, None)
+    env.update(env_overrides or {})
     return subprocess.run(
         ["bash", str(RUN), *args],
         cwd=ROOT,
@@ -596,6 +607,19 @@ with open(os.environ["FAKE_EVOLVE_LOG"], "a") as handle:
         "evolve_env": os.environ.get("TEST_EVOLVE_ENV"),
         "runtime_env": os.environ.get("TEST_RUNTIME_ENV"),
         "concurrency_override": os.environ.get("EVOLVE_HARBOR_N_CONCURRENT_OVERRIDE"),
+        "force_auth": os.environ.get("CODEX_FORCE_AUTH_JSON"),
+        "proxy_keys": sorted(
+            name
+            for name in (
+                "http_proxy",
+                "https_proxy",
+                "HTTP_PROXY",
+                "HTTPS_PROXY",
+                "no_proxy",
+                "NO_PROXY",
+            )
+            if os.environ.get(name)
+        ),
     }) + "\\n")
 """
     )
@@ -626,6 +650,165 @@ with open(os.environ["FAKE_EVOLVE_LOG"], "a") as handle:
     assert calls[1]["evolve_env"] == "loaded"
     assert calls[1]["runtime_env"] == "loaded"
     assert calls[1]["concurrency_override"] == "5"
+    assert calls[0]["force_auth"] is None
+    assert calls[1]["force_auth"] is None
+
+
+def _write_codex_run_fixture(
+    tmp_path: Path,
+    *,
+    auth_mode: int | None = 0o600,
+    missing_proxy: str | None = None,
+) -> tuple[Path, Path, Path, Path, str]:
+    root = tmp_path / "experiments"
+    workspace = root / "workspaces" / "codex-smoke"
+    workspace.joinpath("evaluator").mkdir(parents=True)
+    workspace.joinpath("evaluator", "eval.env").write_text(
+        "EVOLVE_HARBOR_CODEX_SUBSCRIPTION=1\n"
+        "EVOLVE_HARBOR_N_CONCURRENT=3\n"
+    )
+    root.joinpath("evolve.env").write_text("TEST_EVOLVE_ENV=loaded\n")
+    root.joinpath("runtime.env").write_text("TEST_RUNTIME_ENV=loaded\n")
+    proxy_values = {
+        "http_proxy": "http://lower-user:lower-secret@proxy.invalid:8080",
+        "https_proxy": "http://lower-user:lower-secret@proxy.invalid:8080",
+        "HTTP_PROXY": "http://upper-user:upper-secret@proxy.invalid:8080",
+        "HTTPS_PROXY": "http://upper-user:upper-secret@proxy.invalid:8080",
+        "no_proxy": "localhost,.internal.invalid",
+        "NO_PROXY": "localhost,.internal.invalid",
+    }
+    if missing_proxy is not None:
+        proxy_values.pop(missing_proxy)
+    root.joinpath("proxy.env").write_text(
+        "".join(f"{name}={value}\n" for name, value in proxy_values.items())
+    )
+    home = tmp_path / "home"
+    auth = home / ".codex" / "auth.json"
+    if auth_mode is not None:
+        auth.parent.mkdir(parents=True)
+        auth.write_text('{"tokens":{"access_token":"do-not-log-me"}}\n')
+        auth.chmod(auth_mode)
+    runner = tmp_path / "fake-evolve"
+    log = tmp_path / "calls.jsonl"
+    runner.write_text(
+        """#!/usr/bin/env python3
+import json
+import os
+import sys
+
+with open(os.environ["FAKE_EVOLVE_LOG"], "a") as handle:
+    handle.write(json.dumps({
+        "args": sys.argv[1:],
+        "force_auth": os.environ.get("CODEX_FORCE_AUTH_JSON"),
+        "proxy_keys": sorted(
+            name
+            for name in (
+                "http_proxy",
+                "https_proxy",
+                "HTTP_PROXY",
+                "HTTPS_PROXY",
+                "no_proxy",
+                "NO_PROXY",
+            )
+            if os.environ.get(name)
+        ),
+    }) + "\\n")
+"""
+    )
+    runner.chmod(0o755)
+    return root, workspace, home, runner, str(log)
+
+
+def test_run_codex_preflight_checks_auth_proxy_and_candidate_smoke(
+    tmp_path: Path,
+) -> None:
+    root, workspace, home, runner, log = _write_codex_run_fixture(tmp_path)
+
+    result = _run_workspace(
+        "codex-smoke",
+        "2",
+        env_overrides={
+            "EVOLVE_EXPERIMENT_ROOT": str(root),
+            "EVOLVE_CLI": str(runner),
+            "EVOLVE_PYTHON": sys.executable,
+            "HOME": str(home),
+            "FAKE_EVOLVE_LOG": log,
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    calls = [json.loads(line) for line in Path(log).read_text().splitlines()]
+    assert calls[0]["args"] == ["verify", str(workspace)]
+    assert calls[1]["args"] == [
+        "candidate-smoke",
+        "--full",
+        "--checkout",
+        str(workspace),
+    ]
+    assert calls[2]["args"] == [
+        "run",
+        str(workspace),
+        "--max-generations",
+        "2",
+    ]
+    assert calls[2]["force_auth"] == "1"
+    assert calls[2]["proxy_keys"] == [
+        "HTTPS_PROXY",
+        "HTTP_PROXY",
+        "NO_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "no_proxy",
+    ]
+    assert "lower-secret" not in result.stderr
+    assert "upper-secret" not in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("auth_mode", "missing_proxy", "expected_error"),
+    [
+        (None, None, "Codex auth file is not a non-empty regular file with mode 0600"),
+        (0o644, None, "Codex auth file is not a non-empty regular file with mode 0600"),
+        *[(0o600, name, name) for name in (
+            "http_proxy",
+            "https_proxy",
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+            "no_proxy",
+            "NO_PROXY",
+        )],
+    ],
+)
+def test_run_codex_preflight_rejects_missing_auth_or_proxy(
+    tmp_path: Path,
+    auth_mode: int | None,
+    missing_proxy: str | None,
+    expected_error: str,
+) -> None:
+    root, _, home, runner, log = _write_codex_run_fixture(
+        tmp_path,
+        auth_mode=auth_mode,
+        missing_proxy=missing_proxy,
+    )
+
+    result = _run_workspace(
+        "codex-smoke",
+        "2",
+        env_overrides={
+            "EVOLVE_EXPERIMENT_ROOT": str(root),
+            "EVOLVE_CLI": str(runner),
+            "EVOLVE_PYTHON": sys.executable,
+            "HOME": str(home),
+            "FAKE_EVOLVE_LOG": log,
+        },
+    )
+
+    assert result.returncode != 0
+    assert expected_error in result.stderr
+    assert "lower-secret" not in result.stderr
+    assert "upper-secret" not in result.stderr
+    assert "do-not-log-me" not in result.stderr
+    assert not Path(log).exists()
 
 
 def _write_smoke_manifest(
