@@ -18,8 +18,14 @@ SMOKE = ROOT / "scripts" / "configure_benchmark_smoke.sh"
 
 
 def _run_setup(
-    *args: str, env_overrides: dict[str, str] | None = None
+    *args: str,
+    env_overrides: dict[str, str] | None = None,
+    runtime_digest: str | None = "sha256:test-runtime",
+    runtime_contents: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
+    if runtime_digest is not None and "--dry-run" not in args:
+        if not env_overrides or "EVOLVE_EXPERIMENT_ROOT" not in env_overrides:
+            raise ValueError("non-dry-run setup tests require an isolated experiment root")
     env = {
         **os.environ,
         "EVOLVE_EXPERIMENT_ROOT": "/tmp/evolve-experiments",
@@ -30,6 +36,12 @@ def _run_setup(
         "TB2_MANIFEST": "/tmp/tb2-splits.json",
         **(env_overrides or {}),
     }
+    if runtime_digest is not None and "--dry-run" not in args:
+        experiment_root = Path(env["EVOLVE_EXPERIMENT_ROOT"])
+        experiment_root.mkdir(parents=True, exist_ok=True)
+        (experiment_root / "runtime.env").write_text(
+            runtime_contents or f"EVOLVE_RUNTIME_DIGEST={runtime_digest}\n"
+        )
     return subprocess.run(
         ["bash", str(SETUP), *args],
         cwd=ROOT,
@@ -120,14 +132,22 @@ def test_codex_dry_run_resolves_explicit_target_profile() -> None:
     )
 
 
-def test_setup_rejects_unsafe_name_and_nonpositive_concurrency() -> None:
+def test_setup_rejects_unsafe_name_and_nonpositive_concurrency(
+    tmp_path: Path,
+) -> None:
     unsafe_name = _run_setup(
         "ahe", "miniswe", "tau3", "../ahe-tau3", "25", "--dry-run"
     )
     zero_concurrency = _run_setup(
         "ahe", "miniswe", "tau3", "ahe-tau3", "0", "--dry-run"
     )
-    missing_concurrency = _run_setup("ahe", "miniswe", "tau3", "ahe-tau3")
+    missing_concurrency = _run_setup(
+        "ahe",
+        "miniswe",
+        "tau3",
+        "ahe-tau3",
+        env_overrides={"EVOLVE_EXPERIMENT_ROOT": str(tmp_path / "experiments")},
+    )
 
     assert unsafe_name.returncode == 2
     assert zero_concurrency.returncode == 2
@@ -197,11 +217,24 @@ subprocess.run(["git", "-C", str(workspace), "tag", "gen/0"], check=True)
     path.chmod(0o755)
 
 
-def _write_real_evolve(path: Path) -> None:
-    path.write_text(
-        "#!/usr/bin/env bash\n"
-        f"exec {shlex.quote(sys.executable)} -m evolve \"$@\"\n"
-    )
+def _write_real_evolve(path: Path, *, environment_log: Path | None = None) -> None:
+    if environment_log is None:
+        path.write_text(
+            "#!/usr/bin/env bash\n"
+            f"exec {shlex.quote(sys.executable)} -m evolve \"$@\"\n"
+        )
+    else:
+        path.write_text(
+            "#!/usr/bin/env python3\n"
+            "import json\n"
+            "import os\n"
+            "from pathlib import Path\n"
+            "import sys\n\n"
+            f"Path({str(environment_log)!r}).write_text(json.dumps({{\n"
+            '    "EVOLVE_RUNTIME_DIGEST": os.environ.get("EVOLVE_RUNTIME_DIGEST"),\n'
+            "}))\n"
+            "os.execv(sys.executable, [sys.executable, \"-m\", \"evolve\", *sys.argv[1:]])\n"
+        )
     path.chmod(0o755)
 
 
@@ -436,18 +469,34 @@ def test_setup_renders_codex_target_contract(
 
 
 @pytest.mark.parametrize(
-    ("method", "select_variant"),
-    [("ahe", "ahe_latest"), ("hyperagents", "score_child_prop")],
+    ("method", "select_variant", "runtime_contents"),
+    [
+        (
+            "ahe",
+            "ahe_latest",
+            "export EVOLVE_RUNTIME_DIGEST=sha256:runtime-digest-from-file\n",
+        ),
+        (
+            "hyperagents",
+            "score_child_prop",
+            'EVOLVE_RUNTIME_DIGEST="sha256:runtime-digest-from-file"\n',
+        ),
+    ],
 )
 def test_codex_setup_initializes_builtin_profile_with_method_operators(
     tmp_path: Path,
     method: str,
     select_variant: str,
+    runtime_contents: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     evolve = tmp_path / "evolve"
-    _write_real_evolve(evolve)
+    init_environment = tmp_path / "init-environment.json"
+    _write_real_evolve(evolve, environment_log=init_environment)
     dataset, manifest, _ = _tb2_fixture(tmp_path)
     experiment_root = tmp_path / "experiments"
+    runtime_digest = "sha256:runtime-digest-from-file"
+    monkeypatch.delenv("EVOLVE_RUNTIME_DIGEST", raising=False)
 
     result = _run_setup(
         method,
@@ -460,11 +509,12 @@ def test_codex_setup_initializes_builtin_profile_with_method_operators(
             "EVOLVE_FRAMEWORK": str(ROOT),
             "EVOLVE_CLI": str(evolve),
             "EVOLVE_PYTHON": sys.executable,
-            "EVOLVE_RUNTIME_DIGEST": "sha256:test-runtime",
             "EVOLVE_HOME": str(tmp_path / "evolve-home"),
             "TB2_DATASET": str(dataset),
             "TB2_MANIFEST": str(manifest),
         },
+        runtime_digest=runtime_digest,
+        runtime_contents=runtime_contents,
     )
 
     assert result.returncode == 0, result.stderr
@@ -482,6 +532,44 @@ def test_codex_setup_initializes_builtin_profile_with_method_operators(
     assert f"source=library/select/{select_variant}.py" in (
         workspace / "operators" / "select.py"
     ).read_text()
+    assert runtime_digest not in result.stdout
+    assert runtime_digest not in result.stderr
+    assert json.loads(init_environment.read_text()) == {
+        "EVOLVE_RUNTIME_DIGEST": runtime_digest,
+    }
+
+
+def test_setup_requires_runtime_env_before_creating_workspace(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    evolve = tmp_path / "evolve"
+    _write_real_evolve(evolve)
+    dataset, manifest, _ = _tb2_fixture(tmp_path)
+    experiment_root = tmp_path / "experiments"
+    workspace = experiment_root / "workspaces" / "missing-runtime-env"
+    monkeypatch.delenv("EVOLVE_RUNTIME_DIGEST", raising=False)
+
+    result = _run_setup(
+        "ahe",
+        "codex",
+        "terminal-bench-2",
+        "missing-runtime-env",
+        "25",
+        env_overrides={
+            "EVOLVE_EXPERIMENT_ROOT": str(experiment_root),
+            "EVOLVE_FRAMEWORK": str(ROOT),
+            "EVOLVE_CLI": str(evolve),
+            "EVOLVE_PYTHON": sys.executable,
+            "EVOLVE_HOME": str(tmp_path / "evolve-home"),
+            "TB2_DATASET": str(dataset),
+            "TB2_MANIFEST": str(manifest),
+        },
+        runtime_digest=None,
+    )
+
+    assert result.returncode != 0
+    assert not workspace.exists()
 
 
 def test_setup_renders_terminal_bench_without_tau3_simulator(

@@ -105,13 +105,19 @@ fi
 
 evolve_cli=${EVOLVE_CLI:-$framework/.venv/bin/evolve}
 evolve_python=${EVOLVE_PYTHON:-$framework/.venv/bin/python}
+runtime_env="$root/runtime.env"
 
-for required in "$evolve_cli" "$evolve_python" "$dataset" "$manifest"; do
+for required in "$evolve_cli" "$evolve_python" "$dataset" "$manifest" "$runtime_env"; do
   if [[ ! -e "$required" ]]; then
     printf 'missing required path: %s\n' "$required" >&2
     exit 1
   fi
 done
+
+if [[ ! -f "$runtime_env" ]]; then
+  printf 'missing required path: %s\n' "$runtime_env" >&2
+  exit 1
+fi
 
 if [[ -e "$workspace" ]]; then
   printf 'workspace already exists: %s\n' "$workspace" >&2
@@ -146,6 +152,9 @@ PY
 elif [[ -n "${EVOLVE_TARGET_SEED:-}" ]]; then
   init_args+=(--seed "$EVOLVE_TARGET_SEED")
 fi
+set -a
+. "$runtime_env"
+set +a
 "$evolve_cli" "${init_args[@]}"
 
 EVOLVE_SETUP_WORKSPACE="$workspace" \
