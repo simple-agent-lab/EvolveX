@@ -1124,6 +1124,36 @@ def test_harbor_bundle_rejects_private_task_identifiers(tmp_path: Path, leak_sou
         )
 
 
+def test_harbor_bundle_allows_private_name_prefix_in_training_identifier(tmp_path: Path) -> None:
+    checkout, run_dir = _checkout(tmp_path)
+    evaluator = checkout / "evaluator"
+    evaluator.mkdir()
+    (evaluator / "splits.json").write_text(
+        json.dumps(
+            {
+                "tasks": {
+                    "train": ["tau3-airline-11"],
+                    "gate": ["tau3-airline-1"],
+                    "sealed": [],
+                }
+            }
+        )
+    )
+    evidence = run_dir / "trace_analyzer" / "evidence" / "raw_traces.jsonl"
+    evidence.write_text('{"task_name":"tau3-airline-11"}\n')
+    runner = _harbor_runner_module()
+    surface = runner.load_surface_policy(checkout)
+
+    bundle = runner._prepare_bundle(
+        checkout,
+        _ctx(checkout, run_dir),
+        ["target"],
+        surface,
+        prompt="analyze tau3-airline-11",
+    )
+    shutil.rmtree(bundle.staging, ignore_errors=True)
+
+
 def test_harbor_bundle_exposes_gate_data_only_when_enabled(tmp_path: Path) -> None:
     checkout, run_dir = _checkout(tmp_path)
     evaluator = checkout / "evaluator"
