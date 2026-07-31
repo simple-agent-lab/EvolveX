@@ -52,11 +52,12 @@ research and controlled experimentation.
 ## Structure
 
 <p align="center">
-  <img src="docs/architecture.svg" alt="Evolve Framework architecture: experiment inputs are frozen into a generated workspace, a protected mechanism orchestrates the evolvable surface and operator loop, and evidence is retained as Git lineage, archive records, and run artifacts.">
+  <img src="docs/architecture.svg" alt="Evolve Framework architecture: a meta-agent outer loop evolves candidates across generations, while an inner worker-agent loop executes tasks through tools and environment observations. A protected control plane evaluates candidates and retains evidence.">
 </p>
 
-Recipes compose the loop and declare the mutable surface. The evaluator,
-mechanism runtime, and evidence stamps remain outside candidate control.
+The outer loop selects parents, learns from execution evidence, edits candidates,
+and records the next generation. Inside it, the worker agent executes tasks and
+returns trajectories. The evaluator, runtime, and evidence stamps stay protected.
 
 ## Quick Start
 
