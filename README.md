@@ -51,18 +51,12 @@ research and controlled experimentation.
 
 ## Structure
 
-```text
-recipe + seed + dataset
-          │
-          ▼
- generated workspace
-          │
-          ▼
-select → rollout → edit → evaluate → gate → record
-          │
-          ▼
-  Git tags + archive.jsonl + run artifacts
-```
+<p align="center">
+  <img src="docs/architecture.svg" alt="Evolve Framework architecture: experiment inputs are frozen into a generated workspace, a protected mechanism orchestrates the evolvable surface and operator loop, and evidence is retained as Git lineage, archive records, and run artifacts.">
+</p>
+
+Recipes compose the loop and declare the mutable surface. The evaluator,
+mechanism runtime, and evidence stamps remain outside candidate control.
 
 ## Quick Start
 

@@ -1,0 +1,144 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title description">
+  <title id="title">Evolve Framework architecture</title>
+  <desc id="description">Recipes, target seeds, and Harbor datasets are frozen into a generated workspace. The protected Evolve mechanism orchestrates a composable operator loop while keeping the evaluator and runtime outside the evolvable surface. Git tags, archive records, and run artifacts retain the evidence.</desc>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --text: #1f2328;
+      --muted: #59636e;
+      --line: #8c959f;
+      --surface: #f6f8fa;
+      --surface-strong: #ffffff;
+      --blue: #ddf4ff;
+      --blue-stroke: #54aeff;
+      --green: #dafbe1;
+      --green-stroke: #4ac26b;
+      --purple: #fbefff;
+      --purple-stroke: #c297ff;
+      --amber: #fff8c5;
+      --amber-stroke: #d4a72c;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --text: #f0f6fc;
+        --muted: #a7b1bb;
+        --line: #6e7681;
+        --surface: #161b22;
+        --surface-strong: #0d1117;
+        --blue: #0c2d4a;
+        --blue-stroke: #2f81f7;
+        --green: #163b26;
+        --green-stroke: #3fb950;
+        --purple: #2a1b3d;
+        --purple-stroke: #a371f7;
+        --amber: #3b2f0b;
+        --amber-stroke: #d29922;
+      }
+    }
+    text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: var(--text); }
+    .section-label { font-size: 15px; font-weight: 600; letter-spacing: 0.08em; fill: var(--muted); }
+    .title { font-size: 20px; font-weight: 600; }
+    .body { font-size: 15px; fill: var(--muted); }
+    .small { font-size: 13px; fill: var(--muted); }
+    .node-label { font-size: 15px; font-weight: 600; }
+    .surface { fill: var(--surface-strong); stroke: var(--line); stroke-width: 1.5; }
+    .input { fill: var(--blue); stroke: var(--blue-stroke); stroke-width: 1.5; }
+    .mutable { fill: var(--green); stroke: var(--green-stroke); stroke-width: 1.5; }
+    .protected { fill: var(--purple); stroke: var(--purple-stroke); stroke-width: 1.5; }
+    .evidence { fill: var(--amber); stroke: var(--amber-stroke); stroke-width: 1.5; }
+    .boundary { fill: var(--surface); stroke: var(--line); stroke-width: 1.5; stroke-dasharray: 7 6; }
+    .flow { fill: none; stroke: var(--line); stroke-width: 1.8; marker-end: url(#arrow); }
+    .branch { fill: none; stroke: var(--line); stroke-width: 1.5; }
+    .arrow-fill { fill: var(--line); }
+  </style>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" class="arrow-fill"/>
+    </marker>
+  </defs>
+
+  <text x="60" y="28" class="section-label">EXPERIMENT INPUTS</text>
+
+  <rect x="60" y="45" width="300" height="76" rx="12" class="input"/>
+  <text x="210" y="77" text-anchor="middle" class="title">Recipe</text>
+  <text x="210" y="101" text-anchor="middle" class="body">operators + mutable surface</text>
+
+  <rect x="450" y="45" width="300" height="76" rx="12" class="input"/>
+  <text x="600" y="77" text-anchor="middle" class="title">Target seed</text>
+  <text x="600" y="101" text-anchor="middle" class="body">agent, prompt, skills, or code</text>
+
+  <rect x="840" y="45" width="300" height="76" rx="12" class="input"/>
+  <text x="990" y="77" text-anchor="middle" class="title">Harbor dataset</text>
+  <text x="990" y="101" text-anchor="middle" class="body">train + gate + sealed tasks</text>
+
+  <rect x="40" y="150" width="1120" height="430" rx="18" class="boundary"/>
+  <rect x="60" y="137" width="282" height="28" rx="14" class="surface"/>
+  <text x="201" y="156" text-anchor="middle" class="section-label">EVOLVE MECHANISM · PROTECTED</text>
+
+  <path d="M 210 121 V 130 H 370 V 170 H 500 V 178" class="flow"/>
+  <path d="M 600 121 V 178" class="flow"/>
+  <path d="M 990 121 V 170 H 700 V 178" class="flow"/>
+
+  <rect x="410" y="180" width="380" height="70" rx="12" class="surface"/>
+  <text x="600" y="210" text-anchor="middle" class="title">Initialize and freeze</text>
+  <text x="600" y="233" text-anchor="middle" class="body">render config · lock runtime · snapshot evaluator</text>
+
+  <path d="M 600 250 V 276 H 325 V 294" class="flow"/>
+  <path d="M 600 250 V 276 H 875 V 294" class="flow"/>
+
+  <rect x="90" y="300" width="470" height="134" rx="14" class="mutable"/>
+  <text x="115" y="328" class="section-label">EVOLVABLE SURFACE</text>
+  <text x="115" y="361" class="title">Target</text>
+  <text x="115" y="385" class="body">agent code · prompt · skills · memory</text>
+  <text x="115" y="410" class="title">Recipe-selected operators</text>
+  <text x="535" y="428" text-anchor="end" class="small">only declared paths may change</text>
+
+  <rect x="640" y="300" width="470" height="134" rx="14" class="protected"/>
+  <text x="665" y="328" class="section-label">FROZEN RING</text>
+  <text x="665" y="361" class="title">Evaluator + .evolve runtime</text>
+  <text x="665" y="385" class="body">clean snapshots · task identity · score stamps</text>
+  <text x="665" y="410" class="title">Archive integrity</text>
+  <text x="1085" y="428" text-anchor="end" class="small">candidates cannot rewrite evidence</text>
+
+  <path d="M 325 434 V 458" class="flow"/>
+  <path d="M 875 434 V 458" class="flow"/>
+
+  <text x="60" y="478" class="section-label">COMPOSABLE EVOLUTION LOOP</text>
+
+  <rect x="60" y="493" width="128" height="54" rx="10" class="surface"/>
+  <text x="124" y="526" text-anchor="middle" class="node-label">Select</text>
+  <rect x="218" y="493" width="128" height="54" rx="10" class="surface"/>
+  <text x="282" y="526" text-anchor="middle" class="node-label">Rollout</text>
+  <rect x="376" y="493" width="128" height="54" rx="10" class="surface"/>
+  <text x="440" y="526" text-anchor="middle" class="node-label">Analyze</text>
+  <rect x="534" y="493" width="128" height="54" rx="10" class="mutable"/>
+  <text x="598" y="526" text-anchor="middle" class="node-label">Edit</text>
+  <rect x="692" y="493" width="128" height="54" rx="10" class="protected"/>
+  <text x="756" y="526" text-anchor="middle" class="node-label">Evaluate</text>
+  <rect x="850" y="493" width="128" height="54" rx="10" class="protected"/>
+  <text x="914" y="526" text-anchor="middle" class="node-label">Gate</text>
+  <rect x="1008" y="493" width="128" height="54" rx="10" class="evidence"/>
+  <text x="1072" y="526" text-anchor="middle" class="node-label">Record</text>
+
+  <path d="M 188 520 H 216" class="flow"/>
+  <path d="M 346 520 H 374" class="flow"/>
+  <path d="M 504 520 H 532" class="flow"/>
+  <path d="M 662 520 H 690" class="flow"/>
+  <path d="M 820 520 H 848" class="flow"/>
+  <path d="M 978 520 H 1006" class="flow"/>
+  <path d="M 1072 547 V 562 H 124 V 549" class="flow"/>
+
+  <path d="M 1072 562 V 608" class="flow"/>
+  <text x="60" y="620" class="section-label">EVIDENCE AND LINEAGE</text>
+
+  <rect x="60" y="638" width="300" height="58" rx="11" class="evidence"/>
+  <text x="210" y="673" text-anchor="middle" class="title">Git generation tags</text>
+  <rect x="450" y="638" width="300" height="58" rx="11" class="evidence"/>
+  <text x="600" y="673" text-anchor="middle" class="title">archive.jsonl</text>
+  <rect x="840" y="638" width="300" height="58" rx="11" class="evidence"/>
+  <text x="990" y="673" text-anchor="middle" class="title">Run artifacts and traces</text>
+
+  <path d="M 1072 608 H 210 V 636" class="flow"/>
+  <path d="M 600 608 V 636" class="flow"/>
+  <path d="M 1072 608 H 990 V 636" class="flow"/>
+</svg>
