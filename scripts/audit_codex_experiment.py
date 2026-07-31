@@ -445,11 +445,22 @@ def _trial_task_identity(config: dict[str, Any]) -> str | None:
     task = _mapping(config.get("task"))
     path = task.get("path")
     if isinstance(path, str) and path:
-        return Path(path).name or None
+        return path
     name = task.get("name")
     if isinstance(name, str) and name:
-        return name.rsplit("/", 1)[-1] or None
+        return name
     return None
+
+
+def _normalize_task_identity(identity: str, approved: list[str]) -> str | None:
+    matches = {
+        approved_identity
+        for approved_identity in approved
+        if identity == approved_identity
+        or identity.endswith(f"/{approved_identity}")
+        or identity.endswith(f"__{approved_identity}")
+    }
+    return next(iter(matches)) if len(matches) == 1 else None
 
 
 def _is_completed_scoreable_trial(trial: dict[str, Any]) -> bool:
@@ -480,7 +491,9 @@ def _canonical_task_vector_identities(
         errors.append(f"generation {generation} canonical task_vector tasks must be a mapping")
         return []
 
-    identities: list[str] = []
+    raw_identities: list[str] = []
+    normalized_identities: list[str] = []
+    comparison_identities: list[str] = []
     for task_name, task in tasks.items():
         if not isinstance(task_name, str) or not task_name:
             errors.append(f"generation {generation} canonical task_vector has an invalid task name")
@@ -490,7 +503,11 @@ def _canonical_task_vector_identities(
             continue
         seen_numbers: set[int] = set()
         for trial in task["trials"]:
-            identities.append(task_name)
+            raw_identities.append(task_name)
+            normalized = _normalize_task_identity(task_name, approved)
+            comparison_identities.append(normalized if normalized is not None else task_name)
+            if normalized is not None:
+                normalized_identities.append(normalized)
             if not isinstance(trial, dict):
                 errors.append(f"generation {generation} canonical task_vector has an invalid trial for {task_name}")
                 continue
@@ -512,13 +529,17 @@ def _canonical_task_vector_identities(
                     "must be completed and scoreable"
                 )
 
-    if len(identities) != 3:
+    if len(raw_identities) != 3:
         errors.append(f"generation {generation} canonical task_vector must contain exactly three trial results")
-    if len(set(identities)) != 3 or set(identities) != set(approved):
+    if (
+        len(normalized_identities) != 3
+        or len(set(normalized_identities)) != 3
+        or set(normalized_identities) != set(approved)
+    ):
         errors.append(
             f"generation {generation} canonical task_vector must contain exactly one trial for each approved task"
         )
-    return identities
+    return comparison_identities
 
 
 def audit_smoke(workspace: Path, through_generation: int) -> dict[str, object]:
@@ -634,12 +655,19 @@ def audit_smoke(workspace: Path, through_generation: int) -> dict[str, object]:
         if event.get("expected_trials") != 3 or isinstance(event.get("expected_trials"), bool):
             errors.append(f"generation {generation} canonical expected_trials must be 3")
         members = event.get("task_set_members")
+        normalized_members = (
+            [_normalize_task_identity(member, approved) for member in members]
+            if isinstance(members, list)
+            and all(isinstance(member, str) and member for member in members)
+            else []
+        )
         if (
             not isinstance(members, list)
             or len(members) != 3
             or any(not isinstance(member, str) or not member for member in members)
-            or len(set(members)) != 3
-            or set(members) != set(approved)
+            or any(member is None for member in normalized_members)
+            or len(set(normalized_members)) != 3
+            or set(normalized_members) != set(approved)
         ):
             errors.append(
                 f"generation {generation} canonical task_set_members must be exactly the three approved train tasks"
@@ -713,21 +741,32 @@ def audit_smoke(workspace: Path, through_generation: int) -> dict[str, object]:
         if len(configs) != 3:
             errors.append(f"generation {generation} must have exactly three persisted Harbor trials")
             persisted_reasoning_ok = False
-        task_identities: list[str] = []
+        raw_task_identities: list[str] = []
+        normalized_task_identities: list[str] = []
+        comparison_task_identities: list[str] = []
         for path, value in configs:
             task_identity = _trial_task_identity(value)
             if task_identity is not None:
-                task_identities.append(task_identity)
+                raw_task_identities.append(task_identity)
+                normalized = _normalize_task_identity(task_identity, approved)
+                comparison_task_identities.append(normalized if normalized is not None else task_identity)
+                if normalized is not None:
+                    normalized_task_identities.append(normalized)
             kwargs = _mapping(_mapping(value.get("agent")).get("kwargs"))
             if kwargs.get("reasoning_effort") != "high":
                 errors.append(f"canonical persisted Harbor trial config must use reasoning_effort=high: {path}")
                 persisted_reasoning_ok = False
-        if len(task_identities) != 3 or len(set(task_identities)) != 3 or set(task_identities) != set(approved):
+        if (
+            len(raw_task_identities) != 3
+            or len(normalized_task_identities) != 3
+            or len(set(normalized_task_identities)) != 3
+            or set(normalized_task_identities) != set(approved)
+        ):
             errors.append(
                 f"generation {generation} persisted Harbor trials must have exactly the approved task identities"
             )
             persisted_reasoning_ok = False
-        if sorted(task_identities) != sorted(vector_task_identities.get(generation, [])):
+        if sorted(comparison_task_identities) != sorted(vector_task_identities.get(generation, [])):
             errors.append(
                 f"generation {generation} persisted Harbor task identities must match task_vector task identities"
             )

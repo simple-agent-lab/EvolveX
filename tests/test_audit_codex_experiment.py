@@ -359,10 +359,15 @@ def _write_trial_config(
     )
 
 
-def _smoke_workspace(tmp_path: Path) -> Path:
+def _smoke_workspace(
+    tmp_path: Path,
+    *,
+    train: list[str] | None = None,
+) -> Path:
+    train = train or APPROVED_TASKS
     workspace = _prepared_workspace(
         tmp_path,
-        train=APPROVED_TASKS,
+        train=train,
         anchor_final=False,
     )
     target = workspace / "target"
@@ -400,7 +405,7 @@ def _smoke_workspace(tmp_path: Path) -> Path:
                 "status": "complete",
                 "selection_eligible": True,
                 "expected_trials": 3,
-                "task_set_members": APPROVED_TASKS,
+                "task_set_members": train,
                 "task_vector": {
                     "schema_version": 1,
                     "tasks": {
@@ -414,12 +419,12 @@ def _smoke_workspace(tmp_path: Path) -> Path:
                                 }
                             ]
                         }
-                        for task in APPROVED_TASKS
+                        for task in train
                     },
                 },
             }
         )
-        for task in APPROVED_TASKS:
+        for task in train:
             _write_trial_config(
                 workspace,
                 generation,
@@ -435,6 +440,30 @@ def _rewrite_events(workspace: Path, transform) -> None:
     events = [json.loads(line) for line in archive.read_text().splitlines() if line.strip()]
     transformed = transform(events)
     archive.write_text("".join(json.dumps(event, sort_keys=True) + "\n" for event in transformed))
+
+
+def _rewrite_observed_task_identities(
+    workspace: Path,
+    *,
+    approved: list[str],
+    observed: list[str],
+) -> None:
+    replacements = dict(zip(approved, observed, strict=True))
+
+    def replace_event_identities(events):
+        for event in events:
+            event["task_set_members"] = [replacements[task] for task in event["task_set_members"]]
+            event["task_vector"]["tasks"] = {
+                replacements[task]: result for task, result in event["task_vector"]["tasks"].items()
+            }
+        return events
+
+    _rewrite_events(workspace, replace_event_identities)
+    for config_path in (workspace / "runs" / "evaluations").rglob("config.json"):
+        config = json.loads(config_path.read_text())
+        short_identity = Path(config["task"]["path"]).name
+        config["task"] = {"name": replacements[short_identity]}
+        config_path.write_text(json.dumps(config, indent=2, sort_keys=True) + "\n")
 
 
 def test_smoke_lineage_through_generation_passes(tmp_path: Path) -> None:
@@ -456,6 +485,116 @@ def test_smoke_lineage_through_generation_passes(tmp_path: Path) -> None:
     assert report["lineage"]["surface_violations"] == []
     assert report["lineage"]["privacy_leaks"] == []
     assert report["reasoning"] == {"reasoning_effort": "high"}
+
+
+@pytest.mark.parametrize("separator", ["/", "__"])
+def test_smoke_accepts_dataset_qualified_task_identities(
+    tmp_path: Path,
+    separator: str,
+) -> None:
+    workspace = _smoke_workspace(tmp_path)
+    observed = [f"public-benchmark{separator}{task}" for task in APPROVED_TASKS]
+    _rewrite_observed_task_identities(
+        workspace,
+        approved=APPROVED_TASKS,
+        observed=observed,
+    )
+
+    result, report = _run_audit(
+        workspace,
+        "smoke",
+        "--through-generation",
+        "2",
+    )
+
+    assert result.returncode == 0, report["errors"]
+    assert report["ok"] is True
+    assert report["errors"] == []
+    assert report["tasks"]["train_names"] == APPROVED_TASKS
+    assert report["lineage"]["harbor_config_count"] == 9
+
+
+@pytest.mark.parametrize(
+    "unapproved_identity",
+    [
+        "other-dataset/not-approved",
+        "other-dataset/prefix-train-alpha",
+    ],
+    ids=["unrelated", "misleading-suffix"],
+)
+def test_smoke_rejects_unapproved_qualified_task_identities(
+    tmp_path: Path,
+    unapproved_identity: str,
+) -> None:
+    workspace = _smoke_workspace(tmp_path)
+    observed = [
+        unapproved_identity,
+        "public-benchmark/train-beta",
+        "public-benchmark__train-gamma",
+    ]
+    _rewrite_observed_task_identities(
+        workspace,
+        approved=APPROVED_TASKS,
+        observed=observed,
+    )
+
+    _assert_failure(
+        workspace,
+        "smoke",
+        "--through-generation",
+        "2",
+        contains="approved task",
+    )
+
+
+@pytest.mark.parametrize(
+    "members",
+    [
+        ["dataset/train-alpha", "dataset__train-alpha", "dataset/train-beta"],
+        [
+            "dataset/train-alpha",
+            "dataset/train-beta",
+            "dataset/train-gamma",
+            "dataset/extra-task",
+        ],
+        ["dataset/train-alpha", "dataset/train-beta"],
+    ],
+    ids=["duplicate", "extra", "missing"],
+)
+def test_smoke_rejects_non_bijective_qualified_task_members(
+    tmp_path: Path,
+    members: list[str],
+) -> None:
+    workspace = _smoke_workspace(tmp_path)
+
+    def change(events):
+        events[1]["task_set_members"] = members
+        return events
+
+    _rewrite_events(workspace, change)
+
+    _assert_failure(
+        workspace,
+        "smoke",
+        "--through-generation",
+        "2",
+        contains="task_set_members",
+    )
+
+
+def test_smoke_rejects_ambiguous_qualified_task_identity(
+    tmp_path: Path,
+) -> None:
+    overlapping_approved = ["alpha", "dataset__alpha", "gamma"]
+    workspace = _smoke_workspace(tmp_path, train=overlapping_approved)
+
+    _assert_failure(
+        workspace,
+        "smoke",
+        "--through-generation",
+        "2",
+        contains="approved task",
+    )
 
 
 def test_smoke_accepts_real_genesis_evaluation_for_generation_zero(
