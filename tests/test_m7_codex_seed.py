@@ -71,6 +71,26 @@ def _load_target_agent(path: Path):
     return module
 
 
+def _write_candidate_target(target: Path, *, model: str) -> Path:
+    target.mkdir(parents=True)
+    (target / "prompt.md").write_text(f"Prompt for {model}.\n")
+    (target / "codex.toml").write_text(
+        f"""[codex]
+model = "{model}"
+
+[skills]
+enabled = true
+
+[compaction]
+override_defaults = false
+"""
+    )
+    skills = target / "skills"
+    skills.mkdir()
+    (skills / "SKILL.md").write_text(f"Skill for {model}.\n")
+    return skills
+
+
 def test_builtin_codex_wrapper_injects_skills_and_opt_in_compaction(tmp_path: Path, monkeypatch) -> None:
     workspace = tmp_path / "experiment"
     result = run_evolve(
@@ -179,3 +199,68 @@ override_defaults = false
     disabled_environment = RecordingEnvironment()
     asyncio.run(disabled_agent.setup(disabled_environment))
     assert disabled_environment.uploads == []
+
+
+@pytest.mark.parametrize("extra_env", [{}, {"EVOLVE_CANDIDATE_SOURCE": ""}])
+def test_builtin_codex_wrapper_does_not_inherit_ambient_candidate_source(
+    tmp_path: Path,
+    monkeypatch,
+    extra_env: dict[str, str],
+) -> None:
+    ambient_target = tmp_path / "ambient" / "target"
+    _write_candidate_target(ambient_target, model="ambient-model")
+    monkeypatch.setenv("EVOLVE_CANDIDATE_SOURCE", str(ambient_target))
+    _install_fake_harbor(monkeypatch)
+    module = _load_target_agent(Path(__file__).resolve().parents[1] / "seeds" / "codex" / "agent.py")
+
+    agent = module.HarborAgent(logs_dir=tmp_path / "logs", extra_env=extra_env)
+
+    assert agent.model_name == "gpt-5.4"
+    assert agent.kwargs["prompt_template_path"] == module.MODULE_ROOT / "prompt.md"
+
+
+@pytest.mark.parametrize(
+    "extra_env",
+    ["EVOLVE_CANDIDATE_SOURCE=/tmp/not-a-mapping", {"EVOLVE_CANDIDATE_SOURCE": 42}],
+)
+def test_builtin_codex_wrapper_rejects_malformed_candidate_environment(
+    tmp_path: Path,
+    monkeypatch,
+    extra_env: object,
+) -> None:
+    ambient_target = tmp_path / "ambient" / "target"
+    _write_candidate_target(ambient_target, model="ambient-model")
+    monkeypatch.setenv("EVOLVE_CANDIDATE_SOURCE", str(ambient_target))
+    _install_fake_harbor(monkeypatch)
+    module = _load_target_agent(Path(__file__).resolve().parents[1] / "seeds" / "codex" / "agent.py")
+
+    assert module._target_root(extra_env) == module.MODULE_ROOT
+
+
+def test_builtin_codex_wrapper_isolates_candidate_root_per_instance(tmp_path: Path, monkeypatch) -> None:
+    first_target = tmp_path / "first" / "target"
+    first_skills = _write_candidate_target(first_target, model="first-model")
+    second_target = tmp_path / "second" / "target"
+    second_skills = _write_candidate_target(second_target, model="second-model")
+    _install_fake_harbor(monkeypatch)
+    module = _load_target_agent(Path(__file__).resolve().parents[1] / "seeds" / "codex" / "agent.py")
+
+    first = module.HarborAgent(
+        logs_dir=tmp_path / "first-logs",
+        extra_env={"EVOLVE_CANDIDATE_SOURCE": str(first_target)},
+    )
+    second = module.HarborAgent(
+        logs_dir=tmp_path / "second-logs",
+        extra_env={"EVOLVE_CANDIDATE_SOURCE": str(second_target)},
+    )
+
+    assert first.model_name == "first-model"
+    assert first.kwargs["prompt_template_path"] == first_target / "prompt.md"
+    assert second.model_name == "second-model"
+    assert second.kwargs["prompt_template_path"] == second_target / "prompt.md"
+    first_environment = RecordingEnvironment()
+    second_environment = RecordingEnvironment()
+    asyncio.run(first.setup(first_environment))
+    asyncio.run(second.setup(second_environment))
+    assert first_environment.uploads == [(first_skills, "/tmp/evolve-target-skills")]
+    assert second_environment.uploads == [(second_skills, "/tmp/evolve-target-skills")]

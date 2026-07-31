@@ -17,11 +17,12 @@ REMOTE_SKILLS_DIR = "/tmp/evolve-target-skills"
 
 
 def _target_root(extra_env: object) -> Path:
-    if isinstance(extra_env, Mapping) and "EVOLVE_CANDIDATE_SOURCE" in extra_env:
-        candidate_source = extra_env["EVOLVE_CANDIDATE_SOURCE"]
-    else:
-        candidate_source = os.environ.get("EVOLVE_CANDIDATE_SOURCE")
-    return Path(candidate_source).expanduser().resolve() if candidate_source else MODULE_ROOT
+    if not isinstance(extra_env, Mapping):
+        return MODULE_ROOT
+    candidate_source = extra_env.get("EVOLVE_CANDIDATE_SOURCE")
+    if not isinstance(candidate_source, str) or not candidate_source:
+        return MODULE_ROOT
+    return Path(candidate_source).expanduser().resolve()
 
 
 def _settings(target_root: Path) -> dict[str, Any]:
