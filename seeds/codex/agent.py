@@ -17,11 +17,13 @@ REMOTE_SKILLS_DIR = "/tmp/evolve-target-skills"
 
 
 def _target_root(extra_env: object) -> Path:
-    if not isinstance(extra_env, Mapping):
+    if not isinstance(extra_env, Mapping) or "EVOLVE_CANDIDATE_SOURCE" not in extra_env:
         return MODULE_ROOT
-    candidate_source = extra_env.get("EVOLVE_CANDIDATE_SOURCE")
-    if not isinstance(candidate_source, str) or not candidate_source:
+    candidate_source = extra_env["EVOLVE_CANDIDATE_SOURCE"]
+    if candidate_source == "":
         return MODULE_ROOT
+    if not isinstance(candidate_source, str):
+        raise TypeError("EVOLVE_CANDIDATE_SOURCE must be a string")
     return Path(candidate_source).expanduser().resolve()
 
 

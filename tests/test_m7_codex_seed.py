@@ -219,14 +219,9 @@ def test_builtin_codex_wrapper_does_not_inherit_ambient_candidate_source(
     assert agent.kwargs["prompt_template_path"] == module.MODULE_ROOT / "prompt.md"
 
 
-@pytest.mark.parametrize(
-    "extra_env",
-    ["EVOLVE_CANDIDATE_SOURCE=/tmp/not-a-mapping", {"EVOLVE_CANDIDATE_SOURCE": 42}],
-)
 def test_builtin_codex_wrapper_rejects_malformed_candidate_environment(
     tmp_path: Path,
     monkeypatch,
-    extra_env: object,
 ) -> None:
     ambient_target = tmp_path / "ambient" / "target"
     _write_candidate_target(ambient_target, model="ambient-model")
@@ -234,7 +229,25 @@ def test_builtin_codex_wrapper_rejects_malformed_candidate_environment(
     _install_fake_harbor(monkeypatch)
     module = _load_target_agent(Path(__file__).resolve().parents[1] / "seeds" / "codex" / "agent.py")
 
-    assert module._target_root(extra_env) == module.MODULE_ROOT
+    assert module._target_root("EVOLVE_CANDIDATE_SOURCE=/tmp/not-a-mapping") == module.MODULE_ROOT
+
+
+def test_builtin_codex_wrapper_rejects_non_string_candidate_before_reading_settings(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    original_target = tmp_path / "original" / "target"
+    original_target.mkdir(parents=True)
+    source_agent = Path(__file__).resolve().parents[1] / "seeds" / "codex" / "agent.py"
+    (original_target / "agent.py").write_text(source_agent.read_text())
+    _install_fake_harbor(monkeypatch)
+    module = _load_target_agent(original_target / "agent.py")
+
+    with pytest.raises(TypeError, match="EVOLVE_CANDIDATE_SOURCE must be a string"):
+        module.HarborAgent(
+            logs_dir=tmp_path / "logs",
+            extra_env={"EVOLVE_CANDIDATE_SOURCE": 42},
+        )
 
 
 def test_builtin_codex_wrapper_isolates_candidate_root_per_instance(tmp_path: Path, monkeypatch) -> None:
