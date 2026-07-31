@@ -1,22 +1,15 @@
 <h1 align="center">Evolve Framework</h1>
 
-
 <p align="center">
-  <strong>Building the agentic evolving lifecycle all in one.</strong>
-</p>
-
-
-
-<p align="center">
-  <strong>English</strong> · <a href="README.zh-CN.md">简体中文</a>
+  <strong>Traceable, evaluator-driven evolution for AI agents.</strong>
 </p>
 
 <p align="center">
-  <a href="https://github.com/simple-agent-lab/simple-agent-lab/actions/workflows/ci.yml">
-    <img alt="CI" src="https://github.com/simple-agent-lab/simple-agent-lab/actions/workflows/ci.yml/badge.svg">
+  <a href="https://github.com/simple-agent-lab/simple-evolve-agent/actions/workflows/test.yml">
+    <img alt="Tests" src="https://github.com/simple-agent-lab/simple-evolve-agent/actions/workflows/test.yml/badge.svg">
   </a>
   <a href="https://www.python.org/">
-    <img alt="Python 3.10+" src="https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&amp;logoColor=white">
+    <img alt="Python 3.12+" src="https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&amp;logoColor=white">
   </a>
   <a href="LICENSE">
     <img alt="Apache-2.0 License" src="https://img.shields.io/badge/License-Apache--2.0-blue.svg">
@@ -24,429 +17,159 @@
 </p>
 
 <p align="center">
- <a href="#overview">Overview</a> ·
-  <a href="#hightlightd">Highlight features</a> ·
-  <a href="#demo">Live Demo</a> ·
-  <a href="#structure">Structure</a> ·
-  <a href="#results">Results</a> ·
+  <a href="#overview">Overview</a> ·
+  <a href="#features">Features</a> ·
   <a href="#quick-start">Quick Start</a> ·
+  <a href="#concepts">Concepts</a> ·
+  <a href="#recipes">Recipes</a> ·
+  <a href="#result">Result</a> ·
   <a href="#documentation">Documentation</a>
 </p>
 
 ## Overview
-Evolve lets researchers run experiments in the style of DGM, AHE,
-HyperAgents, autoresearch, and meta-agent loops without rebuilding the
-same mechanism for snapshots, sandboxed evaluation, provenance, and
-honesty checks each time.
 
-The project is currently a working milestone prototype of the mechanism
-CLI. It is intentionally small and file-based: git tags are snapshots,
-`archive.jsonl` is the population memory, operator scripts live in the
-generated workspace, and the installed `evolve` CLI enforces the trust
-boundaries.
+Evolve is a file-based framework for running agent-evolution experiments without
+rebuilding the mechanics for candidate snapshots, evaluation, lineage, and
+reporting. It provides composable recipes inspired by systems such as A-Evolve,
+AHE, GEPA, and HyperAgents.
 
+Each experiment is a separate Git repository. Generation tags identify
+candidates, `archive.jsonl` records outcomes, and the evaluator stays outside the
+candidate's mutable surface. The project is an active prototype intended for
+research and controlled experimentation.
 
+## Features
 
-## Highlight Features
-
-- **All in One Platform**: State-of-art evolving algorithms integration and abstraction for LLM agents through operator composition and mutation in one unified platform. 
-- **Crafting Extensibility**: Accustom to craft new or reform existing operators to forge your own evolution loop.
-- **Minimal Base for Custimizaiton Evolution**: A minimum seed agent with fundamental evolving operators and feedback loop with strong tracebility and observability. It meets the needs of lightweight and flexible customization for various real-world tasks and scenarios like coding, research,business workflows.
-- **Plug-and-play Compatibility**: Easily integrate OpenAI, Claude, Deepseek, Qwen or other popular models and well-acknowledged agents like ClaudeCode, Codex，etc. 
-- **Hiearchical Observability**: Providing observability from execution trace to decision intelligence to keep each edit verifible and revertable with measurable resource and time. The design ensures that the evolution always has a autonomous yet controlled progress.
-
-## Live Demo
-
-**Application 1: Evolving for a mini-research agent optimization**
-
-
-**Application 2: Evolving for a personal assistant agent scenario**
-
+- **Composable loops:** select, rollout, trace analysis, editing, validation,
+  gating, and recording are independent operators.
+- **Reproducible workspaces:** generated projects include a locked Python runtime,
+  frozen evaluator configuration, and vendored framework mechanism.
+- **Controlled self-modification:** each recipe declares exactly which target and
+  operator paths may evolve.
+- **Traceable outcomes:** Git lineage, evaluation artifacts, and stamped archive
+  records connect every candidate to its evidence.
 
 ## Structure
 
-(note: illustration for a typical evolving agent and other components for observability, auditibility, etc.)
-
-
-## Result 
-
+```text
+recipe + seed + dataset
+          │
+          ▼
+ generated workspace
+          │
+          ▼
+select → rollout → edit → evaluate → gate → record
+          │
+          ▼
+  Git tags + archive.jsonl + run artifacts
+```
 
 ## Quick Start
 
-
-### Install
-
-Requirements: `Python 3.12+`, `uv`,  `git`
-
-Generated workspaces are pinned to Python 3.12 and include both
-`pyproject.toml` and `uv.lock`. Keep those files together when copying a
-workspace. The root `./evolve` command requires `uv` and refuses to run if the
-locked environment cannot be reproduced.
-
-Clone the repository and run the test suite:
+Requirements: Python 3.12+, [`uv`](https://docs.astral.sh/uv/), and Git.
 
 ```bash
 git clone https://github.com/simple-agent-lab/simple-evolve-agent.git
 cd simple-evolve-agent
-uv run pytest -q
-```
-
-Run the CLI from the checkout:
-
-```bash
+uv sync --dev --frozen
 uv run evolve --help
 ```
 
-Install the CLI as a local tool:
+Run a deterministic baseline smoke test without a model or Docker:
 
 ```bash
-uv tool install .
-evolve --help
+export EVOLVE_RUNTIME_DIGEST="sha256:local-smoke-runtime"
+export EVOLVE_HOME="/tmp/evolve-home"
+
+uv run evolve init /tmp/evolve-demo --recipe hill_climb
+EVAL_STUB=1 /tmp/evolve-demo/evolve run /tmp/evolve-demo --max-generations 0
+/tmp/evolve-demo/evolve status /tmp/evolve-demo
+/tmp/evolve-demo/evolve verify /tmp/evolve-demo
 ```
 
-### Start a xxxx Agent
+This checks workspace generation, baseline evaluation, and archive integrity; it
+does not run a mutation round or measure agent quality.
 
-Set the immutable digest for the evaluator capsule that will run your Harbor
-tasks:
-
-```bash
-export EVOLVE_RUNTIME_DIGEST="sha256:replace-with-your-immutable-evaluator-capsule-digest"
-```
-
-Create a new generated workspace:
+For a real Harbor run, provide an immutable evaluator digest and a local task
+dataset:
 
 ```bash
-evolve init /tmp/evolve-demo --recipe aevolve \
+export EVOLVE_RUNTIME_DIGEST="sha256:replace-with-your-evaluator-digest"
+
+uv run evolve init /tmp/evolve-harbor \
+  --recipe aevolve \
   --dataset /absolute/path/to/harbor/tasks
-cd /tmp/evolve-demo
+/tmp/evolve-harbor/evolve run /tmp/evolve-harbor --max-generations 5
 ```
 
-Run the evolution loop:
+Inspect a run with `evolve status`, `evolve report`, `git tag --list 'gen/*'`,
+and the generated `archive.jsonl`. Run `evolve --help` for the complete CLI.
 
-```bash
-evolve run . --max-generations 5
-```
-
-Runs print stage-level progress by default. Add `--verbose` to stream Harbor
-and operator output while retaining the per-run `harbor.log` files:
-
-```bash
-evolve run . --max-generations 1 --verbose
-```
-
-For a quiet machine-readable run, set `EVOLVE_PROGRESS=0`. To observe an
-already-running non-verbose evaluation, follow its log directly, for example
-`tail -F runs/gen-0/baseline/harbor.log`.
-
-Harbor agent and verifier phases receive the host `http_proxy`, `https_proxy`,
-and `no_proxy` values in both lower- and uppercase forms. Override only the
-values sent to task containers with `EVOLVE_HARBOR_HTTP_PROXY`,
-`EVOLVE_HARBOR_HTTPS_PROXY`, and `EVOLVE_HARBOR_NO_PROXY`.
-
-To scaffold an evolvable Harbor wrapper around Codex:
-
-```bash
-evolve init /tmp/evolve-codex --recipe aevolve --seed builtin-codex \
-  --dataset /absolute/path/to/harbor/tasks
-```
-
-The generated `target/` owns its prompt, skills, Codex version/model settings,
-and opt-in compaction overrides. Harbor still installs and executes the Codex
-CLI inside each task container. Runtime authentication stays outside the
-workspace: run `codex login` on the host so `~/.codex/auth.json` exists. The
-framework injects that file into Harbor Codex containers without copying it
-into the target or generated configuration.
-
-For a local Harbor dataset, init deterministically freezes disjoint
-`train`/`gate`/`sealed` task-name lists in `evaluator/splits.json`. Harbor
-rollout consumes only `train`, canonical evaluation consumes only `gate`, and
-sealed anchor results are auxiliary records that never enter meta-agent feedback.
-
-Canonical evaluation performs one Evolve-owned evaluation attempt. Harbor may
-retry an individual job according to `max_retries`, but the framework does not
-launch a second repair batch or merge results across attempts. An infrastructure
-failure is retained as the candidate's canonical outcome and makes that
-candidate ineligible for selection.
-
-Harbor train rollout follows the same rule: there is no outer failed-task repair
-loop. `infra_error`, `incomplete`, and missing-result placeholders remain in
-`rollout/cases.json`; trace analysis and the meta-agent still run so the editing
-agent can inspect the evidence and decide whether the mutable harness can address
-it. The rollout summary records the affected task names in `infra_tasks`.
-
-Inspect the population and the claim checklist:
-
-```bash
-evolve status .
-evolve report .
-git tag --list 'gen/*'
-cat archive.jsonl
-```
-
-The run should produce `gen/0` through `gen/5` snapshots and
-append scored rows to `archive.jsonl`.
-
-
-## Documentation
-
-### What This Repository Provides
-
-This repository is the mechanism package. It installs the `evolve` CLI,
-which can scaffold and drive evolvable workspaces.
-
-An evolvable workspace is a separate git repository generated by:
-
-```bash
-evolve init /path/to/experiment --recipe hill_climb
-```
-
-Inside that generated workspace, the six core concepts are:
+## Concepts
 
 | Concept | Meaning |
 | --- | --- |
-| workspace | The generated experiment repository. |
+| workspace | A generated experiment repository. |
 | target | The code or agent being improved. |
-| operator | Evolvable scripts for select, rollout, optional trace analysis, meta-agent editing, validation, gate, and record. |
-| evaluator | A pinned black-box evaluator contract. |
-| archive | `archive.jsonl` plus `gen/<id>` git tags. |
-| mutable surface | The paths proposals are allowed to change. |
+| operator | One step in the evolution loop. |
+| evaluator | A pinned black-box scoring contract. |
+| archive | Stamped outcomes in `archive.jsonl` plus generation tags. |
+| mutable surface | The paths a proposal is allowed to change. |
 
-`evolve init` also creates a locked `uv` project and vendors the mechanism
-under the protected `.evolve/` directory. The root `evolve` console always
-runs that project with `uv run --frozen`, so every operator, evaluator, and
-Harbor process sees the same declared environment without `sys.path` or
-`PYTHONPATH` changes:
+The generated `.evolve/` runtime and evaluator are protected from candidate
+edits. Operators run as subprocesses instead of being imported into the
+framework process.
 
-```bash
-cd /path/to/experiment && ./evolve run . --max-generations 5
-```
+## Recipes
 
-The vendored mechanism and console are outside the mutable surface, so
-evolution can never edit the machinery that runs it. Workspace operators are
-still run as subprocesses; the mechanism never imports workspace operator
-code in-process.
-
-### Learning ladder
-
-Every layer above level 0 is opt-in; a user who only runs level 0 still has a
-complete, honest evolution loop.
-
-| Level | You get | How |
+| Recipe | Search shape | Mutable surface |
 | --- | --- | --- |
-| 0 · run the loop | generations, lineage, champion tracking | `evolve init` → `evolve run . --max-generations N` |
-| 1 · be the mutator | your agent makes the edits; the mechanism keeps the books | `mode: agent` recipe + `program.md`; drive the verbs by hand |
-| 2 · shape the search | select/gate variants; five published systems as recipes | `--recipe <name>`, or edit `evolve.yaml` |
-| 3 · let it self-modify | widen the surface so the agent evolves its own operators (scripts + strategy prose) | `surface.include` adds `operators/**` (e.g. the `hyperagents` recipe) |
+| `hill_climb` | single-parent improvement | target |
+| `aevolve` | prompt and skill evolution | prompt and target skills |
+| `ahe` | harness engineering | target |
+| `gepa` | Pareto selection with minibatch validation | prompt and task skill |
+| `hyperagents` | target and meta-agent co-evolution | target and selected operators |
 
-Evolving weights is not a separate level: a checkpoint is just a candidate —
-a mutation that produces new weights re-enters at level 1/2 like any other.
+See [the recipe guide](recipes/README.md) for the workflow and configuration of
+each recipe.
 
-### Status
+## Trust Boundaries
 
-Milestones M0-M6 are implemented and tested in the mechanism suite:
+Evolve enforces three core rules:
 
-| Milestone | Current state |
+1. Scores and statuses are written by the mechanism, not workspace operators.
+2. Canonical evaluation runs on clean candidate snapshots against a frozen
+   evaluator.
+3. Reports are recomputed from stamped archive records rather than mutable
+   operator claims.
+
+See [DESIGN.md](DESIGN.md) for the complete model and invariants.
+
+## Result
+
+> **TODO:** Add reproducible benchmark results and supporting artifacts once
+> the evaluation setup and reporting protocol are finalized.
+
+## Roadmap
+
+- **Scenario-oriented recipes:** compose the current operator library into
+  opinionated recipes for different agent-evolution use cases.
+- **Local-first workflows:** make lightweight, Docker-free iteration a
+  first-class path for trusted local agents, prompts, skills, and small features.
+- **More method integrations:** add evolution and search methods while preserving
+  the shared evaluator, lineage, and evidence contracts.
+
+## Documentation
+
+| Document | Purpose |
 | --- | --- |
-| M0 | Stub loop, generation snapshots, resume, and archive mirroring. |
-| M1 | Evaluator invariants, clean-checkout eval, surface enforcement, infra failure status. |
-| M2 | Feedback bundle shape and early deterministic mutation mechanics; real operator-authored mutation landed later in M5. |
-| M3 | Population fan-out and early widened-surface self-reference tests; real child-gate self-reference landed later in M5. |
-| M4 | Five recipes, agent bootstrapping instructions, `status`, and `report`. |
-| M5 | Real subprocess operator runtime, `evolve record`, `evolve.sdk`, operator config variants, and child-owned gate/record self-reference. |
-| M6 | Harbor-first evaluator templates, a generic local-command mutator runner, target seed vendoring, and per-round same-hash evaluation. |
-
-Harbor now has a verified MacBook development smoke path through Colima,
-and generated evaluator templates use the checkout's own `target/` via a
-custom Harbor agent path. A full mini-swe target live smoke is still
-pending; real long-running experiments should run on a Linux machine.
-
-Trace retention is a separate operator from rollout. See
-[`TRACE_ANALYZER.md`](TRACE_ANALYZER.md) for the descriptive analyzer variants
-and the migration from the former research-method profile names.
-Meta-agents can run as trusted host commands or isolated Harbor agents; see
-[`META_AGENTS.md`](META_AGENTS.md) for both configuration contracts.
-For fast Docker-free trials against an already installed local agent—for
-example, using Codex to iterate on a skill or a small behavior—the opt-in
-in-place backend is documented in [`LOCAL_ENVIRONMENT.md`](LOCAL_ENVIRONMENT.md).
-
-
-
-### Recipes
-
-Each recipe is one config, operator variants, mutable surface, loop
-shape, and evaluator template.
-
-| Recipe | Children | Mode | Evaluator shape | Surface shape |
-| --- | ---: | --- | --- | --- |
-| `hill_climb` | 1 | driver | Harbor pass@k | target |
-| `aevolve` | 1 | driver | Harbor pass@k | prompt + skills under target |
-| `ahe` | 1 | driver | Harbor pass@k | target |
-| `gepa` | 1 | driver | Harbor pass@k + same-minibatch validation | prompt + task-execution skill |
-| `hyperagents` | 1 | driver | Harbor pass@k | target + meta-agent operator/prompt |
-
-Example:
-
-```bash
-cd /path/to/simple-evolve-agent
-evolve init /tmp/evolve-ahe --recipe ahe
-evolve run /tmp/evolve-ahe --max-generations 1
-evolve status /tmp/evolve-ahe
-```
-
-The AHE and HyperAgents defaults resolve `terminal-bench-2-10-10-10`
-relative to the project root and freeze all 30 curated instances as one
-optimization set during initialization.
-
-### CLI Verbs
-
-```text
-evolve init <workspace> [--recipe ...] [--seed builtin-codex|PATH|GIT_URL] [--dataset LOCAL_TASK_DIR]
-evolve run <workspace> [--max-generations N] [--children-per-gen N] [--resume]
-evolve fork <workspace> <parent> <child-worktree>
-evolve commit <workspace> <child-worktree> --parent <id> --genid <id>
-evolve eval <workspace> <genid> [--force]
-evolve record <workspace> <genid> --fields <json-object>
-evolve surface-check [workspace] [--parent <tag-or-id>]
-evolve status [workspace]
-evolve report [workspace]
-```
-
-`run` is the built-in driver. Agent-mode experiments can instead read
-`program.md` in the generated workspace and sequence the same verbs
-manually. The invariants are enforced inside the verbs either way.
-
-### Honesty Guarantees
-
-The design centers on three guardrails:
-
-1. Scores and statuses are stamped by the mechanism, not by workspace
-   operators.
-2. Evaluation runs on clean checkouts of tagged snapshots and asserts
-   the evaluator tree matches the baseline evaluator.
-3. Best-ever and reports are recomputed from stamped archive rows, not
-   from mutable operator claims.
-
-`evolve report` also flags archive rows that do not look mechanism
-written and refuses cross-task-set comparisons when stamped
-`task_set_hash` values disagree.
-Operators receive both the canonical workspace root (`EVOLVE_WORKSPACE`)
-and their checkout/snapshot root (`EVOLVE_CHECKOUT`). Direct operator
-archive writes are restored after subprocess exit; `record.py` may only
-copy back public non-stamped fields, and auxiliary per-round evals need a
-mechanism-written receipt sidecar before they are trusted.
-
-Workspace Python dependencies belong in the root `pyproject.toml` and
-`uv.lock`. Add a packaged custom operator or Harbor adapter with `uv add
-/absolute/path/to/package` (or a registry/git requirement), then commit both
-files. Direct import-path manipulation is intentionally unsupported.
-
-### Source Map
-
-| Path | Purpose |
-| --- | --- |
-| `src/evolve/cli.py` | CLI argument parsing and verb dispatch. |
-| `src/evolve/workspace.py` | Workspace scaffolding and generation-zero archive event. |
-| `src/evolve/config.py` | Recipe config rendering and lightweight config readers. |
-| `src/evolve/driver.py` | Built-in loop, fork/commit/eval orchestration, feedback bundles. |
-| `src/evolve/evaluation/results.py` | Evaluation result types and outcome classification. |
-| `src/evolve/evaluation/evidence.py` | Evaluator-output validation and canonical trial conversion. |
-| `src/evolve/evaluation/identity.py` | Task-set identity and frozen evaluation comparability. |
-| `src/evolve/evaluation/execution.py` | Clean-checkout evaluator execution and exit-code contract. |
-| `src/evolve/archive.py` | Append-only archive, mirror reconciliation, stamped-field merge rules. |
-| `src/evolve/surface.py` | Mutable-surface include/exclude checking. |
-| `src/evolve/report.py` | `status` and `report` summaries. |
-| `recipes/` | Supported recipe configurations. |
-| `scaffolds/` | Common workspace and evaluator-engine files. |
-| `seeds/` | Built-in evolvable targets. |
-| `src/evolve/integrations/` | Framework-owned external runtime integrations. |
-| `library/` | Operator variants copied into generated workspaces. |
-| `tests/` | Milestone acceptance tests. |
-
-### Development Checks
-
-```bash
-uv run pytest -q
-uvx ruff check .
-```
-
-If your sandbox blocks uv's default cache directories, use temporary
-cache paths:
-
-```bash
-UV_CACHE_DIR=/tmp/evolve-uv-cache uv run pytest -q
-UV_CACHE_DIR=/tmp/evolve-uv-cache UV_TOOL_DIR=/tmp/evolve-uv-tools uvx ruff check .
-```
-
-### MacBook Harbor Smoke Setup
-
-For local mechanism development on macOS, use Colima as the Docker
-daemon with a conservative resource profile:
-
-```bash
-colima start --cpu 8 --memory 16 --disk 300 --arch aarch64 --vm-type vz --vz-rosetta
-export DOCKER_HOST="unix://$HOME/.colima/default/docker.sock"
-docker context use colima
-```
-
-This was verified on the current MacBook with Docker `29.2.1`, `aarch64`,
-8 CPUs, and about 16 GiB of VM memory. The larger test profile
-`--cpu 12 --memory 32` is not needed for local framework work.
-
-Harbor job output should live under the home/workspace tree on Colima.
-Do not use `/private/tmp` for Harbor `--jobs-dir` on the Mac: verifier
-reward files did not bind back reliably from the VM there.
-
-Known Docker Hub wrinkle: direct pulls of `ubuntu:24.04` timed out in
-this environment. Pulling the same base image from AWS Public ECR and
-tagging it locally fixed the Harbor example task build:
-
-```bash
-docker pull public.ecr.aws/ubuntu/ubuntu:24.04
-docker tag public.ecr.aws/ubuntu/ubuntu:24.04 ubuntu:24.04
-```
-
-Verified Harbor environment smoke command (this uses Harbor's built-in
-oracle agent only as an external Harbor/Docker check, not as the
-scaffolded evaluator template):
-
-```bash
-cd /private/tmp/harbor-evolve-m1
-DOCKER_HOST=unix://$HOME/.colima/default/docker.sock \
-UV_CACHE_DIR=/private/tmp/evolve-uv-cache \
-UV_PYTHON_INSTALL_DIR=/private/tmp/evolve-uv-python \
-uv run harbor run \
-  -p examples/tasks/hello-world \
-  -a oracle \
-  -n 1 \
-  --n-attempts 1 \
-  --jobs-dir "$HOME/Desktop/harbor-smoke-jobs" \
-  -y -q
-```
-
-Expected result: one trial, zero exceptions, `Mean: 1.000`.
-
-Use this Mac setup for development and smoke tests. Use a Linux machine
-for real experiments to avoid Colima mount quirks, reduce MacBook RAM and
-thermal pressure, and get more predictable long-running Docker behavior.
-
-### Current Limitations
-
-- The quickstart local smoke path uses `EVAL_STUB=1` for deterministic
-  framework feedback.
-- The live Harbor pytest smoke is pending environment/test-path cleanup:
-  Harbor runs from `/private/tmp/harbor-evolve-m1`, while the current
-  live pytest resolves `examples/tasks/hello-world` from this repo.
-- `local` is the general meta-agent runner; HyperAgents uses its
-  dedicated `meta_agent` implementation and validation stage.
-- Deterministic split discovery currently requires a local Harbor task
-  directory; remote registry datasets must first be materialized locally.
-- Archive provenance is protected by mechanism stamps and receipt
-  sidecars for auxiliary evals, not by cryptographic signatures.
-- Harbor is verified for Mac development smoke tests, but production
-  experiment runs should target Linux.
-- simple-agent-lab is deliberately not integrated until its Harbor adapter
-  exists outside this codebase.
-
+| [Design](DESIGN.md) | System model, ownership boundaries, and invariants. |
+| [Architecture](ARCHITECTURE.md) | Enforced source-module map and line budgets. |
+| [Recipes](recipes/README.md) | Supported evolution strategies. |
+| [Meta-agents](META_AGENTS.md) | Trusted-host and isolated meta-agent runners. |
+| [Trace analysis](TRACE_ANALYZER.md) | Trace retention and analyzer variants. |
+| [Local environment](LOCAL_ENVIRONMENT.md) | Docker-free trusted local execution. |
+| [Contributing](CONTRIBUTING.md) | Development setup and repository conventions. |
 
 ## License
 
