@@ -24,10 +24,11 @@ class FakeCodex:
         self.logs_dir = logs_dir
         self.model_name = model_name
         self.kwargs = kwargs
+        self._extra_env = dict(kwargs.get("extra_env") or {})
         self.base_setup_called = False
 
-    def _get_env(self, _name: str) -> str | None:
-        return None
+    def _get_env(self, name: str) -> str | None:
+        return self._extra_env.get(name)
 
     async def setup(self, environment: object) -> None:
         self.base_setup_called = True
@@ -116,3 +117,65 @@ def test_builtin_codex_wrapper_injects_skills_and_opt_in_compaction(tmp_path: Pa
     assert compacting_agent.kwargs["auto_compact_token_limit"] == 100000
     assert compacting_agent.kwargs["auto_compact_token_limit_scope"] == "total"
     assert compacting_agent.kwargs["tool_output_token_limit"] == 12000
+
+
+def test_builtin_codex_wrapper_uses_candidate_source_from_extra_env(tmp_path: Path, monkeypatch) -> None:
+    original_target = tmp_path / "original" / "target"
+    original_target.mkdir(parents=True)
+    source_agent = Path(__file__).resolve().parents[1] / "seeds" / "codex" / "agent.py"
+    (original_target / "agent.py").write_text(source_agent.read_text())
+    (original_target / "prompt.md").write_text("Original prompt.\n")
+    (original_target / "codex.toml").write_text(
+        """[codex]
+model = "original-model"
+reasoning_effort = "low"
+
+[skills]
+enabled = true
+
+[compaction]
+override_defaults = false
+"""
+    )
+    (original_target / "skills").mkdir()
+
+    candidate_target = tmp_path / "candidate" / "target"
+    candidate_target.mkdir(parents=True)
+    (candidate_target / "prompt.md").write_text("Candidate prompt.\n")
+    candidate_config = candidate_target / "codex.toml"
+    candidate_config.write_text(
+        """[codex]
+model = "candidate-model"
+reasoning_effort = "medium"
+
+[skills]
+enabled = true
+
+[compaction]
+override_defaults = false
+"""
+    )
+    candidate_skills = candidate_target / "skills"
+    candidate_skills.mkdir()
+    (candidate_skills / "SKILL.md").write_text("Candidate skill.\n")
+
+    _install_fake_harbor(monkeypatch)
+    module = _load_target_agent(original_target / "agent.py")
+    extra_env = {"EVOLVE_CANDIDATE_SOURCE": str(candidate_target)}
+    agent = module.HarborAgent(logs_dir=tmp_path / "logs", extra_env=extra_env)
+
+    assert agent.model_name == "candidate-model"
+    assert agent.kwargs["reasoning_effort"] == "medium"
+    assert agent.kwargs["prompt_template_path"] == candidate_target / "prompt.md"
+    environment = RecordingEnvironment()
+    asyncio.run(agent.setup(environment))
+    assert environment.uploads == [
+        (candidate_skills, "/tmp/evolve-target-skills"),
+    ]
+
+    candidate_config.write_text(candidate_config.read_text().replace("enabled = true", "enabled = false"))
+    disabled_agent = module.HarborAgent(logs_dir=tmp_path / "disabled-logs", extra_env=extra_env)
+    assert disabled_agent.kwargs["skills_dir"] is None
+    disabled_environment = RecordingEnvironment()
+    asyncio.run(disabled_agent.setup(disabled_environment))
+    assert disabled_environment.uploads == []
