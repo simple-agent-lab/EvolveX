@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import os
 import json
+import os
 import shlex
 import subprocess
 import sys
@@ -9,7 +9,6 @@ from pathlib import Path
 
 import pytest
 import yaml
-
 
 ROOT = Path(__file__).resolve().parents[1]
 SETUP = ROOT / "scripts" / "setup_benchmark_experiment.sh"

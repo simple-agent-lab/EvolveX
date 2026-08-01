@@ -5,9 +5,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+from harbor.agents.installed.codex import Codex
+
 from evolve.config import scaffold_root
 from evolve.workspace import _eval_env, _eval_sh
-from harbor.agents.installed.codex import Codex
 
 
 def _write_executable(path: Path, text: str) -> None:
