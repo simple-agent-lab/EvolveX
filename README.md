@@ -52,12 +52,14 @@ research and controlled experimentation.
 ## Structure
 
 <p align="center">
-  <img src="docs/architecture.svg" alt="Evolve Framework architecture: a meta-agent outer loop evolves candidates across generations, while an inner worker-agent loop executes tasks through tools and environment observations. A protected control plane evaluates candidates and retains evidence.">
+  <img src="docs/architecture.svg" alt="Evolve Framework architecture: evolution methods such as Hill Climb, A-Evolve, AHE, GEPA and HyperAgents plug into one loop of select, rollout, analyze, mutate, gate and record. The loop and the agent it improves sit inside a declared mutable surface, so the meta-agent can rewrite any stage. Only the substrate below stays frozen: the evaluator, the runtime, the surface check and the stamped evidence.">
 </p>
 
-The outer loop selects parents, learns from execution evidence, edits candidates,
-and records the next generation. Inside it, the worker agent executes tasks and
-returns trajectories. The evaluator, runtime, and evidence stamps stay protected.
+Every recipe runs the same loop: select a parent, run the tasks, analyze the
+traces, edit, gate, record. Each stage is an operator rather than a fixed step,
+and a recipe decides which of them the meta-agent may rewrite along with the
+target. The evaluator, runtime, surface check, and evidence stamps stay outside
+that surface.
 
 ## Quick Start
 

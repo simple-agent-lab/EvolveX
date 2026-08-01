@@ -1,3 +1,10 @@
+"""Generate the README architecture diagram.
+
+Three bands, one story: evolution methods plug into one loop, the loop and the
+agent it improves sit inside a declared mutable surface, and only the substrate
+underneath stays frozen.
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -8,208 +15,243 @@ ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "docs" / "architecture.svg"
 
 PALETTE = {
-    "ink": "#2b3a42",
-    "sub": "#6b7a80",
-    "line": "#aeb8b8",
-    "boundary_line": "#dcd4c9",
-    "boundary_fill": "#faf9f7",
-    "input_fill": "#e4eaed",
-    "input_line": "#9eb2bb",
-    "mutable_fill": "#e9eeec",
-    "mutable_line": "#9aaca4",
-    "protected_fill": "#e5eaed",
-    "protected_line": "#8fa3ad",
-    "evidence_fill": "#f5ebe3",
-    "evidence_line": "#c9a98c",
+    "ink": "#1f2d35",
+    "sub": "#6d7c84",
+    "line": "#b9c3c6",
+    "soft": "#d5dcdd",
+    "band_fill": "#f7f8f8",
+    "band_line": "#e2e7e7",
+    "chip_fill": "#eaf1f5",
+    "chip_line": "#a2bccb",
+    "open_line": "#c2cbcd",
+    "stage_line": "#b3c1c5",
+    "accent_fill": "#f5ece1",
+    "accent_line": "#c8a87c",
+    "accent_text": "#a17c46",
+    "guard_fill": "#e6edf0",
+    "guard_line": "#8ba1ac",
 }
 
+FONT = '"Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
 
-def tag(name: str, **attributes: object) -> str:
-    attrs = " ".join(f'{key.removesuffix("_").replace("_", "-")}="{value}"' for key, value in attributes.items())
-    return f"  <{name} {attrs}/>"
+W, H = 1240, 520
+M = 44
+INNER = W - 2 * M
+
+METHODS = ["Hill Climb", "A-Evolve", "AHE", "GEPA", "HyperAgents"]
+
+STAGES = [
+    ("Select", "parent from archive"),
+    ("Rollout", "run the tasks"),
+    ("Analyze", "read the traces"),
+    ("Mutate", "meta-agent edits"),
+    ("Gate", "frozen eval decides"),
+    ("Record", "tag + archive"),
+]
+
+GUARDS = [
+    ("Frozen evaluator", "Harbor or your own"),
+    ("Locked runtime", "pinned deps + digest"),
+    ("Surface check", "declared paths only"),
+    ("Stamped evidence", "archive.jsonl + git tags"),
+]
 
 
-def text(value: str, x: int, y: int, class_: str, anchor: str | None = None) -> str:
-    anchor_attr = f' text-anchor="{anchor}"' if anchor else ""
-    return f'  <text x="{x}" y="{y}"{anchor_attr} class="{class_}">{html.escape(value)}</text>'
+def esc(value: str) -> str:
+    return html.escape(value)
 
 
-def rect(x: int, y: int, width: int, height: int, radius: int, class_: str) -> str:
-    return tag("rect", x=x, y=y, width=width, height=height, rx=radius, class_=class_)
+def text(value: str, x: float, y: float, cls: str, anchor: str = "start") -> str:
+    anchor_attr = "" if anchor == "start" else f' text-anchor="{anchor}"'
+    return f'  <text x="{x:g}" y="{y:g}"{anchor_attr} class="{cls}">{esc(value)}</text>'
 
 
-def line(x1: int, y1: int, x2: int, y2: int, class_: str = "flow") -> str:
-    return tag("line", x1=x1, y1=y1, x2=x2, y2=y2, class_=class_)
+def rect(x: float, y: float, w: float, h: float, r: float, cls: str) -> str:
+    return f'  <rect x="{x:g}" y="{y:g}" width="{w:g}" height="{h:g}" rx="{r:g}" class="{cls}"/>'
 
 
-def path(points: str, class_: str = "flow") -> str:
-    return tag("path", d=points, class_=class_)
+def line(x1: float, y1: float, x2: float, y2: float, cls: str = "flow") -> str:
+    return f'  <line x1="{x1:g}" y1="{y1:g}" x2="{x2:g}" y2="{y2:g}" class="{cls}"/>'
 
 
-def arrow(x: int, y: int, direction: str) -> str:
+def circle(cx: float, cy: float, r: float, cls: str) -> str:
+    return f'  <circle cx="{cx:g}" cy="{cy:g}" r="{r:g}" class="{cls}"/>'
+
+
+def arrow(x: float, y: float, direction: str, cls: str = "arrow-fill", scale: float = 1.0) -> str:
+    size, wing = 9 * scale, 5 * scale
     if direction == "down":
-        points = f"{x},{y} {x - 5},{y - 9} {x + 5},{y - 9}"
+        points = f"{x},{y} {x - wing},{y - size} {x + wing},{y - size}"
     elif direction == "up":
-        points = f"{x},{y} {x - 5},{y + 9} {x + 5},{y + 9}"
+        points = f"{x},{y} {x - wing},{y + size} {x + wing},{y + size}"
     elif direction == "right":
-        points = f"{x},{y} {x - 9},{y - 5} {x - 9},{y + 5}"
-    elif direction == "left":
-        points = f"{x},{y} {x + 9},{y - 5} {x + 9},{y + 5}"
-    else:
-        raise ValueError(f"unsupported arrow direction: {direction}")
-    return tag("polygon", points=points, class_="arrow-fill")
+        points = f"{x},{y} {x - size},{y - wing} {x - size},{y + wing}"
+    else:  # pragma: no cover - programming error
+        raise ValueError(direction)
+    return f'  <polygon points="{points}" class="{cls}"/>'
 
 
-def box(
-    x: int,
-    y: int,
-    width: int,
-    height: int,
-    class_: str,
-    title: str,
-    subtitle: str | None = None,
-) -> list[str]:
-    center = x + width // 2
-    title_y = y + (32 if subtitle else 35)
-    result = [rect(x, y, width, height, 12 if height > 60 else 10, class_), text(title, center, title_y, "title", "middle")]
-    if subtitle:
-        result.append(text(subtitle, center, y + 56, "body", "middle"))
-    return result
+def route(points: list[tuple[float, float]], radius: float = 12, cls: str = "flow") -> str:
+    """An orthogonal connector with rounded corners."""
+
+    def shift(a: tuple[float, float], b: tuple[float, float], r: float) -> tuple[float, float]:
+        dx, dy = b[0] - a[0], b[1] - a[1]
+        step = min(r, max(abs(dx), abs(dy)) / 2)
+        return a[0] + (step if dx > 0 else -step if dx < 0 else 0), a[1] + (step if dy > 0 else -step if dy < 0 else 0)
+
+    d = [f"M {points[0][0]:g} {points[0][1]:g}"]
+    for i in range(1, len(points) - 1):
+        before, corner, after = points[i - 1], points[i], points[i + 1]
+        entry, exit_ = shift(corner, before, radius), shift(corner, after, radius)
+        d.append(f"L {entry[0]:g} {entry[1]:g}")
+        d.append(f"Q {corner[0]:g} {corner[1]:g} {exit_[0]:g} {exit_[1]:g}")
+    d.append(f"L {points[-1][0]:g} {points[-1][1]:g}")
+    return f'  <path d="{" ".join(d)}" class="{cls}"/>'
+
+
+def node(x: float, y: float, w: float, h: float, cls: str, title: str, sub: str | None = None, r: float = 12) -> list[str]:
+    cx = x + w / 2
+    if sub:
+        return [
+            rect(x, y, w, h, r, cls),
+            text(title, cx, y + h / 2 - 3, "t", "middle"),
+            text(sub, cx, y + h / 2 + 19, "s", "middle"),
+        ]
+    return [rect(x, y, w, h, r, cls), text(title, cx, y + h / 2 + 6, "t", "middle")]
+
+
+def row(x: float, width: float, count: int, gap: float) -> tuple[list[float], float]:
+    """Left edges and item width for `count` evenly spaced boxes."""
+    item = (width - gap * (count - 1)) / count
+    return [x + i * (item + gap) for i in range(count)], item
 
 
 def style() -> str:
+    p = PALETTE
     return f"""  <style>
-    text {{ font-family: \"Noto Sans SC\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif; fill: {PALETTE['ink']}; }}
-    .section-label {{ font-size: 15px; font-weight: 600; letter-spacing: 0.04em; fill: {PALETTE['sub']}; }}
-    .title {{ font-size: 20px; font-weight: 600; }}
-    .body {{ font-size: 15px; fill: {PALETTE['sub']}; }}
-    .small {{ font-size: 13px; fill: {PALETTE['sub']}; }}
-    .node-label {{ font-size: 15px; font-weight: 600; }}
+    text {{ font-family: {FONT}; fill: {p['ink']}; }}
+    .t {{ font-size: 16px; font-weight: 600; }}
+    .s {{ font-size: 13px; fill: {p['sub']}; }}
+    .cap {{ font-size: 13px; fill: {p['sub']}; }}
+    .cap-accent {{ font-size: 13px; fill: {p['accent_text']}; }}
+    .lbl {{ font-size: 13px; font-weight: 600; letter-spacing: 0.08em; fill: {p['sub']}; }}
+    .lbl-accent {{ font-size: 13px; font-weight: 600; letter-spacing: 0.08em; fill: {p['accent_text']}; }}
     .canvas {{ fill: #ffffff; }}
-    .surface {{ fill: #ffffff; stroke: {PALETTE['line']}; stroke-width: 1.5; }}
-    .input {{ fill: {PALETTE['input_fill']}; stroke: {PALETTE['input_line']}; stroke-width: 1.5; }}
-    .mutable {{ fill: {PALETTE['mutable_fill']}; stroke: {PALETTE['mutable_line']}; stroke-width: 1.5; }}
-    .protected {{ fill: {PALETTE['protected_fill']}; stroke: {PALETTE['protected_line']}; stroke-width: 1.5; }}
-    .evidence {{ fill: {PALETTE['evidence_fill']}; stroke: {PALETTE['evidence_line']}; stroke-width: 1.5; }}
-    .boundary {{ fill: {PALETTE['boundary_fill']}; stroke: {PALETTE['boundary_line']}; stroke-width: 1.5; stroke-dasharray: 7 6; }}
-    .flow {{ fill: none; stroke: {PALETTE['line']}; stroke-width: 1.7; }}
-    .arrow-fill {{ fill: {PALETTE['line']}; }}
+    .knock {{ fill: {p['band_fill']}; }}
+    .band {{ fill: {p['band_fill']}; stroke: {p['band_line']}; stroke-width: 1.5; }}
+    .chip {{ fill: {p['chip_fill']}; stroke: {p['chip_line']}; stroke-width: 1.5; }}
+    .open {{ fill: #ffffff; stroke: {p['open_line']}; stroke-width: 1.5; stroke-dasharray: 6 5; }}
+    .stage {{ fill: #ffffff; stroke: {p['stage_line']}; stroke-width: 1.5; }}
+    .accent {{ fill: {p['accent_fill']}; stroke: {p['accent_line']}; stroke-width: 1.5; }}
+    .guard {{ fill: {p['guard_fill']}; stroke: {p['guard_line']}; stroke-width: 1.5; }}
+    .mutable {{ fill: none; stroke: {p['accent_line']}; stroke-width: 1.5; stroke-dasharray: 7 6; }}
+    .flow {{ fill: none; stroke: {p['line']}; stroke-width: 1.8; }}
+    .soft {{ fill: none; stroke: {p['soft']}; stroke-width: 1.4; }}
+    .flow-accent {{ fill: none; stroke: {p['accent_line']}; stroke-width: 1.4; }}
+    .tick-accent {{ fill: none; stroke: {p['accent_line']}; stroke-width: 1.4; stroke-dasharray: 5 4; }}
+    .arrow-fill {{ fill: {p['line']}; }}
+    .arrow-accent {{ fill: {p['accent_line']}; }}
+    .dot-accent {{ fill: {p['accent_line']}; stroke: none; }}
   </style>"""
 
 
-def render() -> str:
-    svg = [
-        '<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="768" viewBox="0 0 1200 720" role="img" aria-labelledby="title description">',
-        "  <!-- Generated by tools/generate_architecture_svg.py. -->",
-        "  <title id=\"title\">Evolve Framework architecture</title>",
-        "  <desc id=\"description\">A meta-agent outer loop evolves candidates across generations. Inside it, a worker agent executes tasks through tools and environment observations. The protected runtime evaluates each candidate and retains evidence.</desc>",
-        style(),
-        "",
-        rect(0, 0, 1200, 720, 0, "canvas"),
-        "",
-        text("EXPERIMENT INPUTS", 60, 28, "section-label"),
-        "",
+def methods_band() -> list[str]:
+    """The top band: five known methods plus room for one of yours."""
+    body = [
+        text("EVOLUTION METHODS", M, 26, "lbl"),
+        text("or write your own", W - M, 26, "cap", "end"),
+    ]
+    xs, cw = row(M, INNER, 6, 14)
+    for x, label in zip(xs, METHODS, strict=False):
+        body.extend(node(x, 38, cw, 54, "chip", label))
+    body.extend(node(xs[5], 38, cw, 54, "open", "your recipe"))
+
+    first, last = xs[0] + cw / 2, xs[5] + cw / 2
+    body.append(route([(first, 92), (first, 106), (last, 106), (last, 92)], 12, "soft"))
+    for x in xs[1:5]:
+        body.append(line(x + cw / 2, 92, x + cw / 2, 106, "soft"))
+    body.append(line(W / 2, 106, W / 2, 119))
+    body.append(arrow(W / 2, 128, "down"))
+    return body
+
+
+def loop_band() -> list[str]:
+    """The middle band: one loop, and the surface that makes it editable."""
+    body = [
+        rect(M, 140, INNER, 226, 16, "band"),
+        text("ONE LOOP", M + 22, 164, "lbl"),
+        text("the agent may rewrite any stage of it", W - M - 22, 164, "cap-accent", "end"),
+        rect(M + 16, 178, INNER - 32, 134, 14, "mutable"),
+        rect(W / 2 - 172, 167, 344, 22, 11, "knock"),
+        text("MUTABLE SURFACE · target + operators", W / 2, 183, "lbl-accent", "middle"),
     ]
 
-    inputs = (
-        (60, "Recipe", "strategy + mutable surface"),
-        (450, "Target seed", "worker agent + context"),
-        (840, "Task dataset", "train + gate + sealed tasks"),
-    )
-    for x, title, subtitle in inputs:
-        svg.extend(box(x, 45, 300, 76, "input", title, subtitle))
-        svg.append("")
+    xs, sw = row(M + 32, INNER - 64, 6, 18)
+    centers = [x + sw / 2 for x in xs]
+    edit = centers[3]
+    body.append(line(centers[0], 204, centers[5], 204, "flow-accent"))
+    body.append(line(edit, 204, edit, 228, "flow-accent"))
+    body.append(circle(edit, 204, 3.5, "dot-accent"))
+    for i, cx in enumerate(centers):
+        if i == 3:
+            continue
+        body.append(line(cx, 204, cx, 221, "tick-accent"))
+        body.append(arrow(cx, 228, "down", "arrow-accent", 0.8))
 
-    svg.extend(
-        [
-            rect(40, 150, 1120, 435, 18, "boundary"),
-            rect(60, 137, 338, 28, 14, "surface"),
-            text("OUTER LOOP · META-AGENT EVOLUTION", 229, 156, "section-label", "middle"),
-            "",
-            path("M 210 121 V 180 H 150 V 206"),
-            arrow(150, 215, "down"),
-            path("M 600 121 V 180 H 475"),
-            arrow(475, 189, "down"),
-            path("M 990 121 V 180 H 1035 V 206"),
-            arrow(1035, 215, "down"),
-            "",
-            rect(70, 215, 160, 72, 12, "surface"),
-            text("Select parent", 150, 247, "title", "middle"),
-            text("archive + recipe", 150, 271, "body", "middle"),
-            "",
-            rect(275, 190, 400, 285, 16, "surface"),
-            text("INNER LOOP · WORKER EXECUTION", 300, 220, "section-label"),
-            "",
-            rect(305, 245, 140, 58, 10, "surface"),
-            text("Task + context", 375, 280, "node-label", "middle"),
-            rect(505, 245, 140, 58, 10, "mutable"),
-            text("Worker Agent", 575, 280, "node-label", "middle"),
-            rect(505, 355, 140, 58, 10, "protected"),
-            text("Tools + env", 575, 390, "node-label", "middle"),
-            rect(305, 355, 140, 58, 10, "surface"),
-            text("Observation", 375, 390, "node-label", "middle"),
-            line(445, 274, 496, 274),
-            arrow(505, 274, "right"),
-            line(575, 303, 575, 346),
-            arrow(575, 355, "down"),
-            line(505, 384, 454, 384),
-            arrow(445, 384, "left"),
-            path("M 375 355 V 329 H 575 V 312"),
-            arrow(575, 303, "up"),
-            "",
-            rect(710, 215, 190, 135, 14, "mutable"),
-            text("META AGENT", 735, 242, "section-label"),
-            text("Analyze + edit", 805, 275, "node-label", "middle"),
-            text("edit target / operators", 735, 300, "body"),
-            text("produce candidate patch", 735, 326, "small"),
-            "",
-            rect(950, 215, 170, 135, 14, "protected"),
-            text("FROZEN PATH", 975, 242, "section-label"),
-            text("Evaluate + gate", 1035, 275, "node-label", "middle"),
-            text("stamp score", 975, 300, "body"),
-            text("record generation", 975, 326, "small"),
-            "",
-            line(230, 251, 266, 251),
-            arrow(275, 251, "right"),
-            line(675, 274, 701, 274),
-            arrow(710, 274, "right"),
-            line(900, 282, 941, 282),
-            arrow(950, 282, "right"),
-            path("M 1035 350 V 490 H 150 V 296"),
-            arrow(150, 287, "up"),
-            text("stamped evidence · next generation", 590, 511, "small", "middle"),
-            "",
-            path("M 805 350 V 445 H 684"),
-            arrow(675, 445, "left"),
-            text("candidate patch", 742, 465, "small", "middle"),
-            "",
-            rect(275, 530, 845, 38, 10, "protected"),
-            text("PROTECTED CONTROL PLANE", 300, 555, "section-label"),
-            text("vendored runtime · frozen evaluator · surface checks · score stamps", 1095, 555, "body", "end"),
-        ]
-    )
-    svg.extend(
-        [
-            text("EVIDENCE AND LINEAGE", 60, 615, "section-label"),
-            "",
-        ]
-    )
+    for x, (title, sub) in zip(xs, STAGES, strict=True):
+        cls = "accent" if title == "Mutate" else "stage"
+        body.extend(node(x, 228, sw, 64, cls, title, sub))
+    for x in xs[:-1]:
+        body.append(line(x + sw + 2, 260, x + sw + 7, 260))
+        body.append(arrow(x + sw + 16, 260, "right"))
 
-    evidence = ((60, "Git generation tags"), (450, "archive.jsonl"), (840, "Trajectories and artifacts"))
-    for x, label in evidence:
-        svg.extend(box(x, 630, 300, 58, "evidence", label))
-    svg.extend(
-        [
-            "",
-            path("M 700 568 V 600 H 210 V 621"),
-            arrow(210, 630, "down"),
-            path("M 700 600 H 600 V 621"),
-            arrow(600, 630, "down"),
-            path("M 700 600 H 990 V 621"),
-            arrow(990, 630, "down"),
-            "</svg>",
-        ]
+    body.append(route([(centers[5], 292), (centers[5], 332), (centers[0], 332), (centers[0], 303)]))
+    body.append(arrow(centers[0], 294, "up"))
+    body.append(text("next generation", W / 2, 352, "cap", "middle"))
+    return body
+
+
+def substrate_band() -> list[str]:
+    """The bottom band: the only part nothing in the loop can touch."""
+    body = [
+        line(400, 366, 400, 388),
+        arrow(400, 397, "down"),
+        text("evidence", 412, 393, "cap"),
+        line(840, 397, 840, 375),
+        arrow(840, 366, "up"),
+        text("contracts", 852, 393, "cap"),
+        text("PROTECTED SUBSTRATE", M, 420, "lbl"),
+        text("outside the surface, and staying that way", W - M, 420, "cap", "end"),
+    ]
+    xs, gw = row(M, INNER, 4, 16)
+    for x, (title, sub) in zip(xs, GUARDS, strict=True):
+        body.extend(node(x, 434, gw, 58, "guard", title, sub))
+    return body
+
+
+def render() -> str:
+    description = (
+        "Evolution methods such as Hill Climb, A-Evolve, AHE, GEPA and HyperAgents plug into one loop of "
+        "select, rollout, analyze, mutate, gate and record. The loop and the agent it improves sit inside a "
+        "declared mutable surface, so the meta-agent can rewrite any stage. Only the substrate below stays "
+        "frozen: the evaluator, the runtime, the surface check and the stamped evidence."
     )
+    svg = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" '
+        f'viewBox="0 0 {W} {H}" role="img" aria-labelledby="title description">',
+        "  <!-- Generated by tools/generate_architecture_svg.py. -->",
+        '  <title id="title">Evolve Framework architecture</title>',
+        f'  <desc id="description">{esc(description)}</desc>',
+        style(),
+        rect(0, 0, W, H, 0, "canvas"),
+        "",
+        *methods_band(),
+        "",
+        *loop_band(),
+        "",
+        *substrate_band(),
+        "</svg>",
+    ]
     return "\n".join(svg) + "\n"
 
 
