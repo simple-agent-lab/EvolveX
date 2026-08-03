@@ -4,8 +4,9 @@
 
 **Branch:** `codex/reconcile-ground-truth-20260803`
 
-**Outcome:** Ready for local review. The branch has not been pushed and neither
-remote host's `main` checkout has been updated.
+**Outcome:** Ready for draft pull-request review. This verification run ended
+before publication; publication is separately authorized. Neither remote
+host's `main` checkout has been updated.
 
 ## Selected history
 
@@ -88,10 +89,10 @@ The sanitized inventory and final documentation were scanned for credential
 patterns before staging. Raw patches, unpublished files, credentials, and bulk
 outputs remain outside Git. No secrets were read into the tracked documents.
 
-This run intentionally stops before:
+This verification run itself stopped before publication. A later explicit
+request may push this branch and open a draft pull request, but does not
+authorize:
 
-- pushing `codex/reconcile-ground-truth-20260803`;
-- opening a pull request;
 - updating DevBox or DevBoxS `main`;
 - merging any dirty Tau3 or adjacent-repository work;
 - deleting, moving, cleaning, or compacting any source worktree or artifact

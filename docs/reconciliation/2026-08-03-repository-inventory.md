@@ -182,5 +182,7 @@ Only the exact clean Codex-target feature tip and the independently tested
 Harbor trial-limit correction were integrated into the isolated reconciliation
 branch. Every other dirty cutoff is preservation evidence, not an implicit
 merge request. Final test, security, and retention evidence is recorded in
-`2026-08-03-reconciliation-verification.md`. The branch remains local and
-unpublished at the review boundary.
+`2026-08-03-reconciliation-verification.md`. The branch was local and
+unpublished at that verification boundary. Any later authorized publication is
+limited to the reconciliation branch and its draft pull request; it does not
+change the retained-source boundary above.
