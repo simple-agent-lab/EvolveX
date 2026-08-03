@@ -61,26 +61,6 @@ and a recipe decides which of them the meta-agent may rewrite along with the
 target. The evaluator, runtime, surface check, and evidence stamps stay outside
 that surface.
 
-## How the pieces fit together
-
-| Part | Role | Example |
-| --- | --- | --- |
-| Target | Candidate-owned files that may change between generations. | `target/prompt.md`, `target/skills/**`, or MiniSWE source under `target/`. |
-| Evaluated Harbor agent | Runs one candidate on one Harbor task and must load that candidate's `target/`. | `target.agent:HarborAgent` or `evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent`. |
-| Evaluator | Frozen tasks and verifiers that produce the trusted score. | A local Harbor task directory and its verifiers. |
-| Meta-agent | Reads training evidence and edits the next candidate. | Codex or MiniSWE through the configured meta-agent operator. |
-
-The evaluated Harbor agent and the meta-agent are different roles, even when
-both use Codex: one executes the candidate; the other edits it.
-
-## Choose your starting point
-
-| Goal | Start with | Evolves |
-| --- | --- | --- |
-| Improve a Codex prompt and skills | `aevolve` with `builtin-codex` | `target/prompt.md` and `target/skills/**` |
-| Improve the MiniSWE harness/source | `hill_climb` | the pinned MiniSWE repository under `target/**` |
-| Improve your own Harbor-compatible agent | a copied recipe passed with `--recipe-path` | the seed repository vendored under `target/**` |
-
 ## Quick Start
 
 Requirements: Python 3.12+, [`uv`](https://docs.astral.sh/uv/), and Git.

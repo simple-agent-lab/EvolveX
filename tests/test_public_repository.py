@@ -31,12 +31,7 @@ def test_required_public_repository_files_exist() -> None:
 def test_readme_explains_how_to_evolve_builtin_and_custom_agents() -> None:
     readme = (ROOT / "README.md").read_text()
     required = (
-        "## How the pieces fit together",
-        "| Target |",
-        "| Evaluated Harbor agent |",
-        "| Evaluator |",
-        "| Meta-agent |",
-        "## Choose your starting point",
+        "## Evolve the built-in targets directly",
         "--recipe aevolve",
         "--seed builtin-codex",
         "--recipe hill_climb",
