@@ -2,7 +2,8 @@
 
 **Cutoff session:** `20260803T160000+0800`
 
-**Inventory status:** Source cutoffs verified; selected integration pending
+**Inventory status:** Integration and final verification complete; review and
+publication pending
 
 **Policy:** Active worktrees are read-only inputs and remain deferred unless a
 clean, exact commit is selected below.
@@ -12,8 +13,8 @@ clean, exact commit is selected below.
 | Role | Selected authority | Commit | Decision |
 |---|---|---|---|
 | Stable shared baseline | GitHub `main` | `ebb00de125244b6a416006524fcdfd2dccdb17bb` | Base the isolated reconciliation branch here. |
-| Codex-target feature | GitHub `codex/codex-target-experiments` | `3a2d419cd93dad5d5cc83ef91a60ae7049cae797` | Merge this exact clean commit with history preserved. |
-| Replicated Harbor trial-limit correction | Identical private unstaged patches on MacBook root, DevBox `r6`, and DevBoxS `r6` | SHA-256 `e4f1387d33c77a093a597062a81354827e660b387770bf3b1ca9574ee02390d6` (1,143 bytes) | Reproduce with a regression test and a separate reviewed commit. |
+| Codex-target feature | GitHub `codex/codex-target-experiments` | `3a2d419cd93dad5d5cc83ef91a60ae7049cae797` | Merged exactly with history preserved as `a6872d3934be1517dd967c47a60faf295e424c04`. |
+| Replicated Harbor trial-limit correction | Identical private unstaged patches on MacBook root, DevBox `r6`, and DevBoxS `r6` | SHA-256 `e4f1387d33c77a093a597062a81354827e660b387770bf3b1ca9574ee02390d6` (1,143 bytes) | Reproduced test-first and committed as `53a220fcdd345721c9660d9d53e72fac6a4d22cb`. |
 | Active Tau3 and adjacent development | Timestamped private cutoffs | Multiple, listed below | Preserve and defer; do not promote a dirty checkout wholesale. |
 | Experiment outputs | Host-resident roots plus private metadata | Not a Git commit | Retain in place; do not copy bulk payloads into Git. |
 
@@ -23,6 +24,21 @@ Codex-target feature has merge base
 the selected tip, followed by `81c0ecf` and `3a2d419`. Its net feature diff is
 limited to four files: the Harbor engine wrapper, the Codex seed agent, and
 their two test modules.
+
+## Integration result
+
+The live GitHub refs were re-verified immediately before integration and still
+matched the selected commits. Merge commit
+`a6872d3934be1517dd967c47a60faf295e424c04` completed without conflicts and
+changed only the expected four feature files. The two focused feature test
+modules passed 25 tests and their Python files passed ruff.
+
+The Harbor regression first failed with `assert 50 == 2`, demonstrating that
+the persisted split incorrectly won over the live runtime limit. After the
+minimal precedence correction, the regression and evaluator-template tests
+passed 19 tests. The final `parse_score.py` SHA-256 is
+`755377dc9326f74a41aef095bf6104b2639291f750dc46682788a1aefeceb6ee`, exactly
+matching the MacBook root, DevBox `r6`, and DevBoxS `r6` copies.
 
 ## Private cutoff evidence
 
@@ -163,8 +179,8 @@ the accepted cutoff manifests.
 ## Current selection boundary
 
 Only the exact clean Codex-target feature tip and the independently tested
-Harbor trial-limit correction are selected for the isolated reconciliation
+Harbor trial-limit correction were integrated into the isolated reconciliation
 branch. Every other dirty cutoff is preservation evidence, not an implicit
-merge request. The final verification report will record the resulting merge
-commit, parser-fix commit, focused/full test results, and the retained-source
-boundary.
+merge request. Final test, security, and retention evidence is recorded in
+`2026-08-03-reconciliation-verification.md`. The branch remains local and
+unpublished at the review boundary.

@@ -1,6 +1,6 @@
 # Live Repository Reconciliation Design
 
-**Status:** Approved design, awaiting written-spec review as of 2026-08-03
+**Status:** Approved and executed to the local review boundary as of 2026-08-03
 
 ## Context
 

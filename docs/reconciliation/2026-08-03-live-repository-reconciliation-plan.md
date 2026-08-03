@@ -139,8 +139,7 @@ def test_verify_archive_detects_a_tampered_copy(self):
 - [ ] **Step 3: Run the tests and verify they fail before implementation**
 
 ```bash
-uv run python -m unittest -v \
-  .codex/reconciliation/tools/test_capture_cutoff.py
+uv run python .codex/reconciliation/tools/test_capture_cutoff.py -v
 ```
 
 Expected: failures because `capture_cutoff.py` and its interfaces do not yet
@@ -171,7 +170,7 @@ do not invoke a shell. Capture state with these Git commands:
 ```python
 ["git", "-C", str(source), "rev-parse", "HEAD"]
 ["git", "-C", str(source), "rev-parse", "HEAD^{tree}"]
-["git", "-C", str(source), "branch", "--show-current"]
+["git", "-C", str(source), "symbolic-ref", "--quiet", "--short", "HEAD"]
 ["git", "-C", str(source), "status", "--porcelain=v2", "--branch"]
 ["git", "-C", str(source), "diff", "--binary", "--cached"]
 ["git", "-C", str(source), "diff", "--binary"]
@@ -213,8 +212,10 @@ match.
 every `worktree ` path exactly once. `remote-many` must call
 `capture_remote()` once per repeated `--source` argument. `remote-roots` must
 list only immediate child directories with remote `find`, filter requested
-patterns locally with `fnmatch`, and record remote `stat` plus `du -s` output;
-it must not copy or hash payloads. `verify_archive()` must re-hash every copied
+patterns locally with `fnmatch`, and record remote `stat` plus optional `du -s`
+output. It must support a no-size mode that records an explicit unmeasured size
+instead of recursively walking a host under load; it must not copy or hash
+payloads. `verify_archive()` must re-hash every copied
 file and patch listed in manifests, confirm restrictive permissions, and
 report any missing or mismatched item.
 
@@ -224,11 +225,11 @@ creation mode to owner-only before writing any raw data.
 - [ ] **Step 7: Run the private collector tests**
 
 ```bash
-uv run python -m unittest -v \
-  .codex/reconciliation/tools/test_capture_cutoff.py
+uv run python .codex/reconciliation/tools/test_capture_cutoff.py -v
 ```
 
-Expected: four tests pass.
+Expected after the compatibility and load-shedding regressions added during
+execution: 12 tests pass.
 
 - [ ] **Step 8: Confirm the private helper is not staged**
 
