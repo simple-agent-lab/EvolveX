@@ -28,6 +28,27 @@ def test_required_public_repository_files_exist() -> None:
     assert [path for path in required if not (ROOT / path).is_file()] == []
 
 
+def test_readme_explains_how_to_evolve_builtin_and_custom_agents() -> None:
+    readme = (ROOT / "README.md").read_text()
+    required = (
+        "## How the pieces fit together",
+        "| Target |",
+        "| Evaluated Harbor agent |",
+        "| Evaluator |",
+        "| Meta-agent |",
+        "## Choose your starting point",
+        "--recipe aevolve",
+        "--seed builtin-codex",
+        "--recipe hill_climb",
+        "## Bring your own Harbor-compatible agent",
+        "--recipe-path",
+        "surface.include",
+        "target/**",
+        "package.module:ClassName",
+    )
+    assert [text for text in required if text not in readme] == []
+
+
 def test_public_markdown_relative_links_resolve() -> None:
     files = [
         ROOT / "README.md",
