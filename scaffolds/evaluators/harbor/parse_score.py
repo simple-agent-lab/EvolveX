@@ -32,6 +32,9 @@ def _write_outputs(run_dir: Path, *, status: str, metrics: dict[str, object], sc
 
 
 def _expected_trials(run_dir: Path, env_values: dict[str, str]) -> int:
+    runtime_expected = os.environ.get("EVOLVE_HARBOR_EXPECTED_TRIALS")
+    if runtime_expected is not None:
+        return max(1, int(runtime_expected))
     selection = run_dir / "task-split.json"
     if selection.exists():
         payload = json.loads(selection.read_text())
@@ -41,10 +44,7 @@ def _expected_trials(run_dir: Path, env_values: dict[str, str]) -> int:
     return max(
         1,
         int(
-            os.environ.get(
-                "EVOLVE_HARBOR_EXPECTED_TRIALS",
-                env_values.get("EVOLVE_HARBOR_EXPECTED_TRIALS", env_values.get("EVOLVE_HARBOR_N", "1")),
-            )
+            env_values.get("EVOLVE_HARBOR_EXPECTED_TRIALS", env_values.get("EVOLVE_HARBOR_N", "1"))
         ),
     )
 
