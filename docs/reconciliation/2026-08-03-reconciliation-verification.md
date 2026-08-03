@@ -37,9 +37,11 @@ affected only:
   false-positive was superseded by a stable one-attempt recapture.
 - DevBox and DevBoxS mains, six Codex-target snapshots per host, and the two
   adjacent DevBox repositories have stable metadata/patch cutoffs.
-- Every manifest-referenced copied file and patch passes recursive hash
-  verification. A separate filesystem mode audit found no directory outside
-  `0700` and no file outside `0600` in the private session archive.
+- Every copied file and patch referenced by a manifest's final top-level
+  selection passes hash verification. Retained failed-attempt entries are not
+  covered by that hash verifier. A separate filesystem mode audit found no
+  directory outside `0700` and no file outside `0600` in the private session
+  archive.
 - The private collector passes 12 behavioral tests and ruff.
 - `auth.json` is represented only by non-content metadata. It has no captured
   digest or payload.
@@ -105,7 +107,7 @@ tests after the correction.
 
 | Exact command | Exit | Result |
 |---|---:|---|
-| `uv run python .codex/reconciliation/tools/capture_cutoff.py verify --archive .codex/reconciliation/20260803T160000+0800` | 0 | `OK`; checks all archive directory modes, referenced copy/patch modes and hashes, and forbidden secret-entry digest fields. |
+| `uv run python .codex/reconciliation/tools/capture_cutoff.py verify --archive .codex/reconciliation/20260803T160000+0800` | 0 | `OK`; checks all archive directory modes, final top-level copy/patch modes and hashes, and forbidden secret-entry digest fields. |
 | `uv run python .codex/reconciliation/tools/test_capture_cutoff.py -v` | 0 | 12 tests passed. |
 | `uv run ruff check .codex/reconciliation/tools/capture_cutoff.py .codex/reconciliation/tools/test_capture_cutoff.py` | 0 | All checks passed. |
 | `find .codex/reconciliation/20260803T160000+0800 -type d ! -perm 700 -print` | 0 | No output. |
