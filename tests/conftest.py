@@ -88,10 +88,10 @@ def init_recipe_with_local_inputs(tmp_path: Path, recipe: str) -> Path:
 
 @pytest.fixture(autouse=True)
 def evaluator_runtime_digest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("EVOLVE_RUNTIME_DIGEST", "sha256:test-runtime")
     monkeypatch.setenv("EVOLVE_HOME", str(tmp_path / "evolve-home"))
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
     if os.environ.get("EVOLVE_LIVE_BYTEDANCE_SMOKE") != "1":
+        monkeypatch.setenv("HOME", str(tmp_path / "home"))
+        monkeypatch.setenv("EVOLVE_RUNTIME_DIGEST", "sha256:test-runtime")
         monkeypatch.setenv("OPENAI_API_KEY", "test-key-not-a-secret")
         monkeypatch.setenv("OPENAI_BASE_URL", "https://model.example/v1")
     monkeypatch.delenv("CODEX_AUTH_JSON_PATH", raising=False)
