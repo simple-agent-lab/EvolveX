@@ -27,7 +27,7 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `candidate/snapshot.py` | 100 | exact candidate Git tree construction, temporary materialization, and reviewed-tree commit verification |
 | `cli.py` | 300 | argument parsing and verb dispatch only — no logic |
 | `config.py` | 200 | read/render `evolve.yaml`: recipes, experiment values, surface lists, operator blocks |
-| `evaluator_config.py` | 50 | dependency-free evaluator normalization shared by config, identity, workspace, and execution |
+| `evaluator_config.py` | 75 | evaluator repetition and strict runtime-profile normalization shared by config, workspace, and execution |
 | `driver.py` | 1800 | the generation sequencer: orchestrates baseline eval, verbs + operators (incl. novelty, self-modification admission gates, sealed anchors); validates operator outputs; computes verified_fixes; audit quarantine; doctor repair |
 | `evaluation/__init__.py` | 75 | typed evaluation identity, contract, and result facade |
 | `evaluation/contract.py` | 450 | automatically resolve, hash, persist, and certify immutable evaluation contracts |
@@ -43,6 +43,7 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `population.py` | 100 | genid/lineage bookkeeping for fan-out generations |
 | `report.py` | 225 | status/report rendering, best-ever recomputation, claim checklist, and certified evidence coverage |
 | `runtime.py` | 250 | generated-workspace runtime entrypoint helpers |
+| `runtime_profiles.py` | 400 | immutable runtime-profile registry, route identity, canonical resolution, and trusted loading |
 | `splits.py` | 300 | freeze content-backed train/gate/sealed Harbor task membership and materialize exact runtime selections |
 | `surface.py` | 150 | mutable-surface pattern matching and violation checks |
 | `trace_analysis.py` | 750 | deterministic shared transforms used by the independent trace-analyzer operator variants |
@@ -70,7 +71,7 @@ each workspace, immutable there because it sits outside the mutable surface
 | `frozen/interfaces.py` | 475 | operator ABCs, registry, result schemas, and strict diagnostics/operator payload validation |
 | `frozen/sdk.py` | 300 | Python operator entrypoint and file-contract IO; no library algorithm policy |
 
-Total `src/evolve/` budget: **11205 lines**. The budget admits the explicit content-backed
+Total `src/evolve/` budget: **11630 lines**. The budget admits the explicit content-backed
 evaluation-contract boundaries, the opt-in in-place Harbor runtime, and the redacted trace-analysis
 boundary between rollout and feedback assembly; if the mechanism wants to
 grow past that, something belongs in a workspace operator instead —

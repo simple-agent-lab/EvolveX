@@ -185,6 +185,7 @@ def test_harbor_evaluator_prefers_explicit_agent_proxy_over_ambient_proxy(
         "NO_PROXY": "::1,fe80::/10",
         "no_proxy": "::1,fe80::/10",
     }
+    env.pop("OPENAI_BASE_URL", None)
 
     result = subprocess.run(
         [str(evaluator / "eval.sh")],

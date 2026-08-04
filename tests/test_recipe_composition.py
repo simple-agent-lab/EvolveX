@@ -272,6 +272,7 @@ COMMON_OUTPUTS = {
     "README.md": "README.md",
     "launch_evolve.py": ".evolve/launch_evolve.py",
     "launch_splits.py": ".evolve/launch_splits.py",
+    "operators/preflight.sh": "operators/preflight.sh",
     "operators/gate.md": "operators/gate.md",
     "operators/record.md": "operators/record.md",
     "operators/rollout.md": "operators/rollout.md",
