@@ -19,7 +19,6 @@ from ..runtime_profiles import (
     RuntimeProfileResolutionError,
     load_resolved_runtime_profile,
 )
-from ..splits import parse_manifest, selected_task_names
 from .datasets import selected_dataset_identity
 from .identity import evaluation_split_name
 
@@ -132,6 +131,8 @@ class EvaluationContractV1:
 
 
 def resolve_evaluation_contract(context: ContractResolutionContext) -> EvaluationContractV1:
+    from ..splits import selected_task_names
+
     workspace = context.workspace.resolve()
     candidate_commit = _resolve_git_object(workspace, f"{context.candidate_commit}^{{commit}}", "candidate_commit")
     candidate_tree = _resolve_git_object(workspace, f"{candidate_commit}^{{tree}}", "candidate_tree")
@@ -297,6 +298,8 @@ def _trusted_config(workspace: Path) -> dict[str, dict[str, Any]]:
 
 
 def _trusted_manifest(workspace: Path) -> dict[str, Any]:
+    from ..splits import parse_manifest
+
     text = _required_git_text(workspace, "gen/0:evaluator/splits.json", "dataset_content_digest")
     try:
         return parse_manifest(text, source="gen/0:evaluator/splits.json")

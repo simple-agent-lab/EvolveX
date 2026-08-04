@@ -1,5 +1,7 @@
 import json
 import random
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -23,6 +25,17 @@ def _dataset(root: Path, count: int = 10) -> Path:
         task.mkdir()
         (task / "task.toml").write_text(f'version = "1.0"\nname = "task-{index}"\n')
     return root
+
+
+def test_split_launcher_imports_in_a_fresh_process() -> None:
+    result = subprocess.run(
+        [sys.executable, "-c", "from evolve.splits import main"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
 
 
 def test_split_manifest_is_deterministic_disjoint_and_drift_checked(tmp_path: Path) -> None:
