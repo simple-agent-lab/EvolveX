@@ -11,7 +11,8 @@ from typing import Any
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import Response
+from fastapi.responses import FileResponse, Response
+from fastapi.staticfiles import StaticFiles
 from harbor import viewer as harbor_viewer
 from harbor.viewer.server import create_app as create_harbor_app
 
@@ -121,6 +122,17 @@ def create_viewer_app(workspace: Path, *, bridge: HarborBridge | None = None) ->
         except OSError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         return Response(content=content, media_type=target.media_type)
+
+    evolve_static = Path(__file__).parent / "static"
+    app.mount("/evolve-assets", StaticFiles(directory=evolve_static), name="evolve-assets")
+
+    @app.get("/", include_in_schema=False)
+    @app.get("/generations", include_in_schema=False)
+    @app.get("/generations/{genid}", include_in_schema=False)
+    @app.get("/trials", include_in_schema=False)
+    def evolve_shell(genid: str | None = None) -> FileResponse:
+        del genid
+        return FileResponse(evolve_static / "index.html")
 
     harbor_static = Path(next(iter(harbor_viewer.__path__))) / "static"
     harbor_app = create_harbor_app(active_bridge._require_root(), static_dir=harbor_static)

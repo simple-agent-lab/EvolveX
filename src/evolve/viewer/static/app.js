@@ -1,0 +1,266 @@
+const state = { snapshot: null, timer: null, refreshing: false };
+const content = document.querySelector('#viewer-content');
+const experimentName = document.querySelector('#experiment-name');
+const healthPill = document.querySelector('#health-pill');
+const refreshStatus = document.querySelector('#refresh-status');
+
+const escapeHtml = (value) => String(value ?? '')
+  .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+  .replaceAll('"', '&quot;').replaceAll("'", '&#039;');
+const label = (value) => String(value ?? 'unknown').replaceAll('_', ' ');
+const number = (value, digits = 3) => value == null ? '—' : Number(value).toFixed(digits).replace(/\.?0+$/, '');
+const time = (value) => value ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : 'No activity recorded';
+const compactTime = (value) => value ? new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' }).format(
+  Math.round((new Date(value).getTime() - Date.now()) / 60000), 'minute'
+) : 'unknown';
+const badge = (value) => `<span class="badge ${escapeHtml(value || 'unknown')}">${escapeHtml(label(value))}</span>`;
+
+async function getJson(url) {
+  const response = await fetch(url, { cache: 'no-store' });
+  if (!response.ok) throw new Error(`${url} returned ${response.status}`);
+  return response.json();
+}
+
+async function refresh() {
+  if (state.refreshing) return;
+  state.refreshing = true;
+  refreshStatus.textContent = 'Refreshing…';
+  try {
+    state.snapshot = await getJson('/api/evolve/snapshot');
+    updateChrome();
+    await renderRoute(window.location.pathname, new URLSearchParams(window.location.search));
+    refreshStatus.textContent = `Updated ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+  } catch (error) {
+    refreshStatus.textContent = 'Refresh failed';
+    if (!state.snapshot) {
+      content.innerHTML = `<div class="error-card"><strong>Could not read this experiment.</strong><p>${escapeHtml(error.message)}</p></div>`;
+    }
+  } finally {
+    state.refreshing = false;
+  }
+}
+
+function updateChrome() {
+  const experiment = state.snapshot.experiment;
+  experimentName.textContent = experiment.id;
+  experimentName.title = experiment.workspace;
+  healthPill.className = `status-pill ${experiment.health}`;
+  healthPill.textContent = label(experiment.health);
+  document.title = `${experiment.id} · Evolve`;
+}
+
+function activateNavigation(name) {
+  document.querySelectorAll('[data-nav]').forEach((link) => {
+    link.classList.toggle('active', link.dataset.nav === name);
+    if (link.dataset.nav === name) link.setAttribute('aria-current', 'page');
+    else link.removeAttribute('aria-current');
+  });
+}
+
+async function renderRoute(pathname, params) {
+  if (!state.snapshot) return;
+  if (pathname === '/trials') {
+    activateNavigation('trials');
+    await renderTrials(params);
+  } else if (pathname === '/generations') {
+    activateNavigation('generations');
+    renderGenerations();
+  } else if (pathname.startsWith('/generations/')) {
+    activateNavigation('generations');
+    await renderGeneration(decodeURIComponent(pathname.slice('/generations/'.length)));
+  } else {
+    activateNavigation('overview');
+    await renderOverview();
+  }
+}
+
+async function renderOverview() {
+  const snapshot = state.snapshot;
+  const experiment = snapshot.experiment;
+  const focus = experiment.focus_generation;
+  const detail = focus ? await getJson(`/api/evolve/generations/${encodeURIComponent(focus)}`) : null;
+  const recent = snapshot.generations.slice(-6).reverse();
+  content.innerHTML = `
+    <div class="page-heading">
+      <div><h2>Experiment overview</h2><p>Current health, latest modification, and benchmark movement.</p></div>
+      ${focus ? `<a class="button" data-evolve-link href="/generations/${encodeURIComponent(focus)}">Open generation ${escapeHtml(focus)}</a>` : ''}
+    </div>
+    <div class="stack">
+      ${healthCard(experiment, detail)}
+      <div class="grid-two">
+        ${changeCard(detail)}
+        ${performanceCard(detail, snapshot.generations)}
+      </div>
+      ${generationTable(recent, 'Recent generations')}
+    </div>`;
+}
+
+function healthCard(experiment, detail) {
+  const stages = detail?.stages || [];
+  const warnings = experiment.warnings || [];
+  return `<section class="card health-card">
+    <div class="health-banner">
+      <div>
+        <span class="status-pill ${escapeHtml(experiment.health)}">${escapeHtml(label(experiment.health))}</span>
+        <h2>${experiment.focus_generation ? `Generation ${escapeHtml(experiment.focus_generation)}` : 'Waiting for the first generation'}</h2>
+        <p>${escapeHtml(experiment.current_stage ? `Current stage: ${label(experiment.current_stage)}` : time(experiment.last_activity_at))}</p>
+      </div>
+      <div class="metric-big"><strong>${number(experiment.best_score)}</strong><span>Best canonical score</span></div>
+    </div>
+    ${stages.length ? `<div class="stage-strip" aria-label="Generation stages">${stages.map(stageItem).join('')}</div>` : ''}
+    ${warnings.length ? `<ul class="warning-list">${warnings.map((warning) => `<li><strong>${escapeHtml(label(warning.code))}:</strong> ${escapeHtml(warning.message)}</li>`).join('')}</ul>` : ''}
+  </section>`;
+}
+
+function stageItem(stage) {
+  const progress = stage.progress_completed != null
+    ? `${stage.progress_completed}${stage.progress_total != null ? ` / ${stage.progress_total}` : ''}` : label(stage.state);
+  return `<div class="stage ${escapeHtml(stage.state)}"><strong>${escapeHtml(label(stage.name))}</strong>${escapeHtml(progress)}</div>`;
+}
+
+function changeCard(detail) {
+  const change = detail?.change;
+  if (!change || (!change.rationale && !change.changed_paths.length)) {
+    return `<section class="card"><div class="card-header"><div><h3>Latest modification</h3><p>Why the candidate changed</p></div></div><div class="empty"><strong>No modification evidence</strong>Artifacts will appear after the modify stage.</div></section>`;
+  }
+  return `<section class="card">
+    <div class="card-header"><div><h3>Latest modification</h3><p>Generation ${escapeHtml(detail.summary.genid)} from parent ${escapeHtml(detail.summary.parent || '—')}</p></div><div class="diff-stat"><span class="plus">+${change.insertions}</span><span class="minus">−${change.deletions}</span></div></div>
+    <p class="change-rationale">${escapeHtml(change.rationale || 'No rationale was recorded.')}</p>
+    <ul class="file-list">${change.changed_paths.slice(0, 8).map((path) => `<li><span>${escapeHtml(path)}</span></li>`).join('')}</ul>
+    ${change.patch_artifact_id ? `<p><a class="button" target="_blank" href="/api/evolve/artifacts/${encodeURIComponent(change.patch_artifact_id)}">Preview patch</a></p>` : ''}
+  </section>`;
+}
+
+function performanceCard(detail, generations) {
+  const performance = detail?.performance || {};
+  const delta = performance.delta;
+  return `<section class="card">
+    <div class="card-header"><div><h3>Performance</h3><p>Canonical evaluation only</p></div>${performance.contract_certified == null ? '' : badge(performance.contract_certified ? 'certified' : 'uncertified')}</div>
+    <div class="score-value">${number(performance.score)}${delta == null ? '' : `<span class="score-delta ${delta >= 0 ? 'plus' : 'minus'}">${delta >= 0 ? '+' : ''}${number(delta)}</span>`}</div>
+    ${scoreTrend(generations)}
+    <div class="legend"><span><strong>${performance.observed_trials ?? '—'}</strong> observed trials</span><span><strong>${performance.expected_trials ?? '—'}</strong> expected</span><span>${performance.comparable ? 'Parent delta comparable' : 'Parent delta not comparable'}</span></div>
+  </section>`;
+}
+
+function scoreTrend(generations) {
+  const points = generations.filter((generation) => generation.score != null);
+  if (!points.length) return '<div class="empty">No scored generations yet.</div>';
+  const width = 480, height = 130, pad = 10;
+  const values = points.map((point) => Number(point.score));
+  let min = Math.min(...values), max = Math.max(...values);
+  if (min === max) { min -= .05; max += .05; }
+  const coords = values.map((value, index) => ({
+    x: points.length === 1 ? width / 2 : pad + index * (width - pad * 2) / (points.length - 1),
+    y: pad + (max - value) * (height - pad * 2) / (max - min),
+  }));
+  const line = coords.map((point) => `${point.x},${point.y}`).join(' ');
+  const area = `${coords[0].x},${height} ${line} ${coords.at(-1).x},${height}`;
+  return `<svg class="trend" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img" aria-label="Score trend">
+    <defs><linearGradient id="trend-gradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#40a379" stop-opacity=".18"/><stop offset="1" stop-color="#40a379" stop-opacity="0"/></linearGradient></defs>
+    <line class="trend-grid" x1="0" x2="${width}" y1="${height / 2}" y2="${height / 2}"/><polygon class="trend-fill" points="${area}"/><polyline class="trend-line" points="${line}"/>${coords.map((point) => `<circle class="trend-dot" cx="${point.x}" cy="${point.y}" r="3.5"/>`).join('')}
+  </svg>`;
+}
+
+function renderGenerations() {
+  const generations = [...state.snapshot.generations].reverse();
+  content.innerHTML = `<div class="page-heading"><div><h2>Generations</h2><p>${generations.length} recorded candidates and baselines.</p></div></div>${generationTable(generations, null)}`;
+}
+
+function generationTable(generations, title) {
+  return `<section class="card">
+    ${title ? `<div class="card-header"><div><h3>${escapeHtml(title)}</h3><p>Newest first</p></div><a class="button" href="/generations" data-evolve-link>View all</a></div>` : ''}
+    ${generations.length ? `<div class="table-wrap"><table><thead><tr><th>Generation</th><th>Status</th><th>Current stage</th><th class="numeric">Score</th><th class="numeric">Files</th><th class="numeric">Diff</th></tr></thead><tbody>${generations.map((generation) => `<tr>
+      <td><a class="row-link" data-evolve-link href="/generations/${encodeURIComponent(generation.genid)}">Generation ${escapeHtml(generation.genid)}</a><div class="subtle">Parent ${escapeHtml(generation.parent || '—')}</div></td>
+      <td>${badge(generation.status)}</td><td>${escapeHtml(label(generation.current_stage || 'finished'))}</td><td class="numeric">${number(generation.score)}</td><td class="numeric">${generation.change_files}</td><td class="numeric"><span class="plus">+${generation.insertions}</span> <span class="minus">−${generation.deletions}</span></td>
+    </tr>`).join('')}</tbody></table></div>` : '<div class="empty"><strong>No generations yet</strong>The viewer will update when archive rows appear.</div>'}
+  </section>`;
+}
+
+async function renderGeneration(genid) {
+  let detail;
+  try { detail = await getJson(`/api/evolve/generations/${encodeURIComponent(genid)}`); }
+  catch (error) { content.innerHTML = `<div class="error-card"><strong>Generation not found.</strong><p>${escapeHtml(error.message)}</p></div>`; return; }
+  const summary = detail.summary;
+  content.innerHTML = `
+    <div class="page-heading"><div><p class="eyebrow">Generation detail</p><h2>Generation ${escapeHtml(summary.genid)}</h2><div class="detail-meta"><span>Status ${badge(summary.status)}</span><span>Parent <strong>${escapeHtml(summary.parent || '—')}</strong></span><span>Score <strong>${number(summary.score)}</strong></span></div></div><div class="page-actions"><a class="button" data-evolve-link href="/trials?generation=${encodeURIComponent(summary.genid)}">View trials</a></div></div>
+    <div class="stack">
+      <section class="card"><div class="card-header"><div><h3>Stage progress</h3><p>Evidence inferred from this generation's artifacts</p></div></div><div class="stage-strip">${detail.stages.map(stageItem).join('')}</div></section>
+      <div class="grid-two">${changeCard(detail)}${performanceCard(detail, state.snapshot.generations.filter((generation) => generation.genid <= summary.genid))}</div>
+      ${artifactCard(detail.artifacts)}
+    </div>`;
+}
+
+function artifactCard(artifacts) {
+  return `<section class="card"><div class="card-header"><div><h3>Artifacts</h3><p>Registered stage and evaluation evidence</p></div><span class="muted">${artifacts.length} files</span></div>
+    ${artifacts.length ? `<ul class="artifact-list">${artifacts.map((artifact) => `<li><a ${artifact.previewable ? `href="/api/evolve/artifacts/${encodeURIComponent(artifact.id)}" target="_blank"` : ''}><span>${escapeHtml(artifact.relative_path)}</span><span class="subtle">${formatBytes(artifact.size)}</span></a></li>`).join('')}</ul>` : '<div class="empty">No registered artifacts for this generation.</div>'}
+  </section>`;
+}
+
+async function renderTrials(params) {
+  const apiParams = new URLSearchParams(params);
+  if (!apiParams.has('page')) apiParams.set('page', '1');
+  if (!apiParams.has('page_size')) apiParams.set('page_size', '50');
+  const data = await getJson(`/api/evolve/trials?${apiParams}`);
+  const generations = [...state.snapshot.generations].reverse();
+  content.innerHTML = `
+    <div class="page-heading"><div><h2>Trials</h2><p>Canonical outcomes with direct access to full Harbor inspection.</p></div></div>
+    <section class="card">
+      <form id="trial-filters" class="filters">
+        <div class="field"><label for="filter-generation">Generation</label><select id="filter-generation" name="generation"><option value="">All generations</option>${generations.map((generation) => `<option value="${escapeHtml(generation.genid)}" ${params.get('generation') === generation.genid ? 'selected' : ''}>${escapeHtml(generation.genid)}</option>`).join('')}</select></div>
+        <div class="field"><label for="filter-purpose">Purpose</label><select id="filter-purpose" name="purpose"><option value="">All purposes</option>${['candidate', 'genesis', 'rollout', 'anchor'].map((purpose) => `<option ${params.get('purpose') === purpose ? 'selected' : ''}>${purpose}</option>`).join('')}</select></div>
+        <div class="field"><label for="filter-status">Status</label><select id="filter-status" name="status"><option value="">All statuses</option>${['complete', 'benchmark_complete', 'error', 'unknown'].map((status) => `<option ${params.get('status') === status ? 'selected' : ''}>${status}</option>`).join('')}</select></div>
+        <div class="field"><label for="filter-task">Exact task</label><input id="filter-task" name="task" value="${escapeHtml(params.get('task') || '')}" placeholder="Task name"></div>
+        <div class="filter-action"><button class="button primary" type="submit">Apply</button></div>
+      </form>
+      ${trialTable(data.items)}
+      ${pagination(data, params)}
+    </section>`;
+  document.querySelector('#trial-filters').addEventListener('submit', applyTrialFilters);
+  document.querySelectorAll('[data-page]').forEach((button) => button.addEventListener('click', () => {
+    const next = new URLSearchParams(window.location.search); next.set('page', button.dataset.page); navigate(`/trials?${next}`);
+  }));
+}
+
+function trialTable(trials) {
+  if (!trials.length) return '<div class="empty"><strong>No trials match these filters</strong>Clear one or more filters to widen the result.</div>';
+  return `<div class="table-wrap"><table><thead><tr><th>Task</th><th>Generation</th><th>Purpose</th><th>Status</th><th class="numeric">Reward</th><th class="numeric">Duration</th><th>Inspection</th></tr></thead><tbody>${trials.map((trial) => `<tr>
+    <td><span class="mono">${escapeHtml(trial.task)}</span><div class="subtle">Repetition ${trial.repetition}</div></td><td><a class="row-link" data-evolve-link href="/generations/${encodeURIComponent(trial.generation)}">${escapeHtml(trial.generation)}</a></td><td>${escapeHtml(label(trial.purpose))}</td><td>${badge(trial.status)}</td><td class="numeric">${number(trial.reward)}</td><td class="numeric">${trial.duration_ms == null ? '—' : `${number(trial.duration_ms / 1000, 2)}s`}</td><td>${trial.harbor_url ? `<a class="button" href="${escapeHtml(trial.harbor_url)}">Full Harbor inspection</a>` : '<span class="subtle">Not linked</span>'}</td>
+  </tr>`).join('')}</tbody></table></div>`;
+}
+
+function pagination(data, params) {
+  const first = data.total ? (data.page - 1) * data.page_size + 1 : 0;
+  const last = Math.min(data.page * data.page_size, data.total);
+  return `<div class="pagination"><span>Showing ${first}–${last} of ${data.total}</span><div><button class="button" data-page="${data.page - 1}" ${data.page <= 1 ? 'disabled' : ''}>Previous</button><button class="button" data-page="${data.page + 1}" ${data.page >= data.total_pages ? 'disabled' : ''}>Next</button></div></div>`;
+}
+
+function applyTrialFilters(event) {
+  event.preventDefault();
+  const values = new FormData(event.currentTarget);
+  const params = new URLSearchParams();
+  for (const [key, value] of values) if (value) params.set(key, value);
+  navigate(`/trials${params.size ? `?${params}` : ''}`);
+}
+
+function formatBytes(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function navigate(url) {
+  history.pushState({}, '', url);
+  renderRoute(window.location.pathname, new URLSearchParams(window.location.search));
+  content.focus({ preventScroll: true });
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+document.addEventListener('click', (event) => {
+  const link = event.target.closest('a[data-evolve-link]');
+  if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || link.origin !== location.origin) return;
+  event.preventDefault(); navigate(`${link.pathname}${link.search}`);
+});
+window.addEventListener('popstate', () => renderRoute(window.location.pathname, new URLSearchParams(window.location.search)));
+
+await refresh();
+state.timer = window.setInterval(refresh, 3000);

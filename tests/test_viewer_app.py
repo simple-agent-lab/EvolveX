@@ -96,3 +96,22 @@ def test_composed_app_blocks_mutating_and_get_shaped_actions(viewer_workspace: P
         assert client.get("/api/run/options").status_code == 405
         assert client.get("/api/auth/status").status_code == 405
         assert client.get("/api/jobs").status_code == 200
+
+
+def test_frontend_routes_serve_evolve_shell(viewer_workspace: Path) -> None:
+    with TestClient(create_viewer_app(viewer_workspace)) as client:
+        for path in ("/", "/generations", "/generations/1", "/trials"):
+            response = client.get(path)
+            assert response.status_code == 200
+            assert 'id="evolve-viewer"' in response.text
+
+
+def test_frontend_has_required_navigation_and_refresh_contract() -> None:
+    static = Path(__file__).parents[1] / "src/evolve/viewer/static"
+    html = (static / "index.html").read_text()
+    javascript = (static / "app.js").read_text()
+
+    assert all(label in html for label in ("Overview", "Generations", "Trials"))
+    assert "3000" in javascript
+    assert "/api/evolve/snapshot" in javascript
+    assert "Full Harbor inspection" in javascript
