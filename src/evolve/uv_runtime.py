@@ -28,6 +28,8 @@ class UvRuntimeConfig:
     project: Path
     project_relative: str
     python: str
+    runtime_profile: str | None = None
+    runtime_profile_digest: str | None = None
 
 
 def _digest_project(project: Path) -> str:
@@ -108,6 +110,7 @@ class CandidateRuntimeResult:
 
 def candidate_runtime_config(checkout: Path, evaluator: dict[str, Any]) -> UvRuntimeConfig | None:
     profile_path = checkout / "evaluator" / "runtime-profile.json"
+    resolved_profile = None
     if profile_path.is_file():
         if "candidate_runtime" in evaluator:
             raise ValueError(
@@ -148,7 +151,14 @@ def candidate_runtime_config(checkout: Path, evaluator: dict[str, Any]) -> UvRun
     python = value.get("python", FRAMEWORK_PYTHON)
     if not isinstance(python, str) or not re.fullmatch(r"\d+\.\d+", python):
         raise ValueError("evaluator.candidate_runtime.python must be a Python major.minor version")
-    return UvRuntimeConfig("uv", project, project.relative_to(root).as_posix(), python)
+    return UvRuntimeConfig(
+        "uv",
+        project,
+        project.relative_to(root).as_posix(),
+        python,
+        resolved_profile.profile.name if resolved_profile is not None else None,
+        resolved_profile.profile_digest if resolved_profile is not None else None,
+    )
 
 
 def _uv_version(uv: str, checkout: Path, env: dict[str, str]) -> str | None:
@@ -191,8 +201,9 @@ def _write_receipt(
 ) -> Path:
     receipt = run_dir / RECEIPT_NAME
     temporary = receipt.with_suffix(".json.tmp")
+    strict = config.runtime_profile is not None
     values = {
-        "schema_version": 2 if contract_id is not None else 1,
+        "schema_version": 3 if strict else 2 if contract_id is not None else 1,
         "contract_id": contract_id,
         "variant": config.variant,
         "project": config.project_relative,
@@ -205,6 +216,9 @@ def _write_receipt(
         "duration_s": round(duration_s, 6),
         "reason": _redact(reason) if reason else None,
     }
+    if strict:
+        values["runtime_profile"] = config.runtime_profile
+        values["runtime_profile_digest"] = config.runtime_profile_digest
     if contract_id is None:
         values.pop("contract_id")
     temporary.write_text(json.dumps(values, indent=2, sort_keys=True) + "\n")
@@ -311,13 +325,28 @@ def prepare_candidate_runtime(
 
     values = clean_python_env(env)
     if values.get("EVAL_STUB") == "1":
+        if config.runtime_profile is not None:
+            started = time.monotonic()
+            run_dir.mkdir(parents=True, exist_ok=True)
+            return _finish_runtime(
+                run_dir,
+                config,
+                candidate_commit=candidate_commit,
+                contract_id=contract_id,
+                dependency_digest=_digest_project(config.project),
+                started=started,
+                outcome=Outcome.INFRASTRUCTURE_FAILED,
+                reason="strict runtime preparation cannot be certified with EVAL_STUB",
+                attempts=0,
+                cache_warm=False,
+                uv_version=None,
+            )
         return CandidateRuntimeResult(None, None)
 
     started = time.monotonic()
     run_dir.mkdir(parents=True, exist_ok=True)
     project = config.project
-    dependency_digest = candidate_dependency_digest(checkout, evaluator)
-    assert dependency_digest is not None
+    dependency_digest = _digest_project(config.project)
     missing = [name for name in ("pyproject.toml", "uv.lock") if not (project / name).is_file()]
     if missing:
         return _finish_runtime(

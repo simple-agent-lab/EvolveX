@@ -258,11 +258,13 @@ def verify_candidate_runtime_receipt(
     if receipt is None:
         return ReceiptVerificationResult(False, "candidate runtime receipt is missing")
     expected: dict[str, object] = {
-        "schema_version": 2,
+        "schema_version": 3,
         "variant": "uv",
         "contract_id": contract.contract_id,
         "candidate_commit": contract.candidate_commit,
         "candidate_dependency_digest": contract.candidate_dependency_digest,
+        "runtime_profile": contract.runtime_profile,
+        "runtime_profile_digest": contract.runtime_profile_digest,
     }
     for field, value in expected.items():
         if receipt.get(field) != value:

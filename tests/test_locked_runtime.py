@@ -73,6 +73,22 @@ def _runtime_fixture(tmp_path: Path) -> tuple[Path, Path, Path, dict[str, object
     return checkout, run_dir, runtime_root, evaluator, env, calls
 
 
+def _strict_runtime_fixture(
+    tmp_path: Path,
+) -> tuple[Path, Path, Path, dict[str, object], dict[str, str], Path]:
+    checkout = init_recipe_with_local_inputs(tmp_path, "ahe")
+    run_dir = tmp_path / "strict-run"
+    runtime_root = tmp_path / "strict-runtime"
+    executable, calls = _fake_uv(tmp_path)
+    evaluator = load_config(checkout / "evolve.yaml")["evaluator"]
+    env = {
+        **os.environ,
+        "EVOLVE_UV_BINARY": str(executable),
+        "UV_CALLS": str(calls),
+    }
+    return checkout, run_dir, runtime_root, evaluator, env, calls
+
+
 def _prepare(tmp_path: Path, **env_overrides: str):
     checkout, run_dir, runtime_root, evaluator, env, calls = _runtime_fixture(tmp_path)
     env.update(env_overrides)
@@ -126,7 +142,7 @@ def test_uv_runtime_prepares_cache_and_emits_offline_contract(tmp_path: Path) ->
     assert not (run_dir / ".candidate-runtime-venv").exists()
 
 
-def test_uv_runtime_receipt_is_bound_to_a_strict_evaluation_contract(tmp_path: Path) -> None:
+def test_legacy_uv_runtime_receipt_with_contract_id_remains_schema_two(tmp_path: Path) -> None:
     checkout, run_dir, runtime_root, evaluator, env, _calls = _runtime_fixture(tmp_path)
 
     result = prepare_candidate_runtime(
@@ -142,6 +158,28 @@ def test_uv_runtime_receipt_is_bound_to_a_strict_evaluation_contract(tmp_path: P
     assert result.ready
     receipt = json.loads((run_dir / "candidate-runtime.json").read_text())
     assert receipt["schema_version"] == 2
+    assert receipt["contract_id"] == "a" * 64
+
+
+def test_strict_uv_receipt_contains_profile_identity(tmp_path: Path) -> None:
+    checkout, run_dir, runtime_root, evaluator, env, _calls = _strict_runtime_fixture(tmp_path)
+    profile = json.loads((checkout / "evaluator/runtime-profile.json").read_text())
+
+    result = prepare_candidate_runtime(
+        checkout,
+        run_dir,
+        runtime_root,
+        candidate_commit="abc123",
+        evaluator=evaluator,
+        env=env,
+        contract_id="a" * 64,
+    )
+
+    assert result.ready
+    receipt = json.loads((run_dir / "candidate-runtime.json").read_text())
+    assert receipt["schema_version"] == 3
+    assert receipt["runtime_profile"] == "harbor-bytedance-uv-v1"
+    assert receipt["runtime_profile_digest"] == profile["profile_digest"]
     assert receipt["contract_id"] == "a" * 64
 
 
@@ -379,6 +417,30 @@ def test_stub_evaluation_skips_candidate_runtime_preparation(tmp_path: Path) -> 
     assert result.ready
     assert result.variant is None
     assert result.receipt_path is None
+    assert not calls.exists()
+
+
+def test_eval_stub_cannot_certify_strict_candidate_runtime(tmp_path: Path) -> None:
+    checkout, run_dir, runtime_root, evaluator, env, calls = _strict_runtime_fixture(tmp_path)
+    env["EVAL_STUB"] = "1"
+
+    result = prepare_candidate_runtime(
+        checkout,
+        run_dir,
+        runtime_root,
+        "abc123",
+        evaluator,
+        env=env,
+        contract_id="a" * 64,
+    )
+
+    assert result.ready is False
+    assert result.outcome is Outcome.INFRASTRUCTURE_FAILED
+    assert result.reason is not None and "strict runtime preparation" in result.reason
+    assert result.receipt_path is not None
+    receipt = json.loads(result.receipt_path.read_text())
+    assert receipt["schema_version"] == 3
+    assert receipt["runtime_profile"] == "harbor-bytedance-uv-v1"
     assert not calls.exists()
 
 

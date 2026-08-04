@@ -218,11 +218,13 @@ def test_candidate_runtime_receipt_must_match_contract_identity(
     base = evaluation_package.resolve_evaluation_contract(_context(workspace, commit))
     contract = replace(base, candidate_dependency_digest="d" * 64)
     receipt = {
-        "schema_version": 2,
+        "schema_version": 3,
         "variant": "uv",
         "contract_id": contract.contract_id,
         "candidate_commit": contract.candidate_commit,
         "candidate_dependency_digest": "d" * 64,
+        "runtime_profile": contract.runtime_profile,
+        "runtime_profile_digest": contract.runtime_profile_digest,
         "outcome": "ready",
     }
 
@@ -232,6 +234,8 @@ def test_candidate_runtime_receipt_must_match_contract_identity(
         ("candidate_commit", "f" * 40),
         ("candidate_dependency_digest", "0" * 64),
         ("variant", "unknown"),
+        ("runtime_profile", "other-profile"),
+        ("runtime_profile_digest", "1" * 64),
     ):
         mismatch = evaluation_package.verify_candidate_runtime_receipt(contract, {**receipt, field: value})
         assert mismatch.certified is False
