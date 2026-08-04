@@ -4,7 +4,7 @@ import stat
 from pathlib import Path
 
 import pytest
-from conftest import git, init_workspace, rows_by_genid
+from conftest import git, init_recipe_with_local_inputs, init_workspace, rows_by_genid
 
 import evolve.evaluation.execution as evaluator_module
 from evolve.archive import MECHANISM_EVAL_FIELD, append_event
@@ -217,6 +217,87 @@ def test_eval_script_receives_candidate_runtime_json(tmp_path: Path) -> None:
     assert result.returncode == 0
     assert json.loads((checkout / "runtime-env").read_text()) == {"UV_OFFLINE": "1"}
     assert json.loads((checkout / "runtime-mounts").read_text())[0]["target"] == "/opt/evolve/uv/cache"
+
+
+def test_eval_runner_writes_templates_and_keeps_literals_only_in_process_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checkout = init_recipe_with_local_inputs(tmp_path, "ahe")
+    run_dir = checkout / "runs" / "environment-plan-test"
+    run_dir.mkdir(parents=True)
+    captured: dict[str, object] = {}
+    monkeypatch.setenv("OPENAI_API_KEY", "sensitive-key-value")
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://model.example/v1")
+    monkeypatch.setenv("HTTPS_PROXY", "http://proxy-user:proxy-password@proxy.example:8118")
+    monkeypatch.setenv("NO_PROXY", "pypi.org,.internal.example")
+
+    def fake_run_owned(command, *, cwd, env, timeout_s=None):
+        captured.update({"command": command, "cwd": cwd, "env": env, "timeout_s": timeout_s})
+        return OwnedResult(0, "", "", 0.01, False)
+
+    monkeypatch.setattr(evaluator_module, "run_owned", fake_run_owned)
+
+    _run_eval_script(
+        checkout,
+        run_dir,
+        "0",
+        1,
+        "candidate",
+        "train",
+        CandidateRuntimeResult(None, None),
+    )
+
+    agent_text = (run_dir / "runtime-agent.env").read_text()
+    verifier_text = (run_dir / "runtime-verifier.env").read_text()
+    evidence_text = (run_dir / "runtime-environment-evidence.json").read_text()
+    assert "OPENAI_API_KEY=${EVOLVE_RUNTIME_AGENT_OPENAI_API_KEY}" in agent_text
+    assert "MINISWE_STEP_LIMIT=${EVOLVE_RUNTIME_AGENT_MINISWE_STEP_LIMIT}" in agent_text
+    assert "OPENAI_API_KEY" not in verifier_text
+    for literal in ("sensitive-key-value", "model.example", "proxy-password"):
+        assert literal not in agent_text + verifier_text + evidence_text
+    process_env = captured["env"]
+    assert isinstance(process_env, dict)
+    assert process_env["EVOLVE_RUNTIME_AGENT_OPENAI_API_KEY"] == "sensitive-key-value"
+    assert "model.example" in process_env["EVOLVE_RUNTIME_AGENT_NO_PROXY"]
+    assert "pypi.org" not in process_env["EVOLVE_RUNTIME_AGENT_NO_PROXY"]
+
+
+def test_eval_runner_generates_safe_legacy_environment_inputs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checkout, _evolve_home = init_workspace(tmp_path)
+    run_dir = checkout / "runs" / "legacy-environment-plan-test"
+    run_dir.mkdir(parents=True)
+    captured: dict[str, object] = {}
+    monkeypatch.setenv("OPENAI_API_KEY", "legacy-key")
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://legacy-model.example/v1")
+
+    def fake_run_owned(command, *, cwd, env, timeout_s=None):
+        captured["env"] = env
+        return OwnedResult(0, "", "", 0.01, False)
+
+    monkeypatch.setattr(evaluator_module, "run_owned", fake_run_owned)
+
+    _run_eval_script(
+        checkout,
+        run_dir,
+        "0",
+        None,
+        "genesis",
+        "gate",
+        CandidateRuntimeResult(None, None),
+    )
+
+    agent_text = (run_dir / "runtime-agent.env").read_text()
+    evidence = json.loads((run_dir / "runtime-environment-evidence.json").read_text())
+    assert "OPENAI_API_KEY=${EVOLVE_RUNTIME_AGENT_OPENAI_API_KEY}" in agent_text
+    assert "legacy-key" not in agent_text
+    assert evidence["evidence"]["profile_name"] == "legacy-unverified"
+    process_env = captured["env"]
+    assert isinstance(process_env, dict)
+    assert process_env["EVOLVE_RUNTIME_AGENT_OPENAI_API_KEY"] == "legacy-key"
 
 
 def test_eval_script_omits_runtime_contract_when_preparation_is_disabled(tmp_path: Path) -> None:

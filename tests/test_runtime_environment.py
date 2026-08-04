@@ -6,6 +6,7 @@ import pytest
 from evolve.runtime_environment import (
     RuntimeEnvironmentPlan,
     RuntimeEnvironmentResolutionError,
+    resolve_legacy_runtime_environment,
     resolve_runtime_environment,
     write_harbor_environment_inputs,
 )
@@ -169,3 +170,66 @@ def test_harbor_writer_rejects_literal_values(tmp_path: Path) -> None:
 
     with pytest.raises(RuntimeEnvironmentResolutionError, match="Harbor environment template"):
         write_harbor_environment_inputs(tmp_path, plan)
+
+
+def test_legacy_environment_plan_preserves_api_and_proxy_compatibility_without_file_auth() -> None:
+    plan = resolve_legacy_runtime_environment(
+        {
+            "OPENAI_API_KEY": "legacy-key",
+            "OPENAI_BASE_URL": "https://model.example/v1",
+            "HTTPS_PROXY": "http://proxy.example:8118",
+            "NO_PROXY": "pypi.org,.internal.example",
+        },
+        agent_overrides={"STEP_LIMIT": 100},
+        verifier_overrides={"JUDGE_MODEL": "judge-model"},
+    )
+
+    assert plan.agent_env()["OPENAI_API_KEY"] == "${EVOLVE_RUNTIME_AGENT_OPENAI_API_KEY}"
+    assert plan.agent_env()["STEP_LIMIT"] == "${EVOLVE_RUNTIME_AGENT_STEP_LIMIT}"
+    assert plan.verifier_env()["JUDGE_MODEL"] == "${EVOLVE_RUNTIME_VERIFIER_JUDGE_MODEL}"
+    assert plan.process_env()["EVOLVE_RUNTIME_AGENT_OPENAI_API_KEY"] == "legacy-key"
+    assert "model.example" in plan.process_env()["EVOLVE_RUNTIME_AGENT_NO_PROXY"]
+    assert "pypi.org" not in plan.process_env()["EVOLVE_RUNTIME_AGENT_NO_PROXY"]
+    assert not any("CODEX" in name for name in plan.process_env())
+
+
+def test_legacy_environment_plan_rejects_file_auth_variables() -> None:
+    with pytest.raises(RuntimeEnvironmentResolutionError, match="forbidden credential"):
+        resolve_legacy_runtime_environment(
+            {
+                "OPENAI_API_KEY": "legacy-key",
+                "OPENAI_BASE_URL": "https://model.example/v1",
+                "CODEX_FORCE_AUTH_JSON": "1",
+            }
+        )
+
+
+def test_legacy_agent_proxy_override_wins_over_ambient_bypass() -> None:
+    plan = resolve_legacy_runtime_environment(
+        {"NO_PROXY": "::1", "no_proxy": "fe80::/10"},
+        agent_overrides={
+            "NO_PROXY": "172.17.0.1,127.0.0.1,localhost",
+            "no_proxy": "172.17.0.1,127.0.0.1,localhost",
+        },
+    )
+
+    assert plan.process_env()["EVOLVE_RUNTIME_AGENT_NO_PROXY"] == (
+        "172.17.0.1,127.0.0.1,localhost"
+    )
+
+
+def test_legacy_proxy_plan_merges_bypass_aliases_and_removes_dependency_hosts() -> None:
+    plan = resolve_legacy_runtime_environment(
+        {
+            "OPENAI_BASE_URL": "https://model.example/v1",
+            "http_proxy": "http://dependency-proxy.example:8118",
+            "https_proxy": "http://dependency-proxy.example:8118",
+            "no_proxy": ".internal.example,github.com,files.pythonhosted.org",
+            "NO_PROXY": ".upper.example,objects.githubusercontent.com,astral.sh",
+        }
+    )
+
+    process = plan.process_env()
+    expected = ".internal.example,.upper.example,model.example"
+    assert process["EVOLVE_RUNTIME_AGENT_NO_PROXY"] == expected
+    assert process["EVOLVE_RUNTIME_VERIFIER_NO_PROXY"] == expected

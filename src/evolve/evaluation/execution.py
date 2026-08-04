@@ -14,6 +14,7 @@ from ..git import evaluator_tree, git, git_stdout
 from ..host_runtime import clean_python_env
 from ..preflight import PreflightStatus, run_preflight
 from ..runtime import OwnedResult, attempt_dir, next_attempt, owned_attempt_id, run_owned
+from ..runtime_environment import resolve_evaluator_runtime_environment, write_harbor_environment_inputs
 from ..uv_runtime import CandidateRuntimeResult, prepare_candidate_runtime
 from .contract import (
     ContractMode,
@@ -359,8 +360,18 @@ def _run_eval_script(
     runtime: CandidateRuntimeResult,
 ) -> OwnedResult:
     runs_dir = next(parent for parent in run_dir.parents if parent.name == "runs")
+    source_environment = clean_python_env()
+    config = load_config(checkout / "evolve.yaml")
+    evaluator = config.get("evaluator")
+    if not isinstance(evaluator, dict):
+        raise ValueError("evaluator configuration must be a mapping")
+    environment_plan = resolve_evaluator_runtime_environment(
+        checkout, evaluator, source_environment
+    )
+    write_harbor_environment_inputs(run_dir, environment_plan)
     env: dict[str, str] = {
-        **clean_python_env(),
+        **source_environment,
+        **environment_plan.process_env(),
         "EVOLVE_RUN_DIR": str(run_dir),
         "EVOLVE_GENID": genid,
         "EVOLVE_EVAL_KIND": purpose,

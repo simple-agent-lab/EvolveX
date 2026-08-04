@@ -131,82 +131,17 @@ def test_harbor_evaluator_ignores_ambient_frozen_control_overrides(tmp_path: Pat
     assert "--max-retries" not in args
 
 
-def test_harbor_evaluator_forwards_workspace_openai_environment() -> None:
+def test_harbor_shell_consumes_prevalidated_environment_inputs() -> None:
     text = _eval_sh("harbor", "fixture")
 
-    assert "OPENAI_API_KEY OPENAI_BASE_URL OPENAI_API_BASE" in text
-    assert 'set -- "$@" --ae "$credential_name=$credential_value"' in text
+    assert 'done < "$EVOLVE_RUN_DIR/runtime-agent.env"' in text
+    assert 'done < "$EVOLVE_RUN_DIR/runtime-verifier.env"' in text
+    assert "for credential_name in" not in text
+    assert "dependency_hosts =" not in text
+    assert "model_base=" not in text
 
 
-def test_harbor_evaluator_prefers_explicit_agent_proxy_over_ambient_proxy(
-    tmp_path: Path,
-) -> None:
-    evaluator = tmp_path / "evaluator"
-    evaluator.mkdir()
-    _write_executable(evaluator / "eval.sh", _eval_sh("harbor", "fixture"))
-    (evaluator / "eval.env").write_text(
-        _eval_env(
-            "experiment",
-            "fixture",
-            n_concurrent=1,
-            tasks_per_round=1,
-            trials=1,
-            partial_floor=0.8,
-            agent="custom:Agent",
-        )
-    )
-    (evaluator / "agent.env").write_text(
-        "NO_PROXY=172.17.0.1,127.0.0.1,localhost\nno_proxy=172.17.0.1,127.0.0.1,localhost\n"
-    )
-    _write_evaluator_helpers(evaluator)
-    fake_bin = tmp_path / "bin"
-    fake_bin.mkdir()
-    _write_fake_uv(fake_bin)
-    _write_executable(
-        fake_bin / "harbor",
-        "#!/bin/sh\n"
-        'printf \'%s\\n\' "$@" > "$HARBOR_ARGS_CAPTURE"\n'
-        "jobs_dir=\n"
-        'while [ "$#" -gt 0 ]; do\n'
-        '  if [ "$1" = "--jobs-dir" ]; then shift; jobs_dir=$1; fi\n'
-        "  shift || true\n"
-        "done\n"
-        'mkdir -p "$jobs_dir/trial"\n'
-        'printf \'%s\\n\' \'{"task_name":"task","trial_name":"trial","verifier_result":{"rewards":{"reward":1}}}\' > "$jobs_dir/trial/result.json"\n',
-    )
-    args_capture = tmp_path / "args"
-    env = {
-        **os.environ,
-        "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
-        "HARBOR_ARGS_CAPTURE": str(args_capture),
-        "EVOLVE_RUN_DIR": str(tmp_path / "run"),
-        "EVOLVE_ATTEMPT_ID": "proxy-precedence",
-        "EVOLVE_FRAMEWORK_PYTHON": sys.executable,
-        "NO_PROXY": "::1,fe80::/10",
-        "no_proxy": "::1,fe80::/10",
-    }
-    env.pop("OPENAI_BASE_URL", None)
-
-    result = subprocess.run(
-        [str(evaluator / "eval.sh")],
-        cwd=tmp_path,
-        env=env,
-        text=True,
-        capture_output=True,
-    )
-
-    assert result.returncode == 0, result.stderr
-    args = args_capture.read_text().splitlines()
-    agent_environment = [args[index + 1] for index, value in enumerate(args) if value == "--ae"]
-    verifier_environment = [args[index + 1] for index, value in enumerate(args) if value == "--ve"]
-    expected = "172.17.0.1,127.0.0.1,localhost"
-    assert [value for value in agent_environment if value.startswith("NO_PROXY=")][-1] == f"NO_PROXY={expected}"
-    assert [value for value in agent_environment if value.startswith("no_proxy=")][-1] == f"no_proxy={expected}"
-    assert f"NO_PROXY={expected}" in verifier_environment
-    assert f"no_proxy={expected}" in verifier_environment
-
-
-def test_harbor_evaluator_forwards_dependency_proxies_with_model_bypass_and_skips_docker_cleanup(
+def test_harbor_evaluator_translates_environment_inputs_and_skips_docker_cleanup(
     tmp_path: Path,
 ) -> None:
     evaluator = tmp_path / "evaluator"
@@ -225,7 +160,6 @@ def test_harbor_evaluator_forwards_dependency_proxies_with_model_bypass_and_skip
         )
     )
     (evaluator / "environment.kwargs").write_text('workdir="/workspace"\n')
-    (evaluator / "verifier.env").write_text("JUDGE_MODEL=gpt-5.4-mini-2026-03-17\n")
     _write_evaluator_helpers(evaluator)
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
@@ -245,19 +179,31 @@ def test_harbor_evaluator_forwards_dependency_proxies_with_model_bypass_and_skip
     _write_executable(fake_bin / "docker", '#!/bin/sh\nprintf called > "$DOCKER_MARKER"\n')
     args_capture = tmp_path / "args"
     docker_marker = tmp_path / "docker-called"
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    run_dir.chmod(0o700)
+    (run_dir / "runtime-agent.env").write_text(
+        "HTTPS_PROXY=${EVOLVE_RUNTIME_AGENT_HTTPS_PROXY}\n"
+        "NO_PROXY=${EVOLVE_RUNTIME_AGENT_NO_PROXY}\n"
+    )
+    (run_dir / "runtime-verifier.env").write_text(
+        "HTTPS_PROXY=${EVOLVE_RUNTIME_VERIFIER_HTTPS_PROXY}\n"
+        "JUDGE_MODEL=${EVOLVE_RUNTIME_VERIFIER_JUDGE_MODEL}\n"
+        "NO_PROXY=${EVOLVE_RUNTIME_VERIFIER_NO_PROXY}\n"
+    )
     env = {
         **os.environ,
         "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
         "HARBOR_ARGS_CAPTURE": str(args_capture),
         "DOCKER_MARKER": str(docker_marker),
-        "EVOLVE_RUN_DIR": str(tmp_path / "run"),
+        "EVOLVE_RUN_DIR": str(run_dir),
         "EVOLVE_ATTEMPT_ID": "local-attempt",
         "EVOLVE_FRAMEWORK_PYTHON": sys.executable,
-        "OPENAI_BASE_URL": "https://model.example/v1",
-        "http_proxy": "http://dependency-proxy.example:8118",
-        "https_proxy": "http://dependency-proxy.example:8118",
-        "no_proxy": ".internal.example,github.com,files.pythonhosted.org",
-        "NO_PROXY": ".upper.example,objects.githubusercontent.com,astral.sh",
+        "EVOLVE_RUNTIME_AGENT_HTTPS_PROXY": "http://dependency-proxy.example:8118",
+        "EVOLVE_RUNTIME_AGENT_NO_PROXY": ".internal.example,.upper.example,model.example",
+        "EVOLVE_RUNTIME_VERIFIER_HTTPS_PROXY": "http://dependency-proxy.example:8118",
+        "EVOLVE_RUNTIME_VERIFIER_JUDGE_MODEL": "gpt-5.4-mini-2026-03-17",
+        "EVOLVE_RUNTIME_VERIFIER_NO_PROXY": ".internal.example,.upper.example,model.example",
     }
 
     result = subprocess.run([str(evaluator / "eval.sh")], cwd=tmp_path, env=env, text=True, capture_output=True)
@@ -268,20 +214,12 @@ def test_harbor_evaluator_forwards_dependency_proxies_with_model_bypass_and_skip
     assert args[args.index("--environment-kwarg") + 1] == 'workdir="/workspace"'
     agent_environment = [args[index + 1] for index, value in enumerate(args) if value == "--ae"]
     verifier_environment = [args[index + 1] for index, value in enumerate(args) if value == "--ve"]
-    expected_proxy_environment = {
-        "http_proxy=http://dependency-proxy.example:8118",
-        "HTTP_PROXY=http://dependency-proxy.example:8118",
-        "https_proxy=http://dependency-proxy.example:8118",
-        "HTTPS_PROXY=http://dependency-proxy.example:8118",
-        "no_proxy=.internal.example,.upper.example,model.example",
-        "NO_PROXY=.internal.example,.upper.example,model.example",
-    }
-    assert expected_proxy_environment.issubset(agent_environment)
-    assert expected_proxy_environment.issubset(verifier_environment)
-    assert "JUDGE_MODEL=gpt-5.4-mini-2026-03-17" in verifier_environment
-    assert "JUDGE_MODEL=gpt-5.4-mini-2026-03-17" not in agent_environment
+    assert "HTTPS_PROXY=${EVOLVE_RUNTIME_AGENT_HTTPS_PROXY}" in agent_environment
+    assert "NO_PROXY=${EVOLVE_RUNTIME_AGENT_NO_PROXY}" in agent_environment
+    assert "HTTPS_PROXY=${EVOLVE_RUNTIME_VERIFIER_HTTPS_PROXY}" in verifier_environment
+    assert "JUDGE_MODEL=${EVOLVE_RUNTIME_VERIFIER_JUDGE_MODEL}" in verifier_environment
+    assert "JUDGE_MODEL=${EVOLVE_RUNTIME_VERIFIER_JUDGE_MODEL}" not in agent_environment
     assert not docker_marker.exists()
-    run_dir = tmp_path / "run"
     assert stat.S_IMODE(run_dir.stat().st_mode) == 0o700
     assert stat.S_IMODE((run_dir / "candidate-runtime.env").stat().st_mode) == 0o600
     assert stat.S_IMODE((run_dir / "jobs").stat().st_mode) == 0o700

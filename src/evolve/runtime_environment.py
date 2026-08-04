@@ -6,12 +6,14 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+from typing import cast
 from urllib.parse import urlsplit
 
 from .runtime_profiles import (
     ResolvedRuntimeProfileV1,
     RuntimeProfileResolutionError,
     is_protected_runtime_environment_name,
+    load_resolved_runtime_profile,
     model_route_digest,
     normalize_model_route,
 )
@@ -72,6 +74,9 @@ _DEPENDENCY_HOSTS = {
 }
 _ENVIRONMENT_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _HARBOR_TEMPLATE = re.compile(r"\$\{EVOLVE_RUNTIME_[A-Z0-9_]+\}")
+_FORBIDDEN_FILE_AUTH = ("CODEX_AUTH_JSON_PATH", "CODEX_FORCE_AUTH_JSON")
+_LEGACY_AGENT_CREDENTIALS = ("OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_API_BASE")
+_LEGACY_PROXY_NAMES = frozenset(name for aliases in _PROXY_ALIASES for name in aliases)
 
 
 def resolve_runtime_environment(
@@ -156,6 +161,71 @@ def resolve_runtime_environment(
     )
 
 
+def resolve_evaluator_runtime_environment(
+    checkout: Path,
+    evaluator: Mapping[str, object],
+    environment: Mapping[str, str],
+) -> RuntimeEnvironmentPlan:
+    profile_path = checkout / "evaluator" / "runtime-profile.json"
+    if not profile_path.is_file():
+        return resolve_legacy_runtime_environment(
+            environment,
+            agent_overrides=_mapping(evaluator.get("agent_env"), "evaluator.agent_env"),
+            verifier_overrides=_mapping(evaluator.get("verifier_env"), "evaluator.verifier_env"),
+        )
+    try:
+        profile = load_resolved_runtime_profile(json.loads(profile_path.read_text()))
+    except json.JSONDecodeError as error:
+        raise RuntimeEnvironmentResolutionError(
+            "evaluator/runtime-profile.json is invalid JSON"
+        ) from error
+    return resolve_runtime_environment(
+        profile,
+        environment,
+        agent_overrides=_mapping(evaluator.get("agent_env"), "evaluator.agent_env"),
+        verifier_overrides=_mapping(evaluator.get("verifier_env"), "evaluator.verifier_env"),
+    )
+
+
+def resolve_legacy_runtime_environment(
+    environment: Mapping[str, str],
+    *,
+    agent_overrides: Mapping[str, object] | None = None,
+    verifier_overrides: Mapping[str, object] | None = None,
+) -> RuntimeEnvironmentPlan:
+    source = _source_environment(environment)
+    _reject_legacy_file_auth(source, agent_overrides, verifier_overrides)
+    process: dict[str, str] = {}
+    agent: dict[str, str] = {}
+    verifier: dict[str, str] = {}
+    for name in _LEGACY_AGENT_CREDENTIALS:
+        if source.get(name):
+            _add_value(process, agent, RuntimeRole.AGENT, name, _single_line_value(name, source[name]))
+    _apply_legacy_overrides(process, agent, RuntimeRole.AGENT, agent_overrides)
+    _apply_legacy_overrides(process, verifier, RuntimeRole.VERIFIER, verifier_overrides)
+    model_hostname = _legacy_model_hostname(source, agent_overrides)
+    for aliases, value in _legacy_proxy_values(source, agent_overrides, model_hostname):
+        for name in aliases:
+            _add_value(process, agent, RuntimeRole.AGENT, name, value)
+            _add_value(process, verifier, RuntimeRole.VERIFIER, name, value)
+    evidence: dict[str, object] = {
+        "schema_version": 1,
+        "profile_name": "legacy-unverified",
+        "forwarded_names_by_role": {
+            RuntimeRole.AGENT.value: sorted(agent),
+            RuntimeRole.VERIFIER.value: sorted(verifier),
+            RuntimeRole.META_AGENT.value: [],
+        },
+    }
+    return RuntimeEnvironmentPlan(
+        process_environment=tuple(sorted(process.items())),
+        agent_environment=tuple(sorted(agent.items())),
+        verifier_environment=tuple(sorted(verifier.items())),
+        meta_agent_environment=(),
+        evidence=tuple(sorted(evidence.items())),
+    )
+
+
 def write_harbor_environment_inputs(run_dir: Path, plan: RuntimeEnvironmentPlan) -> None:
     run_dir.mkdir(parents=True, exist_ok=True)
     _write_atomic(run_dir / "runtime-agent.env", _environment_file(plan.agent_env()))
@@ -171,6 +241,82 @@ def _source_environment(environment: Mapping[str, str]) -> dict[str, str]:
             raise RuntimeEnvironmentResolutionError("runtime environment names and values must be strings")
         source[name] = value
     return source
+
+
+def _mapping(value: object, field: str) -> Mapping[str, object] | None:
+    if value is None:
+        return None
+    if not isinstance(value, Mapping):
+        raise RuntimeEnvironmentResolutionError(f"{field} must be a mapping")
+    return cast(Mapping[str, object], value)
+
+
+def _reject_legacy_file_auth(
+    source: Mapping[str, str],
+    agent_overrides: Mapping[str, object] | None,
+    verifier_overrides: Mapping[str, object] | None,
+) -> None:
+    configured = set(source) | set(agent_overrides or ()) | set(verifier_overrides or ())
+    for name in _FORBIDDEN_FILE_AUTH:
+        if name in configured:
+            raise RuntimeEnvironmentResolutionError(f"forbidden credential variable is present: {name}")
+
+
+def _apply_legacy_overrides(
+    process: dict[str, str],
+    target: dict[str, str],
+    role: RuntimeRole,
+    overrides: Mapping[str, object] | None,
+) -> None:
+    if overrides is None:
+        return
+    for name, raw in overrides.items():
+        if not isinstance(name, str) or _ENVIRONMENT_NAME.fullmatch(name) is None:
+            raise RuntimeEnvironmentResolutionError(f"invalid runtime override name: {name!r}")
+        if name not in _LEGACY_PROXY_NAMES:
+            _add_value(process, target, role, name, _scalar_value(name, raw))
+
+
+def _legacy_model_hostname(
+    source: Mapping[str, str], agent_overrides: Mapping[str, object] | None
+) -> str | None:
+    overrides = agent_overrides or {}
+    raw = overrides.get("OPENAI_BASE_URL") or overrides.get("OPENAI_API_BASE")
+    value = str(raw) if raw is not None else source.get("OPENAI_BASE_URL") or source.get("OPENAI_API_BASE")
+    if not value:
+        return None
+    hostname = urlsplit(_single_line_value("OPENAI_BASE_URL", value)).hostname
+    if not hostname:
+        raise RuntimeEnvironmentResolutionError("configured model base URL has no hostname")
+    return hostname.lower()
+
+
+def _legacy_proxy_values(
+    source: Mapping[str, str],
+    agent_overrides: Mapping[str, object] | None,
+    model_hostname: str | None,
+) -> tuple[tuple[tuple[str, str], str], ...]:
+    overrides = agent_overrides or {}
+    values: list[tuple[tuple[str, str], str]] = []
+    explicit_names = (
+        "EVOLVE_HARBOR_HTTP_PROXY",
+        "EVOLVE_HARBOR_HTTPS_PROXY",
+        "EVOLVE_HARBOR_ALL_PROXY",
+    )
+    for aliases, explicit in zip(_PROXY_ALIASES[:3], explicit_names, strict=True):
+        raw = source.get(explicit) or overrides.get(aliases[1]) or overrides.get(aliases[0])
+        raw = raw or source.get(aliases[1]) or source.get(aliases[0])
+        if raw:
+            values.append((aliases, _single_line_value(aliases[0], str(raw))))
+    bypass_override = source.get("EVOLVE_HARBOR_NO_PROXY")
+    agent_bypass = overrides.get("no_proxy") or overrides.get("NO_PROXY")
+    configured = str(bypass_override or agent_bypass) if bypass_override or agent_bypass else ",".join(
+        value for value in (source.get("no_proxy"), source.get("NO_PROXY")) if value
+    )
+    bypass = _model_bypass(configured or None, model_hostname)
+    if bypass:
+        values.append((_PROXY_ALIASES[-1], bypass))
+    return tuple(values)
 
 
 def _reject_forbidden_credentials(
@@ -216,10 +362,12 @@ def _single_line_value(name: str, value: str) -> str:
     return value
 
 
-def _model_bypass(configured: str | None, model_hostname: str) -> str:
+def _model_bypass(configured: str | None, model_hostname: str | None) -> str:
     entries = [entry.strip() for entry in (configured or "").split(",") if entry.strip()]
     filtered = [entry for entry in entries if not _dependency_host(entry)]
-    if model_hostname.lower() not in {entry.lstrip(".").lower() for entry in filtered}:
+    if model_hostname and model_hostname.lower() not in {
+        entry.lstrip(".").lower() for entry in filtered
+    }:
         filtered.append(model_hostname.lower())
     return ",".join(filtered)
 

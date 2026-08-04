@@ -154,33 +154,15 @@ if [ -f evaluator/environment.kwargs ]; then
 fi
 set -- "$@" --ae "EVOLVE_CANDIDATE_SOURCE=$PWD/target"
 set -- "$@" --mounts "$runtime_mounts"
-for credential_name in OPENAI_API_KEY OPENAI_BASE_URL OPENAI_API_BASE; do
-  eval "credential_value=\${$credential_name-}"
-  if [ -n "$credential_value" ]; then
-    set -- "$@" --ae "$credential_name=$credential_value"
-  fi
-done
-agent_proxy_http=
-agent_proxy_https=
-agent_proxy_no=
-agent_model_base=
-if [ -f evaluator/agent.env ]; then
+if [ -f "$EVOLVE_RUN_DIR/runtime-agent.env" ]; then
   while IFS= read -r agent_entry || [ -n "$agent_entry" ]; do
-    if [ -n "$agent_entry" ]; then
-      set -- "$@" --ae "$agent_entry"
-      case "$agent_entry" in
-        http_proxy=*|HTTP_PROXY=*) agent_proxy_http=${agent_entry#*=} ;;
-        https_proxy=*|HTTPS_PROXY=*) agent_proxy_https=${agent_entry#*=} ;;
-        no_proxy=*|NO_PROXY=*) agent_proxy_no=${agent_entry#*=} ;;
-        OPENAI_BASE_URL=*|OPENAI_API_BASE=*) agent_model_base=${agent_entry#*=} ;;
-      esac
-    fi
-  done < evaluator/agent.env
+    [ -n "$agent_entry" ] && set -- "$@" --ae "$agent_entry"
+  done < "$EVOLVE_RUN_DIR/runtime-agent.env"
 fi
-if [ -f evaluator/verifier.env ]; then
+if [ -f "$EVOLVE_RUN_DIR/runtime-verifier.env" ]; then
   while IFS= read -r verifier_entry || [ -n "$verifier_entry" ]; do
     [ -n "$verifier_entry" ] && set -- "$@" --ve "$verifier_entry"
-  done < evaluator/verifier.env
+  done < "$EVOLVE_RUN_DIR/runtime-verifier.env"
 fi
 while IFS= read -r runtime_entry || [ -n "$runtime_entry" ]; do
   if [ -n "$runtime_entry" ]; then
@@ -213,50 +195,6 @@ if [ -n "${EVOLVE_HARBOR_MAX_RETRIES:-}" ]; then
   set -- "$@" --retry-exclude EvolveCandidateInvalidError
   set -- "$@" --retry-exclude ApiUsageLimitError
 fi
-model_base=${agent_model_base:-${OPENAI_BASE_URL:-${OPENAI_API_BASE:-}}}
-proxy_no_configured=${EVOLVE_HARBOR_NO_PROXY:-${agent_proxy_no:-}}
-proxy_bypass=$(
-  "$EVOLVE_FRAMEWORK_PYTHON" - "$model_base" "$proxy_no_configured" "${no_proxy-}" "${NO_PROXY-}" <<'PY'
-import sys
-from urllib.parse import urlsplit
-
-base_url, override, *configured = sys.argv[1:]
-dependency_hosts = {
-    "astral.sh",
-    "download.pytorch.org",
-    "files.pythonhosted.org",
-    "github.com",
-    "objects.githubusercontent.com",
-    "pypi.org",
-}
-entries = []
-for value in ([override] if override else configured):
-    for entry in value.split(","):
-        entry = entry.strip()
-        normalized = entry.lstrip(".").lower().rstrip(".")
-        if normalized in dependency_hosts or any(
-            normalized.startswith(f"{hostname}:") for hostname in dependency_hosts
-        ):
-            continue
-        if entry and entry not in entries:
-            entries.append(entry)
-if base_url:
-    hostname = urlsplit(base_url).hostname
-    if not hostname:
-        raise SystemExit("configured model base URL has no hostname")
-    if hostname not in entries:
-        entries.append(hostname)
-print(",".join(entries))
-PY
-)
-proxy_http=${EVOLVE_HARBOR_HTTP_PROXY:-${agent_proxy_http:-${http_proxy:-${HTTP_PROXY:-}}}}
-proxy_https=${EVOLVE_HARBOR_HTTPS_PROXY:-${agent_proxy_https:-${https_proxy:-${HTTPS_PROXY:-}}}}
-for proxy_entry in \
-  "http_proxy=$proxy_http" "HTTP_PROXY=$proxy_http" \
-  "https_proxy=$proxy_https" "HTTPS_PROXY=$proxy_https" \
-  "no_proxy=$proxy_bypass" "NO_PROXY=$proxy_bypass"; do
-  if [ -n "${proxy_entry#*=}" ]; then set -- "$@" --ae "$proxy_entry" --ve "$proxy_entry"; fi
-done
 set -- "$@" --job-name "$EVOLVE_ATTEMPT_ID" --jobs-dir "$jobs_dir" --n-attempts "${EVOLVE_HARBOR_ATTEMPTS:-1}" -n "${EVOLVE_HARBOR_N_CONCURRENT:-$EVOLVE_HARBOR_N}" -y -q
 if [ -n "${EVOLVE_CANDIDATE_SMOKE_MODE:-}" ]; then
   "$UV" run --project "$EVOLVE_WORKSPACE" --frozen harbor "$@"

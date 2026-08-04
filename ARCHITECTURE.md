@@ -44,7 +44,7 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `preflight.py` | 500 | typed ordered runtime validation, local capability checks, and atomic predefined receipts |
 | `report.py` | 225 | status/report rendering, best-ever recomputation, claim checklist, and certified evidence coverage |
 | `runtime.py` | 250 | generated-workspace runtime entrypoint helpers |
-| `runtime_environment.py` | 400 | role-specific credential, endpoint, proxy, template, and redacted Harbor environment planning |
+| `runtime_environment.py` | 475 | strict and legacy role-specific credential, endpoint, proxy, template, and redacted Harbor environment planning |
 | `runtime_profiles.py` | 400 | immutable runtime-profile registry, route identity, canonical resolution, and trusted loading |
 | `splits.py` | 300 | freeze content-backed train/gate/sealed Harbor task membership and materialize exact runtime selections |
 | `surface.py` | 150 | mutable-surface pattern matching and violation checks |
@@ -73,7 +73,7 @@ each workspace, immutable there because it sits outside the mutable surface
 | `frozen/interfaces.py` | 475 | operator ABCs, registry, result schemas, and strict diagnostics/operator payload validation |
 | `frozen/sdk.py` | 300 | Python operator entrypoint and file-contract IO; no library algorithm policy |
 
-Total `src/evolve/` budget: **12555 lines**. The budget admits the explicit content-backed
+Total `src/evolve/` budget: **12630 lines**. The budget admits the explicit content-backed
 evaluation-contract boundaries, the opt-in in-place Harbor runtime, and the redacted trace-analysis
 boundary between rollout and feedback assembly; if the mechanism wants to
 grow past that, something belongs in a workspace operator instead —
