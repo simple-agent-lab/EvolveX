@@ -194,6 +194,13 @@ def contract_for_gen0(workspace: Path) -> evaluation_package.EvaluationContractV
     )
 
 
+def allow_local_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
+    from evolve import preflight as preflight_module
+
+    monkeypatch.setattr(preflight_module, "_image_available", lambda digest, env: True)
+    monkeypatch.setattr(preflight_module, "_tool_available", lambda name, env: True)
+
+
 def init_workspace(tmp_path: Path, experiment: str = "experiment") -> tuple[Path, Path]:
     workspace = tmp_path / experiment
     evolve_home = tmp_path / "evolve-home"
