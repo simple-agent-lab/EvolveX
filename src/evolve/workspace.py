@@ -586,6 +586,7 @@ def _component_manifest(recipe: str, config: dict[str, object]) -> dict[str, obj
 
 
 def _validate_evaluator_config(evaluator: dict[str, Any]) -> None:
+    normalize_evaluator_config(evaluator)
     engine = str(evaluator.get("engine") or "")
     _evaluator_scaffold(engine, "engine.sh")
     if engine == "harbor" and not evaluator.get("agent"):

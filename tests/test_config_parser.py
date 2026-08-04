@@ -124,3 +124,43 @@ def test_normalize_evaluator_config_writes_repetitions_without_mutating_input() 
 
     assert normalized == {"engine": "harbor", "repetitions": 2}
     assert evaluator == {"engine": "harbor", "k": 2}
+
+
+def test_normalize_evaluator_config_preserves_strict_runtime_profile() -> None:
+    evaluator = {
+        "engine": "harbor",
+        "runtime": {"profile": "harbor-bytedance-v1"},
+    }
+
+    normalized = config_module.normalize_evaluator_config(evaluator)
+
+    assert normalized["runtime"] == {"profile": "harbor-bytedance-v1"}
+
+
+@pytest.mark.parametrize(
+    ("runtime", "message"),
+    [
+        ("harbor-bytedance-v1", "evaluator.runtime must be a mapping"),
+        ({}, "evaluator.runtime.profile must be a non-empty string"),
+        ({"profile": ""}, "evaluator.runtime.profile must be a non-empty string"),
+        (
+            {"profile": "harbor-bytedance-v1", "extra": True},
+            "unknown evaluator.runtime fields: extra",
+        ),
+    ],
+)
+def test_normalize_evaluator_config_rejects_invalid_runtime(
+    runtime: object, message: str
+) -> None:
+    with pytest.raises(ValueError, match=message.replace(".", r"\.")):
+        config_module.normalize_evaluator_config({"runtime": runtime})
+
+
+def test_normalize_evaluator_config_rejects_strict_and_legacy_runtime_together() -> None:
+    evaluator = {
+        "runtime": {"profile": "harbor-bytedance-uv-v1"},
+        "candidate_runtime": {"variant": "uv", "project": "target", "python": "3.12"},
+    }
+
+    with pytest.raises(ValueError, match="cannot combine"):
+        config_module.normalize_evaluator_config(evaluator)
