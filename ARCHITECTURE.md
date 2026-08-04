@@ -41,7 +41,7 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `operators.py` | 200 | subprocess runner for workspace operator scripts (contract: env vars, --config, timeout) |
 | `patching.py` | 150 | mutable-surface patch creation and parent-reference selection |
 | `population.py` | 100 | genid/lineage bookkeeping for fan-out generations |
-| `preflight.py` | 550 | typed ordered runtime validation, isolated model-smoke delegation, and atomic predefined receipts |
+| `preflight.py` | 575 | typed ordered runtime validation, isolated model-smoke delegation, and atomic predefined receipts |
 | `report.py` | 225 | status/report rendering, best-ever recomputation, claim checklist, and certified evidence coverage |
 | `runtime.py` | 250 | generated-workspace runtime entrypoint helpers |
 | `runtime_environment.py` | 475 | strict and legacy role-specific credential, endpoint, proxy, template, and redacted Harbor environment planning |
@@ -73,7 +73,7 @@ each workspace, immutable there because it sits outside the mutable surface
 | `frozen/interfaces.py` | 475 | operator ABCs, registry, result schemas, and strict diagnostics/operator payload validation |
 | `frozen/sdk.py` | 300 | Python operator entrypoint and file-contract IO; no library algorithm policy |
 
-Total `src/evolve/` budget: **12755 lines**. The budget admits the explicit content-backed
+Total `src/evolve/` budget: **12780 lines**. The budget admits the explicit content-backed
 evaluation-contract boundaries, the opt-in in-place Harbor runtime, and the redacted trace-analysis
 boundary between rollout and feedback assembly; if the mechanism wants to
 grow past that, something belongs in a workspace operator instead —
@@ -107,4 +107,5 @@ Test files map to spec milestones/sections by name
 tissue: when behavior changes, delete the outdated test in the same
 commit — do not shim around it. Test files have no line budgets, but
 duplicated fixtures belong in `tests/conftest.py` once three files
-share them.
+share them. `test_runtime_profile_recipe_conformance.py` is the acceptance
+matrix for AEvolve, AHE, GEPA, and HyperAgents runtime-profile parity.

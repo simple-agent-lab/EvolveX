@@ -102,6 +102,29 @@ uv run evolve init /tmp/evolve-harbor \
 Inspect a run with `evolve status`, `evolve report`, `git tag --list 'gen/*'`,
 and the generated `archive.jsonl`. Run `evolve --help` for the complete CLI.
 
+For future experiments, the complete startup path is intentionally short:
+
+```bash
+export OPENAI_API_KEY="..."
+export OPENAI_BASE_URL="https://your-bytedance-openai-compatible-endpoint/v1"
+export EVOLVE_RUNTIME_DIGEST="sha256:..."
+
+evolve init WORKSPACE --recipe ahe --dataset DATASET
+WORKSPACE/evolve preflight WORKSPACE
+WORKSPACE/evolve preflight WORKSPACE --smoke
+WORKSPACE/evolve run WORKSPACE
+```
+
+Initialization generates the immutable runtime profile and all evaluation
+contract inputs automatically. Evaluator repetitions default to one. Ordinary
+preflight performs offline, cacheless validation and writes a receipt without
+changing tracked source or preparing dependencies. `--smoke` adds one real
+model request against a detached candidate snapshot. The agent and meta-agent
+receive the ByteDance-compatible endpoint through `OPENAI_API_KEY` and
+`OPENAI_BASE_URL`; credential files are neither required nor supported.
+Runtime policy is resolved by the framework, so recipe and experiment scripts
+only declare the profile they need.
+
 ## Concepts
 
 | Concept | Meaning |

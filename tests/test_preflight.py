@@ -1,6 +1,7 @@
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -250,7 +251,17 @@ def test_uv_lock_validation_is_explicitly_offline(
 
     assert preflight_module._lock_valid(project, runtime_environment())
     assert commands == [
-        ["uv", "lock", "--offline", "--check", "--project", str(project)]
+        [
+            "uv",
+            "--no-cache",
+            "lock",
+            "--offline",
+            "--check",
+            "--python",
+            sys.executable,
+            "--project",
+            str(project),
+        ]
     ]
     assert timeouts == [30]
 

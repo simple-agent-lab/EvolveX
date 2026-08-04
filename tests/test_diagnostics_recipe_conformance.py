@@ -128,3 +128,5 @@ def test_partner_recipes_share_receipt_feedback_sdk_and_report_diagnostics(
     assert "scoreable_trials: 0" in report
     assert "missing_trials:" in report
     assert "receipt_certified: true" in report
+    assert sdk_payload["contract_id"] == contract.contract_id
+    assert sdk_payload["contract_certified"] is True

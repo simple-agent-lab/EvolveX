@@ -7,6 +7,13 @@ from conftest import git, init_recipe_with_local_inputs
 from evolve.config import load_config, surface_lists
 from evolve.evaluation import ContractResolutionContext, resolve_evaluation_contract
 
+EXPECTED_OPERATOR_VARIANTS = {
+    "aevolve": ("greedy", "harbor", "aevolve", "hillclimb"),
+    "ahe": ("ahe_latest", "evaluation_replay", "ahe", "ahe_artifact_valid"),
+    "gepa": ("pareto", "harbor", "gepa", "parent_eligible"),
+    "hyperagents": ("score_child_prop", "evaluation_replay", "hyperagents", "parent_eligible"),
+}
+
 
 @pytest.mark.parametrize(
     ("recipe", "profile", "expected_surface"),
@@ -49,3 +56,10 @@ def test_all_partner_recipes_resolve_the_same_automatic_contract_schema(
     assert surface_lists(workspace)[0] == expected_surface
     assert json.loads((workspace / ".evolve-components.json").read_text())["recipe"] == recipe
     assert json.loads((workspace / "evaluator/dataset.pin").read_text())["digest"]
+    for kind, variant in zip(
+        ("select", "rollout", "meta_agent", "gate"),
+        EXPECTED_OPERATOR_VARIANTS[recipe],
+        strict=True,
+    ):
+        provenance = (workspace / "operators" / f"{kind}.py").read_text().splitlines()[0]
+        assert f"/{kind}/{variant}.py" in provenance

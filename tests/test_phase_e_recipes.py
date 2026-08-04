@@ -42,6 +42,7 @@ def test_all_recipes_are_recipe_artifacts_only() -> None:
             assert section in config
         top_level_sections = [line.split(":", 1)[0] for line in config.splitlines() if line and not line[0].isspace()]
         assert top_level_sections == ["experiment", "target", "surface", "operators", "evaluator"]
+        assert not (recipe / "scripts").exists()
 
 
 def test_supported_recipes_use_harbor_and_method_meta_agent() -> None:

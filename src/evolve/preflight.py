@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -485,7 +486,18 @@ def _lock_valid(project: Path, environment: Mapping[str, str]) -> bool:
     except RuntimeError:
         return False
     return _local_command_succeeds(
-        [uv, "lock", "--offline", "--check", "--project", str(project)], environment
+        [
+            uv,
+            "--no-cache",
+            "lock",
+            "--offline",
+            "--check",
+            "--python",
+            sys.executable,
+            "--project",
+            str(project),
+        ],
+        environment,
     )
 
 
