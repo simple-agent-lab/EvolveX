@@ -47,7 +47,8 @@ def test_unknown_profile_is_rejected() -> None:
 def test_route_digest_normalizes_equivalent_urls_without_persisting_url() -> None:
     first = model_route_digest("https://MODEL.EXAMPLE/v1/")
     second = model_route_digest("https://model.example/v1")
-    assert first == second
+    default_port = model_route_digest("https://model.example:443/v1")
+    assert first == second == default_port
 
     resolved = resolve_runtime_profile(
         strict_config(),
@@ -130,3 +131,34 @@ def test_resolved_profile_loader_rejects_tampered_digest() -> None:
 
     with pytest.raises(RuntimeProfileResolutionError, match="profile_digest"):
         load_resolved_runtime_profile(payload)
+
+
+def test_resolved_profile_loader_rejects_unknown_empty_credential_role() -> None:
+    resolved = resolve_runtime_profile(
+        strict_config(),
+        "sha256:runtime",
+        {"OPENAI_BASE_URL": "https://model.example/v1"},
+    )
+    assert resolved is not None
+    payload = resolved.to_dict()
+    roles = payload["required_credentials_by_role"]
+    assert isinstance(roles, dict)
+    roles[""] = []
+
+    with pytest.raises(RuntimeProfileResolutionError, match="credential role"):
+        load_resolved_runtime_profile(payload)
+
+
+def test_resolved_profile_loader_accepts_equivalent_role_mapping_order() -> None:
+    resolved = resolve_runtime_profile(
+        strict_config(),
+        "sha256:runtime",
+        {"OPENAI_BASE_URL": "https://model.example/v1"},
+    )
+    assert resolved is not None
+    payload = resolved.to_dict()
+    roles = payload["required_credentials_by_role"]
+    assert isinstance(roles, dict)
+    payload["required_credentials_by_role"] = dict(reversed(tuple(roles.items())))
+
+    assert load_resolved_runtime_profile(payload) == resolved

@@ -11,10 +11,9 @@ from evolve.archive import MECHANISM_EVAL_FIELD, append_event
 from evolve.driver import RunOptions
 from evolve.driver import run as driver_run
 from evolve.evaluation import Outcome
-from evolve.evaluation.evidence import TaskVectorError
+from evolve.evaluation.evidence import TaskVectorError, read_task_vector
 from evolve.evaluation.execution import (
     _evaluation_artifact_reference,
-    _read_task_vector,
     _receipt_reference,
     _run_eval_script,
     evaluate,
@@ -430,7 +429,7 @@ def test_evaluator_validates_task_vectors_and_compacts_artifact_references(tmp_p
     artifacts_path = run_dir / "evaluation_artifacts.json"
     artifacts_path.write_text('{"jobs_dir":"/retained/jobs","trials":[]}\n')
 
-    assert _read_task_vector(run_dir) == json.loads(vector_path.read_text())
+    assert read_task_vector(run_dir) == json.loads(vector_path.read_text())
     assert _evaluation_artifact_reference(workspace, run_dir) == {
         "path": "runs/gen-1/eval/evaluation_artifacts.json",
         "sha256": hashlib.sha256(artifacts_path.read_bytes()).hexdigest(),
@@ -438,7 +437,7 @@ def test_evaluator_validates_task_vectors_and_compacts_artifact_references(tmp_p
 
     vector_path.write_text('{"schema_version": 99, "tasks": {}}\n')
     with pytest.raises(TaskVectorError, match="unsupported task vector schema"):
-        _read_task_vector(run_dir)
+        read_task_vector(run_dir)
 
 
 def test_evaluator_tree_mismatch_does_not_consume_attempt_identity(tmp_path: Path) -> None:

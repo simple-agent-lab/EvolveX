@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from enum import StrEnum
+from pathlib import Path
 from typing import Any
 
 
@@ -108,6 +109,15 @@ class EvaluationRecord:
         if self.diagnostics is None:
             payload.pop("diagnostics")
         return payload
+
+
+def write_attempt_summary(run_dir: Path, record: EvaluationRecord) -> None:
+    (run_dir / "status").write_text(record.status + "\n")
+    score_path = run_dir / "score"
+    if record.score is None:
+        score_path.unlink(missing_ok=True)
+    else:
+        score_path.write_text(f"{record.score}\n")
 
 
 def _trial_payload(trial: TrialResult) -> dict[str, object]:

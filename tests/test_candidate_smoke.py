@@ -120,9 +120,15 @@ def test_model_smoke_uses_detached_snapshot_without_workspace_mutation(
     assert captured["env"]["EVOLVE_EVAL_SPLIT"] == "gate"
     payload = json.loads((result.attempt_dir / "result.json").read_text())
     assert payload["mode"] == "model"
+    assert "stdout_path" not in payload
+    assert "stderr_path" not in payload
     assert payload["artifacts"]["stdout"]["path"] == "stdout.log"
     assert payload["artifacts"]["stderr"]["path"] == "stderr.log"
     assert len(payload["artifacts"]["stdout"]["sha256"]) == 64
+    assert stat.S_IMODE(result.attempt_dir.stat().st_mode) == 0o700
+    assert stat.S_IMODE(result.stdout_path.stat().st_mode) == 0o600
+    assert stat.S_IMODE(result.stderr_path.stat().st_mode) == 0o600
+    assert stat.S_IMODE((result.attempt_dir / "result.json").stat().st_mode) == 0o600
 
 
 def test_smoke_prepares_and_injects_candidate_runtime(tmp_path: Path, monkeypatch) -> None:

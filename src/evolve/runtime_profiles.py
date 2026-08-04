@@ -161,6 +161,8 @@ def normalize_model_route(url: str) -> str:
     normalized_host = hostname.lower()
     if ":" in normalized_host:
         normalized_host = f"[{normalized_host}]"
+    if (scheme, port) in {("http", 80), ("https", 443)}:
+        port = None
     netloc = f"{normalized_host}:{port}" if port is not None else normalized_host
     path = parsed.path.rstrip("/")
     return urlunsplit((scheme, netloc, path, "", ""))
@@ -358,10 +360,13 @@ def _string_tuple(value: object, field: str) -> tuple[str, ...]:
 
 def _credential_roles(value: object) -> tuple[tuple[str, tuple[str, ...]], ...]:
     roles = _mapping(value, "required_credentials_by_role")
+    if any(not role for role in roles):
+        raise RuntimeProfileResolutionError(
+            "resolved runtime profile credential role must be non-empty"
+        )
     return tuple(
         (role, _string_tuple(names, f"required_credentials_by_role.{role}"))
-        for role, names in roles.items()
-        if isinstance(role, str) and role
+        for role, names in sorted(roles.items())
     )
 
 

@@ -212,6 +212,7 @@ def test_harbor_evaluator_translates_environment_inputs_and_skips_docker_cleanup
     args = args_capture.read_text().splitlines()
     assert args[args.index("--env") + 1] == "evolve.harbor_local:LocalEnvironment"
     assert args[args.index("--environment-kwarg") + 1] == 'workdir="/workspace"'
+    assert json.loads(args[args.index("--mounts") + 1]) == []
     agent_environment = [args[index + 1] for index, value in enumerate(args) if value == "--ae"]
     verifier_environment = [args[index + 1] for index, value in enumerate(args) if value == "--ve"]
     assert "HTTPS_PROXY=${EVOLVE_RUNTIME_AGENT_HTTPS_PROXY}" in agent_environment
@@ -385,21 +386,60 @@ def test_harbor_install_smoke_is_install_only_and_exposes_raw_diagnostics(tmp_pa
     assert not (run_dir / "score").exists()
 
 
-def test_harbor_model_smoke_forces_one_task_attempt_and_worker_without_install_only() -> None:
-    text = _eval_sh("harbor", "fixture")
+def test_harbor_model_smoke_runs_exactly_one_model_trial(tmp_path: Path) -> None:
+    evaluator = tmp_path / "evaluator"
+    evaluator.mkdir()
+    _write_executable(evaluator / "eval.sh", _eval_sh("harbor", "fixture"))
+    (evaluator / "eval.env").write_text(
+        _eval_env(
+            "experiment",
+            "fixture",
+            n_concurrent=8,
+            tasks_per_round=8,
+            trials=3,
+            partial_floor=0.8,
+            agent="mini-swe-agent",
+            max_retries=4,
+        )
+    )
+    _write_evaluator_helpers(evaluator)
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    _write_fake_uv(fake_bin)
+    _write_executable(
+        fake_bin / "harbor",
+        "#!/bin/sh\n"
+        'printf \'%s\\n\' "$@" > "$HARBOR_ARGS_CAPTURE"\n',
+    )
+    args_capture = tmp_path / "args"
+    env = {
+        **os.environ,
+        "HOME": str(tmp_path / "home"),
+        "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
+        "HARBOR_ARGS_CAPTURE": str(args_capture),
+        "EVOLVE_RUN_DIR": str(tmp_path / "run"),
+        "EVOLVE_CANDIDATE_SMOKE_MODE": "model",
+        "EVOLVE_TASK_LIMIT": "8",
+        "EVOLVE_ATTEMPT_ID": "model-smoke-attempt",
+        "EVOLVE_FRAMEWORK_PYTHON": sys.executable,
+    }
 
-    assert 'if [ "${EVOLVE_CANDIDATE_SMOKE_MODE:-}" = "model" ]; then' in text
-    assert "EVOLVE_HARBOR_N=1\n  EVOLVE_HARBOR_ATTEMPTS=1\n  EVOLVE_HARBOR_N_CONCURRENT=1" in text
-    assert "EVOLVE_TASK_LIMIT=1\n  EVOLVE_HARBOR_MAX_RETRIES=0" in text
-    assert 'if [ "${EVOLVE_CANDIDATE_SMOKE_MODE:-}" = "install" ]; then' in text
-    assert 'if [ "${EVOLVE_CANDIDATE_SMOKE_MODE:-}" = "install" ]; then\n  set -- "$@" --install-only' in text
+    result = subprocess.run(
+        [str(evaluator / "eval.sh")],
+        cwd=tmp_path,
+        env=env,
+        text=True,
+        capture_output=True,
+    )
 
-
-def test_harbor_legacy_cache_mount_matches_adapter_default() -> None:
-    text = _eval_sh("harbor", "fixture")
-
-    assert '"target":"/opt/evolve/uv/cache"' in text
-    assert '"target":"/installed-agent/uv-cache"' not in text
+    assert result.returncode == 0, result.stderr
+    args = args_capture.read_text().splitlines()
+    assert args[args.index("--n-tasks") + 1] == "1"
+    assert args[args.index("--n-attempts") + 1] == "1"
+    assert args[args.index("-n") + 1] == "1"
+    assert args[args.index("--max-retries") + 1] == "0"
+    assert "--install-only" not in args
+    assert "EVOLVE_CANDIDATE_SMOKE_MODE=model" in args
 
 
 def test_harbor_rejects_malformed_candidate_runtime_before_launch(tmp_path: Path) -> None:

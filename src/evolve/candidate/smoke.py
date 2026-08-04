@@ -14,7 +14,7 @@ from typing import Literal
 from ..config import load_config
 from ..evaluation.identity import evaluation_split_name
 from ..host_runtime import clean_python_env
-from ..runtime import owned_attempt_id, run_owned
+from ..runtime import owned_attempt_id, reserve_attempt_directory, run_owned, write_private_text
 from ..runtime_environment import (
     RuntimeEnvironmentResolutionError,
     resolve_evaluator_runtime_environment,
@@ -59,7 +59,7 @@ def run_candidate_smoke(
     source_environment = clean_python_env(environment)
     include, exclude = surface_patterns(workspace)
     snapshot = build_candidate_snapshot(checkout, "HEAD", include=include, exclude=exclude)
-    attempt = _next_attempt(workspace / "runs" / "smoke")
+    attempt = reserve_attempt_directory(workspace / "runs" / "smoke")
     started = time.monotonic()
     with materialize_snapshot(checkout, snapshot) as materialized:
         script = materialized / "evaluator" / "smoke.sh"
@@ -139,19 +139,6 @@ def run_candidate_smoke(
     )
 
 
-def _next_attempt(root: Path) -> Path:
-    root.mkdir(parents=True, exist_ok=True)
-    number = 1
-    while True:
-        attempt = root / f"attempt-{number}"
-        try:
-            attempt.mkdir()
-        except FileExistsError:
-            number += 1
-            continue
-        return attempt
-
-
 def _redact(text: str, environment: Mapping[str, str]) -> str:
     redacted = _URL_USERINFO.sub(r"\1[REDACTED]@", text)
     values = {value for name, value in environment.items() if len(value) >= 4 and _SECRET_NAME.search(name)}
@@ -176,8 +163,8 @@ def _write_result(
 ) -> SmokeResult:
     stdout_path = attempt / "stdout.log"
     stderr_path = attempt / "stderr.log"
-    stdout_path.write_text(stdout)
-    stderr_path.write_text(stderr)
+    write_private_text(stdout_path, stdout)
+    write_private_text(stderr_path, stderr)
     payload = {
         "schema_version": 1,
         "mode": mode.value,
@@ -185,8 +172,6 @@ def _write_result(
         "snapshot_tree": snapshot_tree,
         "returncode": returncode,
         "duration_s": round(duration_s, 6),
-        "stdout_path": str(stdout_path.resolve()),
-        "stderr_path": str(stderr_path.resolve()),
         "artifacts": {
             "stdout": _log_artifact(stdout_path),
             "stderr": _log_artifact(stderr_path),
@@ -194,7 +179,10 @@ def _write_result(
     }
     if failure_category := _structured_failure_category(attempt):
         payload["failure_category"] = failure_category
-    (attempt / "result.json").write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    write_private_text(
+        attempt / "result.json",
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+    )
     return SmokeResult(status, attempt, snapshot_tree, returncode, stdout_path, stderr_path)
 
 

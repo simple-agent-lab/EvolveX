@@ -102,6 +102,7 @@ def _mixed_record() -> EvaluationRecord:
         scoreable_trials=1,
         artifacts={"path": "runs/evaluations/artifacts.json", "sha256": "b" * 64},
         evaluation_contract={"path": "runs/evaluation-contract.json", "sha256": "c" * 64},
+        preflight_receipt={"path": "runs/preflight.json", "sha256": "e" * 64},
         candidate_runtime={"path": "/private/runtime.json", "sha256": "d" * 64},
     )
 
@@ -166,6 +167,7 @@ def test_evaluation_diagnostics_is_exact_bounded_and_safe() -> None:
                 "path": "runs/evaluation-contract.json",
                 "sha256": "c" * 64,
             },
+            {"kind": "preflight_receipt", "path": "runs/preflight.json", "sha256": "e" * 64},
         ],
     }
     serialized = json.dumps(diagnostics, sort_keys=True)

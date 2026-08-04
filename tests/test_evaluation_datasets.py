@@ -51,6 +51,19 @@ def test_local_dataset_identity_hashes_only_selected_members(tmp_path: Path) -> 
     assert after == before
 
 
+def test_local_dataset_identity_includes_executable_permissions(tmp_path: Path) -> None:
+    dataset = tmp_path / "tasks"
+    _task(dataset, "task-a")
+    verifier = dataset / "task-a" / "tests" / "test.sh"
+    verifier.chmod(0o644)
+    before = evaluation_package.local_dataset_identity(dataset, ("task-a",))
+
+    verifier.chmod(0o755)
+    after = evaluation_package.local_dataset_identity(dataset, ("task-a",))
+
+    assert after.digest != before.digest
+
+
 def test_local_dataset_identity_rejects_symlinks_that_escape_a_task(tmp_path: Path) -> None:
     dataset = tmp_path / "tasks"
     _task(dataset, "task-a")

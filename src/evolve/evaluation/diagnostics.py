@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import re
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import PurePosixPath
 
-from .contract import TrialIdentity
+from .contract import EvaluationContractV1, TrialIdentity
 from .results import EvaluationRecord, Outcome, TrialResult
 
 _SAFE_SLUG = re.compile(r"[a-z0-9_]{1,64}")
@@ -103,6 +103,43 @@ def materialize_missing_trials(
     return (*materialized, *unexpected)
 
 
+def materialize_setup_failure(
+    expected: tuple[TrialIdentity, ...],
+    outcome: Outcome,
+    *,
+    failure_category: str,
+) -> tuple[TrialResult, ...]:
+    if outcome is not Outcome.CANDIDATE_INVALID:
+        return materialize_missing_trials(expected, ())
+    return tuple(
+        TrialResult(
+            task_id=identity.task_id,
+            trial=identity.repetition,
+            outcome=outcome,
+            reward=None,
+            owner="candidate",
+            failure_category=failure_category,
+        )
+        for identity in expected
+    )
+
+
+def contract_trials(
+    contract: EvaluationContractV1 | None,
+    trials: tuple[TrialResult, ...],
+) -> tuple[TrialResult, ...]:
+    return materialize_missing_trials(contract.trial_identities, trials) if contract is not None else trials
+
+
+def freeze_diagnostics(
+    record: EvaluationRecord,
+    contract: EvaluationContractV1 | None,
+) -> EvaluationRecord:
+    if contract is None:
+        return record
+    return replace(record, diagnostics=evaluation_diagnostics(record).to_dict())
+
+
 def evaluation_diagnostics(
     record: EvaluationRecord,
     *,
@@ -171,6 +208,7 @@ def _artifact_references(record: EvaluationRecord) -> tuple[dict[str, str], ...]
     for kind, raw in (
         ("artifacts", record.artifacts),
         ("evaluation_contract", record.evaluation_contract),
+        ("preflight_receipt", record.preflight_receipt),
         ("candidate_runtime", record.candidate_runtime),
     ):
         if not isinstance(raw, dict):

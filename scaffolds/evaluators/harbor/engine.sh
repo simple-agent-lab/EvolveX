@@ -35,13 +35,8 @@ if python3 -c 'import json,sys; raise SystemExit(0 if json.load(open(sys.argv[1]
   EVOLVE_HARBOR_TASK_FILE="$EVOLVE_RUN_DIR/task-names.txt"
   export EVOLVE_HARBOR_TASK_FILE
 fi
-: "${EVOLVE_UV_CACHE_DIR:=$HOME/.evolve/uv-cache}"
-runtime_mounts=${EVOLVE_CANDIDATE_RUNTIME_MOUNTS_JSON:-}
+runtime_mounts=${EVOLVE_CANDIDATE_RUNTIME_MOUNTS_JSON:-[]}
 runtime_env=${EVOLVE_CANDIDATE_RUNTIME_ENV_JSON:-}
-if [ -z "$runtime_mounts" ]; then
-  mkdir -p "$EVOLVE_UV_CACHE_DIR"
-  runtime_mounts=$(python3 -c 'import json,sys; print(json.dumps([{"type":"bind","source":sys.argv[1],"target":"/opt/evolve/uv/cache"}]))' "$EVOLVE_UV_CACHE_DIR")
-fi
 [ -n "$runtime_env" ] || runtime_env='{}'
 if ! python3 - "$runtime_env" "$runtime_mounts" "$EVOLVE_RUN_DIR" <<'PY'
 import json

@@ -11,6 +11,7 @@ from evolve.frozen.interfaces import OperatorContext
 from evolve.splits import (
     build_manifest,
     load_manifest,
+    parse_manifest,
     select_dataset_tasks,
     selected_task_names,
     split_selection_digest,
@@ -109,6 +110,21 @@ def test_version_one_split_manifest_remains_readable_as_legacy_unverified(tmp_pa
 
     assert manifest["version"] == 1
     assert manifest["identity_status"] == "legacy_unverified"
+
+
+def test_verified_split_manifest_rejects_overlapping_task_members(tmp_path: Path) -> None:
+    dataset = _dataset(tmp_path / "tasks", count=4)
+    manifest = build_manifest(
+        dataset.as_posix(),
+        {"train": 0.5, "gate": 0.25, "sealed": 0.25, "seed": 0},
+        base_dir=tmp_path,
+        sampling="static",
+        gate_limit=1,
+    )
+    manifest["tasks"]["sealed"].append(manifest["tasks"]["gate"][0])
+
+    with pytest.raises(RuntimeError, match="disjoint non-empty task names"):
+        parse_manifest(json.dumps(manifest))
 
 
 def test_init_dataset_option_freezes_local_harbor_tasks(tmp_path: Path) -> None:

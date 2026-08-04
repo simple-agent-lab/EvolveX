@@ -5,31 +5,29 @@ import json
 import sys
 import tempfile
 import time
-from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 from ..config import evaluator_boolean, evaluator_repetitions, evaluator_sampling, experiment_id, load_config
 from ..git import evaluator_tree, git, git_stdout
 from ..host_runtime import clean_python_env
-from ..preflight import PreflightStatus, run_preflight
+from ..preflight import PreflightFailureCategory, PreflightStatus, run_preflight
 from ..runtime import OwnedResult, attempt_dir, next_attempt, owned_attempt_id, run_owned
 from ..runtime_environment import resolve_evaluator_runtime_environment, write_harbor_environment_inputs
 from ..uv_runtime import CandidateRuntimeResult, prepare_candidate_runtime
 from .contract import (
     ContractMode,
     ContractResolutionContext,
-    EvaluationContractV1,
     evaluation_contract_mode,
     resolve_evaluation_contract,
     trusted_evaluator_config,
     verify_candidate_runtime_receipt,
     write_evaluation_contract,
 )
-from .diagnostics import evaluation_diagnostics, materialize_missing_trials
-from .evidence import trial_results, validate_task_vector
+from .diagnostics import contract_trials, freeze_diagnostics, materialize_setup_failure
+from .evidence import read_cost, read_setup_evidence, read_task_vector, trial_results
 from .identity import effective_task_set_identity, evaluation_split_name
-from .results import EvaluationRecord, Outcome, TrialResult, classify_evaluation
+from .results import EvaluationRecord, Outcome, classify_evaluation, write_attempt_summary
 
 
 class EvaluationInterrupted(BaseException):
@@ -122,6 +120,9 @@ def evaluate(
                         run_preflight(
                             workspace,
                             candidate_commit=candidate_commit,
+                            candidate_checkout=checkout,
+                            purpose=purpose,
+                            task_limit=task_limit,
                             receipt_path=run_dir / "preflight.json",
                         )
                         if contract is not None
@@ -132,10 +133,24 @@ def evaluate(
                             workspace, preflight.receipt_path
                         )
                     if preflight is not None and preflight.status is PreflightStatus.FAILED:
+                        assert contract is not None
+                        candidate_lock_invalid = (
+                            preflight.failure_category
+                            is PreflightFailureCategory.DEPENDENCY_LOCK_INVALID
+                        )
+                        setup_outcome = (
+                            Outcome.CANDIDATE_INVALID
+                            if candidate_lock_invalid
+                            else Outcome.INFRASTRUCTURE_FAILED
+                        )
                         record = classify_evaluation(
                             **base,
-                            trials=_strict_trials(contract, ()),
-                            setup_outcome=Outcome.INFRASTRUCTURE_FAILED,
+                            trials=materialize_setup_failure(
+                                contract.trial_identities,
+                                setup_outcome,
+                                failure_category="dependency_lock_invalid",
+                            ),
+                            setup_outcome=setup_outcome,
                             setup_reason=preflight.failure_message or "ordinary preflight failed",
                             partial_floor=float(evaluator.get("partial_floor", 0.9)),
                             benchmark_timeout_is_zero=timeout_zero,
@@ -143,8 +158,8 @@ def evaluate(
                             wall_s=time.monotonic() - start,
                             artifacts=None,
                         )
-                        record = _freeze_diagnostics(record, contract)
-                        _write_attempt_summary(run_dir, record)
+                        record = freeze_diagnostics(record, contract)
+                        write_attempt_summary(run_dir, record)
                         return record
                     runtime = prepare_candidate_runtime(
                         checkout,
@@ -171,7 +186,7 @@ def evaluate(
                     if verification is not None and not verification.certified:
                         record = classify_evaluation(
                             **base,
-                            trials=_strict_trials(contract, ()),
+                            trials=contract_trials(contract, ()),
                             setup_outcome=Outcome.INFRASTRUCTURE_FAILED,
                             setup_reason=verification.reason,
                             partial_floor=float(evaluator.get("partial_floor", 0.9)),
@@ -181,9 +196,21 @@ def evaluate(
                             artifacts=None,
                         )
                     elif not runtime.ready:
+                        candidate_runtime_invalid = (
+                            contract is not None
+                            and runtime.outcome is Outcome.CANDIDATE_INVALID
+                        )
                         record = classify_evaluation(
                             **base,
-                            trials=_strict_trials(contract, ()),
+                            trials=(
+                                materialize_setup_failure(
+                                    contract.trial_identities,
+                                    runtime.outcome,
+                                    failure_category="candidate_runtime_invalid",
+                                )
+                                if candidate_runtime_invalid
+                                else contract_trials(contract, ())
+                            ),
                             setup_outcome=runtime.outcome,
                             setup_reason=runtime.reason,
                             partial_floor=float(evaluator.get("partial_floor", 0.9)),
@@ -202,14 +229,14 @@ def evaluate(
                             evaluation_split_name(evaluator, purpose),
                             runtime,
                         )
-                        setup_outcome, setup_reason = _setup_evidence(run_dir)
+                        setup_outcome, setup_reason = read_setup_evidence(run_dir)
                         try:
-                            vector = _read_task_vector(run_dir)
+                            vector = read_task_vector(run_dir)
                             trials = trial_results(vector) if vector is not None else ()
                         except (OSError, ValueError, json.JSONDecodeError) as error:
                             trials = ()
                             setup_outcome, setup_reason = Outcome.INFRASTRUCTURE_FAILED, str(error)
-                        trials = _strict_trials(contract, trials)
+                        trials = contract_trials(contract, trials)
                         candidate_owned = setup_outcome is Outcome.CANDIDATE_INVALID or any(
                             trial.owner == "candidate"
                             and (
@@ -230,7 +257,7 @@ def evaluate(
                             setup_reason=setup_reason,
                             partial_floor=float(evaluator.get("partial_floor", 0.9)),
                             benchmark_timeout_is_zero=timeout_zero,
-                            cost_usd=_read_cost(run_dir),
+                            cost_usd=read_cost(run_dir),
                             wall_s=time.monotonic() - start,
                             artifacts=_evaluation_artifact_reference(workspace, run_dir),
                         )
@@ -242,60 +269,30 @@ def evaluate(
                     **base,
                     outcome=Outcome.INFRASTRUCTURE_FAILED,
                     reason=str(error),
-                    trials=_strict_trials(contract, ()),
+                    trials=contract_trials(contract, ()),
                     score=None,
                     cost_usd=0.0,
                     wall_s=time.monotonic() - start,
                 )
-                return _freeze_diagnostics(record, contract)
+                return freeze_diagnostics(record, contract)
             except BaseException as error:
                 record = EvaluationRecord(
                     **base,
                     outcome=Outcome.CANCELLED,
                     reason=str(error) or "evaluation cancelled",
-                    trials=_strict_trials(contract, ()),
+                    trials=contract_trials(contract, ()),
                     score=None,
                     cost_usd=0.0,
                     wall_s=time.monotonic() - start,
                 )
-                record = _freeze_diagnostics(record, contract)
+                record = freeze_diagnostics(record, contract)
                 raise EvaluationInterrupted(record, error) from error
-            record = _freeze_diagnostics(record, contract)
-            _write_attempt_summary(run_dir, record)
+            record = freeze_diagnostics(record, contract)
+            write_attempt_summary(run_dir, record)
             return record
         finally:
             if cleanup_needed:
                 git(workspace, "worktree", "remove", "--force", str(checkout), check=False)
-
-
-def _read_task_vector(run_dir: Path) -> dict | None:
-    path = run_dir / "task_vector.json"
-    return validate_task_vector(json.loads(path.read_text())) if path.exists() else None
-
-
-def _strict_trials(
-    contract: EvaluationContractV1 | None,
-    trials: tuple[TrialResult, ...],
-) -> tuple[TrialResult, ...]:
-    return materialize_missing_trials(contract.trial_identities, trials) if contract is not None else trials
-
-
-def _freeze_diagnostics(
-    record: EvaluationRecord,
-    contract: EvaluationContractV1 | None,
-) -> EvaluationRecord:
-    if contract is None:
-        return record
-    return replace(record, diagnostics=evaluation_diagnostics(record).to_dict())
-
-
-def _write_attempt_summary(run_dir: Path, record: EvaluationRecord) -> None:
-    (run_dir / "status").write_text(record.status + "\n")
-    score_path = run_dir / "score"
-    if record.score is None:
-        score_path.unlink(missing_ok=True)
-    else:
-        score_path.write_text(f"{record.score}\n")
 
 
 def _evaluation_artifact_reference(workspace: Path, run_dir: Path) -> dict[str, str] | None:
@@ -321,25 +318,6 @@ def _receipt_reference(workspace: Path, receipt: Path | None) -> dict[str, str] 
         "path": receipt.resolve().relative_to(workspace.resolve()).as_posix(),
         "sha256": hashlib.sha256(receipt.read_bytes()).hexdigest(),
     }
-
-
-def _setup_evidence(run_dir: Path) -> tuple[Outcome | None, str | None]:
-    path = run_dir / "setup_outcome"
-    if not path.exists():
-        return None, None
-    outcome = Outcome(path.read_text().strip())
-    reason = run_dir / "setup_reason"
-    return outcome, reason.read_text().strip() if reason.exists() else f"evaluator reported {outcome.value}"
-
-
-def _read_cost(run_dir: Path) -> float:
-    path = run_dir / "cost.json"
-    if not path.exists():
-        return 0.0
-    value = json.loads(path.read_text()).get("usd")
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise ValueError("evaluator cost.json must contain numeric usd")
-    return float(value)
 
 
 def _expected_trials(evaluator: dict[str, Any], task_limit: int | None, *, selected_tasks: int | None = None) -> int:

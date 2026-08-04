@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import re
+import stat
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -111,6 +112,7 @@ def local_task_content_digest(dataset: Path, member: str) -> str:
     if not task.is_dir() or task.is_symlink():
         raise ValueError(f"selected task is not a regular directory: {member}")
     digest = hashlib.sha256()
+    _update_digest(digest, "directory", ".", _mode_bytes(task))
     for path in sorted(task.rglob("*"), key=lambda item: item.relative_to(task).as_posix()):
         relative = path.relative_to(task).as_posix()
         if path.is_symlink():
@@ -119,10 +121,22 @@ def local_task_content_digest(dataset: Path, member: str) -> str:
                 normalized_target = target.relative_to(task).as_posix()
             except ValueError as error:
                 raise ValueError(f"symlink escapes selected task: {member}/{relative}") from error
-            _update_digest(digest, "symlink", relative, normalized_target.encode())
+            _update_digest(
+                digest,
+                "symlink",
+                relative,
+                _mode_bytes(path) + b"\0" + normalized_target.encode(),
+            )
         elif path.is_file():
-            _update_digest(digest, "file", relative, path.read_bytes())
-        elif not path.is_dir():
+            _update_digest(
+                digest,
+                "file",
+                relative,
+                _mode_bytes(path) + b"\0" + path.read_bytes(),
+            )
+        elif path.is_dir():
+            _update_digest(digest, "directory", relative, _mode_bytes(path))
+        else:
             raise ValueError(f"unsupported dataset entry: {member}/{relative}")
     return digest.hexdigest()
 
@@ -153,6 +167,10 @@ def _update_digest(digest: hashlib._Hash, kind: str, path: str, contents: bytes)
         digest.update(b":")
         digest.update(value)
         digest.update(b"\0")
+
+
+def _mode_bytes(path: Path) -> bytes:
+    return f"{stat.S_IMODE(path.lstat().st_mode):04o}".encode()
 
 
 def _canonical_digest(payload: object) -> str:

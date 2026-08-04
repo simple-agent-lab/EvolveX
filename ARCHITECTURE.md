@@ -33,7 +33,7 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `evaluation/contract.py` | 450 | automatically resolve, hash, persist, and certify immutable evaluation contracts |
 | `evaluation/datasets.py` | 200 | content-backed local and Harbor-registry dataset identities |
 | `evaluation/diagnostics.py` | 250 | materialize missing contract trials and project bounded, redacted evaluation diagnostics |
-| `evaluation/evidence.py` | 150 | evaluator-output validation and conversion into canonical trial results |
+| `evaluation/evidence.py` | 160 | evaluator-output reading, validation, and conversion into canonical trial results |
 | `evaluation/execution.py` | 400 | clean-checkout canonical evaluation: preflight gate, tree assertion, targeted task execution, lifecycle, artifacts, and score parsing |
 | `evaluation/identity.py` | 150 | canonical task-set identity plus checkout and frozen-baseline comparability |
 | `evaluation/results.py` | 225 | evaluation result types, outcome classification, and persisted record shape |
@@ -73,7 +73,7 @@ each workspace, immutable there because it sits outside the mutable surface
 | `frozen/interfaces.py` | 475 | operator ABCs, registry, result schemas, and strict diagnostics/operator payload validation |
 | `frozen/sdk.py` | 300 | Python operator entrypoint and file-contract IO; no library algorithm policy |
 
-Total `src/evolve/` budget: **12780 lines**. The budget admits the explicit content-backed
+Total `src/evolve/` budget: **12790 lines**. The budget admits the explicit content-backed
 evaluation-contract boundaries, the opt-in in-place Harbor runtime, and the redacted trace-analysis
 boundary between rollout and feedback assembly; if the mechanism wants to
 grow past that, something belongs in a workspace operator instead —

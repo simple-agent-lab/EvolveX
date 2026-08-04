@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import re
+from pathlib import Path
 from typing import Any, cast
 
 from .results import Outcome, TrialResult
@@ -87,6 +89,30 @@ def normalize_task_vector(payload: object) -> dict[str, Any]:
 
 def validate_task_vector(payload: object) -> dict[str, Any]:
     return normalize_task_vector(payload)
+
+
+def read_task_vector(run_dir: Path) -> dict[str, Any] | None:
+    path = run_dir / "task_vector.json"
+    return validate_task_vector(json.loads(path.read_text())) if path.exists() else None
+
+
+def read_setup_evidence(run_dir: Path) -> tuple[Outcome | None, str | None]:
+    path = run_dir / "setup_outcome"
+    if not path.exists():
+        return None, None
+    outcome = Outcome(path.read_text().strip())
+    reason = run_dir / "setup_reason"
+    return outcome, reason.read_text().strip() if reason.exists() else f"evaluator reported {outcome.value}"
+
+
+def read_cost(run_dir: Path) -> float:
+    path = run_dir / "cost.json"
+    if not path.exists():
+        return 0.0
+    value = json.loads(path.read_text()).get("usd")
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError("evaluator cost.json must contain numeric usd")
+    return float(value)
 
 
 def trial_results(payload: object) -> tuple[TrialResult, ...]:

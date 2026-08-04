@@ -21,6 +21,7 @@ from .evaluation.contract import (
 )
 from .git import git
 from .host_runtime import uv_executable
+from .runtime import reserve_attempt_directory
 from .runtime_environment import (
     RuntimeEnvironmentResolutionError,
     resolve_runtime_environment,
@@ -176,10 +177,14 @@ def run_preflight(
     *,
     mode: PreflightMode = PreflightMode.ORDINARY,
     candidate_commit: str | None = None,
+    candidate_checkout: Path | None = None,
+    purpose: str = "candidate",
+    task_limit: int | None = None,
     receipt_path: Path | None = None,
     environment: Mapping[str, str] | None = None,
 ) -> PreflightResultV1:
     root = workspace.resolve()
+    candidate_root = (candidate_checkout or root).resolve()
     source_environment = dict(os.environ if environment is None else environment)
     destination = receipt_path or _next_receipt_path(root)
     checks: list[PreflightCheckV1] = []
@@ -247,8 +252,9 @@ def run_preflight(
             ContractResolutionContext(
                 workspace=root,
                 candidate_commit=candidate_commit or "gen/0",
-                purpose="candidate",
+                purpose=purpose,
                 generation="preflight",
+                task_limit=task_limit,
             )
         )
     except EvaluationContractResolutionError as error:
@@ -293,7 +299,7 @@ def run_preflight(
 
     candidate_runtime = profile.profile.candidate_runtime
     if candidate_runtime is not None:
-        project = root / candidate_runtime.project
+        project = candidate_root / candidate_runtime.project
         if not _lock_valid(project, source_environment):
             return _failed_result(
                 mode,
@@ -323,12 +329,24 @@ def run_preflight(
     checks.append(_passed_check("runtime_environment"))
 
     if mode is PreflightMode.SMOKE:
-        smoke = run_candidate_smoke(
-            root,
-            workspace=root,
-            mode=SmokeMode.MODEL,
-            environment=source_environment,
-        )
+        try:
+            smoke = run_candidate_smoke(
+                root,
+                workspace=root,
+                mode=SmokeMode.MODEL,
+                environment=source_environment,
+            )
+        except Exception as error:
+            return _failed_result(
+                mode,
+                destination,
+                checks,
+                "model_agent_request",
+                PreflightFailureCategory.MODEL_SMOKE_FAILED,
+                str(error) or type(error).__name__,
+                source_environment,
+                profile,
+            )
         smoke_artifact = artifact_reference(
             smoke.attempt_dir / "result.json",
             relative_to=root,
@@ -542,14 +560,7 @@ def _bounded_message(message: str, environment: Mapping[str, str]) -> str:
 
 
 def _next_receipt_path(workspace: Path) -> Path:
-    root = workspace / "runs" / "preflight"
-    attempts = []
-    if root.is_dir():
-        for path in root.iterdir():
-            match = re.fullmatch(r"attempt-(\d+)", path.name)
-            if path.is_dir() and match:
-                attempts.append(int(match.group(1)))
-    return root / f"attempt-{max(attempts, default=0) + 1}" / "preflight.json"
+    return reserve_attempt_directory(workspace / "runs" / "preflight") / "preflight.json"
 
 
 def artifact_reference(path: Path, *, relative_to: Path) -> ArtifactReferenceV1:

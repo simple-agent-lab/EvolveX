@@ -16,7 +16,6 @@ import time
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, SupportsFloat, SupportsIndex, cast
-from urllib.parse import urlsplit
 
 from evolve.agent import AgentCommandError, AgentRunResult
 from evolve.frozen.interfaces import OperatorContext
@@ -31,6 +30,7 @@ from evolve.meta_agent_budget import (
 from evolve.patching import SurfacePolicy, load_surface_policy, patch_parent_ref
 from evolve.runtime_environment import (
     RuntimeEnvironmentPlan,
+    resolve_legacy_runtime_environment,
     resolve_runtime_environment,
 )
 from evolve.runtime_profiles import load_resolved_runtime_profile
@@ -60,12 +60,6 @@ _SECRET_ASSIGNMENT = re.compile(
 )
 _BEARER = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+")
 _SENSITIVE_ENV_NAME = re.compile(r"(?i)(?:proxy|api[_-]?key|access[_-]?token|token|secret|password|authorization|auth)")
-_CREDENTIAL_ENV = ("OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_API_BASE")
-_PROXY_ENV = (
-    ("EVOLVE_HARBOR_HTTP_PROXY", "http_proxy", "HTTP_PROXY"),
-    ("EVOLVE_HARBOR_HTTPS_PROXY", "https_proxy", "HTTPS_PROXY"),
-)
-_BYPASS_ENV = ("no_proxy", "NO_PROXY")
 
 
 class _WorkspaceBundle:
@@ -652,59 +646,20 @@ def _runtime_environment_plan(
     )
 
 
-def _legacy_agent_env(config: Mapping[str, object]) -> dict[str, str]:
-    values: dict[str, str] = {}
-    for override, lower, upper in _PROXY_ENV:
-        value = os.environ.get(override) or os.environ.get(lower) or os.environ.get(upper)
-        if value:
-            values.update({lower: value, upper: value})
-    for name in _BYPASS_ENV:
-        value = os.environ.get(name)
-        if value:
-            values[name] = value
-    bypass_override = os.environ.get("EVOLVE_HARBOR_NO_PROXY")
-    if bypass_override:
-        values.update({name: bypass_override for name in _BYPASS_ENV})
-    for name in _CREDENTIAL_ENV:
-        value = os.environ.get(name)
-        if value:
-            values[name] = value
-    configured = config.get("agent_env")
-    if isinstance(configured, dict):
-        forbidden = {"CODEX_AUTH_JSON_PATH", "CODEX_FORCE_AUTH_JSON"}.intersection(configured)
-        if forbidden:
-            raise ValueError("legacy meta-agent agent_env contains unsupported Codex auth-file variables")
-        values.update({str(key): str(value) for key, value in configured.items()})
-    for _, lower, upper in _PROXY_ENV:
-        value = values.get(lower) or values.get(upper)
-        if value:
-            values.update({lower: value, upper: value})
-    base_url = values.get("OPENAI_BASE_URL") or values.get("OPENAI_API_BASE")
-    bypass_entries: list[str] = []
-    for name in _BYPASS_ENV:
-        for entry in values.get(name, "").split(","):
-            entry = entry.strip()
-            if entry and entry not in bypass_entries:
-                bypass_entries.append(entry)
-    if base_url:
-        hostname = urlsplit(base_url).hostname
-        if not hostname:
-            raise ValueError("configured model base URL has no hostname")
-        if hostname not in bypass_entries:
-            bypass_entries.append(hostname)
-    if bypass_entries:
-        bypass = ",".join(bypass_entries)
-        values.update({name: bypass for name in _BYPASS_ENV})
-    return values
-
-
 def _runtime_inputs(
     checkout: Path, config: Mapping[str, object]
 ) -> tuple[dict[str, str], dict[str, str]]:
     if (checkout / "evaluator" / "runtime-profile.json").is_file():
         plan = _runtime_environment_plan(checkout, config)
         return plan.meta_agent_env(), plan.process_env()
-    return _legacy_agent_env(config), {}
+    configured = config.get("agent_env")
+    if configured is not None and not isinstance(configured, Mapping):
+        raise ValueError("meta-agent agent_env must be a mapping")
+    plan = resolve_legacy_runtime_environment(
+        os.environ,
+        agent_overrides=cast("Mapping[str, object] | None", configured),
+    )
+    return plan.agent_env(), plan.process_env()
 
 
 def _uv_cache_dir(workspace: Path) -> Path:

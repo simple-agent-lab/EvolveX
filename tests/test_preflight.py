@@ -88,6 +88,16 @@ def test_default_receipts_use_monotonic_attempt_directories(
     assert second.receipt_path.parent.name == "attempt-2"
 
 
+def test_default_receipt_paths_are_reserved_before_checks(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+
+    first = preflight_module._next_receipt_path(workspace)
+    second = preflight_module._next_receipt_path(workspace)
+
+    assert first.parent.name == "attempt-1"
+    assert second.parent.name == "attempt-2"
+
+
 def test_smoke_runs_ordinary_checks_then_one_model_agent_request(
     strict_workspace: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -150,6 +160,32 @@ def test_smoke_preserves_structured_network_failure_category(
     assert result.status is PreflightStatus.FAILED
     assert result.failure_category is PreflightFailureCategory.NETWORK_UNAVAILABLE
     assert result.checks[-1].artifact is not None
+
+
+def test_smoke_launch_error_is_a_typed_redacted_failure_receipt(
+    strict_workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    allow_local_runtime(monkeypatch)
+    environment = runtime_environment()
+    secret = environment["OPENAI_API_KEY"]
+
+    def fail_smoke(*args, **kwargs):
+        del args, kwargs
+        raise OSError(f"model launcher failed with {secret}")
+
+    monkeypatch.setattr(preflight_module, "run_candidate_smoke", fail_smoke)
+
+    result = run_preflight(
+        strict_workspace,
+        mode=PreflightMode.SMOKE,
+        environment=environment,
+    )
+
+    assert result.status is PreflightStatus.FAILED
+    assert result.failure_category is PreflightFailureCategory.MODEL_SMOKE_FAILED
+    assert result.checks[-1].name == "model_agent_request"
+    assert secret not in json.dumps(result.to_dict())
+    assert result.receipt_path is not None and result.receipt_path.is_file()
 
 
 def test_configuration_failure_writes_typed_receipt(
@@ -228,6 +264,46 @@ def test_invalid_uv_lock_is_classified(tmp_path: Path, monkeypatch: pytest.Monke
 
     assert result.failure_category is PreflightFailureCategory.DEPENDENCY_LOCK_INVALID
     assert result.checks[-1].name == "dependency_lock"
+
+
+def test_preflight_validates_the_requested_candidate_checkout_and_scope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = init_recipe_with_local_inputs(tmp_path, "hill_climb")
+    candidate_checkout = tmp_path / "detached-candidate"
+    (candidate_checkout / "target").mkdir(parents=True)
+    observed: dict[str, object] = {}
+    resolve_contract = preflight_module.resolve_evaluation_contract
+
+    def capture_contract(context):
+        observed["purpose"] = context.purpose
+        observed["task_limit"] = context.task_limit
+        return resolve_contract(context)
+
+    def capture_lock(project: Path, environment: dict[str, str]) -> bool:
+        del environment
+        observed["project"] = project
+        return True
+
+    monkeypatch.setattr(preflight_module, "resolve_evaluation_contract", capture_contract)
+    monkeypatch.setattr(preflight_module, "_lock_valid", capture_lock)
+    allow_local_runtime(monkeypatch)
+
+    result = run_preflight(
+        workspace,
+        candidate_commit=git(workspace, "rev-parse", "gen/0^{commit}"),
+        candidate_checkout=candidate_checkout,
+        purpose="anchor",
+        task_limit=1,
+        environment=runtime_environment(),
+    )
+
+    assert result.status is PreflightStatus.PASSED
+    assert observed == {
+        "purpose": "anchor",
+        "task_limit": 1,
+        "project": candidate_checkout / "target",
+    }
 
 
 def test_uv_lock_validation_is_explicitly_offline(

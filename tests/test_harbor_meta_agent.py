@@ -65,56 +65,32 @@ def test_installed_harbor_resolves_framework_runtime_templates(
     }
 
 
-def test_harbor_meta_agent_forwards_openai_environment(monkeypatch: pytest.MonkeyPatch) -> None:
-    module = _harbor_runner_module()
-    for override, lower, upper in module._PROXY_ENV:
-        monkeypatch.delenv(override, raising=False)
-        monkeypatch.delenv(lower, raising=False)
-        monkeypatch.delenv(upper, raising=False)
-    monkeypatch.delenv("EVOLVE_HARBOR_NO_PROXY", raising=False)
-    for name in module._BYPASS_ENV:
-        monkeypatch.delenv(name, raising=False)
-    monkeypatch.setenv("OPENAI_API_KEY", "workspace-key")
-    monkeypatch.setenv("OPENAI_BASE_URL", "https://workspace.example/v1")
-
-    assert module._legacy_agent_env({"agent": "mini-swe-agent"}) == {
-        "OPENAI_API_KEY": "workspace-key",
-        "OPENAI_BASE_URL": "https://workspace.example/v1",
-        "no_proxy": "workspace.example",
-        "NO_PROXY": "workspace.example",
-    }
-    assert (
-        module._legacy_agent_env(
-            {
-                "agent": "mini-swe-agent",
-                "agent_env": {"OPENAI_BASE_URL": "https://configured.example/v1"},
-            }
-        )["OPENAI_BASE_URL"]
-        == "https://configured.example/v1"
-    )
-
-
-def test_harbor_meta_agent_forwards_dependency_proxies_with_model_bypass(
-    monkeypatch: pytest.MonkeyPatch,
+def test_harbor_meta_agent_uses_shared_legacy_environment_plan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     module = _harbor_runner_module()
+    checkout = tmp_path / "legacy-checkout"
+    checkout.mkdir()
     monkeypatch.setenv("OPENAI_API_KEY", "workspace-key")
     monkeypatch.setenv("OPENAI_BASE_URL", "https://workspace.example/v1")
-    monkeypatch.setenv("http_proxy", "http://dependency-proxy.example:8118")
     monkeypatch.setenv("HTTPS_PROXY", "http://dependency-proxy.example:8118")
-    monkeypatch.setenv("no_proxy", ".internal.example")
-    monkeypatch.setenv("NO_PROXY", ".upper.example")
+    monkeypatch.setenv("NO_PROXY", "pypi.org,.internal.example")
 
-    assert module._legacy_agent_env({"agent": "mini-swe-agent"}) == {
-        "OPENAI_API_KEY": "workspace-key",
-        "OPENAI_BASE_URL": "https://workspace.example/v1",
-        "http_proxy": "http://dependency-proxy.example:8118",
-        "HTTP_PROXY": "http://dependency-proxy.example:8118",
-        "https_proxy": "http://dependency-proxy.example:8118",
-        "HTTPS_PROXY": "http://dependency-proxy.example:8118",
-        "no_proxy": ".internal.example,.upper.example,workspace.example",
-        "NO_PROXY": ".internal.example,.upper.example,workspace.example",
-    }
+    agent_environment, process_environment = module._runtime_inputs(
+        checkout,
+        {"agent": "mini-swe-agent", "agent_env": {"STEP_LIMIT": 100}},
+    )
+
+    assert agent_environment["OPENAI_API_KEY"] == "${EVOLVE_RUNTIME_AGENT_OPENAI_API_KEY}"
+    assert agent_environment["OPENAI_BASE_URL"] == "${EVOLVE_RUNTIME_AGENT_OPENAI_BASE_URL}"
+    assert agent_environment["STEP_LIMIT"] == "${EVOLVE_RUNTIME_AGENT_STEP_LIMIT}"
+    assert process_environment["EVOLVE_RUNTIME_AGENT_OPENAI_API_KEY"] == "workspace-key"
+    assert process_environment["EVOLVE_RUNTIME_AGENT_HTTPS_PROXY"] == (
+        "http://dependency-proxy.example:8118"
+    )
+    assert process_environment["EVOLVE_RUNTIME_AGENT_NO_PROXY"] == (
+        ".internal.example,workspace.example"
+    )
 
 
 def test_harbor_meta_agent_redacts_configured_proxy_literal(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -128,7 +104,7 @@ def test_harbor_meta_agent_redacts_configured_proxy_literal(monkeypatch: pytest.
     assert redacted == "dependency download through [REDACTED] timed out"
 
 
-def test_harbor_meta_agent_redacts_config_only_proxy_from_command_record(
+def test_harbor_meta_agent_templates_config_only_proxy_in_command_record(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -153,7 +129,7 @@ def test_harbor_meta_agent_redacts_config_only_proxy_from_command_record(
 
     command = json.loads((run_dir / "meta_agent" / "harbor" / "command.json").read_text())
     assert all(proxy not in argument for argument in command)
-    assert "HTTPS_PROXY=[REDACTED]" in command
+    assert "HTTPS_PROXY=${EVOLVE_RUNTIME_AGENT_HTTPS_PROXY}" in command
 
 
 def test_strict_codex_command_record_contains_templates_not_runtime_literals(
@@ -203,19 +179,16 @@ def test_harbor_meta_agent_child_creates_private_files(tmp_path: Path) -> None:
     assert stat.S_IMODE(log.stat().st_mode) == 0o600
 
 
-def test_legacy_codex_uses_endpoint_api_key_without_file_auth(
-    monkeypatch: pytest.MonkeyPatch,
+def test_legacy_meta_agent_rejects_ambient_file_auth_before_harbor_launch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     module = _harbor_runner_module()
-    monkeypatch.setenv("OPENAI_API_KEY", "judge-key")
-    monkeypatch.setenv("OPENAI_BASE_URL", "https://judge.example/v1")
+    checkout = tmp_path / "legacy-checkout"
+    checkout.mkdir()
+    monkeypatch.setenv("CODEX_AUTH_JSON_PATH", "/forbidden/auth.json")
 
-    environment = module._legacy_agent_env({"agent": "codex"})
-
-    assert environment["OPENAI_API_KEY"] == "judge-key"
-    assert environment["OPENAI_BASE_URL"] == "https://judge.example/v1"
-    assert "CODEX_FORCE_AUTH_JSON" not in environment
-    assert "CODEX_AUTH_JSON_PATH" not in environment
+    with pytest.raises(ValueError, match="forbidden credential variable"):
+        module._runtime_inputs(checkout, {"agent": "codex"})
 
 
 def test_harbor_rejects_oversized_instruction_with_unsafe_agent(tmp_path: Path) -> None:

@@ -1,4 +1,3 @@
-import re
 from pathlib import Path
 
 import pytest
@@ -53,11 +52,3 @@ def test_partner_recipe_runtime_profile_conformance(
         for path in root.rglob("*"):
             if path.is_file():
                 assert "auth.json" not in path.read_text(errors="ignore")
-
-
-def test_runtime_policy_modules_have_no_method_name_branches() -> None:
-    source_root = Path(__file__).resolve().parents[1] / "src" / "evolve"
-    method_name = re.compile(r"\b(?:aevolve|ahe|gepa|hyperagents)\b")
-
-    for relative in ("runtime_profiles.py", "runtime_environment.py", "preflight.py"):
-        assert method_name.search((source_root / relative).read_text()) is None

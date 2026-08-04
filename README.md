@@ -125,6 +125,10 @@ receive the ByteDance-compatible endpoint through `OPENAI_API_KEY` and
 Runtime policy is resolved by the framework, so recipe and experiment scripts
 only declare the profile they need.
 
+Opt-in ByteDance-endpoint smoke tests exercise both the Codex and frozen
+MiniSWE runtime profiles. They require Docker and a locally available immutable
+evaluator image; production experiments should still run on Linux.
+
 ## Concepts
 
 | Concept | Meaning |

@@ -71,7 +71,21 @@ def parse_manifest(text: str, *, source: str = "split manifest") -> dict[str, An
         return payload
     identity = payload.get("dataset_identity")
     task_digests = payload.get("task_digests")
-    members = [str(member) for split in SPLIT_NAMES for member in tasks[split]]
+    members = [member for split in SPLIT_NAMES for member in tasks[split]]
+    if (
+        any(
+            not isinstance(member, str)
+            or not member
+            or member in {".", ".."}
+            or "/" in member
+            or "\\" in member
+            for member in members
+        )
+        or len(set(members)) != len(members)
+    ):
+        raise RuntimeError(
+            f"verified split manifest must contain disjoint non-empty task names: {source}"
+        )
     if (
         payload.get("identity_status") != "verified"
         or not isinstance(identity, dict)
