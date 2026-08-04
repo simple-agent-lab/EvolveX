@@ -1,0 +1,171 @@
+import json
+from pathlib import Path
+
+import pytest
+
+from evolve.runtime_environment import (
+    RuntimeEnvironmentPlan,
+    RuntimeEnvironmentResolutionError,
+    resolve_runtime_environment,
+    write_harbor_environment_inputs,
+)
+from evolve.runtime_profiles import ResolvedRuntimeProfileV1, resolve_runtime_profile
+
+
+def resolved_profile() -> ResolvedRuntimeProfileV1:
+    result = resolve_runtime_profile(
+        {
+            "experiment": {"id": "test"},
+            "target": {"seed": "builtin-codex"},
+            "surface": {"include": ["target/**"], "exclude": []},
+            "operators": {"meta_agent": {"agent": "codex"}},
+            "evaluator": {
+                "engine": "harbor",
+                "agent": "target.agent:HarborAgent",
+                "runtime": {"profile": "harbor-bytedance-v1"},
+            },
+        },
+        "sha256:runtime",
+        {"OPENAI_BASE_URL": "https://model.example/v1"},
+    )
+    assert result is not None
+    return result
+
+
+def complete_environment() -> dict[str, str]:
+    return {
+        "OPENAI_API_KEY": "sensitive-key-value",
+        "OPENAI_BASE_URL": "https://model.example/v1",
+        "HTTPS_PROXY": "http://user:password@proxy.example:8118",
+        "NO_PROXY": "pypi.org,.internal.example",
+    }
+
+
+def test_environment_plan_uses_safe_templates_and_normalized_proxy() -> None:
+    environment = complete_environment()
+    environment["UNRELATED_MULTILINE_VALUE"] = "first\nsecond"
+
+    plan = resolve_runtime_environment(resolved_profile(), environment)
+
+    assert plan.agent_env()["OPENAI_API_KEY"].startswith("${EVOLVE_RUNTIME_AGENT_")
+    assert plan.agent_env()["OPENAI_BASE_URL"].startswith("${EVOLVE_RUNTIME_AGENT_")
+    assert plan.meta_agent_env()["OPENAI_API_KEY"].startswith("${EVOLVE_RUNTIME_META_AGENT_")
+    assert "OPENAI_API_KEY" not in plan.verifier_env()
+    assert "OPENAI_BASE_URL" not in plan.verifier_env()
+    assert "model.example" in plan.process_env()["EVOLVE_RUNTIME_AGENT_NO_PROXY"]
+    assert "pypi.org" not in plan.process_env()["EVOLVE_RUNTIME_AGENT_NO_PROXY"]
+
+    serialized = json.dumps(plan.persisted_payload())
+    assert "sensitive-key-value" not in serialized
+    assert "model.example" not in serialized
+    assert "password" not in serialized
+
+
+def test_proxy_names_are_normalized_to_identical_upper_and_lower_templates() -> None:
+    environment = complete_environment()
+    environment.update(
+        {
+            "HTTP_PROXY": "http://proxy.example:8118",
+            "http_proxy": "http://proxy.example:8118",
+            "NO_PROXY": "localhost",
+            "no_proxy": "localhost",
+        }
+    )
+
+    plan = resolve_runtime_environment(resolved_profile(), environment)
+
+    agent = plan.agent_env()
+    process = plan.process_env()
+    assert agent["HTTP_PROXY"] == agent["http_proxy"]
+    assert agent["NO_PROXY"] == agent["no_proxy"]
+    assert process["EVOLVE_RUNTIME_AGENT_HTTP_PROXY"] == "http://proxy.example:8118"
+    assert process["EVOLVE_RUNTIME_AGENT_NO_PROXY"].endswith("localhost,model.example")
+
+
+def test_conflicting_proxy_aliases_are_rejected_without_echoing_values() -> None:
+    environment = complete_environment()
+    environment["https_proxy"] = "http://different.example:8118"
+
+    with pytest.raises(RuntimeEnvironmentResolutionError, match="HTTPS_PROXY aliases disagree") as excinfo:
+        resolve_runtime_environment(resolved_profile(), environment)
+
+    assert "proxy.example" not in str(excinfo.value)
+
+
+@pytest.mark.parametrize("missing", ["OPENAI_API_KEY", "OPENAI_BASE_URL"])
+def test_missing_required_credentials_are_reported_by_name(missing: str) -> None:
+    environment = complete_environment()
+    environment.pop(missing)
+
+    with pytest.raises(RuntimeEnvironmentResolutionError, match=missing):
+        resolve_runtime_environment(resolved_profile(), environment)
+
+
+@pytest.mark.parametrize("forbidden", ["CODEX_AUTH_JSON_PATH", "CODEX_FORCE_AUTH_JSON"])
+def test_forbidden_codex_auth_variables_fail_closed(forbidden: str) -> None:
+    environment = complete_environment()
+    environment[forbidden] = "forbidden-value"
+
+    with pytest.raises(RuntimeEnvironmentResolutionError, match=forbidden) as excinfo:
+        resolve_runtime_environment(resolved_profile(), environment)
+
+    assert "forbidden-value" not in str(excinfo.value)
+
+
+def test_environment_route_must_match_the_resolved_route_digest() -> None:
+    environment = complete_environment()
+    environment["OPENAI_BASE_URL"] = "https://other.example/v1"
+
+    with pytest.raises(RuntimeEnvironmentResolutionError, match="route digest") as excinfo:
+        resolve_runtime_environment(resolved_profile(), environment)
+
+    assert "other.example" not in str(excinfo.value)
+
+
+def test_safe_overrides_are_templated_and_protected_overrides_are_rejected() -> None:
+    plan = resolve_runtime_environment(
+        resolved_profile(),
+        complete_environment(),
+        agent_overrides={"STEP_LIMIT": "100"},
+        verifier_overrides={"VERIFY_TIMEOUT": "60"},
+    )
+
+    assert plan.agent_env()["STEP_LIMIT"] == "${EVOLVE_RUNTIME_AGENT_STEP_LIMIT}"
+    assert plan.verifier_env()["VERIFY_TIMEOUT"] == "${EVOLVE_RUNTIME_VERIFIER_VERIFY_TIMEOUT}"
+    assert plan.process_env()["EVOLVE_RUNTIME_AGENT_STEP_LIMIT"] == "100"
+    assert plan.process_env()["EVOLVE_RUNTIME_VERIFIER_VERIFY_TIMEOUT"] == "60"
+
+    with pytest.raises(RuntimeEnvironmentResolutionError, match="OPENAI_API_KEY"):
+        resolve_runtime_environment(
+            resolved_profile(),
+            complete_environment(),
+            agent_overrides={"OPENAI_API_KEY": "override"},
+        )
+
+
+def test_harbor_inputs_contain_templates_and_redacted_evidence_only(tmp_path: Path) -> None:
+    plan = resolve_runtime_environment(resolved_profile(), complete_environment())
+
+    write_harbor_environment_inputs(tmp_path, plan)
+
+    agent = (tmp_path / "runtime-agent.env").read_text()
+    verifier = (tmp_path / "runtime-verifier.env").read_text()
+    evidence = (tmp_path / "runtime-environment-evidence.json").read_text()
+    assert "OPENAI_API_KEY=${EVOLVE_RUNTIME_AGENT_OPENAI_API_KEY}" in agent
+    assert "sensitive-key-value" not in agent + verifier + evidence
+    assert "model.example" not in agent + verifier + evidence
+    assert "password" not in agent + verifier + evidence
+    assert not list(tmp_path.glob("*.tmp"))
+
+
+def test_harbor_writer_rejects_literal_values(tmp_path: Path) -> None:
+    plan = RuntimeEnvironmentPlan(
+        process_environment=(),
+        agent_environment=(("OPENAI_API_KEY", "literal-secret"),),
+        verifier_environment=(),
+        meta_agent_environment=(),
+        evidence=(),
+    )
+
+    with pytest.raises(RuntimeEnvironmentResolutionError, match="Harbor environment template"):
+        write_harbor_environment_inputs(tmp_path, plan)

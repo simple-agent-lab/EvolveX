@@ -170,6 +170,10 @@ def model_route_digest(url: str) -> str:
     return hashlib.sha256(normalize_model_route(url).encode()).hexdigest()
 
 
+def is_protected_runtime_environment_name(name: str) -> bool:
+    return name.upper() in _PROTECTED_ENVIRONMENT_NAMES
+
+
 def resolve_runtime_profile(
     config: Mapping[str, object],
     runtime_digest: str,
@@ -313,7 +317,7 @@ def _reject_protected_overrides(
             continue
         values = _mapping(value, field)
         for name in values:
-            if isinstance(name, str) and name.upper() in _PROTECTED_ENVIRONMENT_NAMES:
+            if isinstance(name, str) and is_protected_runtime_environment_name(name):
                 raise RuntimeProfileResolutionError(f"{field} must not configure protected name {name}")
 
 
