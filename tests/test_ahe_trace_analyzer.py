@@ -141,6 +141,7 @@ def test_ahe_debugger_reuses_only_allowlisted_meta_agent_config(tmp_path: Path) 
     config = module._debugger_runner_config(ctx.checkout, ctx.config)
 
     assert config == {
+        "runner": "harbor",
         "agent": "evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent",
         "model": "gpt-test",
         "environment": "docker",
@@ -148,7 +149,34 @@ def test_ahe_debugger_reuses_only_allowlisted_meta_agent_config(tmp_path: Path) 
         "max_retries": 0,
     }
     assert "editable_roots" not in config
-    assert "runner" not in config
+
+
+def test_ahe_debugger_can_be_configured_without_meta_agent(tmp_path: Path) -> None:
+    module = _module()
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    (checkout / "evolve.yaml").write_text("operators: {}\n")
+    analyzer_config = {
+        "debugger": {
+            "runner": "harbor",
+            "agent": "debug-agent",
+            "model": "debug-model",
+            "environment": "docker",
+            "agent_kwargs": {"reasoning_effort": "medium"},
+            "max_retries": 2,
+        }
+    }
+
+    config = module._debugger_runner_config(checkout, analyzer_config)
+
+    assert config == {
+        "runner": "harbor",
+        "agent": "debug-agent",
+        "model": "debug-model",
+        "environment": "docker",
+        "agent_kwargs": {"reasoning_effort": "medium"},
+        "max_retries": 0,
+    }
 
 
 def test_ahe_miniswe_debugger_prompt_includes_submission_protocol() -> None:

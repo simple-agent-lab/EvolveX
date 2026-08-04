@@ -19,6 +19,7 @@ from typing import Any, cast
 from . import __version__ as _EVOLVE_VERSION
 from .archive import append_event
 from .config import (
+    DEFAULT_RECIPE,
     OPERATOR_KINDS,
     OPTIONAL_OPERATOR_KINDS,
     SOURCE_ROOT,
@@ -78,7 +79,7 @@ def init_workspace(options: InitOptions) -> None:
         raise ValueError(f"workspace is not empty: {workspace}")
 
     if options.recipe_path is None:
-        recipe = options.recipe or "hill_climb"
+        recipe = options.recipe or DEFAULT_RECIPE
         recipe_directory: Path | Traversable | None = None
         config = default_config(recipe, workspace.name)
     else:
@@ -234,7 +235,6 @@ def _write_files(
         "operators/rollout.md": _workspace_scaffold("operators/rollout.md"),
         "operators/gate.md": _workspace_scaffold("operators/gate.md"),
         "operators/record.md": _workspace_scaffold("operators/record.md"),
-        "skills/evolve-workspace/SKILL.md": _skill("evolve-workspace/SKILL.md"),
         "PROTOCOL.md": (library_root() / "PROTOCOL.md").read_text(),
         "evaluator/eval.sh": _eval_sh(evaluator_engine, evaluator_dataset),
         "evaluator/eval.env": _eval_env(
@@ -263,7 +263,9 @@ def _write_files(
         "evaluator/stub_eval.py": _workspace_scaffold("evaluator/stub_eval.py"),
         "evaluator/engines/local.sh": _shell_script("canonical local engine"),
         "archive.jsonl": "",
+        "best_ever.json": "null\n",
     }
+    files.update(_skill_package("evolve-agent"))
     if evaluator_engine == "harbor":
         files.update(
             {
@@ -588,7 +590,7 @@ def _validate_target_config(target: dict[str, Any]) -> None:
     if not isinstance(generate_lock, bool):
         raise ValueError("target.generate_lock must be a boolean")
 
-    if seed == "builtin-codex" or _looks_like_git_url(seed):
+    if seed in ("builtin-codex", "builtin-local-smoke") or _looks_like_git_url(seed):
         return
     if revision is not None:
         raise ValueError("target.revision requires a git URL seed")
@@ -635,10 +637,10 @@ def _write_target(workspace: Path, target_config: dict[str, Any]) -> None:
     revision_value = target_config.get("revision")
     revision = cast(str | None, revision_value)
     generate_lock = target_config.get("generate_lock", False)
-    if seed_text == "builtin-codex":
-        _copy_resource_tree(seed_root() / "codex", workspace / "target")
+    if seed_text in ("builtin-codex", "builtin-local-smoke"):
+        _copy_resource_tree(seed_root() / seed_text.removeprefix("builtin-"), workspace / "target")
         (workspace / "target" / "UPSTREAM.json").write_text(
-            json.dumps({"kind": "builtin", "seed": "builtin-codex"}, sort_keys=True) + "\n"
+            json.dumps({"kind": "builtin", "seed": seed_text}, sort_keys=True) + "\n"
         )
     elif _looks_like_git_url(seed_text):
         with tempfile.TemporaryDirectory(prefix="evolve-seed-") as tmp:
@@ -922,8 +924,22 @@ def _evaluator_scaffold(engine: str, relative_path: str) -> str:
     return path.read_text()
 
 
-def _skill(relative_path: str) -> str:
-    return (resource_root("skills") / relative_path).read_text()
+def _skill_package(name: str) -> dict[str, str]:
+    root = resource_root("skills") / name
+    if not root.is_dir():
+        raise ValueError(f"skill package not found: {name}")
+    files: dict[str, str] = {}
+
+    def visit(directory: Traversable, relative: str = "") -> None:
+        for child in sorted(directory.iterdir(), key=lambda item: item.name):
+            child_relative = f"{relative}/{child.name}" if relative else child.name
+            if child.is_dir():
+                visit(child, child_relative)
+            elif child.is_file():
+                files[f"skills/{name}/{child_relative}"] = child.read_text()
+
+    visit(root)
+    return files
 
 
 def _source_label(source: object) -> str:

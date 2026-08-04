@@ -7,6 +7,7 @@ SUPPORTED = {
     "aevolve",
     "ahe",
     "gepa",
+    "gepa_local",
     "hill_climb",
     "hyperagents",
 }

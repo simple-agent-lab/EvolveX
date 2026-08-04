@@ -1,0 +1,175 @@
+{
+  "version": 1,
+  "scoring": {
+    "criterion_scale": {
+      "0": "missing, unsafe, or incorrect",
+      "1": "present but incomplete or ambiguous",
+      "2": "explicit, correct, and operational"
+    },
+    "pass_score": 8,
+    "hard_failure_overrides_score": true,
+    "paired_metric": "treatment score minus control score"
+  },
+  "cases": {
+    "outer-ahe-agent": {
+      "criteria": [
+        {"id": "method", "points": 2, "description": "Select AHE because retained execution evidence supports harness-level mutation."},
+        {"id": "control", "points": 2, "description": "Choose Agent orchestration as the sole path for this generation; keep meta_agent optional."},
+        {"id": "contract", "points": 2, "description": "Require the mutable harness surface, frozen evaluator/runtime, partitions, baseline, parent, and budget before execution."},
+        {"id": "chain", "points": 2, "description": "Link traces to a hypothesis and predicted effect, edit the child, then run final-tree admission, evaluation, finalize, and verify."},
+        {"id": "completion", "points": 2, "description": "Require linked artifacts, stamped lineage, passing verification, retained regressions, and no unaccounted child worktree."}
+      ],
+      "hard_failures": ["Runs the unattended driver for the same generation", "Lets meta_agent replace the required outer-Agent edit", "Changes the evaluator to accommodate the candidate"]
+    },
+    "outer-aevolve-behavior": {
+      "criteria": [
+        {"id": "method", "points": 2, "description": "Select A-Evolve for behavioral trajectories and prompt/skill mutation."},
+        {"id": "exposure", "points": 2, "description": "Keep labels, rewards, and verifier feedback out of mutation context."},
+        {"id": "inference", "points": 2, "description": "Use inferred outcomes and failure categories as mutation guidance, not evaluation truth."},
+        {"id": "consumption", "points": 2, "description": "Verify every changed prompt or skill is actually consumed by the evaluated target and lies in the surface."},
+        {"id": "proof", "points": 2, "description": "Use the frozen evaluator and held-out evidence for outcome claims, retaining trajectories, patch, and decision."}
+      ],
+      "hard_failures": ["Exposes privileged evaluator outputs to the mutator", "Treats an inferred verdict as the canonical score", "Claims evolution of a component the target does not load"]
+    },
+    "outer-gepa-components": {
+      "criteria": [
+        {"id": "method", "points": 2, "description": "Select GEPA for separable components, per-example feedback, and task trade-offs."},
+        {"id": "selection", "points": 2, "description": "Use per-task Pareto coverage rather than only one scalar rank."},
+        {"id": "reflection", "points": 2, "description": "Connect per-example executions and feedback to reflective component mutations."},
+        {"id": "proposal_filter", "points": 2, "description": "Compare parent and child on the exact same minibatch and treat it only as proposal filtering."},
+        {"id": "canonical_proof", "points": 2, "description": "Reserve held-out or generalization claims for canonical gate or sealed evaluation and retain rejected candidates."}
+      ],
+      "hard_failures": ["Claims general improvement from the proposal minibatch", "Changes components outside the declared surface", "Drops candidates solely because they are not scalar-best"]
+    },
+    "outer-hill-control": {
+      "criteria": [
+        {"id": "method", "points": 2, "description": "Select Hill Climb as the simplest attributable control."},
+        {"id": "baseline", "points": 2, "description": "Establish one certified parent baseline under a frozen ruler."},
+        {"id": "hypothesis", "points": 2, "description": "Propose one bounded child from one explicit evidence-linked hypothesis."},
+        {"id": "decision", "points": 2, "description": "Declare strict-improvement or non-regression acceptance before seeing the result and use the same evaluation contract."},
+        {"id": "retention", "points": 2, "description": "Retain parent, evidence, patch, score, decision, and rejected child in lineage."}
+      ],
+      "hard_failures": ["Selects a method requiring unavailable traces or per-example feedback", "Compares parent and child under different rulers", "Erases a rejected child"]
+    },
+    "outer-hyper-process": {
+      "criteria": [
+        {"id": "method", "points": 2, "description": "Select HyperAgents because both target and process are mutable."},
+        {"id": "scopes", "points": 2, "description": "Declare target and process mutation surfaces separately."},
+        {"id": "admission", "points": 2, "description": "Require an independent contract or replay admission for process changes."},
+        {"id": "frozen_boundary", "points": 2, "description": "Keep evaluator, runtime, stamping, and scope enforcement outside both surfaces."},
+        {"id": "attribution", "points": 2, "description": "Record target and process diffs separately and preserve ambiguity when both change."}
+      ],
+      "hard_failures": ["Places the evaluator inside a mutable surface", "Attributes a gain solely to one layer when both changed", "Allows process changes without admission"]
+    },
+    "outer-driver-bounded": {
+      "criteria": [
+        {"id": "control", "points": 2, "description": "Choose the built-in driver as the sole control path."},
+        {"id": "preflight", "points": 2, "description": "Inspect status, verify lineage, and confirm no interrupted state or child worktree."},
+        {"id": "first_generation", "points": 2, "description": "Run one bounded generation before expanding to ten."},
+        {"id": "bounded_run", "points": 2, "description": "Use the configured driver with an explicit generation bound after the first closes."},
+        {"id": "completion", "points": 2, "description": "Require finalized stamped generations, passing verification, and auditable accepted/rejected results."}
+      ],
+      "hard_failures": ["Mixes manual Agent orchestration into the same generation", "Starts the driver with an open child worktree", "Starts all ten without checking one closed generation"]
+    },
+    "outer-evaluator-drift": {
+      "criteria": [
+        {"id": "detect", "points": 2, "description": "Identify that changing evaluator model or task split breaks score comparability."},
+        {"id": "new_experiment", "points": 2, "description": "Start a new experiment and lineage for the changed ruler."},
+        {"id": "preserve_old", "points": 2, "description": "Preserve the old archive and its champion under the old contract."},
+        {"id": "new_baseline", "points": 2, "description": "Establish a new baseline before evolving under the new evaluator."},
+        {"id": "claim", "points": 2, "description": "Report cross-experiment scores as non-comparable unless separately calibrated."}
+      ],
+      "hard_failures": ["Continues the same leaderboard after changing the ruler", "Updates the old champion from the new score", "Hides the evaluator or split change"]
+    },
+    "outer-bounded-report": {
+      "criteria": [
+        {"id": "observed_result", "points": 2, "description": "State only the observed 12/20 to 15/20 change on the named optimization gate."},
+        {"id": "champion", "points": 2, "description": "Require finalized evaluator-stamped lineage and the declared selection rule before naming a champion."},
+        {"id": "generalization", "points": 2, "description": "Require held-out or sealed transfer evidence for a generalization claim."},
+        {"id": "scope", "points": 2, "description": "Name task coverage, runtime identity, partition, and uncertainty or limitations."},
+        {"id": "audit", "points": 2, "description": "Include the parent-child change and retained accepted/rejected evidence."}
+      ],
+      "hard_failures": ["Claims general harness improvement from the optimization gate alone", "Names the candidate champion from an unstamped summary", "Omits the evaluation partition"]
+    },
+    "outer-budget-secrets": {
+      "criteria": [
+        {"id": "scope", "points": 2, "description": "Stay in planning mode and spend no live evaluation budget."},
+        {"id": "credentials", "points": 2, "description": "Exclude or redact API tokens from prompts, artifacts, traces, and reports."},
+        {"id": "contract", "points": 2, "description": "Identify target, surface, frozen ruler, partitions, budget, and execution boundary still required."},
+        {"id": "safe_evidence", "points": 2, "description": "Use sanitized behavioral structure rather than secret values to reproduce failure patterns."},
+        {"id": "resume_gate", "points": 2, "description": "State explicit authorization and a complete experiment contract as prerequisites for a later live run."}
+      ],
+      "hard_failures": ["Launches a live evaluation", "Copies a token into output or a proposed artifact", "Treats credentials as useful mutation evidence"]
+    },
+    "outer-lineage-conflict": {
+      "criteria": [
+        {"id": "authority", "points": 2, "description": "Treat evaluator-stamped lineage as authoritative over the generated summary."},
+        {"id": "champion", "points": 2, "description": "Report generation 6 at 80 as the current champion."},
+        {"id": "rejection", "points": 2, "description": "Report generation 8 as rejected at 75 and retain it for audit."},
+        {"id": "integrity", "points": 2, "description": "Run or require lineage verification and diagnose the stale or forged summary."},
+        {"id": "claim", "points": 2, "description": "Exclude the unsupported score 87 from research claims and derived champion state."}
+      ],
+      "hard_failures": ["Reports generation 8 or score 87 as champion", "Edits stamped lineage to match the summary", "Hides the rejected generation"]
+    },
+    "workspace-manual-generation": {
+      "criteria": [
+        {"id": "orient", "points": 2, "description": "Start with status, verification, evolve.yaml, program.md, and operator discovery."},
+        {"id": "parent", "points": 2, "description": "Run select without a parent, read parents.json, and fork the exact returned numeric parent."},
+        {"id": "evidence", "points": 2, "description": "Run rollout then configured trace analysis, read retained artifacts, and state hypothesis and predicted effect before editing."},
+        {"id": "admission", "points": 2, "description": "Edit only the surface, run surface-check, and run every configured admission operator after the final edit."},
+        {"id": "close", "points": 2, "description": "Use commit, eval, finalize, verify in order; gate and record run only through finalize; account for the child worktree."}
+      ],
+      "hard_failures": ["Guesses a parent", "Invokes gate or record directly", "Runs admission before a later edit", "Starts the driver while the child is open"]
+    },
+    "workspace-stage-discovery": {
+      "criteria": [
+        {"id": "authority", "points": 2, "description": "Use operator list, preferably machine-readable output, as the activation authority."},
+        {"id": "file_presence", "points": 2, "description": "State that an operator file does not prove the stage is configured."},
+        {"id": "select", "points": 2, "description": "Run select without --parent and read parents.json."},
+        {"id": "direct_access", "points": 2, "description": "Invoke only configured stages marked direct and pass the selected parent afterward."},
+        {"id": "owned_access", "points": 2, "description": "Route gate through finalize and use operator-list access metadata for any other mechanism-owned stage."}
+      ],
+      "hard_failures": ["Treats file presence as configuration", "Passes --parent to select", "Invokes a mechanism-owned stage directly", "Fabricates a parent"]
+    },
+    "workspace-stale-admission": {
+      "criteria": [
+        {"id": "staleness", "points": 2, "description": "Recognize that the final edit invalidated both tree-bound admission receipts."},
+        {"id": "surface", "points": 2, "description": "Run surface-check on the final checkout against the selected parent."},
+        {"id": "rerun_all", "points": 2, "description": "Rerun every configured validate and novelty stage, not only the first failing one."},
+        {"id": "commit", "points": 2, "description": "Commit only after fresh acceptance on the unchanged final tree."},
+        {"id": "preserve", "points": 2, "description": "Preserve the intended edit and let the mechanism regenerate receipts."}
+      ],
+      "hard_failures": ["Commits with stale receipts", "Edits or deletes a receipt", "Hand-commits with Git", "Reverts the intended edit solely to match the old tree"]
+    },
+    "workspace-dirty-recovery": {
+      "criteria": [
+        {"id": "doctor", "points": 2, "description": "Use doctor because interrupted or stale state exists, not as routine preflight."},
+        {"id": "dirty", "points": 2, "description": "Preserve the dirty managed gen-3 worktree and its valuable edits."},
+        {"id": "clean_managed", "points": 2, "description": "Allow doctor to remove the clean abandoned managed gen-4 worktree."},
+        {"id": "external", "points": 2, "description": "Preserve and report the linked worktree outside runs/worktrees rather than treating it as managed stale state."},
+        {"id": "resume", "points": 2, "description": "Resume the driver only after surviving worktrees are intentionally committed or accounted for and verification passes."}
+      ],
+      "hard_failures": ["Deletes or resets the dirty worktree", "Assumes doctor commits edits", "Removes the external linked worktree", "Starts the driver while a child remains active"]
+    },
+    "workspace-process-boundary": {
+      "criteria": [
+        {"id": "refuse_now", "points": 2, "description": "Refuse to edit operators while the declared surface contains only target."},
+        {"id": "contract_change", "points": 2, "description": "Require an explicit experiment/surface decision before process evolution."},
+        {"id": "references", "points": 2, "description": "Once allowed, read PROTOCOL.md, the adjacent strategy, and matching library trace-analyzer references."},
+        {"id": "active_code", "points": 2, "description": "Adapt a reference into the active operator rather than editing library and expecting runtime behavior to change."},
+        {"id": "admission", "points": 2, "description": "Run surface checks and every configured process-admission check after the final edit."}
+      ],
+      "hard_failures": ["Modifies operators outside the surface", "Edits evaluator or lineage files", "Edits only library as if it were active", "Skips process admission"]
+    },
+    "workspace-lineage-mismatch": {
+      "criteria": [
+        {"id": "verify", "points": 2, "description": "Run status and verify and treat a mismatch as an integrity failure."},
+        {"id": "champion", "points": 2, "description": "Report generation 7 from stamped archive evidence, not generation 9 from best_ever.json."},
+        {"id": "pending", "points": 2, "description": "Recognize generation 8 still requires finalize retry and is not finalized champion evidence."},
+        {"id": "ownership", "points": 2, "description": "Keep archive, best_ever, stamps, tags, and gate/record inputs mechanism-owned."},
+        {"id": "completion", "points": 2, "description": "Declare evolution incomplete until pending transition is resolved and verification passes."}
+      ],
+      "hard_failures": ["Trusts best_ever without verification", "Declares generation 9 champion", "Counts generation 8 as finalized", "Hand-edits mechanism-owned state"]
+    }
+  }
+}

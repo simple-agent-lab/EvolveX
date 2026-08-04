@@ -17,7 +17,7 @@ Every workspace receives these files or directories:
 AGENTS.md                     workspace agent entry point
 PROTOCOL.md                   human-readable operator contract
 README.md                     this workspace guide
-archive.jsonl                 append-only lineage ledger
+archive.jsonl                 append-only lineage record
 evolve                        workspace console
 evolve.yaml                   rendered recipe configuration
 library/                      recipe-relevant operator variants
@@ -27,7 +27,7 @@ pyproject.toml, uv.lock       locked workspace runtime
 runs/                         generated per-generation state
 artifacts/user/               durable user context
 artifacts/generations/        durable per-generation context
-skills/evolve-workspace/      workspace operating manual
+skills/evolve-agent/          method guide and workspace operating manual
 target/                       seed selected by the recipe
 ```
 
@@ -45,5 +45,5 @@ generated at the workspace root.
 
 Only paths allowed by `surface` in `evolve.yaml` may evolve. `evaluator/`, the
 vendored `.evolve/` runtime, and stamped archive fields are not candidate
-inputs. Use `./evolve status`, `./evolve report`, and `./evolve verify` to
+inputs. Use `./evolve status .`, `./evolve report .`, and `./evolve verify .` to
 inspect the experiment rather than editing its lineage records directly.

@@ -13,17 +13,20 @@ from dotenv import dotenv_values
 
 from .archive import archive_path, merged_rows, verify_integrity
 from .candidate.smoke import run_candidate_smoke
-from .config import RECIPE_NAMES, experiment_int
-from .driver import RunOptions, commit_child, eval_child, fork_child, record_fields
+from .config import DEFAULT_RECIPE, RECIPE_NAMES, experiment_int
+from .driver import RunOptions
 from .driver import doctor as doctor_workspace
 from .driver import run as driver_run
 from .git import head_tag, working_tree_changed_paths
+from .operator_cli import attach_orchestration_commands
+from .orchestration import commit_agent_child, eval_agent_child, fork_agent_child, record_agent_fields
 from .population import best_row
 from .report import format_report, format_status
 from .surface import check_paths, surface_patterns
 from .workspace import InitOptions, init_workspace
 
 app = typer.Typer(add_completion=False, no_args_is_help=True, help="evolve mechanism CLI")
+DEFAULT_WORKSPACE = Path("~/.evolve-workspace")
 
 
 def _enable_live_output(enabled: bool) -> None:
@@ -66,13 +69,19 @@ def _guard(fn):
     return wrapper
 
 
+attach_orchestration_commands(app, _guard, _workspace_environment, _enable_live_output)
+
+
 @app.command()
 @_guard
 def init(
-    workspace: Path,
+    workspace: Path | None = typer.Argument(
+        None,
+        help="workspace directory (default: ~/.evolve-workspace)",
+    ),
     recipe: str | None = typer.Option(
         None,
-        help="supported public recipe to scaffold (default: hill_climb)",
+        help=f"supported public recipe to scaffold (default: {DEFAULT_RECIPE})",
     ),
     recipe_path: Path | None = typer.Option(
         None,
@@ -85,12 +94,13 @@ def init(
     dataset: str | None = typer.Option(None, help="local Harbor task directory to split and freeze"),
 ) -> None:
     """Scaffold a new evolve workspace."""
+    workspace = (workspace or DEFAULT_WORKSPACE).expanduser()
     if recipe is not None and recipe_path is not None:
         raise typer.BadParameter(
             "cannot combine --recipe with --recipe-path",
             param_hint="--recipe-path",
         )
-    selected_recipe = recipe or "hill_climb"
+    selected_recipe = recipe or DEFAULT_RECIPE
     if recipe_path is None and selected_recipe not in RECIPE_NAMES:
         raise typer.BadParameter(
             f"invalid choice: {selected_recipe!r} (choose from {', '.join(RECIPE_NAMES)})",
@@ -110,6 +120,46 @@ def init(
 
 @app.command()
 @_guard
+def preflight(
+    workspace: Path | None = typer.Argument(
+        None,
+        help="workspace directory (default: ~/.evolve-workspace)",
+    ),
+    recipe: str | None = typer.Option(
+        None,
+        help=f"supported public recipe to scaffold (default: {DEFAULT_RECIPE})",
+    ),
+    recipe_path: Path | None = typer.Option(
+        None,
+        "--recipe-path",
+        help="opt-in recipe directory or evolve.yaml path",
+    ),
+    seed: str | None = typer.Option(
+        None, help="git URL to vendor into target/; local target dir; builtin-codex"
+    ),
+    dataset: str | None = typer.Option(None, help="local Harbor task directory to split and freeze"),
+) -> None:
+    """Check every `evolve init` precondition without writing anything.
+
+    Takes the same arguments as init and reports one checklist instead of one
+    refusal at a time."""
+    from .preflight import render, run_preflight
+
+    checks = run_preflight(
+        workspace=(workspace or DEFAULT_WORKSPACE).expanduser(),
+        recipe=recipe,
+        recipe_path=recipe_path,
+        seed=seed,
+        dataset=dataset,
+    )
+    output, ready = render(checks)
+    print(output)
+    if not ready:
+        raise typer.Exit(1)
+
+
+@app.command()
+@_guard
 def run(
     workspace: Path,
     max_generations: int | None = typer.Option(None, "--max-generations"),
@@ -117,7 +167,7 @@ def run(
     resume: bool = typer.Option(False, "--resume", help="accepted no-op; resume is the default"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="stream evaluator and operator output"),
 ) -> None:
-    """Start or resume the built-in evolution loop."""
+    """Start or resume the driver, the unattended evolution loop."""
     gens = max_generations if max_generations is not None else experiment_int(workspace, "max_generations", 40)
     children = children_per_gen if children_per_gen is not None else experiment_int(workspace, "children_per_gen", 1)
     _enable_live_output(verbose)
@@ -130,7 +180,7 @@ def run(
 @_guard
 def fork(workspace: Path, parent: str, child_worktree: Path) -> None:
     """Create a child worktree from a parent generation."""
-    fork_child(workspace, parent, child_worktree)
+    fork_agent_child(workspace, parent, child_worktree)
     print(child_worktree)
 
 
@@ -143,7 +193,7 @@ def commit(
     genid: str = typer.Option(..., "--genid"),
 ) -> None:
     """Commit and tag a child worktree."""
-    commit_child(workspace, child_worktree, parent, genid)
+    commit_agent_child(workspace, child_worktree, parent, genid)
     print(f"Committed gen/{genid}")
 
 
@@ -156,7 +206,7 @@ def eval_cmd(
 ) -> None:
     """Evaluate a tagged child version."""
     with _workspace_environment(workspace):
-        eval_child(workspace, genid, force=force)
+        eval_agent_child(workspace, genid, force=force)
     print(f"Evaluated gen/{genid}")
 
 
@@ -168,7 +218,7 @@ def record(
     fields: str = typer.Option(..., "--fields", help="JSON object of fields"),
 ) -> None:
     """Append non-stamped archive fields."""
-    record_fields(workspace, genid, json.loads(fields))
+    record_agent_fields(workspace, genid, json.loads(fields))
     print(f"Recorded fields for gen/{genid}")
 
 
@@ -180,7 +230,8 @@ def surface_check(
 ) -> None:
     """Report pending out-of-surface edits."""
     include, exclude = surface_patterns(workspace)
-    parent_ref = parent or head_tag(workspace) or "gen/0"
+    parent_ref = f"gen/{parent}" if parent and not parent.startswith("gen/") else parent
+    parent_ref = parent_ref or head_tag(workspace) or "gen/0"
     mutated = working_tree_changed_paths(workspace, parent_ref)
     violations = check_paths(mutated, include, exclude)
     print({"ok": not violations, "mutated": mutated, "violations": violations})
@@ -242,11 +293,18 @@ def doctor(workspace: Path = typer.Argument(Path("."))) -> None:
 @app.command()
 @_guard
 def verify(workspace: Path = typer.Argument(Path("."))) -> None:
-    """Integrity fsck: recompute the champion and expose any hand-edited ledger."""
+    """Integrity fsck: recompute the champion and expose any hand-edited archive."""
     findings = verify_integrity(workspace)
+    champion = best_row(workspace)
+    best_ever_path = workspace / "best_ever.json"
+    try:
+        materialized = json.loads(best_ever_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        materialized = object()
+    if materialized != champion:
+        findings.append("best_ever.json does not match the mechanism-derived champion")
     for finding in findings:
         print(f"TAMPER: {finding}", file=sys.stderr)
-    champion = best_row(workspace)
     champ = f"gen {champion['genid']} score {champion.get('score')}" if champion else "none"
     print(f"champion: {champ}")
     print(f"rows: {len(merged_rows(archive_path(workspace)))}  integrity: {'FAIL' if findings else 'ok'}")

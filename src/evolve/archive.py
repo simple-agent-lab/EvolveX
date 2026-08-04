@@ -221,7 +221,7 @@ def verify_integrity(workspace: Path) -> list[str]:
         if event.get(MECHANISM_EVAL_FIELD) is True and _eval_receipt(event) not in receipts:
             findings.append(
                 f"gen {event.get('genid')} round {event.get('round')}: mechanism-eval "
-                "carries no matching receipt — the ledger was hand-edited"
+                "carries no matching receipt — the archive was hand-edited"
             )
     return findings
 

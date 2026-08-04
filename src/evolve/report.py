@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+import os
+import tempfile
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -8,6 +11,22 @@ from .archive import RECEIPT_CERTIFIED_FIELD
 from .frozen.interfaces import ArchiveView
 from .git import tag_exists
 from .population import fixed_evaluation_identity, is_parent_record, looks_mechanism_written
+
+
+def materialize_best_ever(workspace: Path) -> dict[str, Any] | None:
+    """Write the mechanism-derived champion cache for operators and humans."""
+
+    workspace = workspace.resolve()
+    champion = ArchiveView(workspace).best_ever()
+    target = workspace / "best_ever.json"
+    with tempfile.NamedTemporaryFile("w", dir=workspace, prefix=".best-ever-", delete=False) as handle:
+        temporary = Path(handle.name)
+        handle.write(json.dumps(champion, indent=2, sort_keys=True) + "\n")
+    try:
+        os.replace(temporary, target)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return champion
 
 
 def format_status(workspace: Path) -> str:

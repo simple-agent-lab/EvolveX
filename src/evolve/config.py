@@ -60,6 +60,10 @@ def _recipe_names() -> tuple[str, ...]:
 
 RECIPE_NAMES = _recipe_names()
 
+# The init default: evolves the built-in codex seed's prompt and skills with
+# no external clone; Hill Climb stays the explicit choice for a minimal control.
+DEFAULT_RECIPE = "gepa"
+
 
 def default_config(recipe: str, experiment_id: str) -> dict[str, Any]:
     if recipe not in RECIPE_NAMES:

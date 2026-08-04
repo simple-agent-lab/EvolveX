@@ -140,8 +140,11 @@ def test_guarded_operator_restores_archive_in_child_checkout(tmp_path: Path) -> 
     workspace.mkdir()
     checkout.mkdir()
     live_archive = '{"genid":"0","score":0.5}\n'
+    live_best = '{"genid":"0","score":0.5}\n'
     (workspace / "archive.jsonl").write_text(live_archive)
+    (workspace / "best_ever.json").write_text(live_best)
     (checkout / "archive.jsonl").write_text("")
+    (checkout / "best_ever.json").write_text("")
     _write_operator(checkout, "probe", "pass\n")
 
     result = _run_operator_guarded(
@@ -158,7 +161,9 @@ def test_guarded_operator_restores_archive_in_child_checkout(tmp_path: Path) -> 
 
     assert result.returncode == 0
     assert (workspace / "archive.jsonl").read_text() == live_archive
+    assert (workspace / "best_ever.json").read_text() == live_best
     assert (checkout / "archive.jsonl").read_text() == ""
+    assert (checkout / "best_ever.json").read_text() == ""
 
 
 def test_run_operator_timeout_kills_descendant_in_new_session(tmp_path, monkeypatch):

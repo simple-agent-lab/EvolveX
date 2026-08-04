@@ -72,13 +72,17 @@ uv sync --dev --frozen
 uv run evolve --help
 ```
 
+`evolve init` accepts an optional workspace path. When omitted, it creates the
+workspace at `~/.evolve-workspace`; pass an explicit path for named or parallel
+experiments.
+
 Run a deterministic baseline smoke test without a model or Docker:
 
 ```bash
 export EVOLVE_RUNTIME_DIGEST="sha256:local-smoke-runtime"
 export EVOLVE_HOME="/tmp/evolve-home"
 
-uv run evolve init /tmp/evolve-demo --recipe hill_climb
+uv run evolve init /tmp/evolve-demo  # default recipe gepa: built-in seed, no clone
 EVAL_STUB=1 /tmp/evolve-demo/evolve run /tmp/evolve-demo --max-generations 0
 /tmp/evolve-demo/evolve status /tmp/evolve-demo
 /tmp/evolve-demo/evolve verify /tmp/evolve-demo
@@ -87,19 +91,40 @@ EVAL_STUB=1 /tmp/evolve-demo/evolve run /tmp/evolve-demo --max-generations 0
 This checks workspace generation, baseline evaluation, and archive integrity; it
 does not run a mutation round or measure agent quality.
 
+An outer coding agent can also orchestrate a generation while reusing the
+framework's operators:
+
+```bash
+/tmp/evolve-demo/evolve operator list /tmp/evolve-demo
+/tmp/evolve-demo/evolve operator run /tmp/evolve-demo select --genid 1
+```
+
+The agent reads the retained operator artifacts, forks and edits the selected
+parent, then uses `commit`, `eval`, and `finalize`. This keeps the agent in
+control of the harness change while the mechanism still owns evaluation,
+configured admission checks, gating, recording, and lineage. Validation and
+novelty results are tied to the exact candidate tree, so editing afterward
+requires rerunning them. See the generated workspace's `program.md` and
+`skills/evolve-agent/SKILL.md` for the complete sequence and method guidance.
+
 For a real Harbor run, provide an immutable evaluator digest and a local task
 dataset:
 
 ```bash
 export EVOLVE_RUNTIME_DIGEST="sha256:replace-with-your-evaluator-digest"
 
+uv run evolve preflight /tmp/evolve-harbor \
+  --recipe aevolve \
+  --dataset /absolute/path/to/harbor/tasks
 uv run evolve init /tmp/evolve-harbor \
   --recipe aevolve \
   --dataset /absolute/path/to/harbor/tasks
 /tmp/evolve-harbor/evolve run /tmp/evolve-harbor --max-generations 5
 ```
 
-Inspect a run with `evolve status`, `evolve report`, `git tag --list 'gen/*'`,
+`evolve preflight` takes the same arguments as `init`, writes nothing, and
+reports every unmet precondition as one checklist. Inspect a run with
+`evolve status`, `evolve report`, `git tag --list 'gen/*'`,
 and the generated `archive.jsonl`. Run `evolve --help` for the complete CLI.
 
 ## Concepts
@@ -124,7 +149,8 @@ framework process.
 | `hill_climb` | single-parent improvement | target |
 | `aevolve` | prompt and skill evolution | prompt and target skills |
 | `ahe` | harness engineering | target |
-| `gepa` | Pareto selection with minibatch validation | prompt and task skill |
+| `gepa` (default) | Pareto selection with minibatch validation | prompt and task skill |
+| `gepa_local` | GEPA with local no-Docker Harbor trials | knowledge file |
 | `hyperagents` | target and meta-agent co-evolution | target and selected operators |
 
 See [the recipe guide](recipes/README.md) for the workflow and configuration of
