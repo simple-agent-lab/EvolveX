@@ -52,6 +52,9 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `integrations/harbor/miniswe_candidate.py` | 550 | exact-candidate MiniSWE Harbor evaluator agent |
 | `integrations/harbor/miniswe_task_file.py` | 130 | large-task MiniSWE meta-agent transport |
 | `meta_agent_budget.py` | 150 | shared Harbor meta-agent retry and timeout budget calculations |
+| `viewer/__init__.py` | 30 | read-only experiment viewer package facade |
+| `viewer/models.py` | 300 | stable viewer API models and internal source/snapshot records |
+| `viewer/reader.py` | 450 | validated cached reads of archive, stage, evaluation, and Harbor-root evidence |
 
 ### The frozen ring (`src/evolve/frozen/`)
 
@@ -66,8 +69,8 @@ each workspace, immutable there because it sits outside the mutable surface
 | `frozen/interfaces.py` | 350 | operator ABCs (incl. trace analyzer, novelty, and reflect), the registry, result schemas, payload validation |
 | `frozen/sdk.py` | 300 | Python operator entrypoint and file-contract IO; no library algorithm policy |
 
-Total `src/evolve/` budget: **9930 lines**. The budget admits the explicit evaluation-package
-boundaries, the opt-in in-place Harbor runtime, and the redacted trace-analysis
+Total `src/evolve/` budget: **11985 lines**. The budget admits the explicit content-backed
+evaluation-contract boundaries, the opt-in in-place Harbor runtime, and the redacted trace-analysis
 boundary between rollout and feedback assembly; if the mechanism wants to
 grow past that, something belongs in a workspace operator instead —
 that is the spec's rule, not a style preference.
