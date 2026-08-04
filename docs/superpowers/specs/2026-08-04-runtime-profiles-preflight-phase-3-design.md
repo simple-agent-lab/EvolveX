@@ -38,9 +38,10 @@ scope.
    cannot be mistaken for certification.
 5. Ordinary preflight is read-only and makes no network request. Smoke is a
    separate, non-mutating operation and may perform a minimal live request.
-6. Secrets and raw endpoint or proxy values never enter contracts, profile
-   files, receipts, diagnostics, command records, or hashes. A normalized
-   non-secret model-route digest identifies the endpoint without storing it.
+6. Secrets never enter contracts, profile files, receipts, diagnostics,
+   command records, or hashes. Raw endpoint and proxy values never appear in
+   persisted artifacts; the normalized endpoint is used only to calculate a
+   non-secret model-route digest and is then discarded.
 7. Python owns policy and typed data. Shell remains a thin process boundary.
 8. Shared code never branches on `aevolve`, `ahe`, `gepa`, or `hyperagents`.
 
