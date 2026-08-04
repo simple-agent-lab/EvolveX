@@ -56,6 +56,7 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `viewer/models.py` | 300 | stable viewer API models and internal source/snapshot records |
 | `viewer/reader.py` | 450 | validated cached reads of archive, stage, evaluation, and Harbor-root evidence |
 | `viewer/snapshot.py` | 700 | derive health, stages, changes, performance, trials, and artifact references from source evidence |
+| `viewer/harbor_bridge.py` | 250 | ephemeral symlink federation and canonical trial links for Harbor inspection |
 
 ### The frozen ring (`src/evolve/frozen/`)
 
@@ -70,7 +71,7 @@ each workspace, immutable there because it sits outside the mutable surface
 | `frozen/interfaces.py` | 350 | operator ABCs (incl. trace analyzer, novelty, and reflect), the registry, result schemas, payload validation |
 | `frozen/sdk.py` | 300 | Python operator entrypoint and file-contract IO; no library algorithm policy |
 
-Total `src/evolve/` budget: **12685 lines**. The budget admits the explicit content-backed
+Total `src/evolve/` budget: **12935 lines**. The budget admits the explicit content-backed
 evaluation-contract boundaries, the opt-in in-place Harbor runtime, and the redacted trace-analysis
 boundary between rollout and feedback assembly; if the mechanism wants to
 grow past that, something belongs in a workspace operator instead —
