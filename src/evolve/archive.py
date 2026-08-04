@@ -19,8 +19,13 @@ STAMPED_FIELDS = {
     "retry_of",
     "evaluator_fingerprint",
     "task_set_hash",
+    "contract_id",
+    "evaluation_contract",
+    "contract_certified",
+    "diagnostics",
     "runtime_fingerprint",
     "expected_trials",
+    "scoreable_trials",
     "outcome",
     "trials",
     "score",
@@ -113,7 +118,7 @@ def append_evaluation_record(
         raw = asdict(trial)
         task_id = str(raw.pop("task_id"))
         raw["status"] = raw.pop("outcome").value
-        for field in ("source_attempt", "repaired_from_attempt", "repair_reason"):
+        for field in ("source_attempt", "repaired_from_attempt", "repair_reason", "failure_category"):
             if raw[field] is None:
                 raw.pop(field)
         tasks.setdefault(task_id, {"trials": []})["trials"].append(raw)

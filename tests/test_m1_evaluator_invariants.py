@@ -410,6 +410,33 @@ def test_effective_task_set_identity_accepts_explicit_configured_task_names(tmp_
     assert identity.digest == hashlib.sha256(expected_payload).hexdigest()
 
 
+def test_anchor_identity_uses_sealed_split_instead_of_training_task_names(tmp_path: Path) -> None:
+    evaluator_dir = tmp_path / "evaluator"
+    evaluator_dir.mkdir()
+    (evaluator_dir / "splits.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "tasks": {
+                    "train": ["train-a", "train-b"],
+                    "gate": ["gate-a"],
+                    "sealed": ["sealed-a", "sealed-b", "sealed-c"],
+                },
+            }
+        )
+    )
+    evaluator = {
+        "dataset": "tau3-banking",
+        "evaluation_split": "train",
+        "k": 1,
+        "task_names": ["train-a", "train-b"],
+    }
+
+    identity = effective_task_set_identity(tmp_path, evaluator, purpose="anchor")
+
+    assert identity.members == ("sealed-a", "sealed-b", "sealed-c")
+
+
 def test_full_scope_candidate_identity_contains_all_train_tasks(tmp_path: Path) -> None:
     checkout = tmp_path / "checkout"
     evaluator_dir = checkout / "evaluator"

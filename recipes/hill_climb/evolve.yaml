@@ -31,7 +31,7 @@ evaluator:
   sampling: static
   tasks_per_round: 16
   anchor: {final: true, every_rounds: 0}
-  k: 1
+  repetitions: 1
   n_concurrent: 16
   max_retries: 1
   benchmark_timeout_is_zero: true

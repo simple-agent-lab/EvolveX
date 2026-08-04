@@ -8,6 +8,7 @@ from typing import Any
 
 import yaml
 
+from ..evaluator_config import evaluator_repetitions
 from ..git import git
 
 
@@ -49,9 +50,11 @@ def effective_task_set_identity(
     checkout: Path, evaluator: dict[str, Any], *, purpose: str = "candidate"
 ) -> TaskSetIdentity:
     configured_names = evaluator.get("task_names")
-    if isinstance(configured_names, list) and all(isinstance(name, str) and name for name in configured_names):
+    if purpose != "anchor" and isinstance(configured_names, list) and all(
+        isinstance(name, str) and name for name in configured_names
+    ):
         members = tuple(configured_names)
-    elif isinstance(evaluator.get("task_file"), str) and evaluator["task_file"]:
+    elif purpose != "anchor" and isinstance(evaluator.get("task_file"), str) and evaluator["task_file"]:
         task_file = (checkout / evaluator["task_file"]).resolve()
         try:
             task_file.relative_to(checkout.resolve())
@@ -73,10 +76,7 @@ def effective_task_set_identity(
                     members = tuple(split_tasks)
             except (OSError, json.JSONDecodeError, AttributeError):
                 members = ()
-    try:
-        attempts = int(evaluator.get("k", 1))
-    except (TypeError, ValueError):
-        attempts = 1
+    attempts = evaluator_repetitions(evaluator)
     return task_set_identity(
         evaluator.get("dataset", ""),
         attempts,
@@ -98,7 +98,7 @@ def fixed_evaluation_identity(workspace: Path) -> dict[str, str] | None:
             return None
         task_set = task_set_identity(
             evaluator.get("dataset", ""),
-            evaluator.get("k", 1),
+            evaluator_repetitions(evaluator),
             _fixed_task_members(workspace, evaluator),
         )
     except (OSError, TypeError, ValueError, yaml.YAMLError):

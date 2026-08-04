@@ -31,7 +31,7 @@ evaluator:
   evaluation_split: train
   sampling: static
   tasks_per_round: 30
-  k: 1
+  repetitions: 1
   n_concurrent: 10
   agent_setup_timeout_multiplier: 1
   agent_timeout_multiplier: 1

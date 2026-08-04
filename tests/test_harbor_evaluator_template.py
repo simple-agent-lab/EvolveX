@@ -255,8 +255,8 @@ def test_harbor_evaluator_forwards_dependency_proxies_with_model_bypass_and_skip
         "OPENAI_BASE_URL": "https://model.example/v1",
         "http_proxy": "http://dependency-proxy.example:8118",
         "https_proxy": "http://dependency-proxy.example:8118",
-        "no_proxy": ".internal.example",
-        "NO_PROXY": ".upper.example",
+        "no_proxy": ".internal.example,github.com,files.pythonhosted.org",
+        "NO_PROXY": ".upper.example,objects.githubusercontent.com,astral.sh",
     }
 
     result = subprocess.run([str(evaluator / "eval.sh")], cwd=tmp_path, env=env, text=True, capture_output=True)

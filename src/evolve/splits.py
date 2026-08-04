@@ -8,6 +8,8 @@ from glob import escape
 from pathlib import Path
 from typing import Any
 
+from .evaluation.datasets import local_dataset_identity, local_task_content_digest
+
 SPLIT_NAMES = ("train", "gate", "sealed")
 
 
@@ -29,25 +31,58 @@ def build_manifest(
     empty = [name for name in SPLIT_NAMES if names and ratios[name] > 0 and not assignments[name]]
     if empty:
         raise ValueError(f"evaluator.dataset is too small for non-empty splits: {', '.join(empty)}")
-    return {
-        "version": 1,
+    manifest: dict[str, Any] = {
+        "version": 2 if resolved is not None else 1,
         "dataset": str(resolved) if resolved is not None else dataset,
         "resolved": resolved is not None,
+        "identity_status": "verified" if resolved is not None else "legacy_unverified",
         "seed": seed,
         "ratios": ratios,
         "sampling": sampling,
         "gate_tasks_per_round": max(gate_limit, 0),
         "tasks": assignments,
     }
+    if resolved is not None:
+        identity = local_dataset_identity(resolved, names)
+        manifest["dataset_identity"] = {
+            "source": identity.source,
+            "digest": identity.digest,
+            "resolved_reference": identity.resolved_reference,
+        }
+        manifest["task_digests"] = {
+            name: local_task_content_digest(resolved, name) for name in names
+        }
+    return manifest
 
 
 def load_manifest(path: Path) -> dict[str, Any]:
-    payload = json.loads(path.read_text())
-    if not isinstance(payload, dict) or payload.get("version") != 1:
-        raise RuntimeError(f"unsupported split manifest: {path}")
+    return parse_manifest(path.read_text(), source=str(path))
+
+
+def parse_manifest(text: str, *, source: str = "split manifest") -> dict[str, Any]:
+    payload = json.loads(text)
+    if not isinstance(payload, dict) or payload.get("version") not in {1, 2}:
+        raise RuntimeError(f"unsupported split manifest: {source}")
     tasks = payload.get("tasks")
     if not isinstance(tasks, dict) or any(not isinstance(tasks.get(name), list) for name in SPLIT_NAMES):
-        raise RuntimeError(f"invalid split task lists: {path}")
+        raise RuntimeError(f"invalid split task lists: {source}")
+    if payload["version"] == 1:
+        payload.setdefault("identity_status", "legacy_unverified")
+        return payload
+    identity = payload.get("dataset_identity")
+    task_digests = payload.get("task_digests")
+    members = [str(member) for split in SPLIT_NAMES for member in tasks[split]]
+    if (
+        payload.get("identity_status") != "verified"
+        or not isinstance(identity, dict)
+        or identity.get("source") != "local"
+        or not _sha256(identity.get("digest"))
+        or not isinstance(identity.get("resolved_reference"), str)
+        or not isinstance(task_digests, dict)
+        or set(task_digests) != set(members)
+        or any(not _sha256(task_digests.get(member)) for member in members)
+    ):
+        raise RuntimeError(f"invalid content identity in split manifest: {source}")
     return payload
 
 
@@ -112,6 +147,15 @@ def select_dataset_tasks(
     names = selected_task_names(manifest, split_name, round_number=round_number, limit=limit)
     if not names:
         raise RuntimeError(f"evaluator split {split_name!r} contains no tasks")
+    if manifest.get("identity_status") == "verified":
+        expected_digests = manifest["task_digests"]
+        changed = [
+            name for name in names if local_task_content_digest(dataset_path, name) != expected_digests[name]
+        ]
+        if changed:
+            raise RuntimeError(
+                "evaluator dataset task content changed after init: " + ", ".join(changed)
+            )
     return names, split_selection_digest(split_name, names)
 
 
@@ -172,6 +216,10 @@ def _assign(names: list[str], ratios: dict[str, float], seed: int) -> dict[str, 
 
 def _digest(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()
+
+
+def _sha256(value: object) -> bool:
+    return isinstance(value, str) and len(value) == 64 and all(character in "0123456789abcdef" for character in value)
 
 
 def _number(value: Any, label: str) -> float:

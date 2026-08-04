@@ -178,6 +178,57 @@ Implement `annotate`. Return `RecordResult` with field `fields`. The subprocess
 writes `record/fields.json`. The driver strips mechanism-owned fields before
 appending the remaining object to the archive.
 
+## Evaluation Contracts and Receipts
+
+A strict evaluation attempt contains `evaluation-contract.json`. The mechanism
+generates this file atomically before candidate runtime preparation; operator
+code and experiment scripts do not populate its fields. Its `contract_id` is a
+SHA-256 digest of canonical immutable inputs, including the candidate and
+trusted evaluator Git identities, selected task content, repetitions, runtime,
+model, concurrency, retry policy, and framework version.
+
+`EvaluationRecord` remains the evaluation-level receipt and may add:
+
+- `contract_id`: the immutable contract identifier.
+- `evaluation_contract`: a workspace-relative path and SHA-256 reference.
+- `contract_certified`: whether required observed runtime evidence matched the
+  expected contract values.
+
+When a candidate uv runtime is configured under a strict contract,
+`candidate-runtime.json` uses schema version 2 and records the contract ID,
+candidate commit, and candidate dependency digest. A mismatch is evaluator
+infrastructure failure and prevents benchmark launch. Legacy workspaces retain
+their version-1 receipts and do not gain a fabricated contract ID.
+
+## Evaluation Diagnostics
+
+Strict receipts include `diagnostics` schema version 1. The mechanism derives
+it automatically from canonical `TrialResult` evidence and the immutable
+contract; experiment scripts and operators never construct it field by field.
+It records:
+
+- contract ID, purpose, and contract certification;
+- expected, observed, scoreable, and missing trial counts;
+- outcome, owner, and timeout-owner counts;
+- bounded safe failure categories with candidate actionability;
+- retry eligibility and hashed workspace-relative artifact references.
+
+Missing contract identities are materialized as `status: missing`,
+`owner: evaluator`, and `reward: null`. Infrastructure evidence also keeps a
+null reward. Adapter-provided categories must match `[a-z0-9_]{1,64}`. The
+diagnostics payload never contains raw exception messages, verifier output,
+absolute host paths, credentials, proxy values, or private expected answers.
+
+Candidate-owned failures are actionable only for candidate/genesis purposes.
+All other owners and anchor/sealed purposes are non-actionable. The frozen SDK
+exposes a receipt-validated copy through
+`evaluation_diagnostics(workspace, genid)`. Meta-agent bundles reuse the same
+payload at `feedback/evaluation_diagnostics.json`; they do not reclassify raw
+logs. Reports render coverage and certification independently from score.
+
+Legacy unverified evaluations keep their historical trial vector and may omit
+diagnostics because the framework cannot prove exact missing identities.
+
 ## Write Your Own Variant in Three Steps
 
 1. Copy `library/<kind>/_skeleton.py` into your own operator file, for example

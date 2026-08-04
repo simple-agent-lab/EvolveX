@@ -6,7 +6,13 @@ import pytest
 from conftest import FIXTURE_SEEDS, run_evolve
 
 from evolve.frozen.interfaces import OperatorContext
-from evolve.splits import build_manifest, select_dataset_tasks, selected_task_names, split_selection_digest
+from evolve.splits import (
+    build_manifest,
+    load_manifest,
+    select_dataset_tasks,
+    selected_task_names,
+    split_selection_digest,
+)
 from evolve.workspace import InitOptions, init_workspace
 
 
@@ -27,6 +33,10 @@ def test_split_manifest_is_deterministic_disjoint_and_drift_checked(tmp_path: Pa
     second = build_manifest(dataset.as_posix(), config, base_dir=tmp_path, sampling="static", gate_limit=2)
 
     assert first == second
+    assert first["version"] == 2
+    assert first["dataset_identity"]["source"] == "local"
+    assert len(first["dataset_identity"]["digest"]) == 64
+    assert set(first["task_digests"]) == {f"task-{index}" for index in range(10)}
     assert {name: len(first["tasks"][name]) for name in ("train", "gate", "sealed")} == {
         "train": 5,
         "gate": 3,
@@ -52,6 +62,42 @@ def test_split_manifest_is_deterministic_disjoint_and_drift_checked(tmp_path: Pa
         select_dataset_tasks(manifest, dataset.as_posix(), "train")
 
 
+def test_local_split_rejects_selected_task_content_drift(tmp_path: Path) -> None:
+    dataset = _dataset(tmp_path / "tasks", count=4)
+    manifest_payload = build_manifest(
+        dataset.as_posix(),
+        {"train": 0.5, "gate": 0.25, "sealed": 0.25, "seed": 2},
+        base_dir=tmp_path,
+        sampling="static",
+        gate_limit=1,
+    )
+    manifest = tmp_path / "splits.json"
+    manifest.write_text(json.dumps(manifest_payload))
+    selected = manifest_payload["tasks"]["train"][0]
+    (dataset / selected / "task.toml").write_text(f'version = "1.0"\nname = "{selected}"\nchanged = true\n')
+
+    with pytest.raises(RuntimeError, match="dataset task content changed after init"):
+        select_dataset_tasks(manifest, dataset.as_posix(), "train")
+
+
+def test_version_one_split_manifest_remains_readable_as_legacy_unverified(tmp_path: Path) -> None:
+    manifest_path = tmp_path / "splits.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "resolved": False,
+                "tasks": {"train": [], "gate": [], "sealed": []},
+            }
+        )
+    )
+
+    manifest = load_manifest(manifest_path)
+
+    assert manifest["version"] == 1
+    assert manifest["identity_status"] == "legacy_unverified"
+
+
 def test_init_dataset_option_freezes_local_harbor_tasks(tmp_path: Path) -> None:
     dataset = _dataset(tmp_path / "tasks")
     workspace = tmp_path / "workspace"
@@ -71,6 +117,14 @@ def test_init_dataset_option_freezes_local_harbor_tasks(tmp_path: Path) -> None:
     assert manifest["resolved"] is True
     assert manifest["dataset"] == str(dataset)
     assert sum(len(manifest["tasks"][name]) for name in ("train", "gate", "sealed")) == 10
+    pin = json.loads((workspace / "evaluator" / "dataset.pin").read_text())
+    assert pin == {
+        "digest": manifest["dataset_identity"]["digest"],
+        "members": sorted(name for split in manifest["tasks"].values() for name in split),
+        "resolved_reference": manifest["dataset_identity"]["resolved_reference"],
+        "schema_version": 1,
+        "source": "local",
+    }
 
 
 def test_init_full_task_scope_freezes_every_task_without_partition(tmp_path: Path, monkeypatch) -> None:

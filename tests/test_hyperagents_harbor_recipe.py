@@ -39,7 +39,8 @@ def test_hyperagents_recipe_initializes_broad_harbor_bundle(tmp_path: Path) -> N
     assert "evaluation_split: train" in config
     assert "tasks_per_round: 30" in config
     assert "\n  split:" not in config
-    assert "k: 1" in config
+    assert "repetitions: 1" in config
+    assert "\n  k:" not in config
     assert "n_concurrent: 10" in config
     prompt = (workspace / "operators/meta_agent.py").read_text()
     assert "Strongly prefer a substantive `target/**`" in prompt

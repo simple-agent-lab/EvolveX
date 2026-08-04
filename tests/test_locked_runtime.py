@@ -86,6 +86,21 @@ def _prepare(tmp_path: Path, **env_overrides: str):
     return result, run_dir, calls
 
 
+def test_candidate_dependency_digest_matches_runtime_project_inputs(tmp_path: Path) -> None:
+    checkout, _run_dir, _runtime_root, evaluator, _env, _calls = _runtime_fixture(tmp_path)
+
+    first = uv_runtime_module.candidate_dependency_digest(checkout, evaluator)
+    (checkout / "target" / "README.md").write_text("unrelated")
+    unchanged = uv_runtime_module.candidate_dependency_digest(checkout, evaluator)
+    (checkout / "target" / "uv.lock").write_text("version = 2\n")
+    changed = uv_runtime_module.candidate_dependency_digest(checkout, evaluator)
+
+    assert len(first) == 64
+    assert unchanged == first
+    assert changed != first
+    assert uv_runtime_module.candidate_dependency_digest(checkout, {}) is None
+
+
 def test_uv_runtime_prepares_cache_and_emits_offline_contract(tmp_path: Path) -> None:
     result, run_dir, _ = _prepare(tmp_path, UV_OFFLINE_RC="1", UV_ONLINE_RESULTS="0")
 
@@ -108,6 +123,25 @@ def test_uv_runtime_prepares_cache_and_emits_offline_contract(tmp_path: Path) ->
     assert receipt["outcome"] == "ready"
     assert receipt["attempts"] == 1
     assert not (run_dir / ".candidate-runtime-venv").exists()
+
+
+def test_uv_runtime_receipt_is_bound_to_a_strict_evaluation_contract(tmp_path: Path) -> None:
+    checkout, run_dir, runtime_root, evaluator, env, _calls = _runtime_fixture(tmp_path)
+
+    result = prepare_candidate_runtime(
+        checkout,
+        run_dir,
+        runtime_root,
+        candidate_commit="abc123",
+        evaluator=evaluator,
+        env=env,
+        contract_id="a" * 64,
+    )
+
+    assert result.ready
+    receipt = json.loads((run_dir / "candidate-runtime.json").read_text())
+    assert receipt["schema_version"] == 2
+    assert receipt["contract_id"] == "a" * 64
 
 
 def test_uv_runtime_does_not_mount_host_executables_over_container_tools(tmp_path: Path) -> None:

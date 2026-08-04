@@ -221,10 +221,23 @@ import sys
 from urllib.parse import urlsplit
 
 base_url, override, *configured = sys.argv[1:]
+dependency_hosts = {
+    "astral.sh",
+    "download.pytorch.org",
+    "files.pythonhosted.org",
+    "github.com",
+    "objects.githubusercontent.com",
+    "pypi.org",
+}
 entries = []
 for value in ([override] if override else configured):
     for entry in value.split(","):
         entry = entry.strip()
+        normalized = entry.lstrip(".").lower().rstrip(".")
+        if normalized in dependency_hosts or any(
+            normalized.startswith(f"{hostname}:") for hostname in dependency_hosts
+        ):
+            continue
         if entry and entry not in entries:
             entries.append(entry)
 if base_url:

@@ -85,6 +85,7 @@ def test_verifier_uv_tool_cache_miss_is_infrastructure_not_reward_zero(tmp_path:
     assert trial["reward"] is None
     assert trial["owner"] == "evaluator"
     assert trial["exception_type"] == "VerifierDependencyError"
+    assert trial["failure_category"] == "verifier_dependency_resolution"
     assert scoring_rewards == []
 
 
@@ -107,6 +108,7 @@ def test_verifier_uv_tool_download_failure_is_infrastructure_not_reward_zero(tmp
     assert trial["reward"] is None
     assert trial["owner"] == "evaluator"
     assert trial["exception_type"] == "VerifierDependencyError"
+    assert trial["failure_category"] == "verifier_dependency_download"
     assert scoring_rewards == []
 
 
@@ -125,6 +127,30 @@ def test_verifier_bootstrap_http_failure_is_infrastructure_not_reward_zero(tmp_p
     assert trial["reward"] is None
     assert trial["owner"] == "evaluator"
     assert trial["exception_type"] == "VerifierDependencyError"
+    assert trial["failure_category"] == "verifier_bootstrap_download"
+    assert scoring_rewards == []
+
+
+def test_verifier_uv_installer_connect_timeout_is_infrastructure_not_reward_zero(tmp_path: Path) -> None:
+    jobs = tmp_path / "jobs"
+    trial_dir = jobs / "case-a__one"
+    write_trial(trial_dir, task="case-a", trial="one", reward=0.0)
+    verifier = trial_dir / "verifier"
+    verifier.mkdir()
+    (verifier / "test-stdout.txt").write_text(
+        "curl: (28) Failed to connect to github.com port 443 after 135222 ms: Couldn't connect to server\n"
+        "failed to download https://github.com/astral-sh/uv/releases/download/0.9.5/uv-x86_64-unknown-linux-gnu.tar.gz\n"
+        "/tests/test.sh: line 26: uvx: command not found\n"
+    )
+
+    vector, _artifacts, scoring_rewards = collect_harbor_artifacts(jobs)
+
+    trial = vector["tasks"]["case-a"]["trials"][0]
+    assert trial["status"] == "infrastructure_failed"
+    assert trial["reward"] is None
+    assert trial["owner"] == "evaluator"
+    assert trial["exception_type"] == "VerifierDependencyError"
+    assert trial["failure_category"] == "verifier_bootstrap_download"
     assert scoring_rewards == []
 
 
@@ -146,7 +172,38 @@ def test_positive_verifier_reward_wins_over_recovered_bootstrap_output(tmp_path:
     assert trial["reward"] == 1.0
     assert trial["owner"] == "benchmark"
     assert "exception_type" not in trial
+    assert "failure_category" not in trial
     assert scoring_rewards == [1.0]
+
+
+def test_unseeded_tau3_runtime_is_infrastructure_even_with_positive_reward(tmp_path: Path) -> None:
+    jobs = tmp_path / "jobs"
+    trial_dir = jobs / "case-a__one"
+    write_trial(trial_dir, task="case-a", trial="one", reward=1.0)
+    verifier = trial_dir / "verifier"
+    verifier.mkdir()
+    (verifier / "result.json").write_text(
+        json.dumps(
+            {
+                "reward": 1.0,
+                "runtime_initialization": {
+                    "accepted": {"seed": None, "max_steps": 200, "max_errors": 10},
+                    "accepted_once_count": 1,
+                    "phase": "started",
+                },
+            }
+        )
+    )
+
+    vector, _artifacts, scoring_rewards = collect_harbor_artifacts(jobs)
+
+    trial = vector["tasks"]["case-a"]["trials"][0]
+    assert trial["status"] == "infrastructure_failed"
+    assert trial["reward"] is None
+    assert trial["owner"] == "evaluator"
+    assert trial["exception_type"] == "VerifierConfigurationError"
+    assert trial["failure_category"] == "verifier_runtime_unseeded"
+    assert scoring_rewards == []
 
 
 def test_collect_harbor_artifacts_scores_agent_timeouts_as_zero(tmp_path: Path) -> None:
@@ -165,6 +222,7 @@ def test_collect_harbor_artifacts_scores_agent_timeouts_as_zero(tmp_path: Path) 
     assert trial["status"] == "timeout"
     assert trial["reward"] == 0.0
     assert trial["owner"] == "benchmark_agent"
+    assert trial["failure_category"] == "benchmark_agent_timeout"
     assert scoring_rewards == [0.0]
 
 
@@ -186,6 +244,7 @@ def test_final_retried_verifier_timeout_scores_zero_and_preserves_sibling(tmp_pa
     assert timeout["status"] == "timeout"
     assert timeout["reward"] == 0.0
     assert timeout["owner"] == "benchmark_verifier"
+    assert timeout["failure_category"] == "benchmark_verifier_timeout"
     assert vector["tasks"]["case-b"]["trials"][0]["reward"] == 1.0
     assert rewards == [0.0, 1.0]
 
@@ -235,6 +294,7 @@ def test_exception_precedes_reward_and_failed_cost_is_preserved(tmp_path: Path) 
     assert trial["status"] == "infrastructure_failed"
     assert trial["reward"] is None
     assert trial["owner"] == "ambiguous"
+    assert trial["failure_category"] == "unclassified_infrastructure"
     assert rewards == []
     assert json.loads((run_dir / "cost.json").read_text()) == {"usd": 0.25}
 
@@ -256,6 +316,7 @@ def test_explicit_candidate_marker_classifies_candidate_invalid(tmp_path: Path) 
     assert trial["status"] == "candidate_invalid"
     assert trial["reward"] is None
     assert trial["owner"] == "candidate"
+    assert trial["failure_category"] == "candidate_invalid"
     assert rewards == []
 
 
@@ -300,6 +361,7 @@ def test_missing_tool_output_history_is_candidate_invalid(tmp_path: Path) -> Non
     assert trial["status"] == "candidate_invalid"
     assert trial["owner"] == "candidate"
     assert trial["reward"] is None
+    assert trial["failure_category"] == "invalid_tool_history"
     assert rewards == []
 
 

@@ -5,17 +5,29 @@ import json
 import sys
 import tempfile
 import time
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from ..config import evaluator_boolean, evaluator_sampling, experiment_id, load_config
+from ..config import evaluator_boolean, evaluator_repetitions, evaluator_sampling, experiment_id, load_config
 from ..git import evaluator_tree, git, git_stdout
 from ..host_runtime import clean_python_env
 from ..runtime import OwnedResult, attempt_dir, next_attempt, owned_attempt_id, run_owned
 from ..uv_runtime import CandidateRuntimeResult, prepare_candidate_runtime
+from .contract import (
+    ContractMode,
+    ContractResolutionContext,
+    EvaluationContractV1,
+    evaluation_contract_mode,
+    resolve_evaluation_contract,
+    trusted_evaluator_config,
+    verify_candidate_runtime_receipt,
+    write_evaluation_contract,
+)
+from .diagnostics import evaluation_diagnostics, materialize_missing_trials
 from .evidence import trial_results, validate_task_vector
 from .identity import effective_task_set_identity, evaluation_split_name
-from .results import EvaluationRecord, Outcome, classify_evaluation
+from .results import EvaluationRecord, Outcome, TrialResult, classify_evaluation
 
 
 class EvaluationInterrupted(BaseException):
@@ -42,15 +54,35 @@ def evaluate(
         git(workspace, "worktree", "add", "--detach", str(checkout), candidate_commit)
         cleanup_needed = True
         try:
-            evaluator = load_config(checkout / "evolve.yaml")["evaluator"]
-            timeout_zero = evaluator_boolean(evaluator, "benchmark_timeout_is_zero")
-            task_set = effective_task_set_identity(checkout, evaluator, purpose=purpose)
-            runtime_fingerprint = hashlib.sha256((checkout / "evaluator" / "runtime.pin").read_bytes()).hexdigest()
-            expected = _expected_trials(
-                evaluator,
-                task_limit,
-                selected_tasks=len(task_set.members) if task_set.members else None,
+            contract = None
+            mode = evaluation_contract_mode(workspace)
+            evaluator = (
+                trusted_evaluator_config(workspace)
+                if mode is ContractMode.STRICT
+                else load_config(checkout / "evolve.yaml")["evaluator"]
             )
+            timeout_zero = evaluator_boolean(evaluator, "benchmark_timeout_is_zero")
+            if mode is ContractMode.STRICT:
+                contract = resolve_evaluation_contract(
+                    ContractResolutionContext(
+                        workspace=workspace,
+                        candidate_commit=candidate_commit,
+                        purpose=purpose,
+                        generation=genid,
+                        task_limit=task_limit,
+                    )
+                )
+                task_set_hash = contract.task_set_digest
+                expected = len(contract.trial_identities)
+            else:
+                task_set = effective_task_set_identity(checkout, evaluator, purpose=purpose)
+                task_set_hash = task_set.digest
+                expected = _expected_trials(
+                    evaluator,
+                    task_limit,
+                    selected_tasks=len(task_set.members) if task_set.members else None,
+                )
+            runtime_fingerprint = hashlib.sha256((checkout / "evaluator" / "runtime.pin").read_bytes()).hexdigest()
             if attempt is None:
                 attempt = next_attempt(
                     workspace,
@@ -73,10 +105,15 @@ def evaluate(
                 "purpose": purpose,
                 "attempt": attempt,
                 "evaluator_fingerprint": evaluator_fingerprint,
-                "task_set_hash": task_set.digest,
+                "task_set_hash": task_set_hash,
                 "runtime_fingerprint": runtime_fingerprint,
                 "expected_trials": expected,
             }
+            if contract is not None:
+                contract_path = run_dir / "evaluation-contract.json"
+                write_evaluation_contract(contract_path, contract)
+                base["contract_id"] = contract.contract_id
+                base["evaluation_contract"] = _evaluation_contract_reference(workspace, contract_path)
             try:
                 try:
                     runtime = prepare_candidate_runtime(
@@ -85,12 +122,36 @@ def evaluate(
                         workspace / "runs" / "runtime",
                         candidate_commit,
                         evaluator,
+                        **({"contract_id": contract.contract_id} if contract is not None else {}),
                     )
                     base["candidate_runtime"] = _runtime_receipt_reference(workspace, runtime.receipt_path)
-                    if not runtime.ready:
+                    verification = None
+                    if contract is not None:
+                        receipt_payload = (
+                            json.loads(runtime.receipt_path.read_text())
+                            if runtime.receipt_path is not None and runtime.receipt_path.is_file()
+                            else None
+                        )
+                        if receipt_payload is not None and not isinstance(receipt_payload, dict):
+                            raise ValueError("candidate runtime receipt must be a JSON object")
+                        verification = verify_candidate_runtime_receipt(contract, receipt_payload)
+                        base["contract_certified"] = verification.certified
+                    if verification is not None and not verification.certified:
                         record = classify_evaluation(
                             **base,
-                            trials=(),
+                            trials=_strict_trials(contract, ()),
+                            setup_outcome=Outcome.INFRASTRUCTURE_FAILED,
+                            setup_reason=verification.reason,
+                            partial_floor=float(evaluator.get("partial_floor", 0.9)),
+                            benchmark_timeout_is_zero=timeout_zero,
+                            cost_usd=0.0,
+                            wall_s=time.monotonic() - start,
+                            artifacts=None,
+                        )
+                    elif not runtime.ready:
+                        record = classify_evaluation(
+                            **base,
+                            trials=_strict_trials(contract, ()),
                             setup_outcome=runtime.outcome,
                             setup_reason=runtime.reason,
                             partial_floor=float(evaluator.get("partial_floor", 0.9)),
@@ -116,6 +177,7 @@ def evaluate(
                         except (OSError, ValueError, json.JSONDecodeError) as error:
                             trials = ()
                             setup_outcome, setup_reason = Outcome.INFRASTRUCTURE_FAILED, str(error)
+                        trials = _strict_trials(contract, trials)
                         candidate_owned = setup_outcome is Outcome.CANDIDATE_INVALID or any(
                             trial.owner == "candidate"
                             and (
@@ -144,26 +206,29 @@ def evaluate(
                     cleanup_needed = False
                     git(workspace, "worktree", "remove", "--force", str(checkout), check=False)
             except Exception as error:
-                return EvaluationRecord(
+                record = EvaluationRecord(
                     **base,
                     outcome=Outcome.INFRASTRUCTURE_FAILED,
                     reason=str(error),
-                    trials=(),
+                    trials=_strict_trials(contract, ()),
                     score=None,
                     cost_usd=0.0,
                     wall_s=time.monotonic() - start,
                 )
+                return _freeze_diagnostics(record, contract)
             except BaseException as error:
                 record = EvaluationRecord(
                     **base,
                     outcome=Outcome.CANCELLED,
                     reason=str(error) or "evaluation cancelled",
-                    trials=(),
+                    trials=_strict_trials(contract, ()),
                     score=None,
                     cost_usd=0.0,
                     wall_s=time.monotonic() - start,
                 )
+                record = _freeze_diagnostics(record, contract)
                 raise EvaluationInterrupted(record, error) from error
+            record = _freeze_diagnostics(record, contract)
             _write_attempt_summary(run_dir, record)
             return record
         finally:
@@ -174,6 +239,22 @@ def evaluate(
 def _read_task_vector(run_dir: Path) -> dict | None:
     path = run_dir / "task_vector.json"
     return validate_task_vector(json.loads(path.read_text())) if path.exists() else None
+
+
+def _strict_trials(
+    contract: EvaluationContractV1 | None,
+    trials: tuple[TrialResult, ...],
+) -> tuple[TrialResult, ...]:
+    return materialize_missing_trials(contract.trial_identities, trials) if contract is not None else trials
+
+
+def _freeze_diagnostics(
+    record: EvaluationRecord,
+    contract: EvaluationContractV1 | None,
+) -> EvaluationRecord:
+    if contract is None:
+        return record
+    return replace(record, diagnostics=evaluation_diagnostics(record).to_dict())
 
 
 def _write_attempt_summary(run_dir: Path, record: EvaluationRecord) -> None:
@@ -192,6 +273,13 @@ def _evaluation_artifact_reference(workspace: Path, run_dir: Path) -> dict[str, 
         if path.exists()
         else None
     )
+
+
+def _evaluation_contract_reference(workspace: Path, path: Path) -> dict[str, str]:
+    return {
+        "path": path.resolve().relative_to(workspace.resolve()).as_posix(),
+        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+    }
 
 
 def _runtime_receipt_reference(workspace: Path, receipt: Path | None) -> dict[str, str] | None:
@@ -223,7 +311,7 @@ def _read_cost(run_dir: Path) -> float:
 
 
 def _expected_trials(evaluator: dict[str, Any], task_limit: int | None, *, selected_tasks: int | None = None) -> int:
-    attempts = max(1, int(evaluator.get("k", 1)))
+    attempts = evaluator_repetitions(evaluator)
     tasks = selected_tasks if selected_tasks is not None else int(evaluator.get("tasks_per_round", attempts))
     if task_limit is not None:
         tasks = min(tasks, task_limit) if selected_tasks is not None else task_limit

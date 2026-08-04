@@ -1,3 +1,28 @@
+from .contract import (
+    ContractMode,
+    ContractResolutionContext,
+    EvaluationContractResolutionError,
+    EvaluationContractV1,
+    ReceiptVerificationResult,
+    TrialIdentity,
+    evaluation_contract_mode,
+    resolve_evaluation_contract,
+    trusted_evaluator_config,
+    verify_candidate_runtime_receipt,
+    write_evaluation_contract,
+)
+from .datasets import (
+    DatasetContentIdentity,
+    local_dataset_identity,
+    registry_dataset_identity,
+    selected_dataset_identity,
+)
+from .diagnostics import (
+    EvaluationDiagnosticsV1,
+    FailureDiagnosticV1,
+    evaluation_diagnostics,
+    materialize_missing_trials,
+)
 from .results import (
     CANONICAL_OUTCOMES,
     EvaluationRecord,
@@ -9,9 +34,28 @@ from .results import (
 
 __all__ = [
     "CANONICAL_OUTCOMES",
+    "ContractResolutionContext",
+    "ContractMode",
+    "DatasetContentIdentity",
+    "EvaluationContractResolutionError",
+    "EvaluationContractV1",
+    "EvaluationDiagnosticsV1",
+    "FailureDiagnosticV1",
+    "ReceiptVerificationResult",
     "EvaluationRecord",
     "Outcome",
     "TrialResult",
+    "TrialIdentity",
     "classify_evaluation",
     "evaluation_status",
+    "evaluation_contract_mode",
+    "evaluation_diagnostics",
+    "local_dataset_identity",
+    "materialize_missing_trials",
+    "registry_dataset_identity",
+    "resolve_evaluation_contract",
+    "selected_dataset_identity",
+    "trusted_evaluator_config",
+    "verify_candidate_runtime_receipt",
+    "write_evaluation_contract",
 ]

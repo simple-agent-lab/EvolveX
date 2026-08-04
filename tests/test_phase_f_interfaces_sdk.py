@@ -4,8 +4,15 @@ from pathlib import Path
 
 import pytest
 
+from evolve.archive import append_evaluation_record
+from evolve.evaluation import EvaluationRecord, Outcome, TrialResult
 from evolve.frozen import sdk
-from evolve.frozen.interfaces import ValidateOperator, ValidateResult
+from evolve.frozen.interfaces import (
+    PayloadValidationError,
+    ValidateOperator,
+    ValidateResult,
+    validate_evaluation_diagnostics_payload,
+)
 from evolve.operators import run_operator
 
 
@@ -149,6 +156,78 @@ def test_historical_prediction_fields_remain_readable_as_unknown_archive_data(
     assert row is not None
     assert row["predicted_fixes"] == ["task-1"]
     assert row["verified_fixes"] == ["task-1"]
+
+
+def _diagnostics_payload() -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "contract_id": "a" * 64,
+        "purpose": "candidate",
+        "expected_trials": 1,
+        "observed_trials": 0,
+        "scoreable_trials": 0,
+        "missing_trials": 1,
+        "outcome_counts": {"missing": 1},
+        "owner_counts": {"evaluator": 1},
+        "timeouts_by_owner": {},
+        "failures": [
+            {"category": "missing", "owner": "evaluator", "count": 1, "actionable": False}
+        ],
+        "retry_eligible": True,
+        "contract_certified": True,
+        "artifact_references": [
+            {"kind": "evaluation_contract", "path": "runs/contract.json", "sha256": "b" * 64}
+        ],
+    }
+
+
+def test_sdk_reads_frozen_evaluation_diagnostics_with_receipt_certification(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "evolve.yaml").write_text("experiment:\n  id: diagnostics-sdk\n")
+    monkeypatch.setenv("EVOLVE_HOME", str(tmp_path / "home"))
+    record = EvaluationRecord(
+        experiment_id="diagnostics-sdk",
+        generation="1",
+        candidate_commit="abc",
+        purpose="candidate",
+        attempt=1,
+        evaluator_fingerprint="evaluator",
+        task_set_hash="tasks",
+        runtime_fingerprint="runtime",
+        expected_trials=1,
+        outcome=Outcome.INFRASTRUCTURE_FAILED,
+        reason="missing",
+        trials=(TrialResult("task", 0, Outcome.MISSING, None, "evaluator"),),
+        score=None,
+        cost_usd=0.0,
+        wall_s=1.0,
+        diagnostics=_diagnostics_payload(),
+    )
+    append_evaluation_record(workspace, record)
+
+    payload = sdk.evaluation_diagnostics(workspace, "1")
+
+    assert payload == {**_diagnostics_payload(), "receipt_certified": True}
+
+
+def test_diagnostics_validator_rejects_incomplete_payload() -> None:
+    with pytest.raises(PayloadValidationError, match="diagnostics expected_trials"):
+        validate_evaluation_diagnostics_payload({"schema_version": 1, "purpose": "candidate"})
+
+
+def test_sdk_returns_none_for_legacy_row_without_diagnostics(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setenv("EVOLVE_HOME", str(tmp_path / "home"))
+    (workspace / "evolve.yaml").write_text("experiment:\n  id: legacy\n")
+    (workspace / "archive.jsonl").write_text('{"genid":"old","score":0.5}\n')
+
+    assert sdk.evaluation_diagnostics(workspace, "old") is None
 
 
 def test_run_operator_can_use_trusted_operator_source_with_candidate_context(tmp_path: Path) -> None:

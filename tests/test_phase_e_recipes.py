@@ -104,7 +104,7 @@ def test_supported_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "task_scope: full" in config
             assert "evaluation_split: train" in config
             assert "tasks_per_round: 30" in config
-            assert "k: 1" in config
+            assert "repetitions: 1" in config
             assert "n_concurrent: 10" in config
             assert "\n  split:" not in config
             assert "\n  anchor:" not in config
@@ -132,7 +132,7 @@ def test_supported_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "task_scope: full" in config
             assert "evaluation_split: train" in config
             assert "tasks_per_round: 30" in config
-            assert "k: 1" in config
+            assert "repetitions: 1" in config
             assert "n_concurrent: 10" in config
             assert "\n  split:" not in config
             assert "\n  anchor:" not in config
@@ -151,6 +151,7 @@ def test_supported_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "agent: evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent" in config
             assert "harbor_agent:" not in config
         assert "variant: fixed" not in config
+        assert "\n  k:" not in config
 
 
 def test_ahe_and_hyperagents_share_the_pinned_meta_agent_image() -> None:
@@ -170,7 +171,8 @@ def test_terminal_bench_method_recipes_use_full_curated_dataset() -> None:
         assert evaluator["tasks_per_round"] == 30
         assert evaluator["task_scope"] == "full"
         assert evaluator["evaluation_split"] == "train"
-        assert evaluator["k"] == 1
+        assert evaluator["repetitions"] == 1
+        assert "k" not in evaluator
         assert evaluator["n_concurrent"] == 10
         assert recipe["operators"]["meta_agent"]["expose_gate_data"] is False
 

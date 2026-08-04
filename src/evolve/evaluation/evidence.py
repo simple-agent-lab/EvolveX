@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import re
 from typing import Any, cast
 
 from .results import Outcome, TrialResult
 
 TRIAL_STATUSES = {outcome.value for outcome in Outcome}
+_SAFE_FAILURE_CATEGORY = re.compile(r"[a-z0-9_]{1,64}")
 
 
 class TaskVectorError(ValueError):
@@ -59,6 +61,12 @@ def normalize_task_vector(payload: object) -> dict[str, Any]:
                     raise TaskVectorError(f"invalid {field} for {task_id} trial {trial}")
             if raw.get("repair_reason") is not None and not isinstance(raw["repair_reason"], str):
                 raise TaskVectorError(f"invalid repair_reason for {task_id} trial {trial}")
+            failure_category = raw.get("failure_category")
+            if failure_category is not None and (
+                not isinstance(failure_category, str)
+                or _SAFE_FAILURE_CATEGORY.fullmatch(failure_category) is None
+            ):
+                raise TaskVectorError(f"invalid failure_category for {task_id} trial {trial}")
             score_eligible = (
                 status == Outcome.BENCHMARK_COMPLETE
                 or status == Outcome.TIMEOUT
@@ -97,6 +105,7 @@ def trial_results(payload: object) -> tuple[TrialResult, ...]:
                 int(raw["repaired_from_attempt"]) if raw.get("repaired_from_attempt") is not None else None
             ),
             repair_reason=str(raw["repair_reason"]) if raw.get("repair_reason") else None,
+            failure_category=str(raw["failure_category"]) if raw.get("failure_category") else None,
         )
         for task_id, task in vector["tasks"].items()
         for raw in task["trials"]

@@ -385,7 +385,8 @@ def test_default_expected_trials_match_generated_evaluator_environment(
 ) -> None:
     config = fixture_recipe_config("hill_climb-smoke", "workspace")
     config["evaluator"].pop("tasks_per_round")
-    config["evaluator"]["k"] = 2
+    config["evaluator"].pop("k", None)
+    config["evaluator"]["repetitions"] = 2
     monkeypatch.setattr(workspace_module, "default_config", lambda _recipe, _experiment: config)
     monkeypatch.setenv("EVAL_STUB", "1")
     workspace = tmp_path / "workspace"
@@ -400,3 +401,7 @@ def test_default_expected_trials_match_generated_evaluator_environment(
 
 def test_anchor_expected_trials_use_selected_sealed_tasks() -> None:
     assert _expected_trials({"k": 2, "tasks_per_round": 4}, None, selected_tasks=1) == 2
+
+
+def test_expected_trials_use_repetitions_for_new_configs() -> None:
+    assert _expected_trials({"repetitions": 3, "tasks_per_round": 4}, None, selected_tasks=2) == 6

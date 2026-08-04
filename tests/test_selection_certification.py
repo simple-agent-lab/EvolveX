@@ -150,6 +150,7 @@ def test_later_metadata_cannot_overwrite_canonical_record_fields(tmp_path, monke
         "candidate_commit": "forged",
         "runtime_fingerprint": "forged",
         "expected_trials": 99,
+        "scoreable_trials": 99,
         "trials": [],
         "artifacts": {"path": "forged"},
         "retry_of": 99,
@@ -164,6 +165,23 @@ def test_later_metadata_cannot_overwrite_canonical_record_fields(tmp_path, monke
     payload = record.to_dict()
     for field in forged:
         assert row[field] == payload.get(field, record.selection_eligible)
+
+
+def test_later_metadata_cannot_overwrite_frozen_evaluation_diagnostics(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("EVOLVE_HOME", str(tmp_path / "home"))
+    workspace = tmp_path / "workspace"
+    diagnostics = {
+        "schema_version": 1,
+        "expected_trials": 1,
+        "observed_trials": 0,
+        "missing_trials": 1,
+    }
+    record = replace(_record(Outcome.INFRASTRUCTURE_FAILED), diagnostics=diagnostics)
+    append_evaluation_record(workspace, record)
+
+    append_event(workspace, record.experiment_id, {"genid": "1", "diagnostics": {"forged": True}})
+
+    assert rows_by_genid(workspace)["1"]["diagnostics"] == diagnostics
 
 
 def test_unreceipted_same_hash_retry_cannot_replace_canonical_failure(tmp_path, monkeypatch) -> None:

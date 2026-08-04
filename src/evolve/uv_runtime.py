@@ -41,6 +41,11 @@ def _digest_project(project: Path) -> str:
     return digest.hexdigest()
 
 
+def candidate_dependency_digest(checkout: Path, evaluator: dict[str, Any]) -> str | None:
+    config = candidate_runtime_config(checkout, evaluator)
+    return _digest_project(config.project) if config is not None else None
+
+
 _SECRET_ENV_NAME = re.compile(r"(?i)(?:secret|token|password|passwd|api[_-]?key|credential|authorization|proxy)")
 
 
@@ -155,6 +160,7 @@ def _write_receipt(
     config: UvRuntimeConfig,
     *,
     candidate_commit: str,
+    contract_id: str | None,
     dependency_digest: str,
     uv_version: str | None,
     cache_warm: bool,
@@ -166,7 +172,8 @@ def _write_receipt(
     receipt = run_dir / RECEIPT_NAME
     temporary = receipt.with_suffix(".json.tmp")
     values = {
-        "schema_version": 1,
+        "schema_version": 2 if contract_id is not None else 1,
+        "contract_id": contract_id,
         "variant": config.variant,
         "project": config.project_relative,
         "candidate_commit": candidate_commit,
@@ -178,6 +185,8 @@ def _write_receipt(
         "duration_s": round(duration_s, 6),
         "reason": _redact(reason) if reason else None,
     }
+    if contract_id is None:
+        values.pop("contract_id")
     temporary.write_text(json.dumps(values, indent=2, sort_keys=True) + "\n")
     temporary.replace(receipt)
     return receipt
@@ -188,6 +197,7 @@ def _finish_runtime(
     config: UvRuntimeConfig,
     *,
     candidate_commit: str,
+    contract_id: str | None,
     dependency_digest: str,
     started: float,
     outcome: Outcome,
@@ -202,6 +212,7 @@ def _finish_runtime(
         run_dir,
         config,
         candidate_commit=candidate_commit,
+        contract_id=contract_id,
         dependency_digest=dependency_digest,
         uv_version=uv_version,
         cache_warm=cache_warm,
@@ -226,6 +237,7 @@ def _finish_ready_runtime(
     python_dir: Path,
     *,
     candidate_commit: str,
+    contract_id: str | None,
     dependency_digest: str,
     started: float,
     attempts: int,
@@ -236,6 +248,7 @@ def _finish_ready_runtime(
         run_dir,
         config,
         candidate_commit=candidate_commit,
+        contract_id=contract_id,
         dependency_digest=dependency_digest,
         uv_version=uv_version,
         cache_warm=cache_warm,
@@ -270,6 +283,7 @@ def prepare_candidate_runtime(
     evaluator: dict[str, Any],
     *,
     env: Mapping[str, str] | None = None,
+    contract_id: str | None = None,
 ) -> CandidateRuntimeResult:
     config = candidate_runtime_config(checkout, evaluator)
     if config is None:
@@ -282,13 +296,15 @@ def prepare_candidate_runtime(
     started = time.monotonic()
     run_dir.mkdir(parents=True, exist_ok=True)
     project = config.project
-    dependency_digest = _digest_project(project)
+    dependency_digest = candidate_dependency_digest(checkout, evaluator)
+    assert dependency_digest is not None
     missing = [name for name in ("pyproject.toml", "uv.lock") if not (project / name).is_file()]
     if missing:
         return _finish_runtime(
             run_dir,
             config,
             candidate_commit=candidate_commit,
+            contract_id=contract_id,
             dependency_digest=dependency_digest,
             started=started,
             outcome=Outcome.CANDIDATE_INVALID,
@@ -322,6 +338,7 @@ def prepare_candidate_runtime(
                 run_dir,
                 config,
                 candidate_commit=candidate_commit,
+                contract_id=contract_id,
                 dependency_digest=dependency_digest,
                 started=started,
                 outcome=Outcome.INFRASTRUCTURE_FAILED,
@@ -343,6 +360,7 @@ def prepare_candidate_runtime(
                 run_dir,
                 config,
                 candidate_commit=candidate_commit,
+                contract_id=contract_id,
                 dependency_digest=dependency_digest,
                 started=started,
                 outcome=Outcome.CANDIDATE_INVALID,
@@ -376,6 +394,7 @@ def prepare_candidate_runtime(
                     run_dir,
                     config,
                     candidate_commit=candidate_commit,
+                    contract_id=contract_id,
                     dependency_digest=dependency_digest,
                     started=started,
                     outcome=Outcome.INFRASTRUCTURE_FAILED,
@@ -403,6 +422,7 @@ def prepare_candidate_runtime(
                 run_dir,
                 config,
                 candidate_commit=candidate_commit,
+                contract_id=contract_id,
                 dependency_digest=dependency_digest,
                 started=started,
                 outcome=Outcome.CANDIDATE_INVALID,
@@ -419,6 +439,7 @@ def prepare_candidate_runtime(
             cache,
             python_dir,
             candidate_commit=candidate_commit,
+            contract_id=contract_id,
             dependency_digest=dependency_digest,
             started=started,
             attempts=attempts,
@@ -430,6 +451,7 @@ def prepare_candidate_runtime(
             run_dir,
             config,
             candidate_commit=candidate_commit,
+            contract_id=contract_id,
             dependency_digest=dependency_digest,
             started=started,
             outcome=Outcome.INFRASTRUCTURE_FAILED,

@@ -41,15 +41,22 @@ def main() -> int:
     agent = Path("target/agent.py")
     text = agent.read_text() if agent.exists() else ""
     failed: set[str] = set()
+    missing: set[str] = set()
     for line in text.splitlines():
         stripped = line.strip()
         if stripped.startswith("# FAIL "):
             failed.update(stripped[len("# FAIL ") :].split())
+        if stripped.startswith("# MISSING "):
+            missing.update(stripped[len("# MISSING ") :].split())
 
     prefix = "sealed-task" if os.environ.get("EVOLVE_EVAL_KIND") == "anchor" else "task"
     attempts = _attempts()
     task_count = _task_count(attempts)
-    task_results = {f"{prefix}-{i}": (f"{prefix}-{i}" not in failed) for i in range(task_count)}
+    task_results = {
+        f"{prefix}-{i}": f"{prefix}-{i}" not in failed
+        for i in range(task_count)
+        if f"{prefix}-{i}" not in missing
+    }
     task_vector = {
         "schema_version": 1,
         "tasks": {

@@ -65,6 +65,23 @@ def test_missing_evidence_is_infrastructure() -> None:
     assert record.score is None
 
 
+def test_materialized_missing_trial_is_infrastructure_not_timeout() -> None:
+    trial = TrialResult(
+        "task",
+        0,
+        Outcome.MISSING,
+        None,
+        "evaluator",
+        failure_category="missing",
+    )
+
+    record = classify_evaluation(**record_values(), trials=(trial,), expected_trials=1)
+
+    assert record.outcome is Outcome.INFRASTRUCTURE_FAILED
+    assert record.reason == "insufficient scoreable trial evidence"
+    assert record.score is None
+
+
 def test_complete_trials_are_the_only_scored_aggregate() -> None:
     trials = (
         TrialResult("a", 0, Outcome.BENCHMARK_COMPLETE, 1.0, "benchmark"),
@@ -207,3 +224,25 @@ def test_record_serializes_enums_as_plain_strings() -> None:
 
     assert payload["outcome"] == "benchmark_complete"
     assert payload["trials"][0]["outcome"] == "benchmark_complete"
+
+
+def test_record_serializes_contract_receipt_fields_without_changing_legacy_records() -> None:
+    trial = TrialResult("a", 0, Outcome.BENCHMARK_COMPLETE, 1.0, "benchmark")
+
+    strict = classify_evaluation(
+        **record_values(
+            contract_id="a" * 64,
+            evaluation_contract={"path": "runs/evaluation-contract.json", "sha256": "b" * 64},
+            contract_certified=True,
+        ),
+        trials=(trial,),
+        expected_trials=1,
+    ).to_dict()
+    legacy = classify_evaluation(**record_values(), trials=(trial,), expected_trials=1).to_dict()
+
+    assert strict["contract_id"] == "a" * 64
+    assert strict["evaluation_contract"]["sha256"] == "b" * 64
+    assert strict["contract_certified"] is True
+    assert "contract_id" not in legacy
+    assert "evaluation_contract" not in legacy
+    assert "contract_certified" not in legacy
