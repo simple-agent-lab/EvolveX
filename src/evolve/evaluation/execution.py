@@ -12,6 +12,7 @@ from typing import Any
 from ..config import evaluator_boolean, evaluator_repetitions, evaluator_sampling, experiment_id, load_config
 from ..git import evaluator_tree, git, git_stdout
 from ..host_runtime import clean_python_env
+from ..preflight import PreflightStatus, run_preflight
 from ..runtime import OwnedResult, attempt_dir, next_attempt, owned_attempt_id, run_owned
 from ..uv_runtime import CandidateRuntimeResult, prepare_candidate_runtime
 from .contract import (
@@ -116,6 +117,34 @@ def evaluate(
                 base["evaluation_contract"] = _evaluation_contract_reference(workspace, contract_path)
             try:
                 try:
+                    preflight = (
+                        run_preflight(
+                            workspace,
+                            candidate_commit=candidate_commit,
+                            receipt_path=run_dir / "preflight.json",
+                        )
+                        if contract is not None
+                        else None
+                    )
+                    if preflight is not None:
+                        base["preflight_receipt"] = _receipt_reference(
+                            workspace, preflight.receipt_path
+                        )
+                    if preflight is not None and preflight.status is PreflightStatus.FAILED:
+                        record = classify_evaluation(
+                            **base,
+                            trials=_strict_trials(contract, ()),
+                            setup_outcome=Outcome.INFRASTRUCTURE_FAILED,
+                            setup_reason=preflight.failure_message or "ordinary preflight failed",
+                            partial_floor=float(evaluator.get("partial_floor", 0.9)),
+                            benchmark_timeout_is_zero=timeout_zero,
+                            cost_usd=0.0,
+                            wall_s=time.monotonic() - start,
+                            artifacts=None,
+                        )
+                        record = _freeze_diagnostics(record, contract)
+                        _write_attempt_summary(run_dir, record)
+                        return record
                     runtime = prepare_candidate_runtime(
                         checkout,
                         run_dir,
@@ -124,7 +153,9 @@ def evaluate(
                         evaluator,
                         **({"contract_id": contract.contract_id} if contract is not None else {}),
                     )
-                    base["candidate_runtime"] = _runtime_receipt_reference(workspace, runtime.receipt_path)
+                    base["candidate_runtime"] = _receipt_reference(
+                        workspace, runtime.receipt_path
+                    )
                     verification = None
                     if contract is not None:
                         receipt_payload = (
@@ -282,7 +313,7 @@ def _evaluation_contract_reference(workspace: Path, path: Path) -> dict[str, str
     }
 
 
-def _runtime_receipt_reference(workspace: Path, receipt: Path | None) -> dict[str, str] | None:
+def _receipt_reference(workspace: Path, receipt: Path | None) -> dict[str, str] | None:
     if receipt is None or not receipt.exists():
         return None
     return {

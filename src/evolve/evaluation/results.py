@@ -75,6 +75,7 @@ class EvaluationRecord:
     candidate_runtime: dict[str, str] | None = None
     contract_id: str | None = None
     evaluation_contract: dict[str, str] | None = None
+    preflight_receipt: dict[str, str] | None = None
     contract_certified: bool = False
     diagnostics: dict[str, object] | None = None
 
@@ -100,6 +101,8 @@ class EvaluationRecord:
             payload.pop("contract_id")
         if self.evaluation_contract is None:
             payload.pop("evaluation_contract")
+        if self.preflight_receipt is None:
+            payload.pop("preflight_receipt")
         if not self.contract_certified:
             payload.pop("contract_certified")
         if self.diagnostics is None:

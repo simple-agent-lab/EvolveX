@@ -2,10 +2,46 @@ import os
 from pathlib import Path
 
 import pytest
-from conftest import git, init_workspace, run_evolve
+from conftest import allow_local_runtime, git, init_workspace, run_evolve
+from typer.testing import CliRunner
 
 from evolve import cli
 from evolve.archive import merged_rows as mechanism_merged_rows
+
+
+def test_preflight_cli_prints_receipt_and_returns_zero(
+    strict_workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    allow_local_runtime(monkeypatch)
+
+    result = CliRunner().invoke(cli.app, ["preflight", str(strict_workspace)])
+
+    assert result.exit_code == 0, result.output
+    assert "preflight: passed" in result.stdout
+    assert "preflight.json" in result.stdout
+
+
+@pytest.mark.parametrize(
+    ("arguments", "exit_code"),
+    [([], 1), (["--smoke"], 2)],
+)
+def test_preflight_cli_uses_distinct_failure_codes(
+    strict_workspace: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    arguments: list[str],
+    exit_code: int,
+) -> None:
+    allow_local_runtime(monkeypatch)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    result = CliRunner().invoke(
+        cli.app,
+        ["preflight", str(strict_workspace), *arguments],
+    )
+
+    assert result.exit_code == exit_code
+    assert "preflight: failed" in result.stdout
+    assert "preflight.json" in result.stdout
 
 
 def assert_complete_lineage(

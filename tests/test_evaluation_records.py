@@ -233,6 +233,7 @@ def test_record_serializes_contract_receipt_fields_without_changing_legacy_recor
         **record_values(
             contract_id="a" * 64,
             evaluation_contract={"path": "runs/evaluation-contract.json", "sha256": "b" * 64},
+            preflight_receipt={"path": "runs/preflight.json", "sha256": "c" * 64},
             contract_certified=True,
         ),
         trials=(trial,),
@@ -242,7 +243,9 @@ def test_record_serializes_contract_receipt_fields_without_changing_legacy_recor
 
     assert strict["contract_id"] == "a" * 64
     assert strict["evaluation_contract"]["sha256"] == "b" * 64
+    assert strict["preflight_receipt"]["sha256"] == "c" * 64
     assert strict["contract_certified"] is True
     assert "contract_id" not in legacy
     assert "evaluation_contract" not in legacy
+    assert "preflight_receipt" not in legacy
     assert "contract_certified" not in legacy

@@ -15,8 +15,8 @@ from evolve.evaluation.evidence import TaskVectorError
 from evolve.evaluation.execution import (
     _evaluation_artifact_reference,
     _read_task_vector,
+    _receipt_reference,
     _run_eval_script,
-    _runtime_receipt_reference,
     evaluate,
 )
 from evolve.evaluation.identity import effective_task_set_identity
@@ -284,13 +284,13 @@ def test_runtime_preparation_failure_short_circuits_evaluator(
     assert record.candidate_runtime["path"].endswith("candidate-runtime.json")
 
 
-def test_runtime_receipt_reference_is_compact_and_hashed(tmp_path: Path) -> None:
+def test_receipt_reference_is_compact_and_hashed(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     receipt = workspace / "runs" / "candidate-runtime.json"
     receipt.parent.mkdir(parents=True)
     receipt.write_text('{"outcome":"ready"}\n')
 
-    assert _runtime_receipt_reference(workspace, receipt) == {
+    assert _receipt_reference(workspace, receipt) == {
         "path": "runs/candidate-runtime.json",
         "sha256": hashlib.sha256(receipt.read_bytes()).hexdigest(),
     }

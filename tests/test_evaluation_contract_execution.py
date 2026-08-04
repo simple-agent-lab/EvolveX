@@ -3,10 +3,22 @@ import json
 from pathlib import Path
 
 import pytest
-from conftest import FIXTURE_SEEDS, fixture_recipe_config, git, init_fixture_workspace
+from conftest import (
+    FIXTURE_SEEDS,
+    allow_local_runtime,
+    fixture_recipe_config,
+    git,
+    init_fixture_workspace,
+)
 
 from evolve.evaluation import ContractResolutionContext, Outcome, resolve_evaluation_contract
+from evolve.evaluation import execution as execution_module
 from evolve.evaluation.execution import evaluate
+from evolve.preflight import (
+    PreflightFailureCategory,
+    PreflightMode,
+    PreflightResultV1,
+)
 from evolve.workspace import InitOptions, init_workspace
 
 
@@ -32,7 +44,57 @@ def _strict_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     config["evaluator"].pop("k", None)
     monkeypatch.setattr("evolve.workspace.default_config", lambda _recipe, _experiment: config)
     init_workspace(InitOptions(workspace=workspace, recipe="fixture"))
+    allow_local_runtime(monkeypatch)
     return workspace
+
+
+def failed_preflight(path: Path) -> PreflightResultV1:
+    result = PreflightResultV1.failed(
+        mode=PreflightMode.ORDINARY,
+        profile_name="harbor-bytedance-v1",
+        profile_digest="a" * 64,
+        runtime_digest="sha256:test-runtime",
+        model_route_digest="b" * 64,
+        checks=(),
+        category=PreflightFailureCategory.CREDENTIAL_MISSING,
+        message="required credential is missing",
+        receipt_path=path,
+    )
+    result.write()
+    return result
+
+
+def test_strict_evaluation_stops_before_runtime_and_trials_when_preflight_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = _strict_workspace(tmp_path, monkeypatch)
+    calls: list[str] = []
+    monkeypatch.setattr(
+        execution_module,
+        "run_preflight",
+        lambda *args, **kwargs: failed_preflight(Path(kwargs["receipt_path"])),
+    )
+    monkeypatch.setattr(
+        execution_module,
+        "prepare_candidate_runtime",
+        lambda *args, **kwargs: calls.append("runtime"),
+    )
+    monkeypatch.setattr(
+        execution_module,
+        "_run_eval_script",
+        lambda *args, **kwargs: calls.append("trials"),
+    )
+
+    record = evaluate(workspace, "gen/0", "0", purpose="candidate")
+
+    assert calls == []
+    assert record.outcome is Outcome.INFRASTRUCTURE_FAILED
+    assert record.preflight_receipt is not None
+    receipt_path = workspace / record.preflight_receipt["path"]
+    assert receipt_path.is_file()
+    assert record.preflight_receipt["sha256"] == hashlib.sha256(receipt_path.read_bytes()).hexdigest()
+    assert record.trials
+    assert all(trial.outcome is Outcome.MISSING for trial in record.trials)
 
 
 def test_evaluate_attaches_the_same_atomic_contract_to_retries(

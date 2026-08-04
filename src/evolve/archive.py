@@ -21,6 +21,7 @@ STAMPED_FIELDS = {
     "task_set_hash",
     "contract_id",
     "evaluation_contract",
+    "preflight_receipt",
     "contract_certified",
     "diagnostics",
     "runtime_fingerprint",

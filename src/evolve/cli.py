@@ -19,6 +19,7 @@ from .driver import doctor as doctor_workspace
 from .driver import run as driver_run
 from .git import head_tag, working_tree_changed_paths
 from .population import best_row
+from .preflight import PreflightMode, PreflightStatus, run_preflight
 from .report import format_report, format_status
 from .surface import check_paths, surface_patterns
 from .workspace import InitOptions, init_workspace
@@ -158,6 +159,22 @@ def eval_cmd(
     with _workspace_environment(workspace):
         eval_child(workspace, genid, force=force)
     print(f"Evaluated gen/{genid}")
+
+
+@app.command()
+@_guard
+def preflight(
+    workspace: Path,
+    smoke: bool = typer.Option(False, "--smoke", help="include one isolated model request"),
+) -> None:
+    """Validate a workspace before strict evaluation."""
+    mode = PreflightMode.SMOKE if smoke else PreflightMode.ORDINARY
+    with _workspace_environment(workspace):
+        result = run_preflight(workspace, mode=mode)
+    receipt = result.receipt_path.resolve() if result.receipt_path is not None else "unwritten"
+    print(f"preflight: {result.status.value} receipt={receipt}")
+    if result.status is PreflightStatus.FAILED:
+        raise typer.Exit(2 if smoke else 1)
 
 
 @app.command()

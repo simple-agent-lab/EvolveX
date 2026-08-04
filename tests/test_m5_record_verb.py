@@ -152,6 +152,7 @@ def test_record_rejects_stamped_and_identity_fields(tmp_path):
         {"reason": "record override"},
         {"mutated": []},
         {"task_set_hash": "x"},
+        {"preflight_receipt": {"path": "forged", "sha256": "0" * 64}},
         {"evals": []},
         {"predicted_fixes": ["fake"]},
         {"note": "record override"},
