@@ -14,7 +14,8 @@ tool call; the change-producing meta-agent also uses `high`. Both paths receive
 an explicit 64k output budget through Harbor's `max_tokens` constructor field
 because mini-swe-agent otherwise uses its 1,000-token default. Failures
 stop the generation after three attempts; there is no silent deterministic
-fallback.
+fallback. This is configured as `debugger_max_retries: 2`: one initial
+debugger call plus at most two retries.
 
 The MiniSWE target is pinned to commit
 `388da74aad620a384ab47669b17c52133e30e7c3`, whose checked-in `uv.lock` is part
@@ -54,8 +55,9 @@ Live runs need Docker, Harbor, model credentials, and an immutable evaluator
 runtime. Build the small workspace image once before running:
 
 ```bash
+IMAGE_CONTEXT="$(python -c 'from evolve.config import resource_root; print(resource_root("containers") / "meta-agent")')"
 docker build --build-arg MINISWE_VERSION=2.4.5 \
-  -t evolve-meta-agent-app:20260724-tools-mswe245 containers/meta-agent
+  -t evolve-meta-agent-app:20260724-tools-mswe245 "$IMAGE_CONTEXT"
 ```
 
 The recipe never requires a local Codex command.

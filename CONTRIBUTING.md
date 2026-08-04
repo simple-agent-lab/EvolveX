@@ -9,13 +9,15 @@ before making a non-trivial change.
 Requires `uv`, Git, and Python 3.12 or later.
 
 ```bash
-uv sync --dev
-uv run pytest -q
-uv run ruff check .
-uv run ty check
+uv lock --check
+uv sync --dev --locked
+uv run --frozen pytest -q
+uv run --frozen ruff check .
+uv run --frozen ruff format --check .
+uv run --frozen ty check
 ```
 
-Run all four commands before opening a pull request. Tests enforce the module
+Run all six commands before opening a pull request. Tests enforce the module
 inventory, recipe inventory, resource layout, and behavior contracts; do not
 keep stale tests green with compatibility shims.
 

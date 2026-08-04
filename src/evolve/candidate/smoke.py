@@ -64,7 +64,11 @@ def run_candidate_smoke(checkout: Path, *, workspace: Path) -> SmokeResult:
                 _redact(runtime.reason or "candidate runtime preparation failed", os.environ),
                 time.monotonic() - started,
             )
-        env = {**os.environ, "EVOLVE_RUN_DIR": str(attempt), "EVOLVE_ATTEMPT_ID": owned_attempt_id(workspace, attempt)}
+        env = {
+            **os.environ,
+            "EVOLVE_RUN_DIR": str(attempt),
+            "EVOLVE_ATTEMPT_ID": owned_attempt_id(workspace, attempt),
+        }
         if runtime.variant is not None:
             env["EVOLVE_CANDIDATE_RUNTIME_ENV_JSON"] = runtime.environment_json()
             env["EVOLVE_CANDIDATE_RUNTIME_MOUNTS_JSON"] = runtime.mounts_json()

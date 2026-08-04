@@ -29,18 +29,12 @@ _VERIFIER_UV_DOWNLOAD_ERROR = "error: Failed to download:"
 _VERIFIER_UV_REQUEST_ERROR = "Caused by: Request failed"
 _VERIFIER_CURL_SERVER_ERROR = re.compile(r"curl: \(\d+\) The requested URL returned error: 5\d\d\b")
 _SAFE_ERROR_CODE = re.compile(r"[a-z0-9_]+")
-_SENSITIVE_ENV_NAME = re.compile(
-    r"(?i)(?:proxy|api[_-]?key|access[_-]?token|token|secret|password|authorization|auth)"
-)
+_SENSITIVE_ENV_NAME = re.compile(r"(?i)(?:proxy|api[_-]?key|access[_-]?token|token|secret|password|authorization|auth)")
 
 
 def _redact_environment_values(text: str, environment: Mapping[str, str] | None = None) -> str:
     configured = os.environ if environment is None else environment
-    values = {
-        value
-        for name, value in configured.items()
-        if _SENSITIVE_ENV_NAME.search(name) and len(value) >= 8
-    }
+    values = {value for name, value in configured.items() if _SENSITIVE_ENV_NAME.search(name) and len(value) >= 8}
     for value in sorted(values, key=len, reverse=True):
         text = text.replace(value, "[REDACTED]")
     return text

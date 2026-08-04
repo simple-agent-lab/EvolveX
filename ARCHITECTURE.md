@@ -21,7 +21,7 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `__init__.py` | 10 | package marker, version |
 | `__main__.py` | 10 | `python -m evolve` entry |
 | `agent.py` | 200 | agent command execution and error/result types |
-| `archive.py` | 400 | append-only event store: merge semantics, stamped-field protection, mirroring, integrity fsck |
+| `archive.py` | 475 | append-only event store: merge semantics, stamped-field protection, mirroring, integrity fsck |
 | `candidate/__init__.py` | 10 | candidate-boundary package marker |
 | `candidate/smoke.py` | 150 | run evaluator smoke against an exact candidate snapshot and persist redacted diagnostics |
 | `candidate/snapshot.py` | 100 | exact candidate Git tree construction, temporary materialization, and reviewed-tree commit verification |
@@ -31,7 +31,7 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `evaluation/__init__.py` | 50 | pure evaluation-result facade |
 | `evaluation/evidence.py` | 150 | evaluator-output validation and conversion into canonical trial results |
 | `evaluation/execution.py` | 350 | clean-checkout canonical evaluation: tree assertion, targeted task execution, lifecycle, artifacts, and score parsing |
-| `evaluation/identity.py` | 150 | canonical task-set identity plus checkout and frozen-baseline comparability |
+| `evaluation/identity.py` | 200 | canonical task-set identity, local task-content binding, and frozen-baseline comparability |
 | `evaluation/results.py` | 200 | evaluation result types, outcome classification, and persisted record shape |
 | `feedback.py` | 250 | assemble current and historical rollout evidence plus ledger-derived feedback for the meta-agent |
 | `operators.py` | 200 | subprocess runner for workspace operator scripts (contract: env vars, --config, timeout) |
@@ -39,11 +39,11 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `population.py` | 100 | genid/lineage bookkeeping for fan-out generations |
 | `report.py` | 200 | status/report rendering, best-ever recomputation, claim checklist |
 | `runtime.py` | 250 | generated-workspace runtime entrypoint helpers |
-| `splits.py` | 250 | freeze deterministic train/gate/sealed Harbor task membership and materialize exact runtime selections |
+| `splits.py` | 350 | freeze deterministic train/gate/sealed Harbor task membership and task-tree content; materialize exact runtime selections |
 | `surface.py` | 150 | mutable-surface pattern matching and violation checks |
 | `trace_analysis.py` | 750 | deterministic shared transforms used by the independent trace-analyzer operator variants |
 | `uv_runtime.py` | 550 | locked uv runtime construction and command execution |
-| `workspace.py` | 950 | `evolve init` scaffolding: file copies, operator binding, deterministic dataset and Harbor runtime config, generated operator palette, protocol stamping, seed + mechanism vendoring, inner-skill copy |
+| `workspace.py` | 1000 | `evolve init` scaffolding: file copies, operator binding, deterministic dataset and Harbor runtime config, generated operator palette, protocol stamping, safe seed + mechanism vendoring, inner-skill copy |
 | `git.py` | 150 | thin git subprocess helpers — nothing evolve-specific |
 | `harbor_local.py` | 250 | minimal in-place Harbor environment for fast trials against a pre-configured local agent runtime |
 | `host_runtime.py` | 100 | host-side locked runtime process helpers |
@@ -66,7 +66,7 @@ each workspace, immutable there because it sits outside the mutable surface
 | `frozen/interfaces.py` | 350 | operator ABCs (incl. trace analyzer, novelty, and reflect), the registry, result schemas, payload validation |
 | `frozen/sdk.py` | 300 | Python operator entrypoint and file-contract IO; no library algorithm policy |
 
-Total `src/evolve/` budget: **9930 lines**. The budget admits the explicit evaluation-package
+Total `src/evolve/` budget: **10205 lines**. The budget admits the explicit evaluation-package
 boundaries, the opt-in in-place Harbor runtime, and the redacted trace-analysis
 boundary between rollout and feedback assembly; if the mechanism wants to
 grow past that, something belongs in a workspace operator instead —

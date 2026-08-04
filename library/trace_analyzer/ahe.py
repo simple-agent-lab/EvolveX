@@ -5,6 +5,7 @@ from __future__ import annotations
 import concurrent.futures
 import hashlib
 import json
+import math
 import re
 from collections import Counter
 from dataclasses import dataclass, replace
@@ -19,6 +20,7 @@ from evolve.frozen.interfaces import OperatorContext, TraceAnalyzerOperator, Tra
 from library.meta_agent.runners import run_readonly_agent
 
 Case = dict[str, Any]
+INFRA_OUTCOMES = {"infra_error", "incomplete"}
 ARTIFACTS = [
     "trace_analyzer/feedback.md",
     "trace_analyzer/analysis/overview.md",
@@ -66,6 +68,18 @@ def _nonnegative_int(value: object, default: int) -> int:
         return max(0, int(value))
     except (TypeError, ValueError):
         return default
+
+
+def _pass_threshold(value: object) -> float:
+    if isinstance(value, bool):
+        raise ValueError("AHE pass_threshold must be a finite number")
+    try:
+        threshold = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("AHE pass_threshold must be a finite number") from exc
+    if not math.isfinite(threshold):
+        raise ValueError("AHE pass_threshold must be a finite number")
+    return threshold
 
 
 def _redact(text: str) -> str:
@@ -195,7 +209,11 @@ def _normalize(case: Case, field_limit: int) -> Case:
         "trial_name": _clip(case.get("trial_name") or "", field_limit),
         "task_name": _clip(case.get("task_name") or "", field_limit),
         "outcome": _clip(case.get("outcome") or "unknown", field_limit),
-        "reward": reward if isinstance(reward, (int, float)) and not isinstance(reward, bool) else None,
+        "reward": (
+            reward
+            if isinstance(reward, (int, float)) and not isinstance(reward, bool) and math.isfinite(float(reward))
+            else None
+        ),
         "instruction": _clip(case.get("instruction") or "", field_limit),
         "agent_messages": _bounded(all_messages, field_limit),
         "tool_calls": _bounded(tool_calls, field_limit),
@@ -228,20 +246,38 @@ class DebuggerResult:
     error: str | None = None
 
 
-def _build_jobs(cases: list[Case], max_tasks: int) -> list[TaskAnalysisJob]:
+def _case_outcome(case: Case, pass_threshold: float) -> str:
+    outcome = str(case.get("outcome") or "unknown")
+    if outcome in INFRA_OUTCOMES:
+        return "infra"
+    reward = case.get("reward")
+    if isinstance(reward, (int, float)) and not isinstance(reward, bool) and math.isfinite(float(reward)):
+        return "passed" if float(reward) >= pass_threshold else "failed"
+    return outcome
+
+
+def _build_jobs(cases: list[Case], max_tasks: int, pass_threshold: float = 1.0) -> list[TaskAnalysisJob]:
     grouped: dict[str, list[Case]] = {}
     for case in cases:
         task_name = str(case.get("task_name") or case.get("trial_name") or "unknown")
         grouped.setdefault(task_name, []).append(case)
     jobs = []
     for task_name, task_cases in grouped.items():
-        n_pass = sum(case.get("outcome") == "passed" for case in task_cases)
-        n_timeout = sum(case.get("outcome") in {"timeout", "incomplete"} for case in task_cases)
-        n_fail = len(task_cases) - n_pass - n_timeout
+        comparable_cases = []
+        for case in task_cases:
+            outcome = _case_outcome(case, pass_threshold)
+            if outcome == "infra":
+                continue
+            comparable_cases.append({**case, "outcome": outcome})
+        if not comparable_cases:
+            continue
+        n_pass = sum(case.get("outcome") == "passed" for case in comparable_cases)
+        n_timeout = sum(case.get("outcome") == "timeout" for case in comparable_cases)
+        n_fail = len(comparable_cases) - n_pass - n_timeout
         jobs.append(
             TaskAnalysisJob(
                 task_name=task_name,
-                cases=tuple(task_cases),
+                cases=tuple(comparable_cases),
                 n_pass=n_pass,
                 n_fail=n_fail,
                 n_timeout=n_timeout,
@@ -426,7 +462,7 @@ def _run_debugger_job_safe(checkout: Path, ctx: OperatorContext, job: TaskAnalys
 
 def _run_debugger_jobs(checkout: Path, ctx: OperatorContext, jobs: list[TaskAnalysisJob]) -> list[DebuggerResult]:
     if not jobs:
-        raise RuntimeError("AHE debugger found no rollout tasks")
+        return []
     completed = [_run_debugger_job_safe(checkout, ctx, jobs[0])]
     workers = _positive_int(ctx.config.get("max_concurrent"), 16)
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
@@ -473,11 +509,13 @@ def _overview(cases: list[Case], jobs: list[TaskAnalysisJob], error: str | None)
     }
 
 
-def _task_outcomes(cases: list[Case]) -> dict[str, str]:
-    jobs = _build_jobs(cases, max(1, len(cases)))
-    return {
+def _task_outcomes(cases: list[Case], pass_threshold: float) -> dict[str, str]:
+    task_names = {str(case.get("task_name") or case.get("trial_name") or "unknown") for case in cases}
+    jobs = _build_jobs(cases, max(1, len(cases)), pass_threshold)
+    outcomes = {
         job.task_name: "fail" if job.n_fail or job.n_timeout else "pass" if job.n_pass else "unknown" for job in jobs
     }
+    return {task_name: outcomes.get(task_name, "unknown") for task_name in sorted(task_names)}
 
 
 def _transition(before: str | None, after: str | None) -> str:
@@ -504,7 +542,12 @@ def _change_verdict(predicted: list[str], fixed: list[str], realized: list[str])
     return "INEFFECTIVE"
 
 
-def _change_evaluation(ctx: OperatorContext, cases: list[Case], field_limit: int) -> Case:
+def _change_evaluation(
+    ctx: OperatorContext,
+    cases: list[Case],
+    field_limit: int,
+    pass_threshold: float,
+) -> Case:
     if ctx.parent in (None, "0"):
         return {
             "status": "baseline",
@@ -530,8 +573,8 @@ def _change_evaluation(ctx: OperatorContext, cases: list[Case], field_limit: int
         if isinstance(candidate_manifest, dict) and isinstance(candidate_manifest.get("changes"), list)
         else None
     )
-    before = _task_outcomes([_normalize(case, field_limit) for case in prior_raw])
-    after = _task_outcomes(cases)
+    before = _task_outcomes([_normalize(case, field_limit) for case in prior_raw], pass_threshold)
+    after = _task_outcomes(cases, pass_threshold)
     transitions = {
         task: _transition(before.get(task), after.get(task)) for task in sorted(before.keys() | after.keys())
     }
@@ -592,28 +635,35 @@ def _change_evaluation(ctx: OperatorContext, cases: list[Case], field_limit: int
     }
 
 
-def _task_vector_outcome(task: Case) -> str:
+def _task_vector_outcome(task: Case, pass_threshold: float) -> str:
     trials = _list(task.get("trials"))
-    rewards = [
-        float(trial["reward"])
-        for trial in trials
-        if isinstance(trial, dict)
-        and isinstance(trial.get("reward"), (int, float))
-        and not isinstance(trial.get("reward"), bool)
-    ]
-    if rewards and len(rewards) == len(trials) and all(reward > 0 for reward in rewards):
+    rewards: list[float] = []
+    for trial in trials:
+        if not isinstance(trial, dict):
+            return "exception"
+        status = str(trial.get("status") or "")
+        owner = str(trial.get("owner") or "benchmark")
+        scoreable = status == "benchmark_complete" or (
+            status == "timeout" and owner in {"benchmark_agent", "benchmark_verifier"}
+        )
+        reward = trial.get("reward")
+        if (
+            not scoreable
+            or not isinstance(reward, (int, float))
+            or isinstance(reward, bool)
+            or not math.isfinite(float(reward))
+        ):
+            return "exception"
+        rewards.append(float(reward))
+    if rewards and all(reward >= pass_threshold for reward in rewards):
         return "pass"
     if rewards:
-        return "fail"
-    statuses = [str(trial.get("status") or "") for trial in trials if isinstance(trial, dict)]
-    if statuses and all(status == "passed" for status in statuses):
-        return "pass"
-    if any(status in {"passed", "failed"} for status in statuses):
         return "fail"
     return "exception"
 
 
 def _archive_analysis(ctx: OperatorContext) -> Case:
+    pass_threshold = _pass_threshold(ctx.config.get("pass_threshold", 1.0))
     rows = [
         row
         for row in merged_rows(archive_path(ctx.workspace))
@@ -628,7 +678,7 @@ def _archive_analysis(ctx: OperatorContext) -> Case:
         tasks = _dict(_dict(row.get("task_vector")).get("tasks"))
         for task_name, task in tasks.items():
             if isinstance(task, dict):
-                histories.setdefault(str(task_name), []).append(_task_vector_outcome(task))
+                histories.setdefault(str(task_name), []).append(_task_vector_outcome(task, pass_threshold))
 
     stability: dict[str, list[str]] = {
         "stable_pass": [],
@@ -740,8 +790,13 @@ class AheTraceAnalyzer(TraceAnalyzerOperator):
         if error:
             raise RuntimeError(error)
         field_limit = _positive_int(ctx.config.get("field_limit"), 2000)
+        pass_threshold = _pass_threshold(ctx.config.get("pass_threshold", 1.0))
         cases = [_normalize(case, field_limit) for case in raw_cases]
-        jobs = _build_jobs(cases, _positive_int(ctx.config.get("max_tasks"), 90))
+        jobs = _build_jobs(
+            cases,
+            _positive_int(ctx.config.get("max_tasks"), 90),
+            pass_threshold,
+        )
         results = _run_debugger_jobs(checkout, ctx, jobs)
         overview = _overview(cases, jobs, None)
         root = ctx.run_dir / "trace_analyzer"
@@ -754,7 +809,7 @@ class AheTraceAnalyzer(TraceAnalyzerOperator):
         _write_json(evidence / "overview.json", overview)
         selected = [case for job in jobs for case in job.cases]
         _write_jsonl(evidence / "cases.jsonl", selected)
-        change_evaluation = _change_evaluation(ctx, cases, field_limit)
+        change_evaluation = _change_evaluation(ctx, cases, field_limit, pass_threshold)
         _write_json(root / "analysis" / "change_evaluation.json", change_evaluation)
         summary = {key: value for key, value in overview.items() if key != "cases"}
         summary["debugger_usd"] = round(sum(float(result.usage.get("usd") or 0) for result in results), 6)

@@ -100,6 +100,57 @@ def test_git_seed_revision_freezes_exact_commit(tmp_path: Path) -> None:
     assert upstream == {"commit": locked_commit, "remote": seed.as_uri()}
 
 
+def test_local_seed_preserves_internal_symlink_without_dereferencing(tmp_path: Path) -> None:
+    seed = tmp_path / "seed"
+    seed.mkdir()
+    (seed / "source.txt").write_text("source\n")
+    (seed / "alias.txt").symlink_to("source.txt")
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    _write_target(workspace, {"seed": str(seed)})
+
+    alias = workspace / "target" / "alias.txt"
+    assert alias.is_symlink()
+    assert alias.readlink() == Path("source.txt")
+
+
+def test_local_seed_rejects_symlink_escaping_source_tree(tmp_path: Path) -> None:
+    seed = tmp_path / "seed"
+    seed.mkdir()
+    outside = tmp_path / "outside.txt"
+    outside.write_text("outside\n")
+    (seed / "escape.txt").symlink_to(outside)
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    with pytest.raises(ValueError, match="symlink"):
+        _write_target(workspace, {"seed": str(seed)})
+
+    assert not (workspace / "target").exists()
+
+
+def test_upstream_metadata_strips_remote_credentials_and_query(tmp_path: Path) -> None:
+    seed = tmp_path / "seed"
+    seed.mkdir()
+    git(seed, "init")
+    git(seed, "config", "user.name", "Seed Test")
+    git(seed, "config", "user.email", "seed@example.invalid")
+    (seed / "README.md").write_text("seed\n")
+    git(seed, "add", "README.md")
+    git(seed, "commit", "-m", "seed")
+    git(seed, "remote", "add", "origin", "https://user:secret@example.com/org/repo.git?token=hidden#frag")
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    _write_target(workspace, {"seed": str(seed)})
+
+    upstream = json.loads((workspace / "target" / "UPSTREAM.json").read_text())
+    assert upstream["remote"] == "https://example.com/org/repo.git"
+    assert "secret" not in json.dumps(upstream)
+    assert "hidden" not in json.dumps(upstream)
+
+
 def test_git_seed_can_explicitly_generate_missing_lock(tmp_path: Path) -> None:
     seed = tmp_path / "seed"
     seed.mkdir()
@@ -349,6 +400,8 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
         ".evolve/evolve/harbor_local.py",
         "AGENTS.md",
         "program.md",
+        "LICENSE.evolve-framework",
+        "NOTICE.evolve-framework",
         "operators/select.py",
         "operators/rollout.py",
         "operators/meta_agent.py",
@@ -391,6 +444,8 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
     assert (workspace / ".python-version").read_text() == "3.12\n"
     assert "harbor==0.18.0" in (workspace / "pyproject.toml").read_text()
     assert 'packages = [".evolve/evolve", "library"]' in (workspace / "pyproject.toml").read_text()
+    assert "Apache License" in (workspace / "LICENSE.evolve-framework").read_text()
+    assert "GEPA" in (workspace / "NOTICE.evolve-framework").read_text()
 
     config = (workspace / "evolve.yaml").read_text()
     assert "children_per_gen: 1" in config
@@ -414,7 +469,7 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
     assert ".venv/" in gitignore
 
     splits = json.loads((workspace / "evaluator" / "splits.json").read_text())
-    assert splits["version"] == 1
+    assert splits["version"] == 2
     assert splits["resolved"] is False
     assert splits["ratios"] == {"train": 0.5, "gate": 0.4, "sealed": 0.1}
     assert splits["tasks"] == {"train": [], "gate": [], "sealed": []}

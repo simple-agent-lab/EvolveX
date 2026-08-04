@@ -152,7 +152,8 @@ def decide(self, child: Row, parent: Row | None, ctx) -> GateResult:
 Implement `decide`. Return `GateResult` with fields `decision` and `reason`.
 `decision` is `accept` or `reject`. The subprocess writes `gate.json` with
 `valid_parent`, `verdict`, and `reason`; `accept` maps to `valid_parent: true`
-and `verdict: keep`.
+and `verdict: keep`, while `reject` maps to `valid_parent: false` and
+`verdict: discard`. Contradictory pairs are rejected as malformed output.
 
 For non-Python operators, the runner writes `gate/input.json` before launching
 the gate subprocess:

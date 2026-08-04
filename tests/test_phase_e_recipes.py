@@ -200,7 +200,8 @@ def test_all_explicit_recipe_retry_and_multiplier_values_are_one() -> None:
         if isinstance(value, dict):
             for key, item in value.items():
                 if "retry" in key or "retries" in key or "multiplier" in key:
-                    assert item == 1, f"{key} must be 1, got {item!r}"
+                    expected = 2 if key == "debugger_max_retries" else 1
+                    assert item == expected, f"{key} must be {expected}, got {item!r}"
                 walk(item)
         elif isinstance(value, list):
             for item in value:

@@ -215,6 +215,26 @@ def test_aevolve_prompt_path_is_a_component_location_not_a_permission_boundary(t
     assert "Do not add standalone files to a disabled context layer" in prompt
 
 
+def test_aevolve_keeps_drafts_when_skill_evolution_is_disabled(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _module()
+    checkout, run_dir, ctx = _case(tmp_path)
+    ctx.config["evolve_skills"] = False
+    monkeypatch.setattr(
+        module,
+        "run_agent",
+        lambda *_args, **_kwargs: SimpleNamespace(output="no skill changes", usage={"usd": 0}),
+    )
+
+    module.AEvolveMetaAgent().run(checkout, "fallback", ctx)
+
+    assert (checkout / "target/skills/_drafts/candidate.md").is_file()
+    report = json.loads((run_dir / "meta_agent/aevolve-report.json").read_text())
+    assert report["drafts_reviewed"] == 0
+
+
 def test_aevolve_rejects_directory_as_prompt_path(tmp_path: Path) -> None:
     module = _module()
     checkout, _run_dir, ctx = _case(tmp_path)

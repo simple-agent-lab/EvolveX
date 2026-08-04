@@ -5,7 +5,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
-from conftest import git, init_workspace
+from conftest import git, init_workspace, run_evolve
 
 from evolve.archive import (
     MECHANISM_EVAL_FIELD,
@@ -19,6 +19,7 @@ from evolve.config import load_config
 from evolve.evaluation import Outcome, TrialResult, classify_evaluation
 from evolve.evaluation.identity import effective_task_set_identity
 from evolve.frozen.interfaces import ArchiveView
+from evolve.git import head_commit, remove_worktree
 from evolve.population import fixed_evaluation_identity, looks_mechanism_written
 from evolve.report import format_report
 
@@ -57,13 +58,23 @@ def _archive_workspace(tmp_path: Path) -> tuple[Path, dict[str, str]]:
 
 
 def _append_evaluation(workspace: Path, expected: dict[str, str], outcome: Outcome) -> None:
-    append_evaluation_record(workspace, replace(_record(outcome), experiment_id=workspace.name, **expected))
+    append_evaluation_record(
+        workspace,
+        replace(
+            _record(outcome),
+            experiment_id=workspace.name,
+            candidate_commit=git(workspace, "rev-parse", "gen/1^{commit}"),
+            **expected,
+        ),
+    )
 
 
 def test_fixed_identity_uses_resolved_split_tasks(tmp_path: Path) -> None:
     workspace, _evolve_home = init_workspace(tmp_path)
     manifest = {
+        "version": 2,
         "resolved": True,
+        "task_digests": {"task-a": "sha256:a", "task-b": "sha256:b"},
         "tasks": {"train": [], "gate": ["task-b", "task-a"], "sealed": []},
     }
     (workspace / "evaluator" / "splits.json").write_text(json.dumps(manifest) + "\n")
@@ -76,6 +87,33 @@ def test_fixed_identity_uses_resolved_split_tasks(tmp_path: Path) -> None:
 
     assert fixed is not None
     assert fixed["task_set_hash"] == effective_task_set_identity(workspace, evaluator).digest
+
+
+def test_legacy_local_split_identity_is_not_certifiable(tmp_path: Path) -> None:
+    from evolve.driver import _fallback_parent_for_eval
+
+    workspace, evolve_home = init_workspace(tmp_path)
+    manifest = {
+        "version": 1,
+        "resolved": True,
+        "tasks": {"train": [], "gate": ["task-a"], "sealed": []},
+    }
+    (workspace / "evaluator" / "splits.json").write_text(json.dumps(manifest) + "\n")
+    git(workspace, "add", "evaluator/splits.json")
+    git(workspace, "commit", "-m", "legacy local split")
+    git(workspace, "tag", "-f", "gen/0")
+
+    assert fixed_evaluation_identity(workspace) is None
+    report = format_report(workspace)
+    assert "task_set_hash: unverifiable" in report
+    assert "evaluation_identity: unverifiable" in report
+    assert "migration_required: true" in report
+    assert "comparison_allowed: false" in report
+    verified = run_evolve("verify", str(workspace), env={"EVOLVE_HOME": str(evolve_home)})
+    assert verified.returncode == 1
+    assert "UNVERIFIABLE: fixed evaluation identity is unavailable" in verified.stderr
+    with pytest.raises(RuntimeError, match="start a new experiment with a v2 split manifest"):
+        _fallback_parent_for_eval(workspace, {})
 
 
 def test_failed_and_cancelled_records_cannot_become_parents(tmp_path, monkeypatch) -> None:
@@ -104,7 +142,12 @@ def test_pending_candidate_requires_explicit_gate_certification(tmp_path: Path) 
     workspace, expected = _archive_workspace(tmp_path)
     append_evaluation_record(
         workspace,
-        replace(_record(Outcome.BENCHMARK_COMPLETE), experiment_id=workspace.name, **expected),
+        replace(
+            _record(Outcome.BENCHMARK_COMPLETE),
+            experiment_id=workspace.name,
+            candidate_commit=git(workspace, "rev-parse", "gen/1^{commit}"),
+            **expected,
+        ),
         metadata={"pending_gate_record": True},
     )
 
@@ -293,7 +336,12 @@ def test_certified_same_hash_evaluation_atomically_replaces_uncertified_evidence
 
     append_evaluation_record(
         workspace,
-        replace(_record(Outcome.BENCHMARK_COMPLETE), experiment_id=workspace.name, **expected),
+        replace(
+            _record(Outcome.BENCHMARK_COMPLETE),
+            experiment_id=workspace.name,
+            candidate_commit=git(workspace, "rev-parse", "gen/1^{commit}"),
+            **expected,
+        ),
     )
 
     row = ArchiveView(workspace).row("1")
@@ -329,6 +377,7 @@ def test_non_parent_evaluation_purpose_is_not_selectable(tmp_path: Path, purpose
     record = replace(
         _record(Outcome.BENCHMARK_COMPLETE),
         experiment_id=workspace.name,
+        candidate_commit=git(workspace, "rev-parse", "gen/1^{commit}"),
         purpose=purpose,
         **expected,
     )
@@ -346,6 +395,7 @@ def test_receipt_certified_non_parent_evaluation_is_mechanism_written(
     record = replace(
         _record(Outcome.BENCHMARK_COMPLETE),
         experiment_id=workspace.name,
+        candidate_commit=git(workspace, "rev-parse", "gen/1^{commit}"),
         purpose=purpose,
         task_set_hash="dynamic-task-set",
         evaluator_fingerprint=expected["evaluator_fingerprint"],
@@ -382,6 +432,7 @@ def test_receipted_fixed_identity_anchor_remains_reportable(tmp_path: Path) -> N
     record = replace(
         _record(Outcome.BENCHMARK_COMPLETE),
         experiment_id=workspace.name,
+        candidate_commit=git(workspace, "rev-parse", "gen/1^{commit}"),
         purpose="anchor",
         task_set_hash="anchor-task-set",
         evaluator_fingerprint=expected["evaluator_fingerprint"],
@@ -392,6 +443,52 @@ def test_receipted_fixed_identity_anchor_remains_reportable(tmp_path: Path) -> N
     report = format_report(workspace)
     assert "anchor.best_genid: 1" in report
     assert "anchor.best_score: 1.0" in report
+
+
+def test_moved_generation_tag_invalidates_existing_score(tmp_path: Path) -> None:
+    workspace, expected = _archive_workspace(tmp_path)
+    _append_evaluation(workspace, expected, Outcome.BENCHMARK_COMPLETE)
+    assert [row["genid"] for row in ArchiveView(workspace).valid_parents()] == ["1"]
+
+    marker = workspace / "tag-moved.txt"
+    marker.write_text("different candidate\n")
+    git(workspace, "add", marker.name)
+    git(workspace, "commit", "-m", "different candidate")
+    git(workspace, "tag", "-f", "gen/1")
+
+    assert ArchiveView(workspace).valid_parents() == []
+    assert "best_genid: none" in format_report(workspace)
+
+
+def test_fork_uses_certified_commit_even_if_parent_tag_moves_after_validation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from evolve import driver
+
+    workspace, expected = _archive_workspace(tmp_path)
+    _append_evaluation(workspace, expected, Outcome.BENCHMARK_COMPLETE)
+    certified_commit = git(workspace, "rev-parse", "gen/1^{commit}")
+
+    marker = workspace / "later-commit.txt"
+    marker.write_text("not evaluated\n")
+    git(workspace, "add", marker.name)
+    git(workspace, "commit", "-m", "later unscored commit")
+    unscored_commit = git(workspace, "rev-parse", "HEAD")
+    real_add_worktree = driver.add_worktree
+
+    def move_tag_then_add(repo: Path, path: Path, ref: str) -> None:
+        assert ref == certified_commit
+        git(repo, "tag", "-f", "gen/1", unscored_commit)
+        real_add_worktree(repo, path, ref)
+
+    monkeypatch.setattr(driver, "add_worktree", move_tag_then_add)
+    child = tmp_path / "child"
+    try:
+        driver.fork_child(workspace, "1", child)
+        assert head_commit(child) == certified_commit
+        assert head_commit(child) != git(workspace, "rev-parse", "gen/1^{commit}")
+    finally:
+        remove_worktree(workspace, child)
 
 
 def test_missing_immutable_git_identity_returns_no_parents(tmp_path: Path) -> None:

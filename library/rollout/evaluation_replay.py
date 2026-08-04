@@ -5,12 +5,47 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import re
+import tempfile
 from collections.abc import Callable
-from pathlib import Path
-from typing import Any
+from pathlib import Path, PurePosixPath
+from typing import Any, cast
 
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import ArchiveView, OperatorContext, RolloutOperator, RolloutResult
+
+_SHA256 = re.compile(r"[0-9a-f]{64}")
+_CERTIFIED_REPLAY_ARTIFACTS = (
+    "agent/mini-swe-agent.trajectory.json",
+    "agent/mini-swe-agent.txt",
+    "agent/trajectory.json",
+    "trial.log",
+    "verifier/reward.txt",
+    "verifier/test-stdout.txt",
+    "result.json",
+    "exception.txt",
+)
+
+
+class _ArtifactSnapshot:
+    """One digest-verified read of an evaluation artifact and its parsed JSON."""
+
+    __slots__ = ("document", "json_valid", "path", "payload", "sha256")
+
+    def __init__(
+        self,
+        *,
+        path: Path,
+        payload: bytes,
+        sha256: str,
+        document: object,
+        json_valid: bool,
+    ) -> None:
+        self.path = path
+        self.payload = payload
+        self.sha256 = sha256
+        self.document = document
+        self.json_valid = json_valid
 
 
 def _load_collect_cases(checkout: Path) -> Callable[..., list[dict[str, Any]]]:
@@ -28,7 +63,7 @@ def _load_collect_cases(checkout: Path) -> Callable[..., list[dict[str, Any]]]:
     return collector
 
 
-def _verified_artifact_reference(workspace: Path, reference: object, *, description: str) -> Path:
+def _verified_artifact_reference(workspace: Path, reference: object, *, description: str) -> _ArtifactSnapshot:
     if not isinstance(reference, dict):
         raise SystemExit(f"{description} has no certified evaluation artifacts")
     relative = reference.get("path")
@@ -42,12 +77,29 @@ def _verified_artifact_reference(workspace: Path, reference: object, *, descript
         raise SystemExit("evaluation artifact path escapes workspace") from error
     if not path.is_file():
         raise SystemExit(f"evaluation artifact path is missing: {relative}")
-    if hashlib.sha256(path.read_bytes()).hexdigest() != expected:
+    try:
+        payload = path.read_bytes()
+    except OSError as error:
+        raise SystemExit(f"evaluation artifact path is unreadable: {relative}") from error
+    digest = hashlib.sha256(payload).hexdigest()
+    if digest != expected:
         raise SystemExit("evaluation artifact digest mismatch")
-    return path
+    try:
+        document = json.loads(payload)
+        json_valid = True
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        document = None
+        json_valid = False
+    return _ArtifactSnapshot(
+        path=path,
+        payload=payload,
+        sha256=digest,
+        document=document,
+        json_valid=json_valid,
+    )
 
 
-def _certified_artifact(workspace: Path, parent: str, row: dict[str, Any]) -> Path:
+def _certified_artifact(workspace: Path, parent: str, row: dict[str, Any]) -> _ArtifactSnapshot:
     return _verified_artifact_reference(
         workspace,
         row.get("artifacts"),
@@ -55,12 +107,13 @@ def _certified_artifact(workspace: Path, parent: str, row: dict[str, Any]) -> Pa
     )
 
 
-def _artifact_sources(workspace: Path, parent: str, artifact: Path) -> list[tuple[Path, set[str] | None, bool]]:
+def _artifact_sources(
+    workspace: Path,
+    parent: str,
+    artifact: _ArtifactSnapshot,
+) -> list[tuple[_ArtifactSnapshot, set[str] | None, bool]]:
     """Return artifact, repaired-task filter, and whether the filter is inclusive."""
-    try:
-        manifest = json.loads(artifact.read_text())
-    except (OSError, json.JSONDecodeError):
-        manifest = None
+    manifest = artifact.document if artifact.json_valid else None
     if not isinstance(manifest, dict) or manifest.get("kind") != "failed_task_repair":
         return [(artifact, None, True)]
 
@@ -68,7 +121,7 @@ def _artifact_sources(workspace: Path, parent: str, artifact: Path) -> list[tupl
     if not isinstance(replaced, list):
         raise SystemExit(f"selected parent {parent} has malformed repair artifact slots")
     repaired_tasks = {
-        str(slot["task_id"]) for slot in replaced if isinstance(slot, dict) and isinstance(slot.get("task_id"), str)
+        task_id for slot in replaced if isinstance(slot, dict) and isinstance(task_id := slot.get("task_id"), str)
     }
     if not repaired_tasks:
         raise SystemExit(f"selected parent {parent} repair artifact has no replaced tasks")
@@ -88,35 +141,192 @@ def _artifact_sources(workspace: Path, parent: str, artifact: Path) -> list[tupl
     ]
 
 
+def _artifact_index(artifact: _ArtifactSnapshot) -> dict[str, Any]:
+    if not artifact.json_valid:
+        raise SystemExit("evaluation artifact index is unreadable")
+    payload = artifact.document
+    if not isinstance(payload, dict) or not isinstance(payload.get("trials"), list):
+        raise SystemExit("evaluation artifact index is malformed")
+    return cast(dict[str, Any], payload)
+
+
+def _indexed_path(jobs_dir: Path, relative: object) -> tuple[str, Path]:
+    if not isinstance(relative, str) or not relative:
+        raise SystemExit("evaluation artifact file has malformed path")
+    pure = PurePosixPath(relative)
+    if pure.is_absolute() or any(part in {"", ".", ".."} for part in pure.parts):
+        raise SystemExit(f"evaluation artifact file path escapes jobs: {relative}")
+    target = jobs_dir.joinpath(*pure.parts)
+    try:
+        target.resolve().relative_to(jobs_dir.resolve())
+    except ValueError as error:
+        raise SystemExit(f"evaluation artifact file path escapes jobs: {relative}") from error
+    return pure.as_posix(), target
+
+
+def _verified_indexed_files(artifact: _ArtifactSnapshot) -> tuple[Path, dict[str, bytes]]:
+    """Verify the file index and return one immutable read of every certified file."""
+    index = _artifact_index(artifact)
+    jobs_dir = artifact.path.parent / "jobs"
+    if not jobs_dir.is_dir():
+        raise SystemExit(f"evaluation jobs directory is missing: {jobs_dir}")
+
+    certified: dict[str, bytes] = {}
+    for trial in index["trials"]:
+        if not isinstance(trial, dict) or not isinstance(trial.get("files"), list):
+            raise SystemExit("evaluation artifact trial is malformed")
+        result_paths: list[str] = []
+        for entry in trial["files"]:
+            if not isinstance(entry, dict):
+                raise SystemExit("evaluation artifact file entry is malformed")
+            relative, path = _indexed_path(jobs_dir, entry.get("path"))
+            expected_bytes = entry.get("bytes")
+            expected_sha256 = entry.get("sha256")
+            if (
+                isinstance(expected_bytes, bool)
+                or not isinstance(expected_bytes, int)
+                or expected_bytes < 0
+                or not isinstance(expected_sha256, str)
+                or _SHA256.fullmatch(expected_sha256) is None
+            ):
+                raise SystemExit(f"evaluation artifact file entry is malformed: {relative}")
+            if relative in certified:
+                raise SystemExit(f"evaluation artifact file path is duplicated: {relative}")
+            if not path.is_file():
+                raise SystemExit(f"evaluation artifact file is missing: {relative}")
+            payload = path.read_bytes()
+            if len(payload) != expected_bytes:
+                raise SystemExit(f"evaluation artifact file size mismatch: {relative}")
+            if hashlib.sha256(payload).hexdigest() != expected_sha256:
+                raise SystemExit(f"evaluation artifact file digest mismatch: {relative}")
+            certified[relative] = payload
+            if PurePosixPath(relative).name == "result.json":
+                result_paths.append(relative)
+        if len(result_paths) != 1:
+            raise SystemExit("evaluation artifact trial must certify exactly one result.json")
+
+    indexed_results = {relative for relative in certified if PurePosixPath(relative).name == "result.json"}
+    actual_results = {
+        path.relative_to(jobs_dir).as_posix()
+        for path in jobs_dir.rglob("result.json")
+        if path.is_file() and _is_replay_result(path)
+    }
+    extra_results = sorted(actual_results - indexed_results)
+    if extra_results:
+        raise SystemExit(f"evaluation artifact contains unindexed replay result: {extra_results[0]}")
+    extra_artifacts: list[str] = []
+    for result in indexed_results:
+        trial_root = PurePosixPath(result).parent
+        for suffix in _CERTIFIED_REPLAY_ARTIFACTS:
+            relative = (trial_root / suffix).as_posix()
+            if relative in certified:
+                continue
+            if jobs_dir.joinpath(*PurePosixPath(relative).parts).is_file():
+                extra_artifacts.append(relative)
+    if extra_artifacts:
+        raise SystemExit(f"evaluation artifact contains unindexed replay file: {sorted(extra_artifacts)[0]}")
+    return jobs_dir, certified
+
+
+def _is_replay_result(path: Path) -> bool:
+    """Match the collector's rule for result files that can create a case."""
+    try:
+        payload = json.loads(path.read_text())
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return False
+    return isinstance(payload, dict) and bool(payload.get("task_name")) and bool(payload.get("trial_name"))
+
+
+def _materialize_certified_jobs(
+    certified_root: Path,
+    source_index: int,
+    artifact: _ArtifactSnapshot,
+    certified: dict[str, bytes],
+) -> Path:
+    """Persist a read-only-by-convention view containing only certified bytes."""
+    replay_jobs = certified_root / f"source-{source_index}-{artifact.sha256[:16]}"
+    replay_jobs.mkdir()
+    for relative, payload in certified.items():
+        destination = replay_jobs.joinpath(*PurePosixPath(relative).parts)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(payload)
+        destination.chmod(0o444)
+    directories = sorted(
+        (path for path in replay_jobs.rglob("*") if path.is_dir()),
+        key=lambda path: len(path.parts),
+        reverse=True,
+    )
+    for directory in directories:
+        directory.chmod(0o555)
+    replay_jobs.chmod(0o555)
+    return replay_jobs
+
+
+def _certify_result_paths(
+    cases: list[dict[str, Any]],
+    replay_jobs: Path,
+    certified: dict[str, bytes],
+) -> None:
+    """Reject collector paths that do not name a certified result in the view."""
+    replay_root = replay_jobs.resolve()
+    for case in cases:
+        value = case.get("result_path")
+        if value is None or value == "":
+            continue
+        if not isinstance(value, str):
+            raise SystemExit("evaluation replay collector returned a malformed result path")
+        try:
+            relative = Path(value).resolve().relative_to(replay_root)
+        except ValueError as error:
+            raise SystemExit("evaluation replay collector returned a path outside the certified view") from error
+        relative_string = relative.as_posix()
+        if relative_string not in certified or PurePosixPath(relative_string).name != "result.json":
+            raise SystemExit("evaluation replay collector returned an uncertified result path")
+        case["result_path"] = str(replay_jobs.joinpath(*PurePosixPath(relative_string).parts))
+
+
 class EvaluationReplayRollout(RolloutOperator):
     def rollout(self, checkout: Path, ctx: OperatorContext) -> RolloutResult:
         if ctx.parent is None:
             raise SystemExit("evaluation replay requires a selected parent")
-        row = ArchiveView(ctx.workspace).row(ctx.parent)
+        archive = ArchiveView(ctx.workspace)
+        row = archive.row(ctx.parent)
         if row is None:
             raise SystemExit(f"selected parent {ctx.parent} is missing from archive")
+        valid_parents = {str(candidate.get("genid")) for candidate in archive.valid_parents()}
+        if ctx.parent not in valid_parents:
+            raise SystemExit(f"selected parent {ctx.parent} has no currently valid certified evaluation")
         artifact = _certified_artifact(ctx.workspace, ctx.parent, row)
+        sources = [
+            (source, *_verified_indexed_files(source), task_filter, inclusive)
+            for source, task_filter, inclusive in _artifact_sources(ctx.workspace, ctx.parent, artifact)
+        ]
         collector = _load_collect_cases(checkout)
         cases: list[dict[str, Any]] = []
         jobs_dirs: list[Path] = []
-        for source, task_filter, inclusive in _artifact_sources(ctx.workspace, ctx.parent, artifact):
-            jobs_dir = source.parent / "jobs"
-            jobs_dirs.append(jobs_dir)
+        rollout_dir = ctx.run_dir / "rollout"
+        rollout_dir.mkdir(parents=True, exist_ok=True)
+        certified_parent = rollout_dir / "certified-jobs"
+        certified_parent.mkdir(exist_ok=True)
+        certified_root = Path(tempfile.mkdtemp(prefix="snapshot-", dir=certified_parent))
+        for source_index, (source, _original_jobs, certified, task_filter, inclusive) in enumerate(sources):
+            replay_jobs = _materialize_certified_jobs(certified_root, source_index, source, certified)
+            jobs_dirs.append(replay_jobs)
             source_cases = collector(
-                jobs_dir,
+                replay_jobs,
                 field_limit=int(ctx.config.get("field_limit", 2000)),
                 pass_threshold=float(ctx.config.get("pass_threshold", 1.0)),
             )
+            _certify_result_paths(source_cases, replay_jobs, certified)
             if task_filter is not None:
                 source_cases = [
                     case for case in source_cases if (str(case.get("task_name")) in task_filter) is inclusive
                 ]
             cases.extend(source_cases)
+        certified_root.chmod(0o555)
         if not cases:
             raise SystemExit("evaluation replay produced no trial results")
 
-        rollout_dir = ctx.run_dir / "rollout"
-        rollout_dir.mkdir(parents=True, exist_ok=True)
         (rollout_dir / "cases.json").write_text(json.dumps(cases, indent=2, sort_keys=True) + "\n")
         rewards = [
             float(case["reward"])
@@ -145,7 +355,7 @@ class EvaluationReplayRollout(RolloutOperator):
             },
             artifacts=[
                 "rollout/cases.json",
-                f"evaluation-artifacts:{artifact.relative_to(ctx.workspace)}",
+                f"evaluation-artifacts:{artifact.path.relative_to(ctx.workspace)}",
             ],
         )
 

@@ -33,6 +33,7 @@ namespace = {"__name__": "__main__", "__file__": str(script), "__package__": Non
 exec(compile(script.read_bytes(), str(script), "exec"), namespace)
 """
 
+
 def _text(value: object | None) -> str:
     if value is None:
         return ""

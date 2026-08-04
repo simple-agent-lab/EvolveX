@@ -21,6 +21,8 @@ archive.jsonl                 append-only lineage ledger
 evolve                        workspace console
 evolve.yaml                   rendered recipe configuration
 library/                      recipe-relevant operator variants
+LICENSE.evolve-framework      license for the vendored framework and operator library
+NOTICE.evolve-framework       framework and third-party attribution notices
 operators/                    active operator scripts, supporting Markdown, and index
 program.md                    loop orchestration guidance
 pyproject.toml, uv.lock       locked workspace runtime
@@ -37,9 +39,18 @@ The frozen evaluator is generated under `evaluator/`: `eval.sh`, `eval.env`,
 `cleanup_harbor.py`, `harbor_artifacts.py`, `parse_score.py`, and `smoke.sh`.
 Recipes may add selected operator assets and evaluator assets.
 
+For a local dataset, `splits.json` and `dataset.pin` bind both split membership
+and each task tree's paths, bytes, file types, and modes. If those contents
+change, canonical evaluation stops and requires a newly initialized experiment.
+Legacy version-1 local split manifests are inspection-only.
+
 The vendored framework includes framework-owned integrations under
 `.evolve/evolve/integrations/harbor/`. No standalone Harbor adapter package is
 generated at the workspace root.
+
+The vendored framework runtime and operator library are provided under
+Apache-2.0; see `LICENSE.evolve-framework` and `NOTICE.evolve-framework`.
+The target under `target/` retains its own upstream licensing terms.
 
 ## Rules
 

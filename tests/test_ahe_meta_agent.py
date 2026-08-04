@@ -235,6 +235,15 @@ def test_ahe_prompt_points_to_prior_change_without_inlining_it(tmp_path: Path) -
     assert "No selected-parent meta-agent change exists" not in prompt
 
 
+def test_ahe_prompt_accepts_fanout_generation_ids(tmp_path: Path) -> None:
+    module = _module()
+    checkout, _run_dir, ctx = _case(tmp_path, genid="2-child-a", parent="1")
+
+    prompt = module.build_prompt(checkout, "fallback", ctx)
+
+    assert '"iteration": "2-child-a"' in prompt
+
+
 def test_ahe_runner_failure_preserves_evidence(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     module = _module()
     checkout, run_dir, ctx = _case(tmp_path)

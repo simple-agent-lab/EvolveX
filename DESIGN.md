@@ -77,8 +77,25 @@ evaluator, archive stamps, and vendored mechanism are not.
 1. The evaluator is frozen for the lineage and cannot be mutated by a candidate.
 2. Scores enter the archive only through the mechanism's stamped evaluation path.
 3. Reports recompute best-known results from stamped archive entries.
-4. Harbor task membership is frozen at initialization when a local dataset is supplied.
-5. A candidate enters the lineage only through canonical evaluation.
+4. A local Harbor dataset is frozen by task name and by deterministic task-tree
+   digests (paths, file bytes, file types, and modes) at initialization. Each
+   canonical run executes a fresh selected-task snapshot verified against those
+   digests, never the mutable source directory that was checked earlier.
+5. A selectable score is bound to the commit currently named by its `gen/<id>`
+   tag; moving the tag invalidates the score instead of transferring it.
+6. Candidate dependency preparation uses an immutable shared seed plus a
+   disposable per-attempt overlay. Candidate project build code runs only in
+   the evaluator environment, not on the host preparation path.
+7. Evaluation replay verifies every indexed artifact's path, size, and digest,
+   then collects cases from a temporary view containing only those certified
+   bytes.
+8. A candidate enters the lineage only through canonical evaluation.
+
+Resolved version-1 split manifests remain readable for historical inspection,
+but they are not eligible for new canonical evaluation or parent selection
+because they do not contain task-content identities. Start a new experiment to
+upgrade that boundary; do not silently compare new scores with a legacy task
+set.
 
 ## Versioning
 

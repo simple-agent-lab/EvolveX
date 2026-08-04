@@ -79,8 +79,10 @@ def _restore_unchanged_injected_archive(root: Path, parent_ref: str) -> bool:
     live_archive = workspace / "archive.jsonl"
     checkout_archive = root / "archive.jsonl"
     try:
-        unchanged = live_archive.is_file() and checkout_archive.is_file() and (
-            live_archive.read_bytes() == checkout_archive.read_bytes()
+        unchanged = (
+            live_archive.is_file()
+            and checkout_archive.is_file()
+            and (live_archive.read_bytes() == checkout_archive.read_bytes())
         )
     except OSError:
         return False

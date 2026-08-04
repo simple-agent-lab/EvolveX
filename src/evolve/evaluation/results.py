@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import asdict, dataclass
 from enum import StrEnum
 from typing import Any
@@ -37,13 +38,25 @@ class TrialResult:
     repaired_from_attempt: int | None = None
     repair_reason: str | None = None
 
+    def __post_init__(self) -> None:
+        if self.reward is not None and (
+            isinstance(self.reward, bool)
+            or not isinstance(self.reward, (int, float))
+            or not math.isfinite(float(self.reward))
+        ):
+            raise ValueError("trial reward must be a finite number or null")
+
     def score_eligible(self, *, benchmark_timeout_is_zero: bool) -> bool:
-        return self.reward is not None and (
-            self.outcome is Outcome.BENCHMARK_COMPLETE
-            or (
-                self.outcome is Outcome.TIMEOUT
-                and self.owner in {"benchmark_agent", "benchmark_verifier"}
-                and benchmark_timeout_is_zero
+        return (
+            self.reward is not None
+            and math.isfinite(float(self.reward))
+            and (
+                self.outcome is Outcome.BENCHMARK_COMPLETE
+                or (
+                    self.outcome is Outcome.TIMEOUT
+                    and self.owner in {"benchmark_agent", "benchmark_verifier"}
+                    and benchmark_timeout_is_zero
+                )
             )
         )
 
@@ -70,6 +83,22 @@ class EvaluationRecord:
     source_attempts: tuple[int, ...] = ()
     repaired_tasks: tuple[str, ...] = ()
     candidate_runtime: dict[str, str] | None = None
+
+    def __post_init__(self) -> None:
+        if self.score is not None and (
+            isinstance(self.score, bool)
+            or not isinstance(self.score, (int, float))
+            or not math.isfinite(float(self.score))
+        ):
+            raise ValueError("evaluation score must be a finite number or null")
+        for field, value in (("cost_usd", self.cost_usd), ("wall_s", self.wall_s)):
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(float(value))
+                or float(value) < 0
+            ):
+                raise ValueError(f"{field} must be a finite non-negative number")
 
     @property
     def status(self) -> str:
@@ -124,6 +153,8 @@ def classify_evaluation(
         raise ValueError("expected_trials must be at least 1")
     if not 0 < partial_floor <= 1:
         raise ValueError("partial_floor must be greater than zero and at most one")
+    if any(trial.reward is not None and not math.isfinite(float(trial.reward)) for trial in trials):
+        raise ValueError("trial rewards must be finite")
     outcomes = tuple(effective_trial_outcome(trial) for trial in trials)
     if setup_outcome is not None:
         outcomes = (setup_outcome, *outcomes)

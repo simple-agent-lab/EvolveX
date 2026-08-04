@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import random
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass, is_dataclass
@@ -47,7 +48,7 @@ class ArchiveView:
         expected = fixed_evaluation_identity(self.workspace)
         if expected is None:
             return []
-        return [row for row in self.rows() if is_parent_record(row, expected)]
+        return [row for row in self.rows() if is_parent_record(row, expected, self.workspace)]
 
     def best_ever(self) -> Row | None:
         candidates = [
@@ -219,8 +220,8 @@ def validate_gate_payload(payload: GateResult | dict[str, Any]) -> dict[str, Any
 def validate_novelty_payload(payload: NoveltyResult | dict[str, Any]) -> dict[str, Any]:
     data = _payload_dict(payload)
     novelty = data.get("novelty")
-    if not isinstance(novelty, (int, float)) or isinstance(novelty, bool):
-        raise PayloadValidationError("novelty", "novelty must be a number")
+    if not isinstance(novelty, (int, float)) or isinstance(novelty, bool) or not math.isfinite(float(novelty)):
+        raise PayloadValidationError("novelty", "novelty must be a finite number")
     _require_type(data, "accept", bool, "accept must be a boolean")
     return {"novelty": float(novelty), "accept": data["accept"]}
 
@@ -252,8 +253,10 @@ def validate_rollout_artifacts_payload(payload: object) -> list[str]:
 def validate_meta_agent_usage_payload(payload: object) -> dict[str, Any]:
     data = _json_object(payload, "usage", "usage must be a JSON object")
     usd = data.get("usd")
-    if usd is not None and (not isinstance(usd, (int, float)) or isinstance(usd, bool)):
-        raise PayloadValidationError("usd", "usd must be a number")
+    if usd is not None and (
+        not isinstance(usd, (int, float)) or isinstance(usd, bool) or not math.isfinite(float(usd))
+    ):
+        raise PayloadValidationError("usd", "usd must be a finite number")
     return dict(data)
 
 
@@ -262,6 +265,8 @@ def validate_gate_file_payload(payload: object) -> dict[str, Any]:
     _require_type(data, "valid_parent", bool, "valid_parent must be a boolean")
     if data.get("verdict") not in {"keep", "discard"}:
         raise PayloadValidationError("verdict", "verdict must be keep or discard")
+    if data["valid_parent"] is not (data["verdict"] == "keep"):
+        raise PayloadValidationError("valid_parent", "valid_parent must agree with verdict")
     _require_type(data, "reason", str, "reason must be a string")
     return {
         "valid_parent": data["valid_parent"],

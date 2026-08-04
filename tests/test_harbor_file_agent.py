@@ -112,10 +112,7 @@ def test_file_task_agent_forwards_execution_options_for_passthrough_and_rewritte
         )
         await agent.exec_as_agent(
             environment,
-            command=(
-                "mini-swe-agent --yolo --task='rewrite me' --output=/logs/trajectory.json "
-                "--exit-immediately"
-            ),
+            command=("mini-swe-agent --yolo --task='rewrite me' --output=/logs/trajectory.json --exit-immediately"),
             env={"ROLE": "rewritten"},
             cwd="/work/rewritten",
             timeout_sec=29,

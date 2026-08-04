@@ -109,7 +109,9 @@ def route(points: list[tuple[float, float]], radius: float = 12, cls: str = "flo
     return f'  <path d="{" ".join(d)}" class="{cls}"/>'
 
 
-def node(x: float, y: float, w: float, h: float, cls: str, title: str, sub: str | None = None, r: float = 12) -> list[str]:
+def node(
+    x: float, y: float, w: float, h: float, cls: str, title: str, sub: str | None = None, r: float = 12
+) -> list[str]:
     cx = x + w / 2
     if sub:
         return [
@@ -129,29 +131,29 @@ def row(x: float, width: float, count: int, gap: float) -> tuple[list[float], fl
 def style() -> str:
     p = PALETTE
     return f"""  <style>
-    text {{ font-family: {FONT}; fill: {p['ink']}; }}
+    text {{ font-family: {FONT}; fill: {p["ink"]}; }}
     .t {{ font-size: 16px; font-weight: 600; }}
-    .s {{ font-size: 13px; fill: {p['sub']}; }}
-    .cap {{ font-size: 13px; fill: {p['sub']}; }}
-    .cap-accent {{ font-size: 13px; fill: {p['accent_text']}; }}
-    .lbl {{ font-size: 13px; font-weight: 600; letter-spacing: 0.08em; fill: {p['sub']}; }}
-    .lbl-accent {{ font-size: 13px; font-weight: 600; letter-spacing: 0.08em; fill: {p['accent_text']}; }}
+    .s {{ font-size: 13px; fill: {p["sub"]}; }}
+    .cap {{ font-size: 13px; fill: {p["sub"]}; }}
+    .cap-accent {{ font-size: 13px; fill: {p["accent_text"]}; }}
+    .lbl {{ font-size: 13px; font-weight: 600; letter-spacing: 0.08em; fill: {p["sub"]}; }}
+    .lbl-accent {{ font-size: 13px; font-weight: 600; letter-spacing: 0.08em; fill: {p["accent_text"]}; }}
     .canvas {{ fill: #ffffff; }}
-    .knock {{ fill: {p['band_fill']}; }}
-    .band {{ fill: {p['band_fill']}; stroke: {p['band_line']}; stroke-width: 1.5; }}
-    .chip {{ fill: {p['chip_fill']}; stroke: {p['chip_line']}; stroke-width: 1.5; }}
-    .open {{ fill: #ffffff; stroke: {p['open_line']}; stroke-width: 1.5; stroke-dasharray: 6 5; }}
-    .stage {{ fill: #ffffff; stroke: {p['stage_line']}; stroke-width: 1.5; }}
-    .accent {{ fill: {p['accent_fill']}; stroke: {p['accent_line']}; stroke-width: 1.5; }}
-    .guard {{ fill: {p['guard_fill']}; stroke: {p['guard_line']}; stroke-width: 1.5; }}
-    .mutable {{ fill: none; stroke: {p['accent_line']}; stroke-width: 1.5; stroke-dasharray: 7 6; }}
-    .flow {{ fill: none; stroke: {p['line']}; stroke-width: 1.8; }}
-    .soft {{ fill: none; stroke: {p['soft']}; stroke-width: 1.4; }}
-    .flow-accent {{ fill: none; stroke: {p['accent_line']}; stroke-width: 1.4; }}
-    .tick-accent {{ fill: none; stroke: {p['accent_line']}; stroke-width: 1.4; stroke-dasharray: 5 4; }}
-    .arrow-fill {{ fill: {p['line']}; }}
-    .arrow-accent {{ fill: {p['accent_line']}; }}
-    .dot-accent {{ fill: {p['accent_line']}; stroke: none; }}
+    .knock {{ fill: {p["band_fill"]}; }}
+    .band {{ fill: {p["band_fill"]}; stroke: {p["band_line"]}; stroke-width: 1.5; }}
+    .chip {{ fill: {p["chip_fill"]}; stroke: {p["chip_line"]}; stroke-width: 1.5; }}
+    .open {{ fill: #ffffff; stroke: {p["open_line"]}; stroke-width: 1.5; stroke-dasharray: 6 5; }}
+    .stage {{ fill: #ffffff; stroke: {p["stage_line"]}; stroke-width: 1.5; }}
+    .accent {{ fill: {p["accent_fill"]}; stroke: {p["accent_line"]}; stroke-width: 1.5; }}
+    .guard {{ fill: {p["guard_fill"]}; stroke: {p["guard_line"]}; stroke-width: 1.5; }}
+    .mutable {{ fill: none; stroke: {p["accent_line"]}; stroke-width: 1.5; stroke-dasharray: 7 6; }}
+    .flow {{ fill: none; stroke: {p["line"]}; stroke-width: 1.8; }}
+    .soft {{ fill: none; stroke: {p["soft"]}; stroke-width: 1.4; }}
+    .flow-accent {{ fill: none; stroke: {p["accent_line"]}; stroke-width: 1.4; }}
+    .tick-accent {{ fill: none; stroke: {p["accent_line"]}; stroke-width: 1.4; stroke-dasharray: 5 4; }}
+    .arrow-fill {{ fill: {p["line"]}; }}
+    .arrow-accent {{ fill: {p["accent_line"]}; }}
+    .dot-accent {{ fill: {p["accent_line"]}; stroke: none; }}
   </style>"""
 
 

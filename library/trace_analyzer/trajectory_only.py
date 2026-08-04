@@ -5,6 +5,7 @@ from __future__ import annotations
 import concurrent.futures
 import hashlib
 import json
+import math
 import os
 import re
 from dataclasses import replace
@@ -132,7 +133,7 @@ def _json_object(text: str) -> Case:
         if not isinstance(payload, dict):
             continue
         score = payload.get("score")
-        if not isinstance(score, (int, float)) or isinstance(score, bool):
+        if not isinstance(score, (int, float)) or isinstance(score, bool) or not math.isfinite(float(score)):
             continue
         return {
             "score": max(0, min(10, score)),

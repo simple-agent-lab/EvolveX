@@ -18,7 +18,7 @@ from .driver import RunOptions, commit_child, eval_child, fork_child, record_fie
 from .driver import doctor as doctor_workspace
 from .driver import run as driver_run
 from .git import head_tag, working_tree_changed_paths
-from .population import best_row
+from .population import best_row, fixed_evaluation_identity
 from .report import format_report, format_status
 from .surface import check_paths, surface_patterns
 from .workspace import InitOptions, init_workspace
@@ -79,9 +79,7 @@ def init(
         "--recipe-path",
         help="opt-in recipe directory or evolve.yaml path",
     ),
-    seed: str | None = typer.Option(
-        None, help="git URL to vendor into target/; local target dir; builtin-codex"
-    ),
+    seed: str | None = typer.Option(None, help="git URL to vendor into target/; local target dir; builtin-codex"),
     dataset: str | None = typer.Option(None, help="local Harbor task directory to split and freeze"),
 ) -> None:
     """Scaffold a new evolve workspace."""
@@ -244,13 +242,21 @@ def doctor(workspace: Path = typer.Argument(Path("."))) -> None:
 def verify(workspace: Path = typer.Argument(Path("."))) -> None:
     """Integrity fsck: recompute the champion and expose any hand-edited ledger."""
     findings = verify_integrity(workspace)
+    identity_unverifiable = fixed_evaluation_identity(workspace.resolve()) is None
     for finding in findings:
         print(f"TAMPER: {finding}", file=sys.stderr)
     champion = best_row(workspace)
     champ = f"gen {champion['genid']} score {champion.get('score')}" if champion else "none"
     print(f"champion: {champ}")
-    print(f"rows: {len(merged_rows(archive_path(workspace)))}  integrity: {'FAIL' if findings else 'ok'}")
-    if findings:
+    if identity_unverifiable:
+        print(
+            "UNVERIFIABLE: fixed evaluation identity is unavailable; legacy v1 local split manifests "
+            "require a new experiment with a v2 split manifest",
+            file=sys.stderr,
+        )
+    failed = bool(findings) or identity_unverifiable
+    print(f"rows: {len(merged_rows(archive_path(workspace)))}  integrity: {'FAIL' if failed else 'ok'}")
+    if failed:
         raise typer.Exit(1)
 
 

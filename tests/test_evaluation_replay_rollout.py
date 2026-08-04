@@ -27,6 +27,9 @@ class _Archive:
     def row(self, genid: str) -> dict | None:
         return self._rows.get(genid)
 
+    def valid_parents(self) -> list[dict]:
+        return [{"genid": genid, **row} for genid, row in self._rows.items()]
+
 
 def _context(workspace: Path, *, parent: str | None) -> OperatorContext:
     checkout = workspace / "checkout"
@@ -44,12 +47,47 @@ def _context(workspace: Path, *, parent: str | None) -> OperatorContext:
     )
 
 
-def _artifact(workspace: Path, *, generation: str = "3") -> tuple[Path, dict[str, str]]:
-    attempt = workspace / "runs" / "evaluations" / "candidate" / f"gen-{generation}" / "attempt-1"
+def _artifact(
+    workspace: Path,
+    *,
+    generation: str = "3",
+    attempt_number: int = 1,
+    task_names: tuple[str, ...] = ("task-a",),
+) -> tuple[Path, dict[str, str]]:
+    attempt = workspace / "runs" / "evaluations" / "candidate" / f"gen-{generation}" / f"attempt-{attempt_number}"
     jobs = attempt / "jobs"
     jobs.mkdir(parents=True)
+    trials = []
+    for task_name in task_names:
+        trial_name = f"{task_name}__trial-0"
+        result = jobs / trial_name / "result.json"
+        result.parent.mkdir()
+        result.write_text(
+            json.dumps(
+                {
+                    "trial_name": trial_name,
+                    "task_name": task_name,
+                    "verifier_result": {"rewards": {"reward": 1.0}},
+                }
+            )
+        )
+        payload = result.read_bytes()
+        trials.append(
+            {
+                "task_name": task_name,
+                "trial_name": trial_name,
+                "cost_usd": 0.0,
+                "files": [
+                    {
+                        "path": result.relative_to(jobs).as_posix(),
+                        "bytes": len(payload),
+                        "sha256": hashlib.sha256(payload).hexdigest(),
+                    }
+                ],
+            }
+        )
     artifact = attempt / "evaluation_artifacts.json"
-    artifact.write_text(json.dumps({"jobs_dir": str(jobs), "trials": []}))
+    artifact.write_text(json.dumps({"jobs_dir": str(jobs), "trials": trials}))
     return jobs, {
         "path": artifact.relative_to(workspace).as_posix(),
         "sha256": hashlib.sha256(artifact.read_bytes()).hexdigest(),
@@ -67,7 +105,15 @@ def test_replay_uses_selected_parent_certified_evaluation(tmp_path: Path, monkey
     observed: dict[str, object] = {}
 
     def collect(selected_jobs: Path, **options):
-        observed.update({"jobs": selected_jobs, **options})
+        result = next(selected_jobs.rglob("result.json"))
+        observed.update(
+            {
+                "jobs_is_certified_view": selected_jobs != jobs,
+                "jobs": selected_jobs,
+                "task_name": json.loads(result.read_text())["task_name"],
+                **options,
+            }
+        )
         return [{"task_name": "task-a", "trial_name": "task-a__trial-0", "reward": 1.0, "outcome": "passed"}]
 
     monkeypatch.setattr(module, "ArchiveView", lambda _workspace: _Archive(rows))
@@ -78,26 +124,43 @@ def test_replay_uses_selected_parent_certified_evaluation(tmp_path: Path, monkey
 
     cases = json.loads((ctx.run_dir / "rollout" / "cases.json").read_text())
     assert [case["task_name"] for case in cases] == ["task-a"]
-    assert observed == {"jobs": jobs, "field_limit": 1200, "pass_threshold": 1.0}
+    certified_jobs = Path(result.summary["jobs_dir"])
+    assert observed.pop("jobs") == certified_jobs
+    assert observed == {
+        "jobs_is_certified_view": True,
+        "task_name": "task-a",
+        "field_limit": 1200,
+        "pass_threshold": 1.0,
+    }
+    assert certified_jobs.is_dir()
+    assert certified_jobs.is_relative_to(ctx.run_dir / "rollout" / "certified-jobs")
+    assert result.summary["jobs_dirs"] == [str(certified_jobs)]
     assert result.summary["source_parent"] == "3"
     assert result.summary["tasks_observed"] == 1
     assert result.summary["trials_observed"] == 1
     assert result.summary["mean_observed_reward"] == 1.0
 
 
+def test_replay_rejects_parent_outside_current_certified_population(tmp_path: Path, monkeypatch) -> None:
+    module = _replay_module()
+    workspace = tmp_path / "workspace"
+    _jobs, reference = _artifact(workspace)
+    archive = _Archive({"3": {"genid": "3", "artifacts": reference, "score": 1.0}})
+    archive.valid_parents = lambda: []  # type: ignore[method-assign]
+    monkeypatch.setattr(module, "ArchiveView", lambda _workspace: archive)
+    ctx = _context(workspace, parent="3")
+
+    with pytest.raises(SystemExit, match="no currently valid certified evaluation"):
+        module.EvaluationReplayRollout().rollout(ctx.checkout, ctx)
+
+
 def test_replay_merges_base_and_repair_artifacts_for_composite_evaluation(tmp_path: Path, monkeypatch) -> None:
     module = _replay_module()
     workspace = tmp_path / "workspace"
-    base_jobs, base_reference = _artifact(workspace, generation="3")
-    repair_attempt = workspace / "runs" / "evaluations" / "candidate" / "gen-3" / "attempt-2"
-    repair_jobs = repair_attempt / "jobs"
-    repair_jobs.mkdir(parents=True)
-    repair_artifact = repair_attempt / "evaluation_artifacts.json"
-    repair_artifact.write_text(json.dumps({"jobs_dir": str(repair_jobs), "trials": []}))
-    repair_reference = {
-        "path": repair_artifact.relative_to(workspace).as_posix(),
-        "sha256": hashlib.sha256(repair_artifact.read_bytes()).hexdigest(),
-    }
+    _base_jobs, base_reference = _artifact(workspace, generation="3", task_names=("task-a", "task-b", "task-c"))
+    _repair_jobs, repair_reference = _artifact(workspace, generation="3", attempt_number=2, task_names=("task-c",))
+    repair_artifact = workspace / repair_reference["path"]
+    repair_attempt = repair_artifact.parent
     composite = repair_attempt / "composite_evaluation_artifacts.json"
     composite.write_text(
         json.dumps(
@@ -124,7 +187,8 @@ def test_replay_merges_base_and_repair_artifacts_for_composite_evaluation(tmp_pa
     rows = {"3": {"genid": "3", "artifacts": composite_reference, "score": 2 / 3}}
 
     def collect(selected_jobs: Path, **_options):
-        if selected_jobs == base_jobs:
+        task_names = {json.loads(result.read_text())["task_name"] for result in selected_jobs.rglob("result.json")}
+        if task_names == {"task-a", "task-b", "task-c"}:
             return [
                 {
                     "task_name": "task-a",
@@ -145,7 +209,7 @@ def test_replay_merges_base_and_repair_artifacts_for_composite_evaluation(tmp_pa
                     "outcome": "infra_error",
                 },
             ]
-        assert selected_jobs == repair_jobs
+        assert task_names == {"task-c"}
         return [
             {
                 "task_name": "task-c",
@@ -170,6 +234,11 @@ def test_replay_merges_base_and_repair_artifacts_for_composite_evaluation(tmp_pa
     assert result.summary["tasks_observed"] == 3
     assert result.summary["trials_observed"] == 3
     assert result.summary["mean_observed_reward"] == pytest.approx(2 / 3)
+    certified_sources = [Path(path) for path in result.summary["jobs_dirs"]]
+    assert len(certified_sources) == 2
+    assert all(path.is_dir() for path in certified_sources)
+    assert all(path.is_relative_to(ctx.run_dir / "rollout" / "certified-jobs") for path in certified_sources)
+    assert result.summary["jobs_dir"] == str(certified_sources[-1])
 
 
 def test_replay_loads_collector_from_vendored_workspace_library(tmp_path: Path) -> None:
@@ -232,6 +301,196 @@ def test_replay_rejects_artifact_digest_mismatch(tmp_path: Path, monkeypatch) ->
 
     with pytest.raises(SystemExit, match="artifact digest mismatch"):
         module.EvaluationReplayRollout().rollout(ctx.checkout, ctx)
+
+
+def test_replay_rejects_modified_indexed_result_without_changing_index_reference(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    module = _replay_module()
+    workspace = tmp_path / "workspace"
+    jobs, reference = _artifact(workspace)
+    result = next(jobs.rglob("result.json"))
+    original = result.read_bytes()
+    modified = original.replace(b'"reward": 1.0', b'"reward": 0.0')
+    assert len(modified) == len(original)
+    result.write_bytes(modified)
+    monkeypatch.setattr(module, "ArchiveView", lambda _workspace: _Archive({"3": {"artifacts": reference}}))
+    monkeypatch.setattr(module, "_load_collect_cases", lambda _checkout: lambda *_args, **_kwargs: [])
+    ctx = _context(workspace, parent="3")
+
+    with pytest.raises(SystemExit, match="evaluation artifact file digest mismatch"):
+        module.EvaluationReplayRollout().rollout(ctx.checkout, ctx)
+
+
+def test_replay_rejects_indexed_file_size_mismatch(tmp_path: Path, monkeypatch) -> None:
+    module = _replay_module()
+    workspace = tmp_path / "workspace"
+    _jobs, reference = _artifact(workspace)
+    artifact = workspace / reference["path"]
+    index = json.loads(artifact.read_text())
+    index["trials"][0]["files"][0]["bytes"] += 1
+    artifact.write_text(json.dumps(index))
+    reference["sha256"] = hashlib.sha256(artifact.read_bytes()).hexdigest()
+    monkeypatch.setattr(module, "ArchiveView", lambda _workspace: _Archive({"3": {"artifacts": reference}}))
+    monkeypatch.setattr(module, "_load_collect_cases", lambda _checkout: lambda *_args, **_kwargs: [])
+    ctx = _context(workspace, parent="3")
+
+    with pytest.raises(SystemExit, match="evaluation artifact file size mismatch"):
+        module.EvaluationReplayRollout().rollout(ctx.checkout, ctx)
+
+
+def test_replay_rejects_missing_indexed_file(tmp_path: Path, monkeypatch) -> None:
+    module = _replay_module()
+    workspace = tmp_path / "workspace"
+    jobs, reference = _artifact(workspace)
+    next(jobs.rglob("result.json")).unlink()
+    monkeypatch.setattr(module, "ArchiveView", lambda _workspace: _Archive({"3": {"artifacts": reference}}))
+    monkeypatch.setattr(module, "_load_collect_cases", lambda _checkout: lambda *_args, **_kwargs: [])
+    ctx = _context(workspace, parent="3")
+
+    with pytest.raises(SystemExit, match="evaluation artifact file is missing"):
+        module.EvaluationReplayRollout().rollout(ctx.checkout, ctx)
+
+
+def test_replay_rejects_indexed_path_outside_jobs(tmp_path: Path, monkeypatch) -> None:
+    module = _replay_module()
+    workspace = tmp_path / "workspace"
+    _jobs, reference = _artifact(workspace)
+    artifact = workspace / reference["path"]
+    index = json.loads(artifact.read_text())
+    index["trials"][0]["files"][0]["path"] = "../result.json"
+    artifact.write_text(json.dumps(index))
+    reference["sha256"] = hashlib.sha256(artifact.read_bytes()).hexdigest()
+    monkeypatch.setattr(module, "ArchiveView", lambda _workspace: _Archive({"3": {"artifacts": reference}}))
+    monkeypatch.setattr(module, "_load_collect_cases", lambda _checkout: lambda *_args, **_kwargs: [])
+    ctx = _context(workspace, parent="3")
+
+    with pytest.raises(SystemExit, match="file path escapes jobs"):
+        module.EvaluationReplayRollout().rollout(ctx.checkout, ctx)
+
+
+def test_replay_rejects_unindexed_result_file(tmp_path: Path, monkeypatch) -> None:
+    module = _replay_module()
+    workspace = tmp_path / "workspace"
+    jobs, reference = _artifact(workspace)
+    forged = jobs / "forged" / "result.json"
+    forged.parent.mkdir()
+    forged.write_text(
+        json.dumps(
+            {
+                "trial_name": "forged__trial-0",
+                "task_name": "forged",
+                "verifier_result": {"rewards": {"reward": 1.0}},
+            }
+        )
+    )
+    monkeypatch.setattr(module, "ArchiveView", lambda _workspace: _Archive({"3": {"artifacts": reference}}))
+    monkeypatch.setattr(module, "_load_collect_cases", lambda _checkout: lambda *_args, **_kwargs: [])
+    ctx = _context(workspace, parent="3")
+
+    with pytest.raises(SystemExit, match="unindexed replay result: forged/result.json"):
+        module.EvaluationReplayRollout().rollout(ctx.checkout, ctx)
+
+
+def test_replay_rejects_unindexed_safe_replay_file(tmp_path: Path, monkeypatch) -> None:
+    module = _replay_module()
+    workspace = tmp_path / "workspace"
+    jobs, reference = _artifact(workspace)
+    reward = next(jobs.iterdir()) / "verifier" / "reward.txt"
+    reward.parent.mkdir()
+    reward.write_text("0\n")
+    monkeypatch.setattr(module, "ArchiveView", lambda _workspace: _Archive({"3": {"artifacts": reference}}))
+    monkeypatch.setattr(module, "_load_collect_cases", lambda _checkout: lambda *_args, **_kwargs: [])
+    ctx = _context(workspace, parent="3")
+
+    with pytest.raises(SystemExit, match="unindexed replay file: task-a__trial-0/verifier/reward.txt"):
+        module.EvaluationReplayRollout().rollout(ctx.checkout, ctx)
+
+
+def test_replay_collector_and_returned_paths_stay_in_persistent_certified_view(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    module = _replay_module()
+    workspace = tmp_path / "workspace"
+    jobs, reference = _artifact(workspace)
+    unindexed = next(jobs.iterdir()) / "agent" / "sessions" / "forged.jsonl"
+    unindexed.parent.mkdir(parents=True)
+    unindexed.write_text(
+        json.dumps(
+            {
+                "type": "event_msg",
+                "payload": {"type": "agent_message", "message": "uncertified trace"},
+            }
+        )
+        + "\n"
+    )
+    aggregate = jobs / "aggregate" / "result.json"
+    aggregate.parent.mkdir()
+    aggregate.write_text(json.dumps({"status": "complete"}))
+    vendored = workspace / "checkout" / "library" / "rollout" / "harbor.py"
+    vendored.parent.mkdir(parents=True)
+    vendored.write_text((ROOT / "library" / "rollout" / "harbor.py").read_text())
+    monkeypatch.setattr(module, "ArchiveView", lambda _workspace: _Archive({"3": {"artifacts": reference}}))
+    ctx = _context(workspace, parent="3")
+
+    replay = module.EvaluationReplayRollout().rollout(ctx.checkout, ctx)
+
+    cases = json.loads((ctx.run_dir / "rollout" / "cases.json").read_text())
+    certified_jobs = Path(replay.summary["jobs_dir"])
+    assert cases[0]["agent_messages"] == []
+    assert cases[0]["artifact_inventory"] == {"agent": [], "verifier": []}
+    assert certified_jobs.is_dir()
+    assert certified_jobs != jobs
+    assert certified_jobs.is_relative_to(ctx.run_dir / "rollout" / "certified-jobs")
+    assert Path(cases[0]["result_path"]) == certified_jobs / "task-a__trial-0" / "result.json"
+    assert Path(cases[0]["result_path"]).is_file()
+    assert certified_jobs.stat().st_mode & 0o222 == 0
+    assert Path(cases[0]["result_path"]).stat().st_mode & 0o222 == 0
+    assert replay.summary["jobs_dirs"] == [str(certified_jobs)]
+
+
+def test_replay_uses_verified_index_snapshot_when_index_mutates_after_validation(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    module = _replay_module()
+    workspace = tmp_path / "workspace"
+    _jobs, reference = _artifact(workspace)
+    artifact = workspace / reference["path"]
+    rows = {"3": {"genid": "3", "artifacts": reference, "score": 1.0}}
+    real_sources = module._artifact_sources
+
+    def mutate_after_sources(*args, **kwargs):
+        sources = real_sources(*args, **kwargs)
+        artifact.write_text("{mutated after digest validation")
+        return sources
+
+    def collect(selected_jobs: Path, **_options):
+        result = next(selected_jobs.rglob("result.json"))
+        payload = json.loads(result.read_text())
+        return [
+            {
+                "task_name": payload["task_name"],
+                "trial_name": payload["trial_name"],
+                "reward": 1.0,
+                "outcome": "passed",
+                "result_path": str(result),
+            }
+        ]
+
+    monkeypatch.setattr(module, "ArchiveView", lambda _workspace: _Archive(rows))
+    monkeypatch.setattr(module, "_artifact_sources", mutate_after_sources)
+    monkeypatch.setattr(module, "_load_collect_cases", lambda _checkout: collect)
+    ctx = _context(workspace, parent="3")
+
+    replay = module.EvaluationReplayRollout().rollout(ctx.checkout, ctx)
+
+    cases = json.loads((ctx.run_dir / "rollout" / "cases.json").read_text())
+    certified_jobs = Path(replay.summary["jobs_dir"])
+    assert cases[0]["task_name"] == "task-a"
+    assert Path(cases[0]["result_path"]).is_relative_to(certified_jobs)
 
 
 def test_replay_rejects_jobs_path_without_trial_results(tmp_path: Path, monkeypatch) -> None:

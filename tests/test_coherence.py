@@ -43,7 +43,10 @@ def test_architecture_table_is_the_module_and_budget_authority() -> None:
 
     assert set(budgets) == actual
     over_budget = {
-        path.relative_to(SRC).as_posix(): (len(path.read_text().splitlines()), budgets[path.relative_to(SRC).as_posix()])
+        path.relative_to(SRC).as_posix(): (
+            len(path.read_text().splitlines()),
+            budgets[path.relative_to(SRC).as_posix()],
+        )
         for path in _module_paths()
         if len(path.read_text().splitlines()) > budgets[path.relative_to(SRC).as_posix()]
     }
@@ -74,10 +77,7 @@ def test_local_superpowers_artifacts_are_not_tracked() -> None:
         text=True,
     )
     tracked_artifacts = result.stdout.splitlines()
-    assert not tracked_artifacts, (
-        "transient Superpowers artifacts must not be tracked: "
-        f"{tracked_artifacts}"
-    )
+    assert not tracked_artifacts, f"transient Superpowers artifacts must not be tracked: {tracked_artifacts}"
 
 
 def test_generated_python_caches_are_not_tracked() -> None:

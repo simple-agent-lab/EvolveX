@@ -5,7 +5,14 @@ from pathlib import Path
 import pytest
 
 from evolve.frozen import sdk
-from evolve.frozen.interfaces import ValidateOperator, ValidateResult
+from evolve.frozen.interfaces import (
+    PayloadValidationError,
+    ValidateOperator,
+    ValidateResult,
+    validate_gate_file_payload,
+    validate_meta_agent_usage_payload,
+    validate_novelty_payload,
+)
 from evolve.operators import run_operator
 
 
@@ -34,6 +41,23 @@ def test_operator_registry_uses_meta_agent_not_mutate():
     assert hasattr(interfaces, "MetaAgentResult")
     assert not hasattr(interfaces, "MutateOperator")
     assert not hasattr(interfaces, "MutateResult")
+
+
+@pytest.mark.parametrize(
+    ("valid_parent", "verdict"),
+    [(True, "discard"), (False, "keep")],
+)
+def test_gate_file_rejects_contradictory_parent_decision(valid_parent: bool, verdict: str) -> None:
+    with pytest.raises(PayloadValidationError, match="must agree"):
+        validate_gate_file_payload({"valid_parent": valid_parent, "verdict": verdict, "reason": "contradictory"})
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+def test_operator_payloads_reject_non_finite_numbers(value: float) -> None:
+    with pytest.raises(PayloadValidationError, match="finite number"):
+        validate_novelty_payload({"novelty": value, "accept": True})
+    with pytest.raises(PayloadValidationError, match="finite number"):
+        validate_meta_agent_usage_payload({"usd": value})
 
 
 def test_sdk_main_runs_select_operator_and_writes_parents(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

@@ -77,7 +77,7 @@ def test_ahe_recipe_initializes_harbor_miniswe_composition(tmp_path: Path) -> No
         "max_tasks": 30,
         "max_concurrent": 10,
         "timeout_per_task": 600,
-        "retry_attempts": 1,
+        "debugger_max_retries": 2,
         "debugger_agent_kwargs": {"reasoning_effort": "high", "max_tokens": 64000},
         "field_limit": 2000,
         "timeout_s": 3600,

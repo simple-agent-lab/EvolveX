@@ -95,7 +95,17 @@ def _archive_row(
         "task_vector": {
             "schema_version": 1,
             "tasks": {
-                task: {"trials": [{"status": status} for status in statuses]} for task, statuses in tasks.items()
+                task: {
+                    "trials": [
+                        {
+                            "status": "benchmark_complete",
+                            "reward": 1.0 if status == "passed" else 0.0,
+                            "owner": "benchmark",
+                        }
+                        for status in statuses
+                    ]
+                }
+                for task, statuses in tasks.items()
             },
         },
     }
@@ -129,6 +139,24 @@ def test_ahe_groups_all_rollouts_per_task_and_prioritizes_failures() -> None:
     assert "PASS vs FAIL" in module._debugger_prompt(jobs[0])
     assert "REUSABLE PATTERN" in module._debugger_prompt(jobs[1])
     assert [job.task_name for job in module._build_jobs(cases, max_tasks=1)] == ["task-b"]
+
+
+def test_ahe_excludes_infrastructure_only_tasks_and_applies_pass_threshold() -> None:
+    module = _module()
+    jobs = module._build_jobs(
+        [
+            _case("infra", "infra_error", None, task="task-infra"),
+            _case("missing", "incomplete", None, task="task-missing"),
+            _case("partial", "passed", 0.5, task="task-partial"),
+        ],
+        max_tasks=90,
+        pass_threshold=1.0,
+    )
+
+    assert [job.task_name for job in jobs] == ["task-partial"]
+    assert jobs[0].n_fail == 1
+    assert jobs[0].n_pass == 0
+    assert jobs[0].cases[0]["outcome"] == "failed"
 
 
 def test_ahe_debugger_reuses_only_allowlisted_meta_agent_config(tmp_path: Path) -> None:
@@ -338,6 +366,34 @@ def test_ahe_analyzer_writes_official_reports_and_baseline(tmp_path: Path, monke
     assert "trace_analyzer/analysis/detail/task-a.md" in result.artifacts
 
 
+def test_ahe_analyzer_preserves_infra_evidence_without_debugging_or_causal_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _module()
+    ctx = _ctx(tmp_path, genid="2", parent="1")
+    prior = ctx.workspace / "runs" / "gen-1"
+    _write_cases(prior, [_case("prior", "failed", 0, task="task-a")])
+    _write_cases(ctx.run_dir, [_case("current", "infra_error", None, task="task-a")])
+    monkeypatch.setattr(
+        module,
+        "run_readonly_agent",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("infra evidence must not invoke debugger")),
+    )
+
+    result = module.AheTraceAnalyzer().analyze(ctx.checkout, ctx)
+
+    assert result.summary["observed"] == 1
+    assert result.summary["selected"] == 0
+    assert result.summary["tasks"] == 0
+    overview = json.loads((ctx.run_dir / "trace_analyzer/evidence/overview.json").read_text())
+    assert overview["outcomes"] == {"infra_error": 1}
+    assert (ctx.run_dir / "trace_analyzer/evidence/cases.jsonl").read_text() == ""
+    change = json.loads((ctx.run_dir / "trace_analyzer/analysis/change_evaluation.json").read_text())
+    assert change["transitions"] == {"task-a": "unknown"}
+    assert change["unattributed_regressions"] == []
+
+
 @pytest.mark.parametrize(
     ("predicted", "fixed", "realized", "expected"),
     [
@@ -415,14 +471,10 @@ def test_ahe_archive_analysis_classifies_canonical_benchmark_complete_rewards(tm
                             ]
                         },
                         "always-fail": {
-                            "trials": [
-                                {"status": "benchmark_complete", "reward": 0.0, "owner": "benchmark"}
-                            ]
+                            "trials": [{"status": "benchmark_complete", "reward": 0.0, "owner": "benchmark"}]
                         },
                         "infra": {
-                            "trials": [
-                                {"status": "infrastructure_failed", "reward": None, "owner": "infrastructure"}
-                            ]
+                            "trials": [{"status": "infrastructure_failed", "reward": None, "owner": "infrastructure"}]
                         },
                     },
                 },
@@ -435,6 +487,70 @@ def test_ahe_archive_analysis_classifies_canonical_benchmark_complete_rewards(tm
     assert analysis["stability"]["possibly_unstable"] == ["flip"]
     assert analysis["stability"]["stable_fail"] == ["always-fail"]
     assert analysis["stability"]["infra_only"] == ["infra"]
+
+
+def test_ahe_archive_analysis_uses_configured_pass_threshold(tmp_path: Path) -> None:
+    module = _module()
+    ctx = _ctx(tmp_path, genid="1", parent="0")
+    ctx.config["pass_threshold"] = 0.5
+    _write_archive(
+        ctx,
+        [
+            {
+                "genid": "0",
+                "score": 0.5,
+                "selection_eligible": True,
+                "task_vector": {
+                    "schema_version": 1,
+                    "tasks": {
+                        "partial": {
+                            "trials": [
+                                {
+                                    "status": "benchmark_complete",
+                                    "reward": 0.5,
+                                    "owner": "benchmark",
+                                }
+                            ]
+                        }
+                    },
+                },
+            }
+        ],
+    )
+
+    analysis = module._archive_analysis(ctx)
+
+    assert analysis["stability"]["stable_pass"] == ["partial"]
+
+
+def test_ahe_archive_analysis_does_not_score_mixed_infrastructure_trials(tmp_path: Path) -> None:
+    module = _module()
+    ctx = _ctx(tmp_path, genid="1", parent="0")
+    _write_archive(
+        ctx,
+        [
+            {
+                "genid": "0",
+                "score": 0,
+                "selection_eligible": True,
+                "task_vector": {
+                    "schema_version": 1,
+                    "tasks": {
+                        "mixed": {
+                            "trials": [
+                                {"status": "benchmark_complete", "reward": 1.0, "owner": "benchmark"},
+                                {"status": "infrastructure_failed", "reward": 0.0, "owner": "infrastructure"},
+                            ]
+                        }
+                    },
+                },
+            }
+        ],
+    )
+
+    analysis = module._archive_analysis(ctx)
+
+    assert analysis["stability"]["infra_only"] == ["mixed"]
 
 
 def test_ahe_analyzer_renders_archive_analysis_in_overview(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

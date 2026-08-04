@@ -174,6 +174,19 @@ def test_harbor_rollout_defaults_jobs_to_workspace_runs(tmp_path: Path, monkeypa
     assert module._jobs_root(ctx) == tmp_path / "runs" / "harbor-rollouts"
 
 
+def test_harbor_rollout_explicit_zero_retries_overrides_environment() -> None:
+    module = _harbor_rollout_module()
+
+    assert (
+        module._configured_max_retries(
+            {"max_retries": 0},
+            {"EVOLVE_HARBOR_MAX_RETRIES": "9"},
+        )
+        == 0
+    )
+    assert module._configured_max_retries({}, {"EVOLVE_HARBOR_MAX_RETRIES": "2"}) == 2
+
+
 def test_harbor_rollout_reuses_only_a_complete_explicitly_enabled_stage(
     tmp_path: Path,
 ) -> None:

@@ -301,7 +301,8 @@ def build_prompt(
     trajectory_only = _selected_variant(ctx) == TRAJECTORY_ONLY_VARIANT
     summaries = [] if trajectory_only else _case_summaries(ctx)
     tasks_analyzed = _selected_case_count(ctx) if trajectory_only else len(summaries)
-    drafts = _drafts(skills_dir)
+    evolve_skills = _enabled(ctx.config, "evolve_skills", True)
+    drafts = _drafts(skills_dir) if evolve_skills else []
     skill_names = _skills(skills_dir)
     template_rule = _placeholder_rule(ctx.config, prompt_relative)
     experiment = Path("/app/task/workspace") if runner_name(ctx) == "harbor" else ctx.workspace
@@ -344,6 +345,7 @@ def build_prompt(
         "drafts": drafts,
         "skills_before": skill_names,
         "skills_dir": skills_dir,
+        "evolve_skills": evolve_skills,
         "trajectory_only": trajectory_only,
     }
 
@@ -372,7 +374,8 @@ class AEvolveMetaAgent(MetaAgentOperator):
             _write_json(out / "usage.json", _safe_usage(exc.usage))
             raise SystemExit(exc.returncode)
 
-        _clear_drafts(state["skills_dir"])
+        if state["evolve_skills"]:
+            _clear_drafts(state["skills_dir"])
         skills_before = state["skills_before"]
         skills_after = _skills(state["skills_dir"])
         added = sorted(set(skills_after) - set(skills_before))

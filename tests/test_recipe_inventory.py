@@ -15,6 +15,7 @@ SUPPORTED = {
 def _directories(root: Path) -> set[str]:
     return {path.name for path in root.iterdir() if path.is_dir() and not path.name.startswith(".")}
 
+
 def test_repository_exposes_only_supported_recipes() -> None:
     assert _directories(ROOT / "recipes") == SUPPORTED
     assert set(RECIPE_NAMES) == SUPPORTED

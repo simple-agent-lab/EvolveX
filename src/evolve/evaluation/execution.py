@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import sys
 import tempfile
 import time
@@ -219,6 +220,8 @@ def _read_cost(run_dir: Path) -> float:
     value = json.loads(path.read_text()).get("usd")
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValueError("evaluator cost.json must contain numeric usd")
+    if not math.isfinite(float(value)) or float(value) < 0:
+        raise ValueError("evaluator cost.json usd must be finite and non-negative")
     return float(value)
 
 

@@ -163,7 +163,7 @@ def _read_manifest_file(checkout: Path, genid: str) -> dict[str, Any]:
 def build_prompt(checkout: Path, observation: str, ctx: OperatorContext) -> str:
     del observation
     template = dict(MANIFEST_TEMPLATE)
-    template["iteration"] = int(ctx.genid)
+    template["iteration"] = ctx.genid
     if runner_name(ctx) == "harbor":
         repository = Path("/app/task/workspace")
         current_run = repository / "runs" / f"gen-{ctx.genid}"

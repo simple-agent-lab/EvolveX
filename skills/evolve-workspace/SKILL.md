@@ -15,14 +15,14 @@ candidate, tag `gen/<id>`); `archive.jsonl` is the ledger.
 
 ```bash
 ./evolve status              # where things stand: champion, recent gens, anything pending
-./evolve run 1               # one generation: select → rollout → meta_agent → gate → record
+./evolve run . --max-generations 1  # run through generation 1
 # Or edit target/ (and optionally operators/) yourself within the mutable surface,
 # then let the next `./evolve run` pick up from a clean tree.
 ```
 
 `run` drives the loop: novelty (if configured), the self-reference admission
 gate, frozen eval + stamping, gate, ledger, reflection (if configured).
-Let the loop run itself: `./evolve run 10`.
+Let the loop run itself through generation `N`: `./evolve run . --max-generations N`.
 
 ## The five invariants (enforced — don't fight them)
 

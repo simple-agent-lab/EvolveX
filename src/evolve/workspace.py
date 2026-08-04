@@ -11,6 +11,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import urllib.parse
 from dataclasses import dataclass
 from importlib.resources.abc import Traversable
 from pathlib import Path
@@ -226,6 +227,8 @@ def _write_files(
         "README.md": _workspace_scaffold("README.md"),
         "AGENTS.md": _workspace_scaffold("AGENTS.md"),
         "program.md": _workspace_scaffold("program.md"),
+        "LICENSE.evolve-framework": _framework_legal_text("LICENSE"),
+        "NOTICE.evolve-framework": _framework_legal_text("NOTICE"),
         ".gitignore": _workspace_scaffold(".gitignore"),
         ".evolve-protocol-version": "1\n",
         "operators/engines/local.sh": _shell_script("operator local engine"),
@@ -258,7 +261,9 @@ def _write_files(
         "evaluator/verifier.env": _agent_env(evaluator.get("verifier_env")),
         "evaluator/environment.kwargs": _environment_kwargs(evaluator.get("environment_kwargs")),
         "evaluator/splits.json": json.dumps(split_manifest, indent=2, sort_keys=True) + "\n",
-        "evaluator/dataset.pin": f"dataset={evaluator_dataset}\nchecksum=sha256:stub\n",
+        "evaluator/dataset.pin": (
+            f"dataset={evaluator_dataset}\nchecksum={split_manifest['dataset_digest'] or 'unresolved'}\n"
+        ),
         "evaluator/runtime.pin": f"{runtime_digest}\n",
         "evaluator/stub_eval.py": _workspace_scaffold("evaluator/stub_eval.py"),
         "evaluator/engines/local.sh": _shell_script("canonical local engine"),
@@ -667,7 +672,13 @@ def _copy_resource_tree(source: Traversable, destination: Path) -> None:
 
 
 def _vendor_seed(workspace: Path, source: Path, fallback_remote: str) -> None:
-    shutil.copytree(source, workspace / "target", ignore=shutil.ignore_patterns(*_SEED_IGNORE_PATTERNS))
+    _validate_seed_symlinks(source)
+    shutil.copytree(
+        source,
+        workspace / "target",
+        symlinks=True,
+        ignore=shutil.ignore_patterns(*_SEED_IGNORE_PATTERNS),
+    )
     upstream = _git_upstream(source, fallback_remote)
     if upstream:
         (workspace / "target" / "UPSTREAM.json").write_text(json.dumps(upstream, sort_keys=True) + "\n")
@@ -677,9 +688,39 @@ def _git_upstream(source: Path, fallback_remote: str) -> dict[str, str] | None:
     if not (source / ".git").exists():
         return None
     return {
-        "remote": _git_optional(source, "remote", "get-url", "origin") or fallback_remote,
+        "remote": _sanitize_upstream_remote(_git_optional(source, "remote", "get-url", "origin") or fallback_remote),
         "commit": _git(source, "rev-parse", "HEAD").strip(),
     }
+
+
+def _validate_seed_symlinks(source: Path) -> None:
+    root = source.resolve()
+    for path in source.rglob("*"):
+        if not path.is_symlink():
+            continue
+        target = path.readlink()
+        if target.is_absolute():
+            raise ValueError(f"target seed contains an absolute symlink: {path}")
+        resolved = (path.parent / target).resolve(strict=False)
+        try:
+            resolved.relative_to(root)
+        except ValueError:
+            raise ValueError(f"target seed contains a symlink escaping its root: {path}") from None
+
+
+def _sanitize_upstream_remote(remote: str) -> str:
+    parsed = urllib.parse.urlsplit(remote)
+    if not parsed.scheme or not parsed.netloc:
+        return remote
+    hostname = parsed.hostname or ""
+    if ":" in hostname and not hostname.startswith("["):
+        hostname = f"[{hostname}]"
+    try:
+        parsed_port = parsed.port
+    except ValueError:
+        parsed_port = None
+    port = f":{parsed_port}" if parsed_port is not None else ""
+    return urllib.parse.urlunsplit((parsed.scheme, f"{hostname}{port}", parsed.path, "", ""))
 
 
 def _looks_like_git_url(seed: str) -> bool:
@@ -912,6 +953,13 @@ def _shell_script(label: str) -> str:
 
 def _workspace_scaffold(relative_path: str) -> str:
     return (scaffold_root() / "workspace" / relative_path).read_text()
+
+
+def _framework_legal_text(name: str) -> str:
+    source = SOURCE_ROOT / name
+    if (SOURCE_ROOT / "pyproject.toml").is_file() and source.is_file():
+        return source.read_text()
+    return (resource_root("licenses") / name).read_text()
 
 
 def _evaluator_scaffold(engine: str, relative_path: str) -> str:

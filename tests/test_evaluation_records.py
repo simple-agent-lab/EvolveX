@@ -1,3 +1,5 @@
+import pytest
+
 from evolve.evaluation import EvaluationRecord, Outcome, TrialResult, classify_evaluation
 
 
@@ -33,6 +35,12 @@ def test_exception_beats_numeric_reward() -> None:
     assert isinstance(record, EvaluationRecord)
     assert record.outcome is Outcome.INFRASTRUCTURE_FAILED
     assert record.score is None
+
+
+@pytest.mark.parametrize("reward", [float("nan"), float("inf"), float("-inf")])
+def test_trial_result_rejects_non_finite_reward(reward: float) -> None:
+    with pytest.raises(ValueError, match="finite number"):
+        TrialResult("task", 0, Outcome.BENCHMARK_COMPLETE, reward, "benchmark")
 
 
 def test_candidate_failure_beats_missing_trial_count() -> None:

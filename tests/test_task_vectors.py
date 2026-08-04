@@ -19,6 +19,17 @@ def test_normalize_legacy_boolean_vector() -> None:
     }
 
 
+@pytest.mark.parametrize("reward", [float("nan"), float("inf"), float("-inf")])
+def test_task_vector_rejects_non_finite_rewards(reward: float) -> None:
+    with pytest.raises(TaskVectorError, match="non-finite reward"):
+        normalize_task_vector(
+            {
+                "schema_version": 1,
+                "tasks": {"task-a": {"trials": [{"trial": 0, "status": "benchmark_complete", "reward": reward}]}},
+            }
+        )
+
+
 def test_versioned_vector_preserves_partial_and_infra_trials() -> None:
     vector = {
         "schema_version": 1,

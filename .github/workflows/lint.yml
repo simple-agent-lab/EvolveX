@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 concurrency:
   group: lint-${{ github.ref }}
   cancel-in-progress: true
@@ -12,20 +15,29 @@ concurrency:
 jobs:
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Install uv
         uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
 
+      - name: Check lockfile
+        run: uv lock --check
+
       - name: Install dev dependencies
-        run: uv sync --dev
+        run: uv sync --dev --locked
 
       - name: Ruff — lint (blocking)
-        run: uv run ruff check --output-format=github .
+        run: uv run --frozen ruff check --output-format=github .
+
+      - name: Ruff — format (blocking)
+        run: uv run --frozen ruff format --check .
 
       - name: ty — type check (blocking)
         # The tree is at zero ty diagnostics; keep it there.
-        run: uv run ty check
+        run: uv run --frozen ty check

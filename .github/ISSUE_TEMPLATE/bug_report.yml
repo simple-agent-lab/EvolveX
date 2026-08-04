@@ -1,0 +1,66 @@
+name: Bug report
+description: Report a reproducible defect in Evolve Framework.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a defect. Do not include credentials, private datasets, or sensitive run artifacts.
+  - type: input
+    id: version
+    attributes:
+      label: Framework version or commit
+      description: Installed package version (`python -c "import evolve; print(evolve.__version__)"`) or Git commit SHA.
+      placeholder: 0.1.0 or abc1234
+    validations:
+      required: true
+  - type: input
+    id: recipe
+    attributes:
+      label: Recipe
+      description: The built-in recipe name or a link to the custom recipe.
+      placeholder: hill_climb
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include OS, Python, uv, Harbor, and container runtime versions that affect the run.
+      placeholder: |
+        OS: Ubuntu 24.04
+        Python: 3.12.x
+        uv: 0.x
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Minimal reproduction
+      description: Provide the smallest safe sequence of commands and files that reproduces the issue.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and sanitized logs
+      description: Remove tokens, credentials, private URLs, and proprietary task content.
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submission checks
+      options:
+        - label: I searched existing issues for this problem.
+          required: true
+        - label: I removed credentials and other sensitive information from this report.
+          required: true

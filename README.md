@@ -48,6 +48,9 @@ research and controlled experimentation.
   operator paths may evolve.
 - **Traceable outcomes:** Git lineage, evaluation artifacts, and stamped archive
   records connect every candidate to its evidence.
+- **Content-bound evaluation:** Local task trees, generation commits, candidate
+  runtimes, and replayed artifact bytes are bound into the evidence used for
+  parent selection.
 
 ## Structure
 
@@ -68,8 +71,8 @@ Requirements: Python 3.12+, [`uv`](https://docs.astral.sh/uv/), and Git.
 ```bash
 git clone https://github.com/simple-agent-lab/simple-evolve-agent.git
 cd simple-evolve-agent
-uv sync --dev --frozen
-uv run evolve --help
+uv sync --dev --locked
+uv run --frozen evolve --help
 ```
 
 Run a deterministic baseline smoke test without a model or Docker:
@@ -167,6 +170,7 @@ See [DESIGN.md](DESIGN.md) for the complete model and invariants.
 | [Trace analysis](TRACE_ANALYZER.md) | Trace retention and analyzer variants. |
 | [Local environment](LOCAL_ENVIRONMENT.md) | Docker-free trusted local execution. |
 | [Contributing](CONTRIBUTING.md) | Development setup and repository conventions. |
+| [Releasing](RELEASING.md) | Source, artifact, and publication checklist. |
 
 ## License
 
