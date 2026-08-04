@@ -23,6 +23,8 @@ operators:
   gate: {variant: parent_eligible}
   record: {variant: hyperagents}
   timeout_s: 600
+execution_runtime:
+  backend: docker
 evaluator:
   engine: harbor
   model: openai/gpt-5.4-2026-03-05

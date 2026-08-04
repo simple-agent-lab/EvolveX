@@ -52,7 +52,11 @@ def task_set_identity(
 
 
 def effective_task_set_identity(
-    checkout: Path, evaluator: dict[str, Any], *, purpose: str = "candidate"
+    checkout: Path,
+    evaluator: dict[str, Any],
+    *,
+    purpose: str = "candidate",
+    task_limit: int | None = None,
 ) -> TaskSetIdentity:
     manifest = _checkout_split_manifest(checkout)
     configured_names = evaluator.get("task_names")
@@ -79,6 +83,12 @@ def effective_task_set_identity(
         attempts = int(evaluator.get("k", 1))
     except (TypeError, ValueError):
         attempts = 1
+    if task_limit is not None:
+        if task_limit < 1:
+            raise ValueError("task_limit must be positive")
+        if not members:
+            raise ValueError("task_limit requires a resolved task manifest")
+        members = tuple(sorted(set(members)))[:task_limit]
     return task_set_identity(
         evaluator.get("dataset", ""),
         attempts,

@@ -35,8 +35,12 @@ def test_release_wheel_has_one_resource_owner_and_complete_metadata() -> None:
         assert {
             "evolve/library/PROTOCOL.md",
             "evolve/recipes/aevolve/evolve.yaml",
+            "evolve/recipes/ahe_codex/dataset-manifest.json",
+            "evolve/recipes/ahe_codex/evolve.yaml",
             "evolve/scaffolds/workspace/README.md",
             "evolve/seeds/codex/agent.py",
+            "evolve/seeds/codex/plugins/evolve-target/.codex-plugin/plugin.json",
+            "evolve/seeds/codex/plugins/evolve-target/hooks/hooks.json",
             "evolve/skills/evolve-workspace/SKILL.md",
             "evolve/containers/meta-agent/Dockerfile",
             "evolve/containers/meta-agent/required-tools.txt",

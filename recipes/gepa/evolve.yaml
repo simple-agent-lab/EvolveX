@@ -42,6 +42,8 @@ operators:
   gate: {variant: parent_eligible, timeout_s: 600}
   record: {variant: gepa, timeout_s: 600}
   timeout_s: 600
+execution_runtime:
+  backend: docker
 evaluator:
   engine: harbor
   dataset: swe-bench-lite

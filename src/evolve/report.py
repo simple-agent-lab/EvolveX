@@ -22,7 +22,18 @@ def format_status(workspace: Path) -> str:
     ]
     for status, count in sorted(Counter(str(row.get("status", "pending")) for row in rows).items()):
         lines.append(f"status.{status}: {count}")
+    if rows:
+        latest = max(rows, key=lambda row: _generation_key(row.get("genid")))
+        lines.append(f"latest.genid: {_value(latest.get('genid'))}")
+        lines.append(f"latest.status: {_value(latest.get('status'))}")
+        if latest.get("failure_stage"):
+            lines.append(f"latest.failure_stage: {_value(latest.get('failure_stage'))}")
     return "\n".join(lines) + "\n"
+
+
+def _generation_key(value: object) -> tuple[int, int | str]:
+    text = str(value or "")
+    return (1, int(text)) if text.isdigit() else (0, text)
 
 
 def format_report(workspace: Path) -> str:

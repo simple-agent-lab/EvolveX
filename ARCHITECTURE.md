@@ -25,14 +25,23 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `candidate/__init__.py` | 10 | candidate-boundary package marker |
 | `candidate/smoke.py` | 150 | run evaluator smoke against an exact candidate snapshot and persist redacted diagnostics |
 | `candidate/snapshot.py` | 100 | exact candidate Git tree construction, temporary materialization, and reviewed-tree commit verification |
-| `cli.py` | 300 | argument parsing and verb dispatch only — no logic |
+| `cli.py` | 350 | argument parsing and verb dispatch only — no logic |
 | `config.py` | 200 | read/render `evolve.yaml`: recipes, experiment values, surface lists, operator blocks |
 | `driver.py` | 1800 | the generation sequencer: orchestrates baseline eval, verbs + operators (incl. novelty, self-modification admission gates, sealed anchors); validates operator outputs; computes verified_fixes; audit quarantine; doctor repair |
+| `doctor.py` | 250 | read-only local/experiment preflight profiles and persisted diagnostic receipts |
 | `evaluation/__init__.py` | 50 | pure evaluation-result facade |
 | `evaluation/evidence.py` | 150 | evaluator-output validation and conversion into canonical trial results |
 | `evaluation/execution.py` | 350 | clean-checkout canonical evaluation: tree assertion, targeted task execution, lifecycle, artifacts, and score parsing |
 | `evaluation/identity.py` | 200 | canonical task-set identity, local task-content binding, and frozen-baseline comparability |
 | `evaluation/results.py` | 200 | evaluation result types, outcome classification, and persisted record shape |
+| `evaluation/run_plan.py` | 100 | authoritative per-attempt task, trial-count, commit, and runtime plan |
+| `execution_runtime/__init__.py` | 25 | execution-runtime package facade |
+| `execution_runtime/command.py` | 50 | shell-facing runtime endpoint resolver |
+| `execution_runtime/config.py` | 75 | validation for the portable execution_runtime config section |
+| `execution_runtime/models.py` | 125 | host execution configuration, resolved context, and redacted receipt types |
+| `execution_runtime/probes.py` | 275 | daemon, Compose, disk, and bind-mount preflight probes |
+| `execution_runtime/resolve.py` | 175 | explicit/env/Linux/macOS Docker endpoint resolution |
+| `experiment_smoke.py` | 200 | isolated one-task gen0-to-gen1 full-loop canary |
 | `feedback.py` | 250 | assemble current and historical rollout evidence plus ledger-derived feedback for the meta-agent |
 | `operators.py` | 200 | subprocess runner for workspace operator scripts (contract: env vars, --config, timeout) |
 | `patching.py` | 150 | mutable-surface patch creation and parent-reference selection |
@@ -66,7 +75,7 @@ each workspace, immutable there because it sits outside the mutable surface
 | `frozen/interfaces.py` | 350 | operator ABCs (incl. trace analyzer, novelty, and reflect), the registry, result schemas, payload validation |
 | `frozen/sdk.py` | 300 | Python operator entrypoint and file-contract IO; no library algorithm policy |
 
-Total `src/evolve/` budget: **10205 lines**. The budget admits the explicit evaluation-package
+Total `src/evolve/` budget: **11530 lines**. The budget admits the explicit evaluation-package
 boundaries, the opt-in in-place Harbor runtime, and the redacted trace-analysis
 boundary between rollout and feedback assembly; if the mechanism wants to
 grow past that, something belongs in a workspace operator instead —

@@ -11,11 +11,17 @@ if [ -n "${EVOLVE_HARBOR_N_CONCURRENT_OVERRIDE:-}" ]; then
   EVOLVE_HARBOR_N_CONCURRENT=$EVOLVE_HARBOR_N_CONCURRENT_OVERRIDE
 fi
 : "${EVOLVE_WORKSPACE:=$PWD}"
+: "${EVOLVE_FRAMEWORK_PYTHON:=$(command -v python3)}"
 if [ -n "${EVOLVE_UV_BINARY:-}" ]; then UV=$EVOLVE_UV_BINARY; else UV=$(command -v uv || true); fi
 [ -n "$UV" ] && [ -x "$UV" ] || { printf 'uv is required; install uv or set EVOLVE_UV_BINARY\n' >&2; printf 'infra_failed\n' > "$EVOLVE_RUN_DIR/status"; exit 3; }
-if [ -z "${DOCKER_HOST:-}" ] && [ -S "$HOME/.colima/default/docker.sock" ]; then
-  DOCKER_HOST="unix://$HOME/.colima/default/docker.sock"
-  export DOCKER_HOST
+if [ "${EVOLVE_HARBOR_ENVIRONMENT:-docker}" = "docker" ] && [ -z "${DOCKER_HOST:-}" ]; then
+  resolved_docker_host=$(
+    "$EVOLVE_FRAMEWORK_PYTHON" -m evolve.execution_runtime.command docker-host 2>/dev/null || true
+  )
+  if [ -n "$resolved_docker_host" ]; then
+    DOCKER_HOST=$resolved_docker_host
+    export DOCKER_HOST
+  fi
 fi
 if [ -z "${EVOLVE_GENID:-}" ]; then
   EVOLVE_GENID=$(basename "$(dirname "$EVOLVE_RUN_DIR")")
@@ -23,7 +29,6 @@ if [ -z "${EVOLVE_GENID:-}" ]; then
 fi
 export EVOLVE_GENID
 : "${EVOLVE_ATTEMPT_ID:=manual-$EVOLVE_GENID}"
-: "${EVOLVE_FRAMEWORK_PYTHON:=$(command -v python3)}"
 export EVOLVE_ATTEMPT_ID EVOLVE_FRAMEWORK_PYTHON
 dataset_snapshot=
 cleanup_dataset_snapshot() {
@@ -62,6 +67,28 @@ if python3 -c 'import json,sys; raise SystemExit(0 if json.load(open(sys.argv[1]
   EVOLVE_HARBOR_DATASET_MODE=path
   EVOLVE_HARBOR_TASK_FILE="$EVOLVE_RUN_DIR/task-names.txt"
   export EVOLVE_HARBOR_TASKS EVOLVE_HARBOR_DATASET_MODE EVOLVE_HARBOR_TASK_FILE
+fi
+if [ -n "${EVOLVE_RUN_PLAN:-}" ]; then
+  if ! "$EVOLVE_FRAMEWORK_PYTHON" - "$EVOLVE_RUN_PLAN" "$EVOLVE_RUN_DIR/run-plan-tasks.txt" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+payload = json.loads(Path(sys.argv[1]).read_text())
+tasks = payload.get("tasks") if isinstance(payload, dict) else None
+expected = payload.get("expected_trials") if isinstance(payload, dict) else None
+if not isinstance(tasks, list) or any(not isinstance(task, str) or not task for task in tasks):
+    raise SystemExit("evaluation run plan has invalid tasks")
+if not isinstance(expected, int) or isinstance(expected, bool) or expected < 1:
+    raise SystemExit("evaluation run plan has invalid expected_trials")
+Path(sys.argv[2]).write_text("".join(f"{task}\n" for task in tasks))
+PY
+  then
+    printf 'infra_failed\n' > "$EVOLVE_RUN_DIR/status"
+    exit 3
+  fi
+  EVOLVE_HARBOR_TASK_FILE="$EVOLVE_RUN_DIR/run-plan-tasks.txt"
+  export EVOLVE_HARBOR_TASK_FILE
 fi
 : "${EVOLVE_UV_CACHE_DIR:=$HOME/.evolve/uv-cache}"
 runtime_mounts=${EVOLVE_CANDIDATE_RUNTIME_MOUNTS_JSON:-}

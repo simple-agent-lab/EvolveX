@@ -163,6 +163,21 @@ def test_ahe_prompt_uses_official_decisions_and_required_manifest(tmp_path: Path
     assert "Archive: /app/task/workspace/archive.jsonl" in prompt
     assert "Raw trace evidence: /app/task/workspace/runs/gen-1/trace_analyzer/evidence" in prompt
     assert "selected parent's handoff" in prompt
+
+
+def test_ahe_prompt_describes_codex_plugin_target_when_present(tmp_path: Path) -> None:
+    module = _module()
+    checkout, _run_dir, ctx = _case(tmp_path)
+    (checkout / "target" / "codex.toml").write_text('[codex]\nmodel = "gpt-5.4"\n')
+    prompt = module.build_prompt(checkout, "fallback", ctx)
+    normalized = " ".join(prompt.split())
+
+    assert "Improve the Codex harness" in prompt
+    assert "local plugin under `target/plugins/`" in prompt
+    assert "candidate plugin" in normalized
+    assert "temporary Codex home" in normalized
+    assert "Improve the MiniSWE harness" not in prompt
+    assert "target's `DefaultAgent`" not in prompt
     assert "/app/task/workspace/artifacts/generations/0/handoff.md" in prompt
     assert "/app/task/workspace/artifacts/generations/1" in prompt
     assert "PARENT HANDOFF BODY MUST STAY ON DISK" not in prompt

@@ -7,6 +7,7 @@ import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import cast
 
 import typer
 from dotenv import dotenv_values
@@ -14,9 +15,21 @@ from dotenv import dotenv_values
 from .archive import archive_path, merged_rows, verify_integrity
 from .candidate.smoke import run_candidate_smoke
 from .config import RECIPE_NAMES, experiment_int
-from .driver import RunOptions, commit_child, eval_child, fork_child, record_fields
-from .driver import doctor as doctor_workspace
-from .driver import run as driver_run
+from .doctor import DoctorProfile, run_doctor
+from .driver import (
+    RunOptions,
+    commit_child,
+    eval_child,
+    fork_child,
+    record_fields,
+)
+from .driver import (
+    repair as repair_workspace,
+)
+from .driver import (
+    run as driver_run,
+)
+from .experiment_smoke import run_experiment_smoke
 from .git import head_tag, working_tree_changed_paths
 from .population import best_row, fixed_evaluation_identity
 from .report import format_report, format_status
@@ -154,8 +167,19 @@ def eval_cmd(
 ) -> None:
     """Evaluate a tagged child version."""
     with _workspace_environment(workspace):
-        eval_child(workspace, genid, force=force)
-    print(f"Evaluated gen/{genid}")
+        record = eval_child(workspace, genid, force=force)
+    print(f"Evaluated gen/{genid}" if record is not None else f"Skipped gen/{genid}; evaluation is already terminal")
+
+
+@app.command()
+@_guard
+def retry(workspace: Path, genid: str) -> None:
+    """Retry a failed or otherwise terminal evaluation as a new certified attempt."""
+    with _workspace_environment(workspace):
+        record = eval_child(workspace, genid, force=True)
+    if record is None:
+        raise RuntimeError(f"gen/{genid} could not be retried")
+    print(f"Retried gen/{genid}: {record.outcome.value} (attempt {record.attempt})")
 
 
 @app.command()
@@ -213,6 +237,31 @@ def candidate_smoke(
         raise typer.Exit(3)
 
 
+@app.command("smoke")
+@_guard
+def smoke(
+    workspace: Path = typer.Argument(Path(".")),
+    profile: str = typer.Option("experiment", "--profile", help="local or experiment"),
+    task: str | None = typer.Option(None, "--task"),
+) -> None:
+    """Run a local candidate check or an isolated full-loop experiment canary."""
+    if profile == "local":
+        with _workspace_environment(workspace):
+            result = run_candidate_smoke(workspace.resolve(), workspace=workspace.resolve())
+        print(f"local smoke: {result.status} result={result.attempt_dir / 'result.json'}")
+        if result.status != "passed":
+            raise typer.Exit(2 if result.status == "failed" else 3)
+        return
+    if profile != "experiment":
+        raise typer.BadParameter("choose local or experiment", param_hint="--profile")
+    with _workspace_environment(workspace):
+        result = run_experiment_smoke(workspace, task=task)
+    print(f"experiment smoke: {result.status} task={result.task} workspace={result.workspace}")
+    print(f"result: {result.result_path}")
+    if result.status != "passed":
+        raise typer.Exit(2)
+
+
 @app.command()
 @_guard
 def status(workspace: Path = typer.Argument(Path("."))) -> None:
@@ -227,14 +276,32 @@ def report(workspace: Path = typer.Argument(Path("."))) -> None:
     print(format_report(workspace), end="")
 
 
+@app.command("doctor")
+@_guard
+def doctor_profile(
+    workspace: Path = typer.Argument(Path(".")),
+    profile: str = typer.Option("experiment", "--profile", help="local or experiment"),
+    probe_model: bool = typer.Option(False, "--probe-model"),
+) -> None:
+    """Run read-only local or long-running experiment preflight checks."""
+    if profile not in {"local", "experiment"}:
+        raise typer.BadParameter("choose local or experiment", param_hint="--profile")
+    report = run_doctor(workspace, profile=cast(DoctorProfile, profile), probe_model=probe_model)
+    for check in report.checks:
+        print(f"{check.status.upper():4} {check.name}: {check.detail}")
+    print(f"doctor report: {report.report_path}")
+    if not report.healthy:
+        raise typer.Exit(2)
+
+
 @app.command()
 @_guard
-def doctor(workspace: Path = typer.Argument(Path("."))) -> None:
-    """Detect and repair interrupted state (stale worktrees, pending generations)."""
-    actions = doctor_workspace(workspace)
+def repair(workspace: Path = typer.Argument(Path("."))) -> None:
+    """Explicitly repair interrupted state such as stale child worktrees."""
+    actions = repair_workspace(workspace)
     for action in actions:
         print(action)
-    print("doctor: healthy" if not actions else f"doctor: repaired/observed {len(actions)} item(s)")
+    print("repair: healthy" if not actions else f"repair: completed/observed {len(actions)} item(s)")
 
 
 @app.command()

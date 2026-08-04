@@ -18,6 +18,7 @@ CASES = {
     "hill_climb": ("external", CANDIDATE, "codex"),
     "aevolve": ("codex", "target.agent:HarborAgent", "codex"),
     "ahe": ("external", CANDIDATE, FILE_TASK),
+    "ahe_codex": ("codex", "target.agent:HarborAgent", "codex"),
     "gepa": ("codex", "target.agent:HarborAgent", "codex"),
     "hyperagents": ("external", CANDIDATE, FILE_TASK),
 }

@@ -21,11 +21,14 @@ operators:
   gate: {variant: ahe_artifact_valid, timeout_s: 600}
   record: {variant: jsonl, timeout_s: 600}
   timeout_s: 600
+execution_runtime:
+  backend: docker
+  minimum_free_gib: 80
 evaluator:
   engine: harbor
   model: openai/gpt-5.4-2026-03-05
   candidate_runtime: {variant: uv, project: target, python: "3.12"}
-  dataset: terminal-bench-2-10-10-10
+  dataset: terminal-bench-2-ahe-30-v1
   agent: evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent
   task_scope: full
   evaluation_split: train

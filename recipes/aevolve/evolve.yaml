@@ -41,6 +41,8 @@ operators:
   gate: {variant: hillclimb, strict: true, timeout_s: 600}
   record: {variant: jsonl, timeout_s: 600}
   timeout_s: 600
+execution_runtime:
+  backend: docker
 evaluator:
   engine: harbor
   dataset: swe-bench-lite

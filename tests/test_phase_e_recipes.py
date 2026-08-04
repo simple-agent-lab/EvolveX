@@ -7,6 +7,7 @@ RECIPES = ROOT / "recipes"
 SUPPORTED_RECIPES = {
     "aevolve",
     "ahe",
+    "ahe_codex",
     "gepa",
     "hill_climb",
     "hyperagents",
@@ -32,8 +33,10 @@ def test_all_recipes_are_recipe_artifacts_only() -> None:
         assert (recipe / "README.md").is_file()
         assert {path.name for path in recipe.iterdir()} <= {
             "README.md",
+            "dataset-manifest.json",
             "evolve.yaml",
             "notes.md",
+            "prepare_dataset.py",
             "evaluator",
             "sealed",
         }
@@ -41,7 +44,14 @@ def test_all_recipes_are_recipe_artifacts_only() -> None:
         for section in ("experiment:", "target:", "surface:", "operators:", "evaluator:"):
             assert section in config
         top_level_sections = [line.split(":", 1)[0] for line in config.splitlines() if line and not line[0].isspace()]
-        assert top_level_sections == ["experiment", "target", "surface", "operators", "evaluator"]
+        assert top_level_sections == [
+            "experiment",
+            "target",
+            "surface",
+            "operators",
+            "execution_runtime",
+            "evaluator",
+        ]
 
 
 def test_supported_recipes_use_harbor_and_method_meta_agent() -> None:
@@ -83,7 +93,7 @@ def test_supported_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "record: {variant: gepa" in config
         elif name == "ahe":
             assert "max_generations: 10" in config
-            assert "dataset: terminal-bench-2-10-10-10" in config
+            assert "dataset: terminal-bench-2-ahe-30-v1" in config
             assert "seed: https://github.com/SWE-agent/mini-swe-agent.git" in config
             assert "revision: 388da74aad620a384ab47669b17c52133e30e7c3" in config
             assert "generate_lock: true" in config
@@ -106,6 +116,30 @@ def test_supported_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "tasks_per_round: 30" in config
             assert "k: 1" in config
             assert "n_concurrent: 10" in config
+            assert "\n  split:" not in config
+            assert "\n  anchor:" not in config
+        elif name == "ahe_codex":
+            assert "max_generations: 10" in config
+            assert "dataset: terminal-bench-2-ahe-30-v1" in config
+            assert "seed: builtin-codex" in config
+            assert "rollout: {variant: evaluation_replay" in config
+            assert "trace_analyzer: {variant: ahe" in config
+            assert "meta_agent: {variant: ahe, runner: harbor" in config
+            assert "expose_gate_data: false" in config
+            assert "select: {variant: ahe_latest" in config
+            assert "gate: {variant: ahe_artifact_valid" in config
+            assert "max_tasks: 30" in config
+            assert "max_cases" not in config
+            assert "budget_usd" not in config
+            assert "agent: codex" in config
+            assert "editable_roots: [target]" in config
+            assert "max_retries: 1" in config
+            assert "agent: target.agent:HarborAgent" in config
+            assert "task_scope: full" in config
+            assert "evaluation_split: train" in config
+            assert "tasks_per_round: 30" in config
+            assert "k: 1" in config
+            assert "n_concurrent: 5" in config
             assert "\n  split:" not in config
             assert "\n  anchor:" not in config
         elif name == "hyperagents":
@@ -147,7 +181,7 @@ def test_supported_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "agent: codex" in config
             assert "variant: noop" not in config
         assert "mutate:" not in config
-        if name not in {"aevolve", "gepa"}:
+        if name not in {"aevolve", "ahe_codex", "gepa"}:
             assert "agent: evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent" in config
             assert "harbor_agent:" not in config
         assert "variant: fixed" not in config
@@ -160,11 +194,15 @@ def test_ahe_and_hyperagents_share_the_pinned_meta_agent_image() -> None:
 
 
 def test_terminal_bench_method_recipes_use_full_curated_dataset() -> None:
-    for name in ("ahe", "hyperagents"):
+    expected_datasets = {
+        "ahe": "terminal-bench-2-ahe-30-v1",
+        "hyperagents": "terminal-bench-2-10-10-10",
+    }
+    for name, expected_dataset in expected_datasets.items():
         recipe = _parsed_config(name)
         evaluator = recipe["evaluator"]
         assert isinstance(evaluator, dict)
-        assert evaluator["dataset"] == "terminal-bench-2-10-10-10"
+        assert evaluator["dataset"] == expected_dataset
         assert "split" not in evaluator
         assert evaluator["sampling"] == "static"
         assert evaluator["tasks_per_round"] == 30

@@ -6,6 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SUPPORTED = {
     "aevolve",
     "ahe",
+    "ahe_codex",
     "gepa",
     "hill_climb",
     "hyperagents",

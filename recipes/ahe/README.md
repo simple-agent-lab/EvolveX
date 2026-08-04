@@ -44,7 +44,12 @@ Candidate execution uses Harbor's native task timeouts
 
 ```bash
 export EVOLVE_RUNTIME_DIGEST="sha256:replace-with-your-immutable-evaluator-image-digest"
-export HARBOR_TASKS="/absolute/path/to/terminal-bench-2-10-10-10"
+harbor download terminal-bench@2.0 --export -o /absolute/path/to/raw
+python recipes/ahe/prepare_dataset.py \
+  /absolute/path/to/raw/terminal-bench \
+  /absolute/path/to/terminal-bench-2-ahe-30-v1
+
+export HARBOR_TASKS="/absolute/path/to/terminal-bench-2-ahe-30-v1"
 cd /path/to/simple-evolve-agent
 evolve init /path/to/ahe-run --recipe ahe --dataset "$HARBOR_TASKS"
 cd /path/to/ahe-run

@@ -16,7 +16,7 @@ def hill_climb_config(experiment_id: str) -> dict[str, Any]:
     return default_config("hill_climb", experiment_id)
 
 
-CONFIG_SECTIONS = ("experiment", "target", "surface", "operators", "evaluator")
+CONFIG_SECTIONS = ("experiment", "target", "surface", "operators", "evaluator", "execution_runtime")
 # The operator set is defined once in interfaces.OPERATORS; kind lists derive
 # from it so they cannot drift (mechanism 6). Required kinds always run; optional
 # kinds run only when a recipe opts in (DESIGN §8, off by default).

@@ -422,7 +422,7 @@ def _run_child(
     _maybe_quarantine(workspace, genid)
 
 
-def doctor(workspace: Path) -> list[str]:
+def repair(workspace: Path) -> list[str]:
     """Detect + repair interrupted state: prune stale child worktrees a crash
     left behind, and report generations pending gate/record that `run` resumes.
     Returns the actions taken/observations (empty means nothing to do)."""
@@ -439,6 +439,11 @@ def doctor(workspace: Path) -> list[str]:
         if pending:
             actions.append(f"pending gate/record (run will resume): {', '.join(pending)}")
         return actions
+
+
+def doctor(workspace: Path) -> list[str]:
+    """Backward-compatible alias for the pre-0.2 repair API."""
+    return repair(workspace)
 
 
 def _maybe_quarantine(workspace: Path, genid: str) -> None:
@@ -733,7 +738,7 @@ def eval_child(
         return None
     if force:
         kind = "forced_eval"
-    if status in UNRETRYABLE_STATUSES:
+    if status in UNRETRYABLE_STATUSES and not force:
         return None
     parent = str(row.get("parent") or (genid if genid == "0" else _fallback_parent_for_eval(workspace, rows)))
     tag = f"gen/{genid}"
@@ -1173,6 +1178,7 @@ def _append_operator_failed(
             "valid_parent": False,
             "verdict": "discard",
             "reason": f"operator {operator_name} failed",
+            "failure_stage": operator_name,
             "mutated": [],
             "surface_violations": [],
             "note": note,
