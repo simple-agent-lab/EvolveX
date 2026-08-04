@@ -24,7 +24,7 @@ operators:
   trace_analyzer:
     variant: gepa
     components:
-      knowledge: target/knowledge.json
+      knowledge: target/knowledge.md
     max_cases: 8
     field_limit: 2000
     timeout_s: 600
@@ -33,7 +33,7 @@ operators:
     runner: local
     expose_gate_data: false
     components:
-      knowledge: target/knowledge.json
+      knowledge: target/knowledge.md
     timeout_s: 600
   validate:
     variant: minibatch_improvement

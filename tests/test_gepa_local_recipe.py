@@ -71,17 +71,17 @@ def test_gepa_local_full_generation_improves_champion(tmp_path: Path) -> None:
     assert rollout["passed"] == 0
 
     # Evidence-linked mutation inside the mutable surface: teach the
-    # knowledge file the answers the rollout showed it was missing.
-    knowledge_path = child / "target" / "knowledge.json"
-    knowledge = json.loads(knowledge_path.read_text())
-    knowledge.update(
-        {
-            "7 + 5": "12", "6 * 7": "42", "9 - 4": "5", "8 + 3": "11",
-            "5 * 5": "25", "10 / 2": "5", "4 + 9": "13", "12 - 5": "7",
-            "3 * 3": "9", "2 + 2": "4",
-        }
+    # knowledge document the answers the rollout showed it was missing.
+    knowledge_path = child / "target" / "knowledge.md"
+    facts = {
+        "7 + 5": "12", "6 * 7": "42", "9 - 4": "5", "8 + 3": "11",
+        "5 * 5": "25", "10 / 2": "5", "4 + 9": "13", "12 - 5": "7",
+        "3 * 3": "9", "2 + 2": "4",
+    }
+    knowledge_path.write_text(
+        knowledge_path.read_text()
+        + "".join(f"- {question} = {answer}\n" for question, answer in facts.items())
     )
-    knowledge_path.write_text(json.dumps(knowledge, indent=2) + "\n")
 
     assert run_evolve("surface-check", str(child), "--parent", "0").returncode == 0
     result = run_evolve(

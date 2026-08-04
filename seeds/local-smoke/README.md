@@ -1,9 +1,11 @@
 # Local smoke seed
 
 A deterministic Harbor agent that needs no model and no Docker: it answers
-each task by looking the question up in `knowledge.json` and writing the
-result to `answer.txt` in the task workdir. Unknown questions produce
-`unknown`, which fails the verifier — so evolving `knowledge.json` is the
+each task by looking the question up in `knowledge.md` and writing the
+result to `answer.txt` in the task workdir. Facts are `- <question> = <answer>` list
+lines; everything else in the document is prose, so the knowledge base can
+grow sections, explanations, and structure as it evolves. Unknown questions
+produce `unknown`, which fails the verifier — evolving `knowledge.md` is the
 whole optimization problem.
 
 The agent reads candidate files through `EVOLVE_CANDIDATE_SOURCE`, the exact

@@ -3,7 +3,7 @@
 GEPA over `evolve.harbor_local:LocalEnvironment`: real Harbor trials as local
 processes — no Docker daemon, no model key, no network. The default seed is
 `builtin-local-smoke`, a deterministic test agent that answers tasks from
-`target/knowledge.json`; evolving that file is the optimization problem, which
+`target/knowledge.md`; evolving that document is the optimization problem, which
 makes this recipe the fastest way to exercise the full evolution loop
 (baseline → rollout → mutation → validate → gate) end to end on one machine.
 
