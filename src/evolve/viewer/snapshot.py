@@ -264,13 +264,14 @@ def _canonical_trials(
             continue
         parts = Path(relative).parts
         genid = parts[1].removeprefix("gen-")
-        for index, entry in enumerate(document.value):
+        repetitions: Counter[str] = Counter()
+        for entry in document.value:
             if not isinstance(entry, dict):
                 continue
-            task = str(entry.get("task") or entry.get("task_name") or entry.get("trial_name") or f"case-{index}")
-            trials.append(
-                _trial(genid, "rollout", task, index, cast(dict[str, Any], entry), harbor_links)
-            )
+            task = str(entry.get("task") or entry.get("task_name") or entry.get("trial_name") or "unknown-case")
+            repetition = repetitions[task]
+            repetitions[task] += 1
+            trials.append(_trial(genid, "rollout", task, repetition, cast(dict[str, Any], entry), harbor_links))
     return sorted(trials, key=lambda trial: (_generation_sort_key(trial.generation), trial.purpose, trial.task, trial.repetition))
 
 

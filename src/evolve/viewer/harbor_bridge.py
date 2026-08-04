@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 import tempfile
+from collections import Counter
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from types import TracebackType
 from urllib.parse import quote
@@ -70,16 +73,16 @@ class HarborBridge:
                 entry.unlink(missing_ok=True)
 
         job_names = {key: value[0] for key, value in desired.items()}
-        reference_by_job = {
-            name: reference
-            for reference in references
-            for child in _job_children(reference.path)
-            if (name := job_names.get((reference.path.resolve(), child.name))) is not None
-        }
+        references_by_job: dict[str, list[JobRootReference]] = {}
+        for reference in references:
+            for child in _job_children(reference.path):
+                name = job_names.get((reference.path.resolve(), child.name))
+                if name is not None and reference not in references_by_job.setdefault(name, []):
+                    references_by_job[name].append(reference)
         return HarborFederation(
             root=root,
             job_names=job_names,
-            trial_links=_trial_links(root, reference_by_job, canonical_tasks or {}),
+            trial_links=_trial_links(root, references_by_job, canonical_tasks or {}),
         )
 
     def _require_root(self) -> Path:
@@ -119,35 +122,49 @@ def _job_children(root: Path) -> tuple[Path, ...]:
 
 def _trial_links(
     root: Path,
-    reference_by_job: Mapping[str, JobRootReference],
+    references_by_job: Mapping[str, Iterable[JobRootReference]],
     canonical_tasks: Mapping[tuple[str, str], Iterable[str]],
 ) -> dict[tuple[str, str, str, int], HarborTrialLink]:
     scanner = JobScanner(root)
     links: dict[tuple[str, str, str, int], HarborTrialLink] = {}
-    for job_name, reference in sorted(reference_by_job.items()):
-        key = (reference.generation, reference.purpose)
-        candidates = tuple(str(task) for task in canonical_tasks.get(key, ()))
-        for repetition, trial_name in enumerate(scanner.list_trials(job_name)):
-            trial = _trial_evidence(scanner, job_name, trial_name)
-            if trial is None:
-                continue
-            task_name, source, agent, provider, model, reward, duration_ms = trial
-            canonical = _canonical_task(task_name, candidates)
-            if canonical is None:
-                continue
-            parts = [quote(part or "unknown", safe="") for part in (job_name, source, agent, provider, model, task_name, trial_name)]
-            url = f"/jobs/{parts[0]}/tasks/{'/'.join(parts[1:6])}/trials/{parts[6]}"
-            links[(reference.generation, reference.purpose, canonical, repetition)] = HarborTrialLink(
-                url=url,
-                reward=reward,
-                duration_ms=duration_ms,
-            )
+    for job_name, references in sorted(references_by_job.items()):
+        trials = [
+            (trial_name, _trial_evidence(scanner, root, job_name, trial_name))
+            for trial_name in scanner.list_trials(job_name)
+        ]
+        for reference in references:
+            key = (reference.generation, reference.purpose)
+            candidates = tuple(str(task) for task in canonical_tasks.get(key, ()))
+            repetitions: Counter[str] = Counter()
+            for trial_name, trial in trials:
+                if trial is None:
+                    continue
+                task_name, source, agent, provider, model, reward, duration_ms = trial
+                canonical = _canonical_task(task_name, candidates)
+                if canonical is None:
+                    continue
+                repetition = repetitions[canonical]
+                repetitions[canonical] += 1
+                parts = [quote(part or "unknown", safe="") for part in (job_name, source, agent, provider, model, task_name, trial_name)]
+                url = f"/jobs/{parts[0]}/tasks/{'/'.join(parts[1:6])}/trials/{parts[6]}"
+                links[(reference.generation, reference.purpose, canonical, repetition)] = HarborTrialLink(
+                    url=url,
+                    reward=reward,
+                    duration_ms=duration_ms,
+                )
     return links
 
 
 def _trial_evidence(
-    scanner: JobScanner, job_name: str, trial_name: str
+    scanner: JobScanner, root: Path, job_name: str, trial_name: str
 ) -> tuple[str, str | None, str | None, str | None, str | None, float | None, float | None] | None:
+    trial_dir = root / job_name / trial_name
+    raw_result = _json_object(trial_dir / "result.json")
+    raw_config = _json_object(trial_dir / "config.json")
+    if _has_legacy_writable_mount(raw_result.get("config")):
+        return _raw_result_evidence(raw_result)
+    if not raw_result and _has_legacy_writable_mount(raw_config):
+        return _raw_config_evidence(raw_config)
     result = scanner.get_trial_result(job_name, trial_name)
     if result is not None:
         model = result.agent_info.model_info
@@ -172,7 +189,7 @@ def _trial_evidence(
         )
     config = scanner.get_trial_config(job_name, trial_name)
     if config is None:
-        return None
+        return _raw_result_evidence(raw_result) or _raw_config_evidence(raw_config)
     summary = trial_summary_from_config(trial_name, config)
     return (
         summary.task_name,
@@ -183,6 +200,87 @@ def _trial_evidence(
         summary.reward,
         None,
     )
+
+
+def _json_object(path: Path) -> dict[str, object]:
+    try:
+        value = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError, UnicodeError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def _has_legacy_writable_mount(value: object) -> bool:
+    if not isinstance(value, dict):
+        return False
+    environment = value.get("environment")
+    mounts = environment.get("mounts") if isinstance(environment, dict) else None
+    return isinstance(mounts, list) and any(
+        isinstance(mount, dict) and mount.get("read_only") is False for mount in mounts
+    )
+
+
+def _raw_result_evidence(
+    value: dict[str, object],
+) -> tuple[str, str | None, str | None, str | None, str | None, float | None, float | None] | None:
+    task = value.get("task_name")
+    if not isinstance(task, str):
+        return None
+    agent_info = value.get("agent_info")
+    agent = agent_info.get("name") if isinstance(agent_info, dict) else None
+    model_info = agent_info.get("model_info") if isinstance(agent_info, dict) else None
+    provider = model_info.get("provider") if isinstance(model_info, dict) else None
+    model = model_info.get("name") if isinstance(model_info, dict) else None
+    verifier = value.get("verifier_result")
+    rewards = verifier.get("rewards") if isinstance(verifier, dict) else None
+    reward = rewards.get("reward") if isinstance(rewards, dict) else None
+    source = value.get("source")
+    started = _datetime(value.get("started_at"))
+    finished = _datetime(value.get("finished_at"))
+    duration = (finished - started).total_seconds() * 1000 if started and finished else None
+    return (
+        task,
+        source if isinstance(source, str) else None,
+        agent if isinstance(agent, str) else None,
+        provider if isinstance(provider, str) else None,
+        model if isinstance(model, str) else None,
+        float(reward) if isinstance(reward, (int, float)) and not isinstance(reward, bool) else None,
+        duration,
+    )
+
+
+def _raw_config_evidence(
+    value: dict[str, object],
+) -> tuple[str, str | None, str | None, str | None, str | None, float | None, float | None] | None:
+    task_config = value.get("task")
+    if not isinstance(task_config, dict):
+        return None
+    task = task_config.get("name") or task_config.get("path")
+    if not isinstance(task, str):
+        return None
+    agent_config = value.get("agent")
+    source = task_config.get("source")
+    agent = agent_config.get("name") or agent_config.get("import_path") if isinstance(agent_config, dict) else None
+    model_name = agent_config.get("model_name") if isinstance(agent_config, dict) else None
+    provider, model = (model_name.split("/", 1) if isinstance(model_name, str) and "/" in model_name else (None, model_name))
+    return (
+        task,
+        source if isinstance(source, str) else None,
+        agent if isinstance(agent, str) else None,
+        provider,
+        model if isinstance(model, str) else None,
+        None,
+        None,
+    )
+
+
+def _datetime(value: object) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
 
 
 def _canonical_task(harbor_task: str, candidates: tuple[str, ...]) -> str | None:

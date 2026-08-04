@@ -97,3 +97,65 @@ def test_bridge_maps_only_unique_canonical_suffix(tmp_path: Path) -> None:
             canonical_tasks={("4", "candidate"): ("left__short", "right__short")},
         )
         assert ambiguous.trial_links == {}
+
+
+def test_bridge_links_legacy_trials_rejected_by_current_harbor_models(tmp_path: Path) -> None:
+    """Old writable-mount configs remain inspectable even when Harbor 0.18 rejects them."""
+    jobs = _harbor_jobs(tmp_path / "jobs", "legacy-job", task="suite__task-a")
+    trial = jobs / "legacy-job/trial-0"
+    (trial / "result.json").write_text(
+        json.dumps(
+            {
+                "task_name": "suite__task-a",
+                "source": "legacy-source",
+                "agent_info": {
+                    "name": "legacy-agent",
+                    "model_info": {"provider": "openai", "name": "legacy-model"},
+                },
+                "verifier_result": {"rewards": {"reward": 0.75}},
+                "started_at": "2026-07-30T10:00:00Z",
+                "finished_at": "2026-07-30T10:00:02.500000Z",
+                "config": {"environment": {"mounts": [{"read_only": False}]}},
+            }
+        )
+    )
+
+    with HarborBridge(tmp_path / "workspace") as bridge:
+        federation = bridge.refresh(
+            [JobRootReference(generation="5", purpose="candidate", path=jobs)],
+            canonical_tasks={("5", "candidate"): ("suite__task-a",)},
+        )
+
+    link = federation.trial_links[("5", "candidate", "suite__task-a", 0)]
+    assert link.reward == 0.75
+    assert link.duration_ms == 2500
+    assert "/legacy-source/legacy-agent/openai/legacy-model/" in link.url
+
+
+def test_bridge_counts_repetitions_per_task_not_per_job(tmp_path: Path) -> None:
+    jobs = _harbor_jobs(tmp_path / "jobs", "job-a", task="task-a", trial="task-a-trial")
+    _harbor_jobs(jobs, "job-a", task="task-b", trial="task-b-trial")
+
+    with HarborBridge(tmp_path / "workspace") as bridge:
+        federation = bridge.refresh(
+            [JobRootReference(generation="6", purpose="candidate", path=jobs)]
+        )
+
+    assert ("6", "candidate", "task-a", 0) in federation.trial_links
+    assert ("6", "candidate", "task-b", 0) in federation.trial_links
+
+
+def test_bridge_preserves_multiple_logical_references_to_one_job_root(tmp_path: Path) -> None:
+    jobs = _harbor_jobs(tmp_path / "jobs", "shared-job", task="task-a")
+
+    with HarborBridge(tmp_path / "workspace") as bridge:
+        federation = bridge.refresh(
+            [
+                JobRootReference(generation="9", purpose="candidate", path=jobs),
+                JobRootReference(generation="10", purpose="rollout", path=jobs),
+            ]
+        )
+        assert len(list(federation.root.iterdir())) == 1
+
+    assert ("9", "candidate", "task-a", 0) in federation.trial_links
+    assert ("10", "rollout", "task-a", 0) in federation.trial_links

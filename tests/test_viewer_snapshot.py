@@ -180,6 +180,23 @@ def test_rollout_and_evaluation_trials_keep_distinct_purposes(tmp_path: Path) ->
     assert {(trial.purpose, trial.task) for trial in trials} == {("rollout", "task-a"), ("candidate", "task-a")}
 
 
+def test_rollout_repetitions_are_counted_per_task(tmp_path: Path) -> None:
+    sources = _sources(
+        tmp_path,
+        rows=[{"genid": "1", "purpose": "candidate", "status": "complete"}],
+        documents={
+            "runs/gen-1/rollout/cases.json": [
+                {"task_name": "task-a", "outcome": "complete", "reward": 1.0},
+                {"task_name": "task-b", "outcome": "complete", "reward": 0.0},
+            ]
+        },
+    )
+
+    trials = build_snapshot(sources).trials
+
+    assert {(trial.task, trial.repetition) for trial in trials} == {("task-a", 0), ("task-b", 0)}
+
+
 def test_nonterminal_stale_generation_is_only_possibly_interrupted(tmp_path: Path) -> None:
     """Stale activity is advisory and must not be promoted into a terminal failure."""
     sources = _sources(
