@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 
+from .candidate.smoke import SmokeMode, SmokeResult, run_candidate_smoke
 from .evaluation.contract import (
     ContractResolutionContext,
     EvaluationContractResolutionError,
@@ -320,6 +321,38 @@ def run_preflight(
         )
     checks.append(_passed_check("runtime_environment"))
 
+    if mode is PreflightMode.SMOKE:
+        smoke = run_candidate_smoke(
+            root,
+            workspace=root,
+            mode=SmokeMode.MODEL,
+            environment=source_environment,
+        )
+        smoke_artifact = artifact_reference(
+            smoke.attempt_dir / "result.json",
+            relative_to=root,
+        )
+        if smoke.status != "passed":
+            category = _structured_smoke_failure_category(smoke)
+            return _failed_result(
+                mode,
+                destination,
+                checks,
+                "model_agent_request",
+                category or PreflightFailureCategory.MODEL_SMOKE_FAILED,
+                _smoke_failure_message(smoke),
+                source_environment,
+                profile,
+                artifact=smoke_artifact,
+            )
+        checks.append(
+            PreflightCheckV1(
+                name="model_agent_request",
+                status=PreflightCheckStatus.PASSED,
+                artifact=smoke_artifact,
+            )
+        )
+
     result = PreflightResultV1(
         schema_version=1,
         status=PreflightStatus.PASSED,
@@ -345,6 +378,8 @@ def _failed_result(
     message: str,
     environment: Mapping[str, str],
     profile: ResolvedRuntimeProfileV1 | None = None,
+    *,
+    artifact: ArtifactReferenceV1 | None = None,
 ) -> PreflightResultV1:
     bounded = _bounded_message(message, environment)
     checks = (
@@ -354,6 +389,7 @@ def _failed_result(
             status=PreflightCheckStatus.FAILED,
             failure_category=category,
             message=bounded,
+            artifact=artifact,
         ),
     )
     result = PreflightResultV1.failed(
@@ -376,6 +412,29 @@ def _failed_result(
 
 def _passed_check(name: str) -> PreflightCheckV1:
     return PreflightCheckV1(name=name, status=PreflightCheckStatus.PASSED)
+
+
+def _structured_smoke_failure_category(
+    smoke: SmokeResult,
+) -> PreflightFailureCategory | None:
+    try:
+        payload = json.loads((smoke.attempt_dir / "result.json").read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    category = payload.get("failure_category")
+    if category == PreflightFailureCategory.NETWORK_UNAVAILABLE.value:
+        return PreflightFailureCategory.NETWORK_UNAVAILABLE
+    if category == PreflightFailureCategory.DEPENDENCY_TOOL_UNAVAILABLE.value:
+        return PreflightFailureCategory.DEPENDENCY_TOOL_UNAVAILABLE
+    return None
+
+
+def _smoke_failure_message(smoke: SmokeResult) -> str:
+    try:
+        detail = smoke.stderr_path.read_text().strip()
+    except OSError:
+        detail = ""
+    return detail or f"model smoke finished with status {smoke.status}"
 
 
 def _configured_profile_name(evaluator: Mapping[str, object]) -> str:

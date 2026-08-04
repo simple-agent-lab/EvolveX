@@ -1,29 +1,42 @@
 from __future__ import annotations
 
+import hashlib
 import json
-import os
 import re
 import sys
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from typing import Literal
 
 from ..config import load_config
+from ..evaluation.identity import evaluation_split_name
+from ..host_runtime import clean_python_env
 from ..runtime import owned_attempt_id, run_owned
+from ..runtime_environment import (
+    RuntimeEnvironmentResolutionError,
+    resolve_evaluator_runtime_environment,
+    write_harbor_environment_inputs,
+)
 from ..surface import surface_patterns
 from ..uv_runtime import prepare_candidate_runtime
 from .snapshot import build_candidate_snapshot, materialize_snapshot
 
 SmokeStatus = Literal["passed", "failed", "unsupported"]
-_SECRET_NAME = re.compile(r"KEY|TOKEN|SECRET|PASSWORD|PROXY", re.IGNORECASE)
+_SECRET_NAME = re.compile(r"KEY|TOKEN|SECRET|PASSWORD|PROXY|BASE_URL|ENDPOINT", re.IGNORECASE)
 _URL_USERINFO = re.compile(r"(?i)(https?://)[^/@\s]+@")
 _COMMON_SECRET_VALUES = (
     re.compile(r"\bsk-[A-Za-z0-9_-]{8,}\b"),
     re.compile(r"\b(?:gh[opusr]|github_pat)_[A-Za-z0-9_]{16,}\b"),
 )
 _COMMON_SECRET_ASSIGNMENT = re.compile(r"(?i)(\b(?:api[_-]?key|token|password|secret)\s*[:=]\s*)[^\s,;]+")
+
+
+class SmokeMode(StrEnum):
+    INSTALL = "install"
+    MODEL = "model"
 
 
 @dataclass(frozen=True)
@@ -36,7 +49,14 @@ class SmokeResult:
     stderr_path: Path
 
 
-def run_candidate_smoke(checkout: Path, *, workspace: Path) -> SmokeResult:
+def run_candidate_smoke(
+    checkout: Path,
+    *,
+    workspace: Path,
+    mode: SmokeMode = SmokeMode.INSTALL,
+    environment: Mapping[str, str] | None = None,
+) -> SmokeResult:
+    source_environment = clean_python_env(environment)
     include, exclude = surface_patterns(workspace)
     snapshot = build_candidate_snapshot(checkout, "HEAD", include=include, exclude=exclude)
     attempt = _next_attempt(workspace / "runs" / "smoke")
@@ -44,7 +64,16 @@ def run_candidate_smoke(checkout: Path, *, workspace: Path) -> SmokeResult:
     with materialize_snapshot(checkout, snapshot) as materialized:
         script = materialized / "evaluator" / "smoke.sh"
         if not script.is_file():
-            return _write_result(attempt, "unsupported", snapshot.tree, None, "", "", time.monotonic() - started)
+            return _write_result(
+                attempt,
+                "unsupported",
+                snapshot.tree,
+                None,
+                "",
+                "",
+                time.monotonic() - started,
+                mode=mode,
+            )
         config = load_config(materialized / "evolve.yaml")
         evaluator = config.get("evaluator")
         runtime = prepare_candidate_runtime(
@@ -53,6 +82,7 @@ def run_candidate_smoke(checkout: Path, *, workspace: Path) -> SmokeResult:
             workspace / "runs" / "runtime",
             snapshot.tree,
             evaluator if isinstance(evaluator, dict) else {},
+            env=source_environment,
         )
         if not runtime.ready:
             return _write_result(
@@ -61,10 +91,37 @@ def run_candidate_smoke(checkout: Path, *, workspace: Path) -> SmokeResult:
                 snapshot.tree,
                 None,
                 "",
-                _redact(runtime.reason or "candidate runtime preparation failed", os.environ),
+                _redact(runtime.reason or "candidate runtime preparation failed", source_environment),
                 time.monotonic() - started,
+                mode=mode,
             )
-        env = {**os.environ, "EVOLVE_RUN_DIR": str(attempt), "EVOLVE_ATTEMPT_ID": owned_attempt_id(workspace, attempt)}
+        evaluator_config = evaluator if isinstance(evaluator, dict) else {}
+        try:
+            environment_plan = resolve_evaluator_runtime_environment(
+                materialized,
+                evaluator_config,
+                source_environment,
+            )
+        except RuntimeEnvironmentResolutionError as error:
+            return _write_result(
+                attempt,
+                "failed",
+                snapshot.tree,
+                None,
+                "",
+                _redact(str(error), source_environment),
+                time.monotonic() - started,
+                mode=mode,
+            )
+        write_harbor_environment_inputs(attempt, environment_plan)
+        env = {
+            **source_environment,
+            **environment_plan.process_env(),
+            "EVOLVE_RUN_DIR": str(attempt),
+            "EVOLVE_ATTEMPT_ID": owned_attempt_id(workspace, attempt),
+            "EVOLVE_CANDIDATE_SMOKE_MODE": mode.value,
+            "EVOLVE_EVAL_SPLIT": evaluation_split_name(evaluator_config, "candidate"),
+        }
         if runtime.variant is not None:
             env["EVOLVE_CANDIDATE_RUNTIME_ENV_JSON"] = runtime.environment_json()
             env["EVOLVE_CANDIDATE_RUNTIME_MOUNTS_JSON"] = runtime.mounts_json()
@@ -75,9 +132,10 @@ def run_candidate_smoke(checkout: Path, *, workspace: Path) -> SmokeResult:
         "passed" if completed.returncode == 0 else "failed",
         snapshot.tree,
         completed.returncode,
-        _redact(completed.stdout, os.environ),
-        _redact(completed.stderr, os.environ),
+        _redact(completed.stdout, source_environment),
+        _redact(completed.stderr, source_environment),
         time.monotonic() - started,
+        mode=mode,
     )
 
 
@@ -113,6 +171,8 @@ def _write_result(
     stdout: str,
     stderr: str,
     duration_s: float,
+    *,
+    mode: SmokeMode,
 ) -> SmokeResult:
     stdout_path = attempt / "stdout.log"
     stderr_path = attempt / "stderr.log"
@@ -120,12 +180,38 @@ def _write_result(
     stderr_path.write_text(stderr)
     payload = {
         "schema_version": 1,
+        "mode": mode.value,
         "status": status,
         "snapshot_tree": snapshot_tree,
         "returncode": returncode,
         "duration_s": round(duration_s, 6),
         "stdout_path": str(stdout_path.resolve()),
         "stderr_path": str(stderr_path.resolve()),
+        "artifacts": {
+            "stdout": _log_artifact(stdout_path),
+            "stderr": _log_artifact(stderr_path),
+        },
     }
+    if failure_category := _structured_failure_category(attempt):
+        payload["failure_category"] = failure_category
     (attempt / "result.json").write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
     return SmokeResult(status, attempt, snapshot_tree, returncode, stdout_path, stderr_path)
+
+
+def _log_artifact(path: Path) -> dict[str, str]:
+    return {
+        "path": path.name,
+        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+    }
+
+
+def _structured_failure_category(attempt: Path) -> str | None:
+    accepted = {"dependency_tool_unavailable", "network_unavailable"}
+    for path in sorted((attempt / "jobs").glob("**/result.json")):
+        try:
+            payload = json.loads(path.read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(payload, dict) and payload.get("failure_category") in accepted:
+            return str(payload["failure_category"])
+    return None

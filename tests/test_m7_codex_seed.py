@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
+import os
 import sys
 from pathlib import Path
 from types import ModuleType
 from typing import Any
 
+import pytest
 from conftest import run_evolve
 
 
@@ -24,15 +26,20 @@ class FakeCodex:
         self.model_name = model_name
         self.kwargs = kwargs
         self.base_setup_called = False
+        self.instructions: list[str] = []
 
-    def _get_env(self, _name: str) -> str | None:
-        return None
+    def _get_env(self, name: str) -> str | None:
+        return os.environ.get(name)
 
     def _resolve_auth_json_path(self) -> None:
         return None
 
     async def setup(self, environment: object) -> None:
         self.base_setup_called = True
+
+    async def run(self, instruction: str, environment: object, context: object) -> None:
+        del environment, context
+        self.instructions.append(instruction)
 
 
 class FakeBaseEnvironment:
@@ -113,3 +120,41 @@ def test_builtin_codex_wrapper_injects_skills_and_opt_in_compaction(tmp_path: Pa
     assert compacting_agent.kwargs["auto_compact_token_limit"] == 100000
     assert compacting_agent.kwargs["auto_compact_token_limit_scope"] == "total"
     assert compacting_agent.kwargs["tool_output_token_limit"] == 12000
+
+
+@pytest.mark.parametrize(
+    ("smoke_mode", "expected"),
+    [
+        ("model", "Reply with exactly OK. Do not use tools."),
+        ("install", "Fix the benchmark bug."),
+        (None, "Fix the benchmark bug."),
+    ],
+)
+def test_builtin_codex_model_smoke_replaces_only_the_benchmark_instruction(
+    tmp_path: Path,
+    monkeypatch,
+    smoke_mode: str | None,
+    expected: str,
+) -> None:
+    workspace = tmp_path / "experiment"
+    result = run_evolve(
+        "init",
+        str(workspace),
+        "--recipe",
+        "aevolve",
+        "--seed",
+        "builtin-codex",
+        env={"EVOLVE_HOME": str(tmp_path / "home")},
+    )
+    assert result.returncode == 0, result.stderr
+    _install_fake_harbor(monkeypatch)
+    module = _load_target_agent(workspace / "target" / "agent.py")
+    if smoke_mode is None:
+        monkeypatch.delenv("EVOLVE_CANDIDATE_SMOKE_MODE", raising=False)
+    else:
+        monkeypatch.setenv("EVOLVE_CANDIDATE_SMOKE_MODE", smoke_mode)
+    agent = module.HarborAgent(logs_dir=tmp_path / "logs")
+
+    asyncio.run(agent.run("Fix the benchmark bug.", object(), object()))
+
+    assert agent.instructions == [expected]

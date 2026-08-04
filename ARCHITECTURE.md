@@ -23,7 +23,7 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `agent.py` | 200 | agent command execution and error/result types |
 | `archive.py` | 400 | append-only event store: merge semantics, stamped-field protection, mirroring, integrity fsck |
 | `candidate/__init__.py` | 10 | candidate-boundary package marker |
-| `candidate/smoke.py` | 150 | run evaluator smoke against an exact candidate snapshot and persist redacted diagnostics |
+| `candidate/smoke.py` | 225 | run install or one-request model smoke against an exact candidate snapshot and persist redacted evidence |
 | `candidate/snapshot.py` | 100 | exact candidate Git tree construction, temporary materialization, and reviewed-tree commit verification |
 | `cli.py` | 300 | argument parsing and verb dispatch only — no logic |
 | `config.py` | 200 | read/render `evolve.yaml`: recipes, experiment values, surface lists, operator blocks |
@@ -41,7 +41,7 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `operators.py` | 200 | subprocess runner for workspace operator scripts (contract: env vars, --config, timeout) |
 | `patching.py` | 150 | mutable-surface patch creation and parent-reference selection |
 | `population.py` | 100 | genid/lineage bookkeeping for fan-out generations |
-| `preflight.py` | 500 | typed ordered runtime validation, local capability checks, and atomic predefined receipts |
+| `preflight.py` | 550 | typed ordered runtime validation, isolated model-smoke delegation, and atomic predefined receipts |
 | `report.py` | 225 | status/report rendering, best-ever recomputation, claim checklist, and certified evidence coverage |
 | `runtime.py` | 250 | generated-workspace runtime entrypoint helpers |
 | `runtime_environment.py` | 475 | strict and legacy role-specific credential, endpoint, proxy, template, and redacted Harbor environment planning |
@@ -73,7 +73,7 @@ each workspace, immutable there because it sits outside the mutable surface
 | `frozen/interfaces.py` | 475 | operator ABCs, registry, result schemas, and strict diagnostics/operator payload validation |
 | `frozen/sdk.py` | 300 | Python operator entrypoint and file-contract IO; no library algorithm policy |
 
-Total `src/evolve/` budget: **12630 lines**. The budget admits the explicit content-backed
+Total `src/evolve/` budget: **12755 lines**. The budget admits the explicit content-backed
 evaluation-contract boundaries, the opt-in in-place Harbor runtime, and the redacted trace-analysis
 boundary between rollout and feedback assembly; if the mechanism wants to
 grow past that, something belongs in a workspace operator instead —

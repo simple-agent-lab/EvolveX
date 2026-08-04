@@ -291,7 +291,7 @@ def test_harbor_stage_limit_and_anchor_task_file_override(tmp_path: Path) -> Non
     assert (tmp_path / "run" / "metrics.json").read_text().count('"expected_trials": 2') == 1
 
 
-def test_harbor_smoke_is_install_only_and_exposes_raw_diagnostics(tmp_path: Path) -> None:
+def test_harbor_install_smoke_is_install_only_and_exposes_raw_diagnostics(tmp_path: Path) -> None:
     evaluator = tmp_path / "evaluator"
     evaluator.mkdir()
     _write_executable(evaluator / "eval.sh", _eval_sh("harbor", "fixture"))
@@ -352,7 +352,7 @@ def test_harbor_smoke_is_install_only_and_exposes_raw_diagnostics(tmp_path: Path
         "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
         "HARBOR_ARGS_CAPTURE": str(args_capture),
         "EVOLVE_RUN_DIR": str(run_dir),
-        "EVOLVE_CANDIDATE_SMOKE_MODE": "full",
+        "EVOLVE_CANDIDATE_SMOKE_MODE": "install",
         "EVOLVE_CANDIDATE_RUNTIME_MOUNTS_JSON": json.dumps(runtime_mounts),
         "EVOLVE_CANDIDATE_RUNTIME_ENV_JSON": json.dumps(runtime_env),
         "EVOLVE_TASK_LIMIT": "8",
@@ -366,7 +366,7 @@ def test_harbor_smoke_is_install_only_and_exposes_raw_diagnostics(tmp_path: Path
     assert "ModuleNotFoundError: No module named 'fastapi'" in result.stderr
     args = args_capture.read_text().splitlines()
     assert "--install-only" in args
-    assert "EVOLVE_CANDIDATE_SMOKE_MODE=full" in args
+    assert "EVOLVE_CANDIDATE_SMOKE_MODE=install" in args
     assert f"EVOLVE_CANDIDATE_SOURCE={tmp_path / 'target'}" in args
     assert args[args.index("--n-tasks") + 1] == "8"
     assert args[args.index("--n-attempts") + 1] == "1"
@@ -385,10 +385,14 @@ def test_harbor_smoke_is_install_only_and_exposes_raw_diagnostics(tmp_path: Path
     assert not (run_dir / "score").exists()
 
 
-def test_harbor_single_smoke_forces_one_task_attempt_and_worker() -> None:
+def test_harbor_model_smoke_forces_one_task_attempt_and_worker_without_install_only() -> None:
     text = _eval_sh("harbor", "fixture")
 
-    assert 'if [ "${EVOLVE_CANDIDATE_SMOKE_MODE:-}" = "single" ]; then' in text
+    assert 'if [ "${EVOLVE_CANDIDATE_SMOKE_MODE:-}" = "model" ]; then' in text
+    assert "EVOLVE_HARBOR_N=1\n  EVOLVE_HARBOR_ATTEMPTS=1\n  EVOLVE_HARBOR_N_CONCURRENT=1" in text
+    assert "EVOLVE_TASK_LIMIT=1\n  EVOLVE_HARBOR_MAX_RETRIES=0" in text
+    assert 'if [ "${EVOLVE_CANDIDATE_SMOKE_MODE:-}" = "install" ]; then' in text
+    assert 'if [ "${EVOLVE_CANDIDATE_SMOKE_MODE:-}" = "install" ]; then\n  set -- "$@" --install-only' in text
 
 
 def test_harbor_legacy_cache_mount_matches_adapter_default() -> None:

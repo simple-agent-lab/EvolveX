@@ -85,3 +85,8 @@ class HarborAgent(Codex):
         skills = TARGET_ROOT / "skills"
         if self._skills_enabled and skills.is_dir():
             await environment.upload_dir(source_dir=skills, target_dir=REMOTE_SKILLS_DIR)
+
+    async def run(self, instruction: str, environment, context) -> None:
+        if self._get_env("EVOLVE_CANDIDATE_SMOKE_MODE") == "model":
+            instruction = "Reply with exactly OK. Do not use tools."
+        await super().run(instruction, environment, context)

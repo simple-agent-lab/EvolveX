@@ -450,6 +450,8 @@ class MiniSweSourceAgent(MiniSweAgent):
     async def run(self, instruction: str, environment, context) -> None:
         if not self.model_name or "/" not in self.model_name:
             raise ValueError("Model name must be in the format provider/model_name")
+        if self._get_env("EVOLVE_CANDIDATE_SMOKE_MODE") == "model":
+            instruction = "Reply with exactly OK. Do not use tools."
         task = self._augment_instruction(instruction)
         await self.exec_as_agent(environment, command=self._run_command(task), env=self._source_env())
 

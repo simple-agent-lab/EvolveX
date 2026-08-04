@@ -82,12 +82,13 @@ if ! mkdir "$jobs_dir"; then
   printf 'infra_failed\n' > "$EVOLVE_RUN_DIR/status"
   exit 3
 fi
-if [ "${EVOLVE_CANDIDATE_SMOKE_MODE:-}" = "single" ]; then
+if [ "${EVOLVE_CANDIDATE_SMOKE_MODE:-}" = "model" ]; then
   EVOLVE_HARBOR_N=1
   EVOLVE_HARBOR_ATTEMPTS=1
   EVOLVE_HARBOR_N_CONCURRENT=1
   EVOLVE_TASK_LIMIT=1
-elif [ "${EVOLVE_CANDIDATE_SMOKE_MODE:-}" = "full" ]; then
+  EVOLVE_HARBOR_MAX_RETRIES=0
+elif [ "${EVOLVE_CANDIDATE_SMOKE_MODE:-}" = "install" ]; then
   EVOLVE_HARBOR_ATTEMPTS=1
 fi
 cleanup_harbor() {
@@ -172,8 +173,11 @@ while IFS= read -r runtime_entry || [ -n "$runtime_entry" ]; do
     esac
   fi
 done < "$EVOLVE_RUN_DIR/candidate-runtime.env"
+if [ "${EVOLVE_CANDIDATE_SMOKE_MODE:-}" = "install" ]; then
+  set -- "$@" --install-only
+fi
 if [ -n "${EVOLVE_CANDIDATE_SMOKE_MODE:-}" ]; then
-  set -- "$@" --install-only --ae "EVOLVE_CANDIDATE_SMOKE_MODE=$EVOLVE_CANDIDATE_SMOKE_MODE"
+  set -- "$@" --ae "EVOLVE_CANDIDATE_SMOKE_MODE=$EVOLVE_CANDIDATE_SMOKE_MODE"
 fi
 if [ -n "${EVOLVE_HARBOR_MODEL:-}" ]; then
   set -- "$@" --model "$EVOLVE_HARBOR_MODEL"

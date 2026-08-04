@@ -7,6 +7,7 @@ import pytest
 from conftest import allow_local_runtime, git, init_recipe_with_local_inputs
 
 from evolve import preflight as preflight_module
+from evolve.candidate.smoke import SmokeResult
 from evolve.preflight import (
     PreflightCheckStatus,
     PreflightFailureCategory,
@@ -39,6 +40,16 @@ def retag_gen0(workspace: Path, message: str) -> None:
     git(workspace, "add", "-A")
     git(workspace, "commit", "-m", message)
     git(workspace, "tag", "-f", "gen/0")
+
+
+def passed_smoke(attempt: Path) -> SmokeResult:
+    attempt.mkdir(parents=True)
+    stdout = attempt / "stdout.log"
+    stderr = attempt / "stderr.log"
+    stdout.write_text("model response received\n")
+    stderr.write_text("")
+    (attempt / "result.json").write_text('{"schema_version": 1, "status": "passed"}\n')
+    return SmokeResult("passed", attempt, "a" * 40, 0, stdout, stderr)
 
 
 def test_ordinary_preflight_is_typed_atomic_and_non_mutating(
@@ -74,6 +85,70 @@ def test_default_receipts_use_monotonic_attempt_directories(
     assert second.receipt_path is not None
     assert first.receipt_path.parent.name == "attempt-1"
     assert second.receipt_path.parent.name == "attempt-2"
+
+
+def test_smoke_runs_ordinary_checks_then_one_model_agent_request(
+    strict_workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[tuple[str, dict[str, str]]] = []
+    allow_local_runtime(monkeypatch)
+    smoke = passed_smoke(strict_workspace / "runs" / "smoke" / "attempt-99")
+
+    def fake_smoke(*args, **kwargs):
+        del args
+        calls.append((kwargs["mode"].value, dict(kwargs["environment"])))
+        return smoke
+
+    monkeypatch.setattr(preflight_module, "run_candidate_smoke", fake_smoke, raising=False)
+
+    result = run_preflight(
+        strict_workspace,
+        mode=PreflightMode.SMOKE,
+        environment=runtime_environment(),
+    )
+
+    assert calls == [("model", runtime_environment())]
+    assert result.checks[0].name == "configuration"
+    assert result.checks[-1].name == "model_agent_request"
+    assert result.checks[-1].artifact is not None
+    assert result.checks[-1].artifact.path == "runs/smoke/attempt-99/result.json"
+    assert result.status is PreflightStatus.PASSED
+
+
+def test_smoke_preserves_structured_network_failure_category(
+    strict_workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    allow_local_runtime(monkeypatch)
+    smoke = passed_smoke(strict_workspace / "runs" / "smoke" / "attempt-98")
+    (smoke.attempt_dir / "result.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "status": "failed",
+                "failure_category": "network_unavailable",
+            }
+        )
+        + "\n"
+    )
+    failed = SmokeResult(
+        "failed",
+        smoke.attempt_dir,
+        smoke.snapshot_tree,
+        1,
+        smoke.stdout_path,
+        smoke.stderr_path,
+    )
+    monkeypatch.setattr(preflight_module, "run_candidate_smoke", lambda *args, **kwargs: failed)
+
+    result = run_preflight(
+        strict_workspace,
+        mode=PreflightMode.SMOKE,
+        environment=runtime_environment(),
+    )
+
+    assert result.status is PreflightStatus.FAILED
+    assert result.failure_category is PreflightFailureCategory.NETWORK_UNAVAILABLE
+    assert result.checks[-1].artifact is not None
 
 
 def test_configuration_failure_writes_typed_receipt(

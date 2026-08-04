@@ -505,6 +505,44 @@ def test_miniswe_wrapper_runs_candidate_source_api_not_cli(tmp_path: Path, monke
     assert 'env_kwargs["cwd"] = os.environ.get("MINISWE_CWD") or os.getcwd()' in module.RUNNER
 
 
+@pytest.mark.parametrize(
+    ("smoke_mode", "expected", "unexpected"),
+    [
+        ("model", "Reply with exactly OK. Do not use tools.", "Fix the benchmark bug."),
+        ("install", "Fix the benchmark bug.", "Reply with exactly OK. Do not use tools."),
+        (None, "Fix the benchmark bug.", "Reply with exactly OK. Do not use tools."),
+    ],
+)
+def test_miniswe_model_smoke_replaces_only_the_benchmark_instruction(
+    adapter_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    smoke_mode: str | None,
+    expected: str,
+    unexpected: str,
+) -> None:
+    _install_fake_harbor(monkeypatch)
+    module = _load(adapter_path)
+    if smoke_mode is None:
+        monkeypatch.delenv("EVOLVE_CANDIDATE_SMOKE_MODE", raising=False)
+    else:
+        monkeypatch.setenv("EVOLVE_CANDIDATE_SMOKE_MODE", smoke_mode)
+
+    class Environment:
+        def __init__(self) -> None:
+            self.commands = []
+            self.envs = []
+
+    environment = Environment()
+    asyncio.run(
+        module.MiniSweSourceAgent(model_name="openai/test-model").run(
+            "Fix the benchmark bug.", environment, object()
+        )
+    )
+
+    assert expected in environment.commands[-1]
+    assert unexpected not in environment.commands[-1]
+
+
 def test_miniswe_runtime_and_offline_install_forward_download_proxies(tmp_path: Path, monkeypatch) -> None:
     _install_fake_harbor(monkeypatch)
     proxy_names = ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy")

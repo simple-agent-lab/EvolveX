@@ -12,7 +12,7 @@ import typer
 from dotenv import dotenv_values
 
 from .archive import archive_path, merged_rows, verify_integrity
-from .candidate.smoke import run_candidate_smoke
+from .candidate.smoke import SmokeMode, run_candidate_smoke
 from .config import RECIPE_NAMES, experiment_int
 from .driver import RunOptions, commit_child, eval_child, fork_child, record_fields
 from .driver import doctor as doctor_workspace
@@ -217,7 +217,11 @@ def candidate_smoke(
     checkout = checkout.resolve()
     workspace = Path(os.environ.get("EVOLVE_WORKSPACE", checkout)).resolve()
     with _workspace_environment(workspace):
-        result = run_candidate_smoke(checkout, workspace=workspace)
+        result = run_candidate_smoke(
+            checkout,
+            workspace=workspace,
+            mode=SmokeMode.INSTALL,
+        )
     tail = result.stderr_path.read_text().splitlines()[-200:]
     if tail:
         print("\n".join(tail), file=sys.stderr)
