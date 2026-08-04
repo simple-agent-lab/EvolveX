@@ -231,6 +231,19 @@ def report(workspace: Path = typer.Argument(Path("."))) -> None:
 
 @app.command()
 @_guard
+def view(
+    workspace: Path = typer.Argument(Path(".")),
+    host: str = typer.Option("127.0.0.1", "--host"),
+    port: str = typer.Option("8080-8089", "--port"),
+) -> None:
+    """Browse one experiment workspace without modifying it."""
+    from .viewer import run_viewer
+
+    run_viewer(workspace, host, port)
+
+
+@app.command()
+@_guard
 def doctor(workspace: Path = typer.Argument(Path("."))) -> None:
     """Detect and repair interrupted state (stale worktrees, pending generations)."""
     actions = doctor_workspace(workspace)
