@@ -10,16 +10,19 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from conftest import init_recipe_with_local_inputs
 from harbor.models.exec.config import ExecConfig
 from harbor.models.task.config import EnvironmentConfig, VerifierConfig
 from harbor.models.trial.result import ExceptionInfo
 from harbor.trial.errors import AgentTimeoutError
 from harbor.trial.queue import TrialQueue
 from harbor.trial.trial import Trial
+from harbor.utils.env import resolve_env_vars
 
 from evolve.agent import AgentCommandError
 from evolve.frozen.interfaces import OperatorContext
 from evolve.operators import _operator_deadline_s
+from evolve.runtime_profiles import resolve_runtime_profile
 
 ROOT = Path(__file__).resolve().parents[1]
 FILE_TASK_AGENT = "evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent"
@@ -37,31 +40,29 @@ def _harbor_runner_module():
     return module
 
 
-def test_codex_meta_agent_always_uses_host_auth_json(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_codex_meta_agent_uses_shared_endpoint_plan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     module = _harbor_runner_module()
-    monkeypatch.delenv("CODEX_FORCE_AUTH_JSON", raising=False)
-    for override, lower, upper in module._PROXY_ENV:
-        monkeypatch.delenv(override, raising=False)
-        monkeypatch.delenv(lower, raising=False)
-        monkeypatch.delenv(upper, raising=False)
-    monkeypatch.setenv("OPENAI_API_KEY", "judge-key")
-    monkeypatch.setenv("OPENAI_BASE_URL", "http://judge-bridge.example/v1")
-    monkeypatch.setenv("OPENAI_API_BASE", "http://judge-bridge.example/v1")
+    checkout = init_recipe_with_local_inputs(tmp_path, "aevolve")
 
-    env = module._agent_env({"agent": "codex"})
-    assert env == {"CODEX_FORCE_AUTH_JSON": "${CODEX_FORCE_AUTH_JSON:-1}"}
-    assert module._agent_env(
-        {
-            "agent": "codex",
-            "agent_env": {"OPENAI_BASE_URL": "https://configured.example/v1"},
-        }
-    ) == {
-        "CODEX_FORCE_AUTH_JSON": "${CODEX_FORCE_AUTH_JSON:-1}",
-        "OPENAI_BASE_URL": "https://configured.example/v1",
-        "no_proxy": "configured.example",
-        "NO_PROXY": "configured.example",
+    plan = module._runtime_environment_plan(checkout, {"agent": "codex"})
+
+    assert plan.meta_agent_env()["OPENAI_API_KEY"].startswith("${EVOLVE_RUNTIME_META_AGENT_")
+    assert plan.meta_agent_env()["OPENAI_BASE_URL"].startswith("${EVOLVE_RUNTIME_META_AGENT_")
+    assert "CODEX_FORCE_AUTH_JSON" not in plan.process_env()
+    assert "CODEX_AUTH_JSON_PATH" not in plan.process_env()
+
+
+def test_installed_harbor_resolves_framework_runtime_templates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    internal_name = "EVOLVE_RUNTIME_META_AGENT_OPENAI_API_KEY"
+    monkeypatch.setenv(internal_name, "resolved-key")
+
+    assert resolve_env_vars({"OPENAI_API_KEY": f"${{{internal_name}}}"}) == {
+        "OPENAI_API_KEY": "resolved-key"
     }
-    assert "CODEX_FORCE_AUTH_JSON" not in module._agent_env({"agent": "mini-swe-agent"})
 
 
 def test_harbor_meta_agent_forwards_openai_environment(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -76,14 +77,14 @@ def test_harbor_meta_agent_forwards_openai_environment(monkeypatch: pytest.Monke
     monkeypatch.setenv("OPENAI_API_KEY", "workspace-key")
     monkeypatch.setenv("OPENAI_BASE_URL", "https://workspace.example/v1")
 
-    assert module._agent_env({"agent": "mini-swe-agent"}) == {
+    assert module._legacy_agent_env({"agent": "mini-swe-agent"}) == {
         "OPENAI_API_KEY": "workspace-key",
         "OPENAI_BASE_URL": "https://workspace.example/v1",
         "no_proxy": "workspace.example",
         "NO_PROXY": "workspace.example",
     }
     assert (
-        module._agent_env(
+        module._legacy_agent_env(
             {
                 "agent": "mini-swe-agent",
                 "agent_env": {"OPENAI_BASE_URL": "https://configured.example/v1"},
@@ -104,7 +105,7 @@ def test_harbor_meta_agent_forwards_dependency_proxies_with_model_bypass(
     monkeypatch.setenv("no_proxy", ".internal.example")
     monkeypatch.setenv("NO_PROXY", ".upper.example")
 
-    assert module._agent_env({"agent": "mini-swe-agent"}) == {
+    assert module._legacy_agent_env({"agent": "mini-swe-agent"}) == {
         "OPENAI_API_KEY": "workspace-key",
         "OPENAI_BASE_URL": "https://workspace.example/v1",
         "http_proxy": "http://dependency-proxy.example:8118",
@@ -155,6 +156,36 @@ def test_harbor_meta_agent_redacts_config_only_proxy_from_command_record(
     assert "HTTPS_PROXY=[REDACTED]" in command
 
 
+def test_strict_codex_command_record_contains_templates_not_runtime_literals(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checkout, run_dir = _checkout(tmp_path)
+    bin_dir = tmp_path / "bin"
+    _install_fake_harbor(bin_dir)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    key = "strict-sensitive-key"
+    endpoint = "https://model.example/v1"
+    proxy = "http://proxy-user:proxy-password@proxy.example:8118"
+    monkeypatch.setenv("OPENAI_API_KEY", key)
+    monkeypatch.setenv("OPENAI_BASE_URL", endpoint)
+    monkeypatch.setenv("HTTPS_PROXY", proxy)
+    _enable_strict_profile(checkout, endpoint)
+    ctx = _ctx(checkout, run_dir)
+    ctx.config["agent"] = "codex"
+
+    _harbor_runner_module().run_agent(checkout, "failure evidence", ctx)
+
+    command = json.loads((run_dir / "meta_agent" / "harbor" / "command.json").read_text())
+    serialized = json.dumps(command)
+    assert key not in serialized
+    assert endpoint not in serialized
+    assert proxy not in serialized
+    assert "OPENAI_API_KEY=${EVOLVE_RUNTIME_META_AGENT_OPENAI_API_KEY}" in command
+    assert "OPENAI_BASE_URL=${EVOLVE_RUNTIME_META_AGENT_OPENAI_BASE_URL}" in command
+    assert "HTTPS_PROXY=${EVOLVE_RUNTIME_META_AGENT_HTTPS_PROXY}" in command
+
+
 def test_harbor_meta_agent_child_creates_private_files(tmp_path: Path) -> None:
     module = _harbor_runner_module()
     output = tmp_path / "child-output"
@@ -172,17 +203,19 @@ def test_harbor_meta_agent_child_creates_private_files(tmp_path: Path) -> None:
     assert stat.S_IMODE(log.stat().st_mode) == 0o600
 
 
-def test_codex_harbor_process_cannot_fall_back_to_host_openai_environment() -> None:
+def test_legacy_codex_uses_endpoint_api_key_without_file_auth(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     module = _harbor_runner_module()
-    host = {
-        "PATH": "/usr/bin",
-        "OPENAI_API_KEY": "judge-key",
-        "OPENAI_BASE_URL": "http://judge-bridge.example/v1",
-        "OPENAI_API_BASE": "http://judge-bridge.example/v1",
-    }
+    monkeypatch.setenv("OPENAI_API_KEY", "judge-key")
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://judge.example/v1")
 
-    assert module._harbor_process_env({"agent": "codex"}, host) == {"PATH": "/usr/bin"}
-    assert module._harbor_process_env({"agent": "mini-swe-agent"}, host) == host
+    environment = module._legacy_agent_env({"agent": "codex"})
+
+    assert environment["OPENAI_API_KEY"] == "judge-key"
+    assert environment["OPENAI_BASE_URL"] == "https://judge.example/v1"
+    assert "CODEX_FORCE_AUTH_JSON" not in environment
+    assert "CODEX_AUTH_JSON_PATH" not in environment
 
 
 def test_harbor_rejects_oversized_instruction_with_unsafe_agent(tmp_path: Path) -> None:
@@ -215,6 +248,32 @@ def _git(root: Path, *args: str) -> str:
     )
     assert result.returncode == 0, result.stderr
     return result.stdout.strip()
+
+
+def _enable_strict_profile(checkout: Path, endpoint: str) -> None:
+    resolved = resolve_runtime_profile(
+        {
+            "experiment": {"id": "test"},
+            "target": {"seed": "builtin-codex"},
+            "surface": {"include": ["target/**"], "exclude": []},
+            "operators": {"meta_agent": {"agent": "codex"}},
+            "evaluator": {
+                "engine": "harbor",
+                "agent": "target.agent:HarborAgent",
+                "runtime": {"profile": "harbor-bytedance-v1"},
+            },
+        },
+        "sha256:test-runtime",
+        {"OPENAI_BASE_URL": endpoint},
+    )
+    assert resolved is not None
+    evaluator = checkout / "evaluator"
+    evaluator.mkdir()
+    (evaluator / "runtime-profile.json").write_text(
+        json.dumps(resolved.to_dict(), indent=2, sort_keys=True) + "\n"
+    )
+    _git(checkout, "add", "evaluator/runtime-profile.json")
+    _git(checkout, "commit", "-qm", "add strict runtime profile")
 
 
 def _checkout(tmp_path: Path) -> tuple[Path, Path]:
@@ -885,6 +944,7 @@ def test_harbor_meta_agent_does_not_pass_run_only_timeout_multiplier(tmp_path: P
         tmp_path / "tasks",
         "job",
         {"agent_timeout_multiplier": 4},
+        {},
     )
 
     assert "--agent-timeout-multiplier" not in command

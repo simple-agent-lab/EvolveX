@@ -12,6 +12,7 @@ surface under `target/**` so Evolve can mutate it.
 Compaction overrides are off by default so Codex uses model defaults. Set
 `compaction.override_defaults = true` to evaluate the candidate values.
 
-Authentication is runtime state, not part of the genome. Run `codex login` on
-the host so `~/.codex/auth.json` exists; set `CODEX_AUTH_JSON_PATH` only when
-using another auth file location. Never commit credentials under `target/`.
+Authentication is runtime state, not part of the genome. New workspaces require
+`OPENAI_API_KEY` and `OPENAI_BASE_URL`; the shared runtime profile passes them
+through Harbor's supported API-key mode. Codex auth files are unsupported for
+new workspaces. Never commit credentials under `target/`.

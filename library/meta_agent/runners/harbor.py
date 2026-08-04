@@ -29,6 +29,11 @@ from evolve.meta_agent_budget import (
     uses_harbor_per_attempt_timeout,
 )
 from evolve.patching import SurfacePolicy, load_surface_policy, patch_parent_ref
+from evolve.runtime_environment import (
+    RuntimeEnvironmentPlan,
+    resolve_runtime_environment,
+)
+from evolve.runtime_profiles import load_resolved_runtime_profile
 from evolve.surface import check_paths
 from library.meta_agent.support.artifacts import ensure_artifact_layout
 
@@ -576,11 +581,14 @@ def _redact(text: str, environment: Mapping[str, str] | None = None) -> str:
     for value in sorted(values, key=len, reverse=True):
         text = text.replace(value, "[REDACTED]")
     text = _BEARER.sub("Bearer [REDACTED]", text)
-    return _SECRET_ASSIGNMENT.sub(lambda match: f"{match.group(1)}{match.group(2)}{match.group(3)}[REDACTED]", text)
-
-
-def _redaction_environment(config: dict[str, Any]) -> dict[str, str]:
-    return {**os.environ, **_agent_env(config)}
+    return _SECRET_ASSIGNMENT.sub(
+        lambda match: (
+            match.group(0)
+            if match.group(4).startswith("${EVOLVE_RUNTIME_")
+            else f"{match.group(1)}{match.group(2)}{match.group(3)}[REDACTED]"
+        ),
+        text,
+    )
 
 
 def _nonnegative_int(value: object, default: int) -> int:
@@ -618,14 +626,34 @@ def _meta_agent_process_timeout_s(config: dict[str, Any]) -> float | None:
     return harbor_meta_agent_budget(timeout_s, max_retries).harbor_process_s
 
 
-def _append_agent_env(command: list[str], config: dict[str, Any]) -> None:
-    for key, value in _agent_env(config).items():
+def _append_agent_env(command: list[str], environment: Mapping[str, str]) -> None:
+    for key, value in environment.items():
         command.extend(["--ae", f"{key}={value}"])
 
 
-def _agent_env(config: dict[str, Any]) -> dict[str, str]:
+def _runtime_environment_plan(
+    checkout: Path, config: Mapping[str, object]
+) -> RuntimeEnvironmentPlan:
+    profile_path = checkout / "evaluator" / "runtime-profile.json"
+    if not profile_path.is_file():
+        raise ValueError("strict runtime profile is missing from evaluator/runtime-profile.json")
+    try:
+        profile = load_resolved_runtime_profile(json.loads(profile_path.read_text()))
+    except json.JSONDecodeError as error:
+        raise ValueError("evaluator/runtime-profile.json is invalid JSON") from error
+    configured = config.get("agent_env")
+    if configured is not None and not isinstance(configured, Mapping):
+        raise ValueError("meta-agent agent_env must be a mapping")
+    overrides = cast("Mapping[str, object] | None", configured)
+    return resolve_runtime_environment(
+        profile,
+        os.environ,
+        agent_overrides=overrides,
+    )
+
+
+def _legacy_agent_env(config: Mapping[str, object]) -> dict[str, str]:
     values: dict[str, str] = {}
-    agent = str(config.get("agent") or "").strip().lower()
     for override, lower, upper in _PROXY_ENV:
         value = os.environ.get(override) or os.environ.get(lower) or os.environ.get(upper)
         if value:
@@ -637,17 +665,15 @@ def _agent_env(config: dict[str, Any]) -> dict[str, str]:
     bypass_override = os.environ.get("EVOLVE_HARBOR_NO_PROXY")
     if bypass_override:
         values.update({name: bypass_override for name in _BYPASS_ENV})
-    # Harbor's Codex agent mounts the host Codex home, including auth.json.
-    # Do not let evaluator/judge endpoints exported by the driver override
-    # that login. A custom Codex provider remains available through an
-    # explicit meta_agent.agent_env mapping.
-    if agent != "codex":
-        for name in _CREDENTIAL_ENV:
-            value = os.environ.get(name)
-            if value:
-                values[name] = value
+    for name in _CREDENTIAL_ENV:
+        value = os.environ.get(name)
+        if value:
+            values[name] = value
     configured = config.get("agent_env")
     if isinstance(configured, dict):
+        forbidden = {"CODEX_AUTH_JSON_PATH", "CODEX_FORCE_AUTH_JSON"}.intersection(configured)
+        if forbidden:
+            raise ValueError("legacy meta-agent agent_env contains unsupported Codex auth-file variables")
         values.update({str(key): str(value) for key, value in configured.items()})
     for _, lower, upper in _PROXY_ENV:
         value = values.get(lower) or values.get(upper)
@@ -669,23 +695,16 @@ def _agent_env(config: dict[str, Any]) -> dict[str, str]:
     if bypass_entries:
         bypass = ",".join(bypass_entries)
         values.update({name: bypass for name in _BYPASS_ENV})
-    if agent == "codex":
-        # Harbor redacts literal values for environment keys containing
-        # "AUTH" when it persists a job. Keep this as a resolvable template
-        # so the trial receives a boolean value instead of "****".
-        values["CODEX_FORCE_AUTH_JSON"] = "${CODEX_FORCE_AUTH_JSON:-1}"
-    force_auth = os.environ.get("CODEX_FORCE_AUTH_JSON")
-    if force_auth and "CODEX_FORCE_AUTH_JSON" not in values:
-        values["CODEX_FORCE_AUTH_JSON"] = force_auth
     return values
 
 
-def _harbor_process_env(config: dict[str, Any], values: dict[str, str]) -> dict[str, str]:
-    sanitized = dict(values)
-    if str(config.get("agent") or "").strip().lower() == "codex":
-        for name in _CREDENTIAL_ENV:
-            sanitized.pop(name, None)
-    return sanitized
+def _runtime_inputs(
+    checkout: Path, config: Mapping[str, object]
+) -> tuple[dict[str, str], dict[str, str]]:
+    if (checkout / "evaluator" / "runtime-profile.json").is_file():
+        plan = _runtime_environment_plan(checkout, config)
+        return plan.meta_agent_env(), plan.process_env()
+    return _legacy_agent_env(config), {}
 
 
 def _uv_cache_dir(workspace: Path) -> Path:
@@ -706,13 +725,14 @@ def _miniswe_config_command(
     tasks_dir: Path,
     job_name: str,
     config: dict[str, Any],
+    agent_environment: Mapping[str, str],
     *,
     candidate_source: Path,
     artifact: str | None,
     uv_cache_dir: Path,
     agent_timeout_s: float | None,
 ) -> list[str]:
-    agent_env = _agent_env(config)
+    agent_env = dict(agent_environment)
     agent_env.setdefault("EVOLVE_CANDIDATE_SOURCE", str(candidate_source.resolve()))
     agent: dict[str, Any] = {
         "name": str(config.get("agent")),
@@ -778,6 +798,7 @@ def _base_command(
     tasks_dir: Path,
     job_name: str,
     config: dict[str, Any],
+    agent_environment: Mapping[str, str],
 ) -> list[str]:
     agent = str(config.get("agent") or "codex")
     command = [
@@ -823,7 +844,7 @@ def _base_command(
     if isinstance(kwargs, dict):
         for key, value in kwargs.items():
             command.extend(["--ak", f"{key}={value}"])
-    _append_agent_env(command, config)
+    _append_agent_env(command, agent_environment)
     if os.environ.get("EVOLVE_LIVE_OUTPUT") != "1":
         command.append("--quiet")
     return command
@@ -837,6 +858,7 @@ def _build_command(
     tasks_dir: Path,
     job_name: str,
     config: dict[str, Any],
+    agent_environment: Mapping[str, str],
     uv_cache_dir: Path | None = None,
 ) -> list[str]:
     agent = str(config.get("agent") or "codex")
@@ -851,12 +873,22 @@ def _build_command(
             tasks_dir,
             job_name,
             config,
+            agent_environment,
             candidate_source=bundle.workspace / "target",
             artifact=_ARTIFACT_SOURCE,
             uv_cache_dir=uv_cache_dir or _uv_cache_dir(bundle.task_root),
             agent_timeout_s=_positive_float(config.get("timeout_s")),
         )
-    command = _base_command(harbor, bundle.task_root, prompt_path, jobs_root, tasks_dir, job_name, config)
+    command = _base_command(
+        harbor,
+        bundle.task_root,
+        prompt_path,
+        jobs_root,
+        tasks_dir,
+        job_name,
+        config,
+        agent_environment,
+    )
     workdir_index = command.index("--workdir")
     command[workdir_index + 1] = _HARBOR_WORKDIR
     tasks_index = command.index("--tasks-dir")
@@ -1064,9 +1096,15 @@ def run_readonly_agent(
             raise ValueError(
                 "agent_pythonpath was removed; add the adapter to the workspace pyproject.toml and uv.lock"
             )
-        redaction_environment = _redaction_environment(ctx.config)
+        agent_environment, runtime_process_environment = _runtime_inputs(checkout, ctx.config)
+        redaction_environment = {
+            **os.environ,
+            **runtime_process_environment,
+        }
+        if not runtime_process_environment:
+            redaction_environment = {**redaction_environment, **agent_environment}
         harbor, harbor_env = uv_run(ctx.workspace, "harbor")
-        harbor_env = _harbor_process_env(ctx.config, harbor_env)
+        harbor_env.update(runtime_process_environment)
         task_root = output_dir / "task"
         prompt_path = output_dir / "prompt.md"
         jobs_root = output_dir / "jobs"
@@ -1095,13 +1133,23 @@ def run_readonly_agent(
                 tasks_dir,
                 job_name,
                 ctx.config,
+                agent_environment,
                 candidate_source=checkout / "target",
                 artifact=None,
                 uv_cache_dir=_uv_cache_dir(ctx.workspace),
                 agent_timeout_s=timeout_s,
             )
         else:
-            command = _base_command(harbor, task_root, prompt_path, jobs_root, tasks_dir, job_name, ctx.config)
+            command = _base_command(
+                harbor,
+                task_root,
+                prompt_path,
+                jobs_root,
+                tasks_dir,
+                job_name,
+                ctx.config,
+                agent_environment,
+            )
         _write_json(
             output_dir / "command.json",
             [_redact(arg, redaction_environment) for arg in command],
@@ -1167,7 +1215,13 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
             raise ValueError(
                 "agent_pythonpath was removed; add the adapter to the workspace pyproject.toml and uv.lock"
             )
-        redaction_environment = _redaction_environment(ctx.config)
+        agent_environment, runtime_process_environment = _runtime_inputs(checkout, ctx.config)
+        redaction_environment = {
+            **os.environ,
+            **runtime_process_environment,
+        }
+        if not runtime_process_environment:
+            redaction_environment = {**redaction_environment, **agent_environment}
         bundle = _prepare_bundle(
             checkout,
             ctx,
@@ -1178,7 +1232,7 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
         if (jobs_root / job_name).exists():
             raise RuntimeError(f"Harbor meta-agent job already exists: {jobs_root / job_name}")
         harbor, harbor_env = uv_run(ctx.workspace, "harbor")
-        harbor_env = _harbor_process_env(ctx.config, harbor_env)
+        harbor_env.update(runtime_process_environment)
         prompt_path.parent.mkdir(parents=True, exist_ok=True)
         evidence_contract = (
             "It contains the selected parent, full Git history, configuration, archive, evaluator, and complete "
@@ -1211,6 +1265,7 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
             tasks_dir,
             job_name,
             ctx.config,
+            agent_environment,
             _uv_cache_dir(ctx.workspace),
         )
         _write_json(
