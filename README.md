@@ -102,6 +102,37 @@ uv run evolve init /tmp/evolve-harbor \
 Inspect a run with `evolve status`, `evolve report`, `git tag --list 'gen/*'`,
 and the generated `archive.jsonl`. Run `evolve --help` for the complete CLI.
 
+## Browse an Experiment
+
+`evolve view` serves a read-only view of one generated workspace. It shows the
+current experiment health, generation progress, modifications, canonical
+performance, and paginated trial outcomes. When the workspace retains Harbor
+jobs, linked trial rows open Harbor's full trajectory, logs, verifier output,
+and artifacts on the same server.
+
+For a workspace on DevBox, start the viewer there:
+
+```bash
+# On DevBox
+evolve view /data00/home/$USER/experiments/my-run
+```
+
+The command binds to `127.0.0.1`, chooses the first free port from `8080-8089`,
+and prints the matching tunnel command. On the laptop, use the selected port
+(for example, `8080`):
+
+```bash
+# On the laptop
+ssh -N -L 8080:127.0.0.1:8080 DevBox
+# Then open http://127.0.0.1:8080
+```
+
+The Evolve pages poll filesystem summaries every three seconds and do not offer
+run, delete, upload, summarize, or authentication actions. This is a local
+inspection tool, not an authorization boundary: anyone who can access the
+listener or SSH tunnel can view the raw Harbor artifacts exposed by that
+workspace. Keep the default loopback binding and restrict tunnel access.
+
 ## Concepts
 
 | Concept | Meaning |

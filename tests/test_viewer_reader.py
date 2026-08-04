@@ -7,6 +7,7 @@ import pytest
 
 from evolve.viewer.models import JobRootReference
 from evolve.viewer.reader import WorkspaceReader
+from evolve.viewer.snapshot import build_snapshot
 
 
 def _workspace(tmp_path: Path) -> Path:
@@ -101,3 +102,48 @@ def test_reader_rejects_non_workspace(tmp_path: Path) -> None:
     """Accepting arbitrary folders would make route confinement meaningless."""
     with pytest.raises(ValueError, match="evolve.yaml"):
         WorkspaceReader(tmp_path).refresh()
+
+
+def test_large_snapshot_uses_summaries_without_reading_raw_trajectories(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Viewer refresh cost must follow summary size, not raw Harbor trajectory volume."""
+    workspace = _workspace(tmp_path)
+    rows = []
+    for generation in range(11):
+        rows.append(
+            {
+                "genid": str(generation),
+                "purpose": "genesis" if generation == 0 else "candidate",
+                "status": "complete",
+                "task_vector": {
+                    "tasks": {
+                        f"suite__task-{generation}": {
+                            "trials": [
+                                {"trial": repetition, "status": "complete", "reward": 1.0}
+                                for repetition in range(100)
+                            ]
+                        }
+                    }
+                },
+            }
+        )
+    (workspace / "archive.jsonl").write_text("".join(json.dumps(row) + "\n" for row in rows))
+    raw = (
+        workspace
+        / "runs/evaluations/candidate/gen-10/candidate-a/attempt-1/jobs/job/trial/agent/trajectory.json"
+    )
+    raw.parent.mkdir(parents=True)
+    raw.write_text("[]")
+    (raw.parents[2] / "config.json").write_text("{}\n")
+    original = Path.read_text
+
+    def guarded_read(path: Path, *args, **kwargs):
+        assert path != raw
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", guarded_read)
+
+    bundle = build_snapshot(WorkspaceReader(workspace).refresh())
+
+    assert len(bundle.trials) == 1100
