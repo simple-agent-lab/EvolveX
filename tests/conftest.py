@@ -18,6 +18,7 @@ from evolve.workspace import init_workspace as create_workspace
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE_RECIPES = ROOT / "tests" / "fixtures" / "recipes"
 FIXTURE_SEEDS = ROOT / "tests" / "fixtures" / "seeds"
+UV_SOURCE_RECIPES = {"ahe", "hill_climb", "hyperagents"}
 
 
 def _uv_directory(*arguments: str) -> str:
@@ -56,11 +57,54 @@ def init_fixture_workspace(workspace: Path, name: str = "hill_climb-smoke") -> P
     return workspace
 
 
+def write_identity_dataset(root: Path, count: int = 10) -> Path:
+    root.mkdir()
+    for index in range(count):
+        task = root / f"task-{index}"
+        task.mkdir()
+        (task / "task.toml").write_text(f'version = "1.0"\nname = "task-{index}"\n')
+    return root
+
+
+def init_recipe_with_local_inputs(tmp_path: Path, recipe: str) -> Path:
+    dataset = write_identity_dataset(tmp_path / f"{recipe}-tasks")
+    seed = (
+        write_locked_miniswe_seed(tmp_path / f"{recipe}-seed")
+        if recipe in UV_SOURCE_RECIPES
+        else None
+    )
+    workspace = tmp_path / f"workspace-{recipe}"
+    create_workspace(
+        InitOptions(
+            workspace=workspace,
+            recipe=recipe,
+            seed=str(seed) if seed is not None else None,
+            dataset=str(dataset),
+        )
+    )
+    return workspace
+
+
 @pytest.fixture(autouse=True)
 def evaluator_runtime_digest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("EVOLVE_RUNTIME_DIGEST", "sha256:test-runtime")
     monkeypatch.setenv("EVOLVE_HOME", str(tmp_path / "evolve-home"))
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    if os.environ.get("EVOLVE_LIVE_BYTEDANCE_SMOKE") != "1":
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key-not-a-secret")
+        monkeypatch.setenv("OPENAI_BASE_URL", "https://model.example/v1")
+    monkeypatch.delenv("CODEX_AUTH_JSON_PATH", raising=False)
+    monkeypatch.delenv("CODEX_FORCE_AUTH_JSON", raising=False)
+
+
+@pytest.fixture
+def strict_workspace(tmp_path: Path) -> Path:
+    return init_recipe_with_local_inputs(tmp_path, "aevolve")
+
+
+@pytest.fixture
+def legacy_workspace(tmp_path: Path) -> Path:
+    return init_fixture_workspace(tmp_path / "legacy-workspace")
 
 
 def run_evolve(

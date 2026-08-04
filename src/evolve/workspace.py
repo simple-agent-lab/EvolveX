@@ -34,6 +34,7 @@ from .config import (
     seed_root,
 )
 from .host_runtime import uv_executable
+from .runtime_profiles import resolve_runtime_profile
 from .splits import build_manifest
 
 _SEED_IGNORE_PATTERNS = (
@@ -192,6 +193,9 @@ def _write_files(
         raise ValueError(
             "EVOLVE_RUNTIME_DIGEST must identify the evaluator capsule (normally an immutable image digest)"
         )
+    resolved_profile = resolve_runtime_profile(config, runtime_digest, os.environ)
+    if resolved_profile is not None and resolved_profile.runtime_digest != runtime_digest:
+        raise ValueError("resolved runtime profile does not match EVOLVE_RUNTIME_DIGEST")
     evaluator_trials = evaluator_repetitions(evaluator)
     tasks_per_round = int(evaluator.get("tasks_per_round", evaluator_trials))
     evaluator_n = int(evaluator.get("n_concurrent", evaluator_trials))
@@ -231,7 +235,7 @@ def _write_files(
         ".gitignore": _workspace_scaffold(".gitignore"),
         ".evolve-protocol-version": "1\n",
         "operators/engines/local.sh": _shell_script("operator local engine"),
-        "operators/preflight.sh": _shell_script("operator preflight"),
+        "operators/preflight.sh": _workspace_scaffold("operators/preflight.sh"),
         "operators/select.md": _workspace_scaffold("operators/select.md"),
         "operators/rollout.md": _workspace_scaffold("operators/rollout.md"),
         "operators/gate.md": _workspace_scaffold("operators/gate.md"),
@@ -266,6 +270,10 @@ def _write_files(
         "evaluator/engines/local.sh": _shell_script("canonical local engine"),
         "archive.jsonl": "",
     }
+    if resolved_profile is not None:
+        files["evaluator/runtime-profile.json"] = (
+            json.dumps(resolved_profile.to_dict(), indent=2, sort_keys=True) + "\n"
+        )
     if evaluator_engine == "harbor":
         files.update(
             {

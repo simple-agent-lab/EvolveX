@@ -4,12 +4,61 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from conftest import git, init_fixture_workspace, run_evolve, write_locked_miniswe_seed
+from conftest import (
+    git,
+    init_fixture_workspace,
+    init_recipe_with_local_inputs,
+    run_evolve,
+    write_locked_miniswe_seed,
+)
 
 from evolve.config import load_config, surface_lists
 from evolve.workspace import InitOptions, _write_target, init_workspace
 
 MINISWE_REVISION = "388da74aad620a384ab47669b17c52133e30e7c3"
+
+
+@pytest.mark.parametrize(
+    ("recipe", "profile"),
+    [
+        ("aevolve", "harbor-bytedance-v1"),
+        ("ahe", "harbor-bytedance-uv-v1"),
+        ("gepa", "harbor-bytedance-v1"),
+        ("hill_climb", "harbor-bytedance-uv-v1"),
+        ("hyperagents", "harbor-bytedance-uv-v1"),
+    ],
+)
+def test_init_generates_canonical_resolved_runtime_profile(
+    tmp_path: Path, recipe: str, profile: str
+) -> None:
+    workspace = init_recipe_with_local_inputs(tmp_path, recipe)
+
+    payload = json.loads((workspace / "evaluator/runtime-profile.json").read_text())
+    assert payload["name"] == profile
+    assert payload["runtime_digest"] == "sha256:test-runtime"
+    assert payload["profile_digest"]
+    assert "model.example" not in json.dumps(payload)
+    assert git(workspace, "show", "gen/0:evaluator/runtime-profile.json")
+
+
+def test_init_keeps_custom_recipe_without_runtime_profile_in_legacy_mode(tmp_path: Path) -> None:
+    workspace = init_fixture_workspace(tmp_path / "legacy-workspace")
+
+    assert (workspace / "evaluator/runtime.pin").read_text() == "sha256:test-runtime\n"
+    assert not (workspace / "evaluator/runtime-profile.json").exists()
+    assert git(workspace, "ls-tree", "gen/0", "evaluator/runtime-profile.json") == ""
+
+
+def test_generated_preflight_wrapper_only_delegates_to_framework(tmp_path: Path) -> None:
+    workspace = init_recipe_with_local_inputs(tmp_path, "aevolve")
+
+    assert (workspace / "operators/preflight.sh").read_text() == (
+        '#!/bin/sh\n'
+        'set -eu\n'
+        'HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)\n'
+        'ROOT=$(CDPATH= cd -- "$HERE/.." && pwd)\n'
+        'exec "$ROOT/evolve" preflight "$ROOT" "$@"\n'
+    )
 
 
 def _miniswe_seed(root: Path) -> Path:

@@ -181,13 +181,16 @@ def test_terminal_bench_method_recipes_use_full_curated_dataset() -> None:
     assert ahe["operators"]["trace_analyzer"]["max_concurrent"] == 10
 
 
-def test_supported_uv_recipes_enable_candidate_runtime_and_task_retry() -> None:
-    for name in UV_SOURCE_RECIPES:
+def test_supported_recipes_select_runtime_profiles_and_task_retry() -> None:
+    for name in SUPPORTED_RECIPES:
         evaluator = _parsed_config(name)["evaluator"]
         assert isinstance(evaluator, dict)
-        assert evaluator["candidate_runtime"] == {"variant": "uv", "project": "target", "python": "3.12"}
+        expected = "harbor-bytedance-uv-v1" if name in UV_SOURCE_RECIPES else "harbor-bytedance-v1"
+        assert evaluator["runtime"] == {"profile": expected}
+        assert "candidate_runtime" not in evaluator
         assert evaluator["max_retries"] == 1
-        assert evaluator["benchmark_timeout_is_zero"] is True
+        if name in UV_SOURCE_RECIPES:
+            assert evaluator["benchmark_timeout_is_zero"] is True
 
 
 def test_shared_optimization_recipes_use_native_candidate_agent_timeout() -> None:
