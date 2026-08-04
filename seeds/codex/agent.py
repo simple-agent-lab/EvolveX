@@ -101,13 +101,10 @@ class HarborAgent(Codex):
         load_codex = "if [ -s ~/.nvm/nvm.sh ]; then . ~/.nvm/nvm.sh; fi;"
         commands.extend(
             [
-                (
-                    f'{load_codex} CODEX_HOME="$CODEX_HOME" '
-                    f"codex plugin marketplace add {marketplace} >/dev/null"
-                ),
+                (f'{load_codex} CODEX_HOME="$CODEX_HOME" codex plugin marketplace add {marketplace} >/dev/null'),
                 (
                     f'{load_codex} CODEX_HOME="$CODEX_HOME" codex plugin add '
-                    f'{PLUGIN_NAME}@{PLUGIN_MARKETPLACE} >/dev/null'
+                    f"{PLUGIN_NAME}@{PLUGIN_MARKETPLACE} >/dev/null"
                 ),
             ]
         )
