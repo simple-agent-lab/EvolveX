@@ -14,6 +14,7 @@ from typing import Any
 from .evaluation import Outcome
 from .host_runtime import clean_python_env, uv_executable
 from .runtime import run_owned
+from .runtime_profiles import load_resolved_runtime_profile
 
 CONTAINER_UV_CACHE = "/opt/evolve/uv/cache"
 CONTAINER_UV_PYTHON = "/opt/evolve/uv/python"
@@ -106,7 +107,26 @@ class CandidateRuntimeResult:
 
 
 def candidate_runtime_config(checkout: Path, evaluator: dict[str, Any]) -> UvRuntimeConfig | None:
-    value = evaluator.get("candidate_runtime")
+    profile_path = checkout / "evaluator" / "runtime-profile.json"
+    if profile_path.is_file():
+        if "candidate_runtime" in evaluator:
+            raise ValueError(
+                "cannot combine a resolved runtime profile with evaluator.candidate_runtime"
+            )
+        try:
+            resolved_profile = load_resolved_runtime_profile(json.loads(profile_path.read_text()))
+        except json.JSONDecodeError as error:
+            raise ValueError("evaluator/runtime-profile.json is invalid JSON") from error
+        policy = resolved_profile.profile.candidate_runtime
+        if policy is None:
+            return None
+        value: object = {
+            "variant": policy.variant,
+            "project": policy.project,
+            "python": policy.python,
+        }
+    else:
+        value = evaluator.get("candidate_runtime")
     if value is None:
         return None
     if not isinstance(value, dict):

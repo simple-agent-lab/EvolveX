@@ -26,6 +26,7 @@ def _strict_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
             "repetitions": 2,
             "tasks_per_round": 2,
             "n_concurrent": 2,
+            "runtime": {"profile": "harbor-bytedance-v1"},
         }
     )
     config["evaluator"].pop("k", None)

@@ -45,6 +45,7 @@ def test_all_partner_recipes_resolve_the_same_automatic_contract_schema(
     assert evaluator["runtime"] == {"profile": profile}
     assert "candidate_runtime" not in evaluator
     assert json.loads((workspace / "evaluator/runtime-profile.json").read_text())["name"] == profile
+    assert (contract.candidate_dependency_digest is not None) is profile.endswith("-uv-v1")
     assert surface_lists(workspace)[0] == expected_surface
     assert json.loads((workspace / ".evolve-components.json").read_text())["recipe"] == recipe
     assert json.loads((workspace / "evaluator/dataset.pin").read_text())["digest"]

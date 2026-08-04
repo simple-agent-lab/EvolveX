@@ -14,6 +14,11 @@ import yaml
 from .. import __version__
 from ..evaluator_config import evaluator_repetitions
 from ..git import git
+from ..runtime_profiles import (
+    ResolvedRuntimeProfileV1,
+    RuntimeProfileResolutionError,
+    load_resolved_runtime_profile,
+)
 from ..splits import parse_manifest, selected_task_names
 from .datasets import selected_dataset_identity
 from .identity import evaluation_split_name
@@ -153,10 +158,11 @@ def resolve_evaluation_contract(context: ContractResolutionContext) -> Evaluatio
     runtime_digest = _required_git_text(workspace, "gen/0:evaluator/runtime.pin", "runtime_digest").strip()
     if not runtime_digest:
         raise EvaluationContractResolutionError("runtime_digest", "runtime.pin is empty")
-    runtime_profile = _runtime_profile(evaluator)
-    runtime_profile_digest = _canonical_digest(
-        {"runtime_profile": runtime_profile, "runtime_digest": runtime_digest}
-    )
+    resolved_profile = _trusted_runtime_profile(workspace, evaluator)
+    if resolved_profile.runtime_digest != runtime_digest:
+        raise EvaluationContractResolutionError(
+            "runtime_digest", "runtime.pin does not match resolved profile"
+        )
     task_members = dataset_identity.members
     task_set_digest = _canonical_digest(
         {
@@ -200,13 +206,17 @@ def resolve_evaluation_contract(context: ContractResolutionContext) -> Evaluatio
         seed_namespace=seed_namespace,
         trial_identities=trials,
         concurrency=concurrency,
-        runtime_profile=runtime_profile,
-        runtime_profile_digest=runtime_profile_digest,
+        runtime_profile=resolved_profile.profile.name,
+        runtime_profile_digest=resolved_profile.profile_digest,
         runtime_digest=runtime_digest,
-        candidate_dependency_digest=_candidate_dependency_digest(workspace, candidate_commit, evaluator),
+        candidate_dependency_digest=_candidate_dependency_digest(
+            workspace, candidate_commit, resolved_profile
+        ),
         model_identity={
             "agent": _optional_string(evaluator.get("agent")),
             "model": _optional_string(evaluator.get("model")),
+            "route": resolved_profile.profile.model_route,
+            "route_digest": resolved_profile.model_route_digest,
         },
         retry_policy=retry_policy,
         framework_version=__version__,
@@ -214,8 +224,22 @@ def resolve_evaluation_contract(context: ContractResolutionContext) -> Evaluatio
 
 
 def evaluation_contract_mode(workspace: Path) -> ContractMode:
-    manifest = _trusted_manifest(workspace.resolve())
-    return ContractMode.STRICT if manifest.get("identity_status") == "verified" else ContractMode.LEGACY_UNVERIFIED
+    resolved_workspace = workspace.resolve()
+    manifest = _trusted_manifest(resolved_workspace)
+    if manifest.get("identity_status") != "verified":
+        return ContractMode.LEGACY_UNVERIFIED
+    evaluator = _trusted_config(resolved_workspace)["evaluator"]
+    if evaluator.get("runtime") is None:
+        return ContractMode.LEGACY_UNVERIFIED
+    profile = _trusted_runtime_profile(resolved_workspace, evaluator)
+    runtime_digest = _required_git_text(
+        resolved_workspace, "gen/0:evaluator/runtime.pin", "runtime_digest"
+    ).strip()
+    if profile.runtime_digest != runtime_digest:
+        raise EvaluationContractResolutionError(
+            "runtime_digest", "runtime.pin does not match resolved profile"
+        )
+    return ContractMode.STRICT
 
 
 def trusted_evaluator_config(workspace: Path) -> dict[str, Any]:
@@ -322,16 +346,17 @@ def _redact_sensitive(value: object, *, field: str = "") -> object:
     return value
 
 
-def _candidate_dependency_digest(workspace: Path, commit: str, evaluator: dict[str, Any]) -> str | None:
-    runtime = evaluator.get("candidate_runtime")
+def _candidate_dependency_digest(
+    workspace: Path,
+    commit: str,
+    profile: ResolvedRuntimeProfileV1,
+) -> str | None:
+    runtime = profile.profile.candidate_runtime
     if runtime is None:
         return None
-    if not isinstance(runtime, dict) or runtime.get("variant") != "uv":
+    if runtime.variant != "uv":
         raise EvaluationContractResolutionError("candidate_dependency_digest", "unsupported candidate runtime")
-    project = runtime.get("project")
-    if not isinstance(project, str):
-        raise EvaluationContractResolutionError("candidate_dependency_digest", "uv project must be a relative path")
-    relative = PurePosixPath(project)
+    relative = PurePosixPath(runtime.project)
     if relative.is_absolute() or any(part in {"", ".", ".."} for part in relative.parts):
         raise EvaluationContractResolutionError("candidate_dependency_digest", "uv project escapes candidate tree")
     digest = hashlib.sha256()
@@ -345,13 +370,27 @@ def _candidate_dependency_digest(workspace: Path, commit: str, evaluator: dict[s
     return digest.hexdigest()
 
 
-def _runtime_profile(evaluator: dict[str, Any]) -> str:
+def _trusted_runtime_profile(
+    workspace: Path, evaluator: dict[str, Any]
+) -> ResolvedRuntimeProfileV1:
     runtime = evaluator.get("runtime")
-    if runtime is None:
-        return "legacy-pin"
     if not isinstance(runtime, dict) or not isinstance(runtime.get("profile"), str) or not runtime["profile"]:
         raise EvaluationContractResolutionError("runtime_profile", "evaluator.runtime.profile must be a string")
-    return str(runtime["profile"])
+    text = _required_git_text(
+        workspace, "gen/0:evaluator/runtime-profile.json", "runtime_profile"
+    )
+    try:
+        payload = json.loads(text)
+        profile = load_resolved_runtime_profile(payload)
+    except (json.JSONDecodeError, RuntimeProfileResolutionError) as error:
+        raise EvaluationContractResolutionError("runtime_profile", str(error)) from error
+    configured_name = str(runtime["profile"])
+    if profile.profile.name != configured_name:
+        raise EvaluationContractResolutionError(
+            "runtime_profile",
+            "resolved profile name does not match evaluator.runtime.profile",
+        )
+    return profile
 
 
 def _resolve_repetitions(evaluator: dict[str, Any]) -> int:

@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
+from evolve import evaluation as evaluation_package
 from evolve.archive import merged_rows as mechanism_merged_rows
 from evolve.config import load_config
 from evolve.workspace import InitOptions
@@ -179,6 +180,18 @@ def git(workspace: Path, *args: str) -> str:
     )
     assert result.returncode == 0, result.stderr
     return result.stdout.strip()
+
+
+def contract_for_gen0(workspace: Path) -> evaluation_package.EvaluationContractV1:
+    commit = git(workspace, "rev-parse", "gen/0^{commit}")
+    return evaluation_package.resolve_evaluation_contract(
+        evaluation_package.ContractResolutionContext(
+            workspace=workspace,
+            candidate_commit=commit,
+            purpose="candidate",
+            generation="0",
+        )
+    )
 
 
 def init_workspace(tmp_path: Path, experiment: str = "experiment") -> tuple[Path, Path]:

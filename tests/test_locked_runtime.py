@@ -6,9 +6,10 @@ import sys
 from pathlib import Path
 
 import pytest
-from conftest import write_locked_miniswe_seed
+from conftest import init_recipe_with_local_inputs, write_locked_miniswe_seed
 
 from evolve import uv_runtime as uv_runtime_module
+from evolve.config import load_config
 from evolve.evaluation import Outcome
 from evolve.uv_runtime import candidate_runtime_config, prepare_candidate_runtime
 
@@ -322,6 +323,29 @@ def test_uv_runtime_config_resolves_project_inside_checkout(tmp_path: Path) -> N
     assert config.project == (checkout / "target").resolve()
     assert config.project_relative == "target"
     assert config.python == "3.12"
+
+
+def test_uv_runtime_config_is_derived_from_resolved_profile(tmp_path: Path) -> None:
+    workspace = init_recipe_with_local_inputs(tmp_path, "ahe")
+    evaluator = load_config(workspace / "evolve.yaml")["evaluator"]
+
+    config = candidate_runtime_config(workspace, evaluator)
+
+    assert config is not None
+    assert config.variant == "uv"
+    assert config.project == (workspace / "target").resolve()
+    assert config.project_relative == "target"
+    assert config.python == "3.12"
+
+
+def test_strict_profile_rejects_legacy_candidate_runtime_override(tmp_path: Path) -> None:
+    workspace = init_recipe_with_local_inputs(tmp_path, "ahe")
+
+    with pytest.raises(ValueError, match="cannot combine"):
+        candidate_runtime_config(
+            workspace,
+            {"candidate_runtime": {"variant": "uv", "project": "target", "python": "3.12"}},
+        )
 
 
 @pytest.mark.parametrize(

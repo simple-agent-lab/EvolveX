@@ -3,7 +3,13 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
-from conftest import FIXTURE_SEEDS, fixture_recipe_config, git
+from conftest import (
+    FIXTURE_SEEDS,
+    contract_for_gen0,
+    fixture_recipe_config,
+    git,
+    init_recipe_with_local_inputs,
+)
 
 from evolve import evaluation as evaluation_package
 from evolve.workspace import InitOptions, init_workspace
@@ -32,7 +38,8 @@ def _strict_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
             "tasks_per_round": 2,
             "n_concurrent": 3,
             "max_retries": 1,
-            "agent_env": {"OPENAI_API_KEY": "must-not-appear", "STEP_LIMIT": "100"},
+            "runtime": {"profile": "harbor-bytedance-v1"},
+            "agent_env": {"STEP_LIMIT": "100"},
         }
     )
     config["evaluator"].pop("k", None)
@@ -82,18 +89,75 @@ def test_contract_resolver_derives_every_field_from_trusted_workspace_inputs(
         (task, repetition, False, None) for task in expected_tasks for repetition in range(2)
     ]
     assert contract.concurrency == 3
-    assert contract.runtime_profile == "legacy-pin"
-    assert len(contract.runtime_profile_digest) == 64
+    profile = json.loads((workspace / "evaluator/runtime-profile.json").read_text())
+    assert contract.runtime_profile == "harbor-bytedance-v1"
+    assert contract.runtime_profile_digest == profile["profile_digest"]
     assert contract.runtime_digest == "sha256:test-runtime"
     assert contract.candidate_dependency_digest is None
-    assert contract.model_identity == {"agent": "target.agent:HarborAgent", "model": "openai/test-model"}
+    assert contract.model_identity == {
+        "agent": "target.agent:HarborAgent",
+        "model": "openai/test-model",
+        "route": "bytedance-openai-compatible",
+        "route_digest": profile["model_route_digest"],
+    }
     assert contract.retry_policy == {"max_retries": 1}
     assert contract.framework_version == "0.1.0"
     assert len(contract.contract_id) == 64
 
     serialized = json.dumps(contract.to_dict(), sort_keys=True)
     assert str(tmp_path) not in serialized
-    assert "must-not-appear" not in serialized
+    assert "test-key-not-a-secret" not in serialized
+
+
+def test_contract_hashes_complete_resolved_runtime_profile(strict_workspace: Path) -> None:
+    contract = contract_for_gen0(strict_workspace)
+    profile = json.loads(git(strict_workspace, "show", "gen/0:evaluator/runtime-profile.json"))
+
+    assert contract.runtime_profile == profile["name"]
+    assert contract.runtime_profile_digest == profile["profile_digest"]
+    assert contract.runtime_digest == profile["runtime_digest"]
+    assert contract.model_identity["route"] == "bytedance-openai-compatible"
+    assert contract.model_identity["route_digest"] == profile["model_route_digest"]
+
+
+def test_contract_mode_is_legacy_without_resolved_profile(legacy_workspace: Path) -> None:
+    assert evaluation_package.evaluation_contract_mode(legacy_workspace) is evaluation_package.ContractMode.LEGACY_UNVERIFIED
+
+
+@pytest.mark.parametrize("field", ["profile_digest", "model_route_digest"])
+def test_contract_rejects_tampered_resolved_profile(strict_workspace: Path, field: str) -> None:
+    path = strict_workspace / "evaluator/runtime-profile.json"
+    payload = json.loads(path.read_text())
+    payload[field] = "0" * 64
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    git(strict_workspace, "add", "evaluator/runtime-profile.json")
+    git(strict_workspace, "commit", "-m", f"tamper {field}")
+    git(strict_workspace, "tag", "-f", "gen/0")
+
+    with pytest.raises(evaluation_package.EvaluationContractResolutionError) as excinfo:
+        contract_for_gen0(strict_workspace)
+
+    assert excinfo.value.field == "runtime_profile"
+
+
+def test_contract_rejects_runtime_pin_mismatch(strict_workspace: Path) -> None:
+    (strict_workspace / "evaluator/runtime.pin").write_text("sha256:different-runtime\n")
+    git(strict_workspace, "add", "evaluator/runtime.pin")
+    git(strict_workspace, "commit", "-m", "tamper runtime pin")
+    git(strict_workspace, "tag", "-f", "gen/0")
+
+    with pytest.raises(evaluation_package.EvaluationContractResolutionError) as excinfo:
+        contract_for_gen0(strict_workspace)
+
+    assert excinfo.value.field == "runtime_digest"
+
+
+def test_uv_candidate_dependency_identity_comes_from_profile(tmp_path: Path) -> None:
+    workspace = init_recipe_with_local_inputs(tmp_path, "ahe")
+    contract = contract_for_gen0(workspace)
+
+    assert contract.candidate_dependency_digest is not None
+    assert len(contract.candidate_dependency_digest) == 64
 
 
 def test_contract_id_changes_with_candidate_tree_but_not_repeated_resolution(
