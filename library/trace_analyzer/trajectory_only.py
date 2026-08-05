@@ -16,6 +16,7 @@ from evolve.agent import AgentCommandError
 from evolve.config import operator_blocks
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import OperatorContext, TraceAnalyzerOperator, TraceAnalyzerResult
+from evolve.integrations.harbor._agent_roles import uses_miniswe_submission
 from evolve.trace_analysis import (
     _load_cases,
     _positive_int,
@@ -109,8 +110,7 @@ def _runner_prompt(record: Case, config: dict[str, Any]) -> str:
             trajectory=record.get("compressed_trajectory") or "",
         )
     )
-    agent = str(config.get("agent") or "")
-    if agent != "mini-swe-agent" and not agent.endswith(":FileTaskMiniSweAgent"):
+    if not uses_miniswe_submission(config.get("agent")):
         return prompt
     return (
         prompt + "\n\nUse Bash only to write the JSON object to "

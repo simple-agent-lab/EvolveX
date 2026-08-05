@@ -31,7 +31,7 @@ from .contract import (
 )
 from .diagnostics import contract_trials, freeze_diagnostics, materialize_setup_failure
 from .evidence import read_cost, read_setup_evidence, read_task_vector, trial_results
-from .identity import effective_task_set_identity, evaluation_split_name
+from .identity import TaskSetIdentity, effective_task_set_identity, evaluation_split_name
 from .results import EvaluationRecord, Outcome, classify_evaluation, write_attempt_summary
 from .run_plan import EvaluationRunPlan
 
@@ -353,7 +353,12 @@ def _receipt_reference(workspace: Path, receipt: Path | None) -> dict[str, str] 
     }
 
 
-def _runtime_selection_matches(run_dir: Path, planned_members: tuple[str, ...]) -> bool:
+def _runtime_selection_matches(
+    run_dir: Path,
+    planned_members: tuple[str, ...] | TaskSetIdentity,
+) -> bool:
+    if isinstance(planned_members, TaskSetIdentity):
+        planned_members = planned_members.members
     if not planned_members:
         return True
     selection = run_dir / "task-split.json"

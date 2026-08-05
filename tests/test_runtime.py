@@ -15,7 +15,9 @@ from evolve import runtime as runtime_module
 from evolve import workspace as workspace_module
 from evolve.config import scaffold_root
 from evolve.evaluation import Outcome
+from evolve.evaluation import execution as execution_module
 from evolve.evaluation.execution import _expected_trials, evaluate
+from evolve.evaluation.identity import effective_task_set_identity, task_set_identity
 from evolve.feedback import write_feedback_bundle
 from evolve.runtime import attempt_dir
 
@@ -410,3 +412,49 @@ def test_anchor_expected_trials_use_selected_sealed_tasks() -> None:
 
 def test_expected_trials_use_repetitions_for_new_configs() -> None:
     assert _expected_trials({"repetitions": 3, "tasks_per_round": 4}, None, selected_tasks=2) == 6
+
+
+def test_effective_task_identity_uses_limited_split_members(tmp_path: Path) -> None:
+    checkout = tmp_path / "checkout"
+    evaluator_dir = checkout / "evaluator"
+    evaluator_dir.mkdir(parents=True)
+    (evaluator_dir / "splits.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "resolved": True,
+                "sampling": "static",
+                "gate_tasks_per_round": 0,
+                "tasks": {"train": ["third", "first", "second"], "gate": [], "sealed": []},
+            }
+        )
+    )
+    evaluator = {"dataset": "fixture", "evaluation_split": "train", "k": 2}
+
+    identity = effective_task_set_identity(checkout, evaluator, purpose="candidate", task_limit=1)
+
+    assert identity.members == ("third",)
+    assert _expected_trials(evaluator, 1, selected_tasks=len(identity.members)) == 2
+
+
+def test_effective_task_identity_limits_declared_task_file_before_canonicalizing(tmp_path: Path) -> None:
+    checkout = tmp_path / "checkout"
+    task_file = checkout / "evaluator" / "tasks.txt"
+    task_file.parent.mkdir(parents=True)
+    task_file.write_text("# declared order\nthird\nfirst\nsecond\n")
+    evaluator = {"dataset": "fixture", "task_file": "evaluator/tasks.txt", "k": 1}
+
+    identity = effective_task_set_identity(checkout, evaluator, task_limit=2)
+
+    assert identity.members == ("first", "third")
+
+
+def test_runtime_task_selection_must_match_planned_members_after_normalization(tmp_path: Path) -> None:
+    identity = task_set_identity("fixture", 1, ("first", "third"))
+    selection = tmp_path / "task-split.json"
+    selection.write_text(json.dumps({"split": "train", "tasks": ["third", "first"]}))
+
+    assert execution_module._runtime_selection_matches(tmp_path, identity) is True
+
+    selection.write_text(json.dumps({"split": "train", "tasks": ["third"]}))
+    assert execution_module._runtime_selection_matches(tmp_path, identity) is False

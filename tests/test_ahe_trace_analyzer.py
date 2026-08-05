@@ -32,7 +32,7 @@ def _ctx(tmp_path: Path, *, genid: str = "1", parent: str = "0") -> OperatorCont
         "  meta_agent:\n"
         "    variant: ahe\n"
         "    runner: harbor\n"
-        "    agent: evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent\n"
+        "    agent: evolve.integrations.harbor.miniswe_task_file:InstalledMiniSweAgent\n"
         "    model: gpt-test\n"
         "    environment: docker\n"
         "    editable_roots: [target]\n"
@@ -170,7 +170,7 @@ def test_ahe_debugger_reuses_only_allowlisted_meta_agent_config(tmp_path: Path) 
 
     assert config == {
         "runner": "harbor",
-        "agent": "evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent",
+        "agent": "evolve.integrations.harbor.miniswe_task_file:InstalledMiniSweAgent",
         "model": "gpt-test",
         "environment": "docker",
         "agent_kwargs": {"reasoning_effort": "high", "max_tokens": 64000},
@@ -217,11 +217,13 @@ def test_ahe_miniswe_debugger_prompt_includes_submission_protocol() -> None:
     assert "Every response must include a Bash tool call" in prompt
     assert "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT" in prompt
     assert "first write the complete requested report as reasoning text" not in prompt
-    file_agent_prompt = module._debugger_runner_prompt(
-        job, {"agent": "evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent"}
-    )
-    assert "/logs/artifacts/ahe-debugger-response.md" in file_agent_prompt
+    for agent in (
+        "evolve.integrations.harbor.miniswe_task_file:InstalledMiniSweAgent",
+        "evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent",
+    ):
+        assert "/logs/artifacts/ahe-debugger-response.md" in module._debugger_runner_prompt(job, {"agent": agent})
     assert module._debugger_runner_prompt(job, {"agent": "codex"}) == module._debugger_prompt(job)
+    assert module._debugger_runner_prompt(job, {"agent": "custom:FileTaskMiniSweAgent"}) == module._debugger_prompt(job)
 
 
 def test_ahe_debugger_keeps_trace_evidence_out_of_prompt() -> None:

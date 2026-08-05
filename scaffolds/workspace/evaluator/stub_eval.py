@@ -102,7 +102,8 @@ def main() -> int:
     artifact_trials = []
     for task_id, passed_task in task_results.items():
         for trial in range(attempts):
-            trace = artifacts / f"{task_id}-trial-{trial}.trace"
+            artifact_name = task_id.replace("/", "__").replace("\\", "__")
+            trace = artifacts / f"{artifact_name}-trial-{trial}.trace"
             trace.write_text(
                 f"stub evaluation trace\ntask={task_id}\ntrial={trial}\noutcome={'pass' if passed_task else 'fail'}\n"
             )

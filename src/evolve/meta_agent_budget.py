@@ -33,7 +33,9 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-HARBOR_FILE_TASK_AGENT = "evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent"
+from .integrations.harbor._agent_roles import INSTALLED_MINISWE_AGENT, is_installed_miniswe_agent
+
+HARBOR_FILE_TASK_AGENT = INSTALLED_MINISWE_AGENT
 
 # Pinned Harbor 0.18 lifecycle defaults.
 HARBOR_ENVIRONMENT_START_S = 600.0
@@ -55,8 +57,7 @@ OUTER_FINAL_CLEANUP_S = 60.0
 def harbor_agent_supports_per_attempt_timeout(agent: object) -> bool:
     """Whether the runner's config-mode branch writes an agent timeout cap."""
 
-    name = str(agent or "")
-    return name == HARBOR_FILE_TASK_AGENT or name.endswith(":MiniSweSourceAgent")
+    return is_installed_miniswe_agent(agent)
 
 
 def uses_harbor_per_attempt_timeout(config: Mapping[str, object]) -> bool:
