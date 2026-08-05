@@ -160,6 +160,7 @@ def run_preflight(
     recipe_path: Path | None,
     seed: str | None,
     dataset: str | None,
+    tasks_per_round: int | None = None,
 ) -> list[Check]:
     checks = [
         _binary("uv", "the workspace console runs through it"),
@@ -171,6 +172,8 @@ def run_preflight(
         evaluator = dict(config.get("evaluator") or {})
         if dataset:
             evaluator["dataset"] = dataset
+        if tasks_per_round is not None:
+            evaluator["tasks_per_round"] = tasks_per_round
         target = dict(config.get("target") or {})
         engine = str(evaluator.get("engine") or "")
         checks.append(_check_digest(engine))

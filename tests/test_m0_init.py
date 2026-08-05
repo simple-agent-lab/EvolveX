@@ -115,6 +115,7 @@ def test_init_help_advertises_only_supported_seed_options() -> None:
     result = run_evolve("init", "--help")
 
     assert result.returncode == 0, result.stderr
+    assert "--tasks" in result.stdout
     assert "builtin-codex" in result.stdout
     assert "local target dir" in result.stdout
     assert "git URL to vendor" in result.stdout

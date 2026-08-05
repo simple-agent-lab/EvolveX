@@ -94,6 +94,7 @@ def init(
     ),
     seed: str | None = typer.Option(None, help="git URL to vendor into target/; local target dir; builtin-codex"),
     dataset: str | None = typer.Option(None, help="local Harbor task directory to split and freeze"),
+    tasks: int | None = typer.Option(None, "--tasks", min=1, help="limit evaluator tasks per round"),
 ) -> None:
     """Scaffold a new evolve workspace."""
     workspace = (workspace or DEFAULT_WORKSPACE).expanduser()
@@ -115,6 +116,7 @@ def init(
             seed=seed,
             dataset=dataset,
             recipe_path=recipe_path,
+            tasks_per_round=tasks,
         )
     )
     print(f"Initialized evolve workspace at {workspace}")
@@ -138,6 +140,7 @@ def preflight(
     ),
     seed: str | None = typer.Option(None, help="git URL to vendor into target/; local target dir; builtin-codex"),
     dataset: str | None = typer.Option(None, help="local Harbor task directory to split and freeze"),
+    tasks: int | None = typer.Option(None, "--tasks", min=1, help="limit evaluator tasks per round"),
     smoke: bool = typer.Option(
         False, "--smoke", help="include one isolated model request for an initialized workspace"
     ),
@@ -165,7 +168,7 @@ def preflight(
 
     selected_workspace = (workspace or DEFAULT_WORKSPACE).expanduser()
     initialized = (selected_workspace / "evolve.yaml").is_file() and (selected_workspace / ".git").exists()
-    init_options_supplied = any(value is not None for value in (recipe, recipe_path, seed, dataset))
+    init_options_supplied = any(value is not None for value in (recipe, recipe_path, seed, dataset, tasks))
     if initialized and not init_check and not init_options_supplied:
         mode = PreflightMode.SMOKE if smoke else PreflightMode.ORDINARY
         with _workspace_environment(selected_workspace):
@@ -187,6 +190,7 @@ def preflight(
         recipe_path=recipe_path,
         seed=seed,
         dataset=dataset,
+        tasks_per_round=tasks,
     )
     output, ready = render_init_preflight(checks)
     print(output)
