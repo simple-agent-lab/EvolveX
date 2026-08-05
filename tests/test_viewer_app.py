@@ -145,3 +145,23 @@ def test_frontend_has_required_navigation_and_refresh_contract() -> None:
     assert "3000" in javascript
     assert "/api/evolve/snapshot" in javascript
     assert "Full Harbor inspection" in javascript
+
+
+@pytest.mark.parametrize(
+    ("path", "media_type"),
+    [
+        ("diff2html.min.js", "javascript"),
+        ("diff2html.min.css", "text/css"),
+        ("highlight.min.js", "javascript"),
+        ("highlight-github.min.css", "text/css"),
+    ],
+)
+def test_vendored_preview_assets_are_served(
+    viewer_workspace: Path, path: str, media_type: str
+) -> None:
+    with TestClient(create_viewer_app(viewer_workspace)) as client:
+        response = client.get(f"/evolve-assets/vendor/{path}")
+
+    assert response.status_code == 200
+    assert response.content
+    assert media_type in response.headers["content-type"]

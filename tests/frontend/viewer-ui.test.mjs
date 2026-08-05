@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  artifactPresentation,
   compareGenerationIds,
   generationsThrough,
   scoreTrend,
@@ -27,4 +28,22 @@ test('score chart has fixed score ticks and generation labels', () => {
   assert.match(html, />G0<.*>G1<.*>G10</s);
   assert.match(html, /Generation 10: 0\.36/);
   assert.match(html, /trend-dot selected/);
+});
+
+test('artifact presentation prettifies JSON and selects mature diff rendering', () => {
+  assert.deepEqual(
+    artifactPresentation({kind: 'json', label: 'result.json'}, '{"score":0.3}'),
+    {mode: 'highlight', language: 'json', text: '{\n  "score": 0.3\n}'},
+  );
+  assert.equal(
+    artifactPresentation({kind: 'diff', label: 'model_patch.diff'}, 'diff --git a/a b/a\n').mode,
+    'diff',
+  );
+});
+
+test('malformed JSON falls back to plain text mode', () => {
+  assert.deepEqual(
+    artifactPresentation({kind: 'json', label: 'broken.json'}, '{oops'),
+    {mode: 'plain', language: 'plaintext', text: '{oops'},
+  );
 });

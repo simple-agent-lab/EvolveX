@@ -22,6 +22,29 @@ export function generationsThrough(generations, selectedId) {
   return generations.filter((item) => compareGenerationIds(item.genid, selectedId) <= 0);
 }
 
+export function artifactPresentation(metadata, text) {
+  const kind = String(metadata.kind || '').toLowerCase();
+  if (kind === 'diff' || kind === 'patch') return {mode: 'diff', language: 'diff', text};
+  if (kind === 'json') {
+    try {
+      return {mode: 'highlight', language: 'json', text: JSON.stringify(JSON.parse(text), null, 2)};
+    } catch {
+      return {mode: 'plain', language: 'plaintext', text};
+    }
+  }
+  const language = {
+    yaml: 'yaml',
+    yml: 'yaml',
+    py: 'python',
+    sh: 'bash',
+    js: 'javascript',
+    md: 'markdown',
+  }[kind];
+  return language
+    ? {mode: 'highlight', language, text}
+    : {mode: 'plain', language: 'plaintext', text};
+}
+
 export function scoreTrend(generations, selectedId = null) {
   const points = generations
     .filter((item) => item.score != null)
