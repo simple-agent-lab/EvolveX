@@ -44,7 +44,7 @@ def test_architecture_visual_is_current_and_uses_identity_palette() -> None:
     readme = (ROOT / "README.md").read_text()
     architecture_image = re.search(r'<img src="docs/architecture\.svg" alt="([^"]+)">', readme)
     assert architecture_image is not None
-    assert "Recipes select permitted targets, operators, and stages." in architecture_image.group(1)
+    assert "The target and selected operators occupy a declared mutable surface." in architecture_image.group(1)
     assert "may rewrite any stage" not in readme
     assert "can rewrite any stage" not in readme
 
@@ -58,6 +58,37 @@ def test_readme_visual_assets_have_accessible_svg_metadata() -> None:
         assert len(labelled_by) == 2
         assert root.find("svg:title", SVG_NS).attrib["id"] == labelled_by[0]
         assert root.find("svg:desc", SVG_NS).attrib["id"] == labelled_by[1]
+
+
+def test_readme_uses_approved_identity_and_information_architecture() -> None:
+    readme = (ROOT / "README.md").read_text()
+    assert "Build agents that improve — and keep the evidence." in readme
+    assert "docs/evolve-mark.svg" in readme
+    assert "docs/evolve-lineage.svg" in readme
+    headings = [
+        "## What Evolve Does",
+        "## How Evolve Works",
+        "## What Can Evolve",
+        "## Recipes",
+        "## Quick Start",
+        "## Trustworthy by Construction",
+        "## Project Status",
+        "## Documentation",
+    ]
+    positions = [readme.index(heading) for heading in headings]
+    assert positions == sorted(positions)
+    assert "## Result" not in readme
+    assert "reproducible benchmark results" not in readme
+
+
+def test_readme_keeps_supported_recipes_and_honest_quick_start() -> None:
+    readme = (ROOT / "README.md").read_text()
+    for recipe in ("`hill_climb`", "`aevolve`", "`ahe`", "`gepa`", "`hyperagents`"):
+        assert recipe in readme
+    assert 'EVOLVE_RUNTIME_DIGEST="sha256:local-smoke-runtime"' in readme
+    assert "--max-generations 0" in readme
+    assert "does not run a mutation round or measure agent quality" in readme
+    assert "--dataset /absolute/path/to/harbor/tasks" in readme
 
 
 def test_license_metadata_and_notice_are_consistent() -> None:
