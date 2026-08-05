@@ -133,7 +133,7 @@ def test_uv_runtime_prepares_cache_and_emits_offline_contract(tmp_path: Path) ->
         "/opt/evolve/uv/cache",
         "/opt/evolve/uv/python",
     ]
-    assert all(mount.read_only for mount in result.mounts)
+    assert [mount.read_only for mount in result.mounts] == [False, True]
     receipt = json.loads((run_dir / "candidate-runtime.json").read_text())
     assert receipt["variant"] == "uv"
     assert receipt["project"] == "target"

@@ -302,7 +302,7 @@ def _finish_ready_runtime(
             ("UV_PYTHON_INSTALL_DIR", CONTAINER_UV_PYTHON),
         ),
         mounts=(
-            RuntimeMount(cache, CONTAINER_UV_CACHE, read_only=True),
+            RuntimeMount(cache, CONTAINER_UV_CACHE),
             RuntimeMount(python_dir, CONTAINER_UV_PYTHON, read_only=True),
         ),
         receipt_path=receipt,
