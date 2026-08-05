@@ -5,6 +5,7 @@ from harbor.models.registry import DatasetFileInfo, DatasetMetadata
 from harbor.models.task.id import GitTaskId, PackageTaskId
 
 from evolve import evaluation as evaluation_package
+from evolve.evaluation import datasets as dataset_module
 
 
 def _task(root: Path, name: str, *, instruction: str = "solve it") -> None:
@@ -49,6 +50,21 @@ def test_local_dataset_identity_hashes_only_selected_members(tmp_path: Path) -> 
     after = evaluation_package.local_dataset_identity(dataset, ("selected",))
 
     assert after == before
+
+
+def test_local_dataset_identity_reuses_per_task_digests(tmp_path: Path) -> None:
+    dataset = tmp_path / "tasks"
+    _task(dataset, "task-a")
+    _task(dataset, "task-b")
+
+    identity = evaluation_package.local_dataset_identity(
+        dataset, ("task-b", "task-a")
+    )
+
+    assert identity.task_digest_map() == {
+        "task-a": dataset_module.local_task_content_digest(dataset, "task-a"),
+        "task-b": dataset_module.local_task_content_digest(dataset, "task-b"),
+    }
 
 
 def test_local_dataset_identity_includes_executable_permissions(tmp_path: Path) -> None:
@@ -143,6 +159,8 @@ def test_registry_dataset_identity_uses_resolved_immutable_metadata() -> None:
     assert first.resolved_reference == "swe-bench-lite@1.0"
     assert first.members == ("bench/task-b", "task-a")
     assert len(first.digest) == 64
+    assert set(first.task_digest_map()) == {"bench/task-b", "task-a"}
+    assert all(len(digest) == 64 for digest in first.task_digest_map().values())
     assert changed_commit.digest != first.digest
     assert changed_dataset.digest != first.digest
 

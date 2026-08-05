@@ -6,7 +6,11 @@ from pathlib import Path
 
 import pytest
 from conftest import FIXTURE_SEEDS, run_evolve
+from harbor.models.registry import DatasetMetadata
+from harbor.models.task.id import GitTaskId, PackageTaskId
 
+import evolve.splits as splits_module
+from evolve.evaluation import datasets as dataset_module
 from evolve.frozen.interfaces import OperatorContext
 from evolve.splits import (
     build_manifest,
@@ -74,6 +78,72 @@ def test_split_manifest_is_deterministic_disjoint_and_drift_checked(tmp_path: Pa
     (extra / "task.toml").write_text('version = "1.0"\n')
     with pytest.raises(RuntimeError, match="changed after init"):
         select_dataset_tasks(manifest, dataset.as_posix(), "train")
+
+
+def test_build_manifest_hashes_each_local_task_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    dataset = _dataset(tmp_path / "tasks", count=2)
+    calls: list[str] = []
+    real = dataset_module.local_task_content_digest
+
+    def counted(root: Path, member: str) -> str:
+        calls.append(member)
+        return real(root, member)
+
+    monkeypatch.setattr(dataset_module, "local_task_content_digest", counted)
+    monkeypatch.setattr(splits_module, "local_task_content_digest", counted)
+
+    build_manifest(
+        dataset.as_posix(),
+        {"train": 0.5, "gate": 0.5, "sealed": 0.0, "seed": 0},
+        base_dir=tmp_path,
+        sampling="static",
+        gate_limit=1,
+    )
+
+    assert sorted(calls) == ["task-0", "task-1"]
+
+
+class _RegistryClient:
+    async def get_dataset_metadata(self, _name: str) -> DatasetMetadata:
+        return DatasetMetadata(
+            name="registry-benchmark",
+            version="2026.08",
+            task_ids=[
+                GitTaskId(
+                    git_url="https://example.invalid/tasks.git",
+                    git_commit_id="a" * 40,
+                    path=Path("tasks/task-a"),
+                ),
+                PackageTaskId(
+                    org="bench", name="task-b", ref=f"sha256:{'b' * 64}"
+                ),
+            ],
+        )
+
+
+def test_build_manifest_certifies_registry_dataset(tmp_path: Path) -> None:
+    manifest = build_manifest(
+        "registry-benchmark",
+        {"train": 0.5, "gate": 0.5, "sealed": 0.0, "seed": 0},
+        base_dir=tmp_path,
+        sampling="static",
+        gate_limit=1,
+        registry_client=_RegistryClient(),
+    )
+
+    assert manifest["version"] == 2
+    assert manifest["resolved"] is False
+    assert manifest["identity_status"] == "verified"
+    assert manifest["dataset_identity"]["source"] == "registry"
+    assert manifest["dataset_identity"]["resolved_reference"] == (
+        "registry-benchmark@2026.08"
+    )
+    assert set(manifest["task_digests"]) == {"bench/task-b", "task-a"}
+    assert sorted(
+        name for members in manifest["tasks"].values() for name in members
+    ) == ["bench/task-b", "task-a"]
 
 
 def test_local_split_rejects_selected_task_content_drift(tmp_path: Path) -> None:

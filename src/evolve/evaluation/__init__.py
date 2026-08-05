@@ -13,6 +13,7 @@ from .contract import (
 )
 from .datasets import (
     DatasetContentIdentity,
+    dataset_content_identity,
     local_dataset_identity,
     registry_dataset_identity,
     selected_dataset_identity,
@@ -37,6 +38,7 @@ __all__ = [
     "ContractResolutionContext",
     "ContractMode",
     "DatasetContentIdentity",
+    "dataset_content_identity",
     "EvaluationContractResolutionError",
     "EvaluationContractV1",
     "EvaluationDiagnosticsV1",

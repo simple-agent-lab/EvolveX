@@ -9,6 +9,7 @@ from conftest import (
     init_fixture_workspace,
     init_recipe_with_local_inputs,
     run_evolve,
+    write_identity_dataset,
     write_locked_miniswe_seed,
 )
 
@@ -63,6 +64,10 @@ def test_generated_preflight_wrapper_only_delegates_to_framework(tmp_path: Path)
 
 def _miniswe_seed(root: Path) -> Path:
     return write_locked_miniswe_seed(root / "miniswe")
+
+
+def _identity_dataset(root: Path) -> Path:
+    return write_identity_dataset(root / "tasks")
 
 
 def _versioned_candidate_seed(path: Path, *, locked: bool) -> Path:
@@ -182,7 +187,14 @@ def test_init_accepts_explicit_locked_candidate_target(tmp_path: Path, source_ki
     seed_reference = seed.as_uri() if source_kind == "git" else str(seed)
     workspace = tmp_path / "workspace"
 
-    init_workspace(InitOptions(workspace=workspace, recipe="hill_climb", seed=seed_reference))
+    init_workspace(
+        InitOptions(
+            workspace=workspace,
+            recipe="hill_climb",
+            seed=seed_reference,
+            dataset=str(_identity_dataset(tmp_path)),
+        )
+    )
 
     assert (workspace / "target" / "uv.lock").is_file()
     assert load_config(workspace / "evolve.yaml")["target"] == {"seed": seed_reference}
@@ -247,7 +259,13 @@ def test_init_accepts_generated_lock_for_local_candidate_project(tmp_path: Path,
     )
     workspace = tmp_path / "workspace"
 
-    init_workspace(InitOptions(workspace=workspace, recipe="hill_climb"))
+    init_workspace(
+        InitOptions(
+            workspace=workspace,
+            recipe="hill_climb",
+            dataset=str(_identity_dataset(tmp_path)),
+        )
+    )
 
     assert (workspace / "target" / "uv.lock").is_file()
     git(workspace, "cat-file", "-e", "gen/0:target/uv.lock")
@@ -273,7 +291,13 @@ def test_init_removes_egg_info_created_during_lock_generation(tmp_path: Path, mo
     monkeypatch.setattr(workspace_module, "_generate_target_lock", generate_lock_with_metadata)
     workspace = tmp_path / "workspace"
 
-    init_workspace(InitOptions(workspace=workspace, recipe="hill_climb"))
+    init_workspace(
+        InitOptions(
+            workspace=workspace,
+            recipe="hill_climb",
+            dataset=str(_identity_dataset(tmp_path)),
+        )
+    )
 
     assert not (workspace / "target" / "src" / "mini_swe_agent.egg-info").exists()
     assert git(workspace, "ls-files", "target/src/mini_swe_agent.egg-info") == ""
@@ -370,7 +394,13 @@ def test_default_hill_climb_pins_seed_and_generates_candidate_lock(tmp_path: Pat
 
     monkeypatch.setattr(workspace_module, "_git_clone", clone_reviewed_miniswe)
     workspace = tmp_path / "workspace"
-    init_workspace(InitOptions(workspace=workspace, recipe="hill_climb"))
+    init_workspace(
+        InitOptions(
+            workspace=workspace,
+            recipe="hill_climb",
+            dataset=str(_identity_dataset(tmp_path)),
+        )
+    )
 
     assert (workspace / "target" / "uv.lock").is_file()
     assert load_config(workspace / "evolve.yaml")["target"] == {
@@ -465,10 +495,10 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
     assert ".env.*" in gitignore.splitlines()
 
     splits = json.loads((workspace / "evaluator" / "splits.json").read_text())
-    assert splits["version"] == 1
-    assert splits["resolved"] is False
+    assert splits["version"] == 2
+    assert splits["resolved"] is True
     assert splits["ratios"] == {"train": 0.5, "gate": 0.4, "sealed": 0.1}
-    assert splits["tasks"] == {"train": [], "gate": [], "sealed": []}
+    assert sum(len(members) for members in splits["tasks"].values()) == 10
 
 
 def test_init_creates_generation_zero_git_snapshot_and_archive_event(tmp_path: Path) -> None:
@@ -512,6 +542,8 @@ def test_init_binds_real_hyperagents_method_surface_and_operators(tmp_path: Path
         "hyperagents",
         "--seed",
         str(seed),
+        "--dataset",
+        str(_identity_dataset(tmp_path)),
         env={"EVAL_STUB": "1", "EVOLVE_HOME": str(tmp_path / "evolve-home")},
     )
 
@@ -539,6 +571,8 @@ def test_init_tracks_vendored_files_ignored_by_seed_repository(tmp_path: Path) -
         "hyperagents",
         "--seed",
         str(seed),
+        "--dataset",
+        str(_identity_dataset(tmp_path)),
         env={"EVAL_STUB": "1", "EVOLVE_HOME": str(tmp_path / "evolve-home")},
     )
 

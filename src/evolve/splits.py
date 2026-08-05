@@ -8,7 +8,11 @@ from glob import escape
 from pathlib import Path
 from typing import Any
 
-from .evaluation.datasets import local_dataset_identity, local_task_content_digest
+from .evaluation.datasets import (
+    RegistryMetadataClient,
+    dataset_content_identity,
+    local_task_content_digest,
+)
 
 SPLIT_NAMES = ("train", "gate", "sealed")
 
@@ -20,38 +24,36 @@ def build_manifest(
     base_dir: Path,
     sampling: str,
     gate_limit: int,
+    registry_client: RegistryMetadataClient | None = None,
 ) -> dict[str, Any]:
     ratios = _ratios(split)
     seed = _integer(split.get("seed"), "evaluator.split.seed", minimum=0)
     resolved = _resolve_dataset(dataset, base_dir)
-    names = discover_task_names(resolved) if resolved is not None else []
-    if resolved is not None and not names:
-        raise ValueError(f"evaluator.dataset contains no Harbor task.toml directories: {resolved}")
+    identity = dataset_content_identity(
+        dataset, base_dir=base_dir, client=registry_client
+    )
+    names = list(identity.members)
     assignments = _assign(names, ratios, seed)
     empty = [name for name in SPLIT_NAMES if names and ratios[name] > 0 and not assignments[name]]
     if empty:
         raise ValueError(f"evaluator.dataset is too small for non-empty splits: {', '.join(empty)}")
     manifest: dict[str, Any] = {
-        "version": 2 if resolved is not None else 1,
+        "version": 2,
         "dataset": str(resolved) if resolved is not None else dataset,
         "resolved": resolved is not None,
-        "identity_status": "verified" if resolved is not None else "legacy_unverified",
+        "identity_status": "verified",
         "seed": seed,
         "ratios": ratios,
         "sampling": sampling,
         "gate_tasks_per_round": max(gate_limit, 0),
         "tasks": assignments,
     }
-    if resolved is not None:
-        identity = local_dataset_identity(resolved, names)
-        manifest["dataset_identity"] = {
-            "source": identity.source,
-            "digest": identity.digest,
-            "resolved_reference": identity.resolved_reference,
-        }
-        manifest["task_digests"] = {
-            name: local_task_content_digest(resolved, name) for name in names
-        }
+    manifest["dataset_identity"] = {
+        "source": identity.source,
+        "digest": identity.digest,
+        "resolved_reference": identity.resolved_reference,
+    }
+    manifest["task_digests"] = identity.task_digest_map()
     return manifest
 
 
@@ -89,7 +91,7 @@ def parse_manifest(text: str, *, source: str = "split manifest") -> dict[str, An
     if (
         payload.get("identity_status") != "verified"
         or not isinstance(identity, dict)
-        or identity.get("source") != "local"
+        or identity.get("source") not in {"local", "registry"}
         or not _sha256(identity.get("digest"))
         or not isinstance(identity.get("resolved_reference"), str)
         or not isinstance(task_digests, dict)
@@ -144,6 +146,15 @@ def select_dataset_tasks(
     limit: int | None = None,
 ) -> tuple[list[str], str]:
     manifest = load_manifest(manifest_path)
+    identity = manifest.get("dataset_identity")
+    source = identity.get("source") if isinstance(identity, dict) else None
+    if source == "registry":
+        names = selected_task_names(
+            manifest, split_name, round_number=round_number, limit=limit
+        )
+        if not names:
+            raise RuntimeError(f"evaluator split {split_name!r} contains no tasks")
+        return names, split_selection_digest(split_name, names)
     if not manifest.get("resolved"):
         raise RuntimeError(
             "evaluator dataset was not a local task directory during init; "

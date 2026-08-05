@@ -24,6 +24,10 @@ class DatasetContentIdentity:
     digest: str
     members: tuple[str, ...]
     resolved_reference: str
+    task_digests: tuple[tuple[str, str], ...]
+
+    def task_digest_map(self) -> dict[str, str]:
+        return dict(self.task_digests)
 
 
 class RegistryMetadataClient(Protocol):
@@ -35,15 +39,20 @@ def local_dataset_identity(root: Path, members: Iterable[str]) -> DatasetContent
     normalized_members = tuple(sorted(set(members)))
     if not normalized_members:
         raise ValueError("dataset identity requires at least one selected task")
+    task_digests = tuple(
+        (member, local_task_content_digest(dataset, member))
+        for member in normalized_members
+    )
     payload = {
         "source": "local",
         "tasks": [
-            {"name": member, "digest": local_task_content_digest(dataset, member)}
-            for member in normalized_members
+            {"name": member, "digest": digest} for member, digest in task_digests
         ],
     }
     digest = _canonical_digest(payload)
-    return DatasetContentIdentity("local", digest, normalized_members, f"sha256:{digest}")
+    return DatasetContentIdentity(
+        "local", digest, normalized_members, f"sha256:{digest}", task_digests
+    )
 
 
 def registry_dataset_identity(
@@ -58,6 +67,11 @@ def registry_dataset_identity(
         raise ValueError("registry dataset identity requires at least one task")
     if not metadata.name or not metadata.version:
         raise ValueError("registry dataset must resolve to an immutable name and version")
+    if len(set(members)) != len(members):
+        raise ValueError("registry dataset contains duplicate task names")
+    task_digests = tuple(
+        (str(task["name"]), _canonical_digest(task)) for task in task_payloads
+    )
     payload = {
         "source": "registry",
         "name": metadata.name,
@@ -74,7 +88,28 @@ def registry_dataset_identity(
         _canonical_digest(payload),
         members,
         f"{metadata.name}@{metadata.version}",
+        task_digests,
     )
+
+
+def dataset_content_identity(
+    dataset: str,
+    *,
+    base_dir: Path,
+    client: RegistryMetadataClient | None = None,
+) -> DatasetContentIdentity:
+    candidate = Path(dataset).expanduser()
+    if not candidate.is_absolute():
+        candidate = base_dir / candidate
+    if candidate.is_dir():
+        resolved = candidate.resolve()
+        members = _local_task_names(resolved)
+        if not members:
+            raise ValueError(
+                f"evaluator.dataset contains no Harbor task.toml directories: {resolved}"
+            )
+        return local_dataset_identity(resolved, members)
+    return registry_dataset_identity(dataset, client=client)
 
 
 def selected_dataset_identity(
@@ -101,7 +136,25 @@ def selected_dataset_identity(
             raise ValueError(f"selected dataset identity is missing a content digest for {member!r}")
         selected_tasks.append({"name": member, "digest": digest})
     digest = _canonical_digest({"source": source, "tasks": selected_tasks})
-    return DatasetContentIdentity(source, digest, normalized_members, resolved_reference)
+    return DatasetContentIdentity(
+        source,
+        digest,
+        normalized_members,
+        resolved_reference,
+        tuple((task["name"], task["digest"]) for task in selected_tasks),
+    )
+
+
+def _local_task_names(dataset: Path) -> tuple[str, ...]:
+    if (dataset / "task.toml").is_file():
+        return (dataset.name,)
+    return tuple(
+        sorted(
+            path.name
+            for path in dataset.iterdir()
+            if path.is_dir() and (path / "task.toml").is_file()
+        )
+    )
 
 
 def local_task_content_digest(dataset: Path, member: str) -> str:

@@ -53,8 +53,11 @@ def fixture_recipe_config(name: str, experiment_id: str) -> dict[str, Any]:
 
 def init_fixture_workspace(workspace: Path, name: str = "hill_climb-smoke") -> Path:
     config = fixture_recipe_config(name, workspace.name)
+    dataset = write_identity_dataset(workspace.parent / f"{workspace.name}-tasks")
     with patch("evolve.workspace.default_config", return_value=config):
-        create_workspace(InitOptions(workspace=workspace, recipe=name))
+        create_workspace(
+            InitOptions(workspace=workspace, recipe=name, dataset=str(dataset))
+        )
     return workspace
 
 
