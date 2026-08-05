@@ -6,9 +6,11 @@ umask 077
 REPO_BUNDLE=${REPO_BUNDLE:-/data00/home/zimuwang/pr29-runtime-profiles-phase3.bundle}
 RUN_ROOT=${RUN_ROOT:-/data00/home/zimuwang/pr29-ahe-3x3-$(date -u +%Y%m%dT%H%M%SZ)}
 SOURCE_DATASET=${SOURCE_DATASET:-/data00/home/zimuwang/simple-evolve-agent-full89-20260724/datasets/tau3-banking-97-codex-safe-health-v033-1d244f5dca42944b67a379b44bfeb9f5748f189d}
-MODEL_ENV=${MODEL_ENV:-/data00/home/zimuwang/modelhub-codex-smokes-20260804/evolve.env}
-RUNTIME_ENV=${RUNTIME_ENV:-/data00/home/zimuwang/modelhub-codex-smokes-20260804/runtime.env}
-PROXY_ENV=${PROXY_ENV:-/data00/home/zimuwang/modelhub-codex-smokes-20260804/proxy.env}
+ENV_ROOT=${ENV_ROOT:-/data00/home/zimuwang/modelhub-codex-smokes-20260804}
+MODEL_ENV=$ENV_ROOT/evolve.env
+RUNTIME_ENV=$ENV_ROOT/runtime.env
+PROXY_ENV=$ENV_ROOT/proxy.env
+TAU3_ENV_LOADER=${TAU3_ENV_LOADER:-/data00/home/zimuwang/simple-evolve-agent-full89-20260724/scripts/load_tau3_runtime_env.sh}
 TASKS=3
 GENERATIONS=3
 
@@ -35,13 +37,10 @@ for file in "$MODEL_ENV" "$RUNTIME_ENV" "$PROXY_ENV"; do
   [[ -f "$file" ]] || fail "private environment file is missing: $file"
 done
 [[ -f "$REPO_BUNDLE" ]] || fail "PR bundle is missing: $REPO_BUNDLE"
+[[ -f "$TAU3_ENV_LOADER" ]] || fail "Tau3 environment loader is missing: $TAU3_ENV_LOADER"
 [[ -d "$SOURCE_DATASET" ]] || fail "source dataset is missing: $SOURCE_DATASET"
 
-set -a
-source "$MODEL_ENV"
-source "$RUNTIME_ENV"
-source "$PROXY_ENV"
-set +a
+source "$TAU3_ENV_LOADER" "$ENV_ROOT"
 
 for command in git uv docker harbor; do
   command -v "$command" >/dev/null || fail "required command is unavailable: $command"
@@ -98,7 +97,17 @@ export EVOLVE_RUNTIME_DIGEST=$runtime_digest
 
 uv --directory "$REPO" run evolve init "$WORKSPACE" --recipe ahe --dataset "$DATASET"
 cat "$MODEL_ENV" "$RUNTIME_ENV" "$PROXY_ENV" >"$WORKSPACE/.env"
-printf '\nEVOLVE_RUNTIME_DIGEST=%s\n' "$EVOLVE_RUNTIME_DIGEST" >>"$WORKSPACE/.env"
+{
+  printf '\nEVOLVE_RUNTIME_DIGEST=%s\n' "$EVOLVE_RUNTIME_DIGEST"
+  printf 'TAU3_RUNTIME_API_KEY=%s\n' "$TAU3_RUNTIME_API_KEY"
+  printf 'TAU3_RUNTIME_BASE_URL=%s\n' "$TAU3_RUNTIME_BASE_URL"
+  printf 'TAU3_RUNTIME_API_KIND=%s\n' "$TAU3_RUNTIME_API_KIND"
+  printf 'TAU3_RUNTIME_USER_MODEL=%s\n' "$TAU3_RUNTIME_USER_MODEL"
+  printf 'TAU3_RUNTIME_USER_REASONING_EFFORT=%s\n' "$TAU3_RUNTIME_USER_REASONING_EFFORT"
+  printf 'TAU3_RUNTIME_NL_ASSERTIONS_MODEL=%s\n' "$TAU3_RUNTIME_NL_ASSERTIONS_MODEL"
+  printf 'NO_PROXY=%s\n' "$NO_PROXY"
+  printf 'no_proxy=%s\n' "$no_proxy"
+} >>"$WORKSPACE/.env"
 chmod 600 "$WORKSPACE/.env"
 
 "$WORKSPACE/evolve" preflight "$WORKSPACE"

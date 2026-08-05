@@ -20,6 +20,8 @@ def test_devbox_ahe_smoke_script_is_safe_and_self_verifying() -> None:
     assert "GENERATIONS=3" in text
     assert "pr29-runtime-profiles-phase3.bundle" in text
     assert "git bundle list-heads" in text
+    assert "load_tau3_runtime_env.sh" in text
+    assert 'source "$TAU3_ENV_LOADER" "$ENV_ROOT"' in text
     assert "--recipe ahe" in text
     assert '"$WORKSPACE/.env"' in text
     assert "preflight" in text
@@ -32,5 +34,7 @@ def test_devbox_ahe_smoke_script_is_safe_and_self_verifying() -> None:
     assert 'uv --directory "$REPO" run python - "$DATASET"' in text
     assert 'task["environment"]["docker_image"]' in text
     assert "EVOLVE_RUNTIME_DIGEST=%s" in text
+    assert "TAU3_RUNTIME_API_KEY=%s" in text
+    assert "NO_PROXY=%s" in text
     assert " jq" not in text
     assert "rm -rf" not in text
