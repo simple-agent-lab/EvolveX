@@ -347,7 +347,6 @@ class CandidateMiniSweAgent(MiniSweAgent):
             command=(
                 "set -euo pipefail; "
                 f"mkdir -p {SOURCE_DIR}; "
-                f"trap 'rm -f {SOURCE_ARCHIVE_PATH}' EXIT; "
                 f"tar -xf {SOURCE_ARCHIVE_PATH} --no-same-owner --directory {SOURCE_DIR}"
             ),
             code="source_extract_failed",

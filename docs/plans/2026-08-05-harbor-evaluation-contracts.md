@@ -348,11 +348,12 @@ Before uv bootstrap, execute an infrastructure-owned runtime phase equivalent to
 ```sh
 set -euo pipefail
 mkdir -p /installed-agent/miniswe-source
-trap 'rm -f /tmp/evolve-miniswe-source.tar' EXIT
 tar -xf /tmp/evolve-miniswe-source.tar --no-same-owner --directory /installed-agent/miniswe-source
 ```
 
 Use error code `source_extract_failed`. The default environment user must run this phase; do not use `exec_as_root`.
+Harbor's disposable environment owns cleanup of the uploader-owned archive;
+the runtime user must not attempt to delete it.
 
 - [ ] **Step 7: Verify Task 2 GREEN**
 

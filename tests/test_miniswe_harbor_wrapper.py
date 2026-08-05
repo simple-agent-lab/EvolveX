@@ -545,6 +545,7 @@ def test_miniswe_wrapper_subclasses_harbor_miniswe_and_installs_candidate_source
     assert "tar -xf /tmp/evolve-miniswe-source.tar" in extraction
     assert "--no-same-owner" in extraction
     assert "mkdir -p /installed-agent/miniswe-source" in extraction
+    assert "rm -f /tmp/evolve-miniswe-source.tar" not in extraction
     bootstrap = environment.commands[1]
     assert "apt-get" not in joined
     assert "apk add" not in joined

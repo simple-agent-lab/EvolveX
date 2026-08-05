@@ -100,8 +100,10 @@ that were executable in the snapshot. The original source modes are unchanged.
 The transport archive itself is readable by the Harbor runtime. The adapter
 uploads that single artifact and extracts it without privilege as the same user
 that subsequently runs `uv sync`. Extraction uses no saved host owner, so the
-runtime user owns the resulting source tree. The temporary local archive and
-uploaded archive are removed after use.
+runtime user owns the resulting source tree. The temporary local archive is
+removed after upload. The uploaded archive remains owned by Harbor's transport
+layer and is removed with the disposable environment; the runtime user does not
+mutate or delete uploader-owned artifacts.
 
 Archive construction rejects absolute paths, parent traversal, and symlinks
 whose targets escape the candidate tree. Such a tree is candidate-invalid.
