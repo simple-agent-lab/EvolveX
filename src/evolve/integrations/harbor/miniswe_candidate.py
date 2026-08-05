@@ -379,12 +379,19 @@ class MiniSweSourceAgent(MiniSweAgent):
             "external_dependency_sync_failed",
             env=install_env,
         )
+        await self._runtime_phase(
+            environment,
+            f"uv pip install --python {VENV_PYTHON} setuptools --offline",
+            "build_backend_sync_failed",
+            env=install_env,
+        )
         await self._candidate_phase(
             environment,
             "set -euo pipefail; "
             'if [ -f "$HOME/.local/bin/env" ]; then . "$HOME/.local/bin/env"; '
             'else export PATH="$HOME/.local/bin:$PATH"; fi; '
-            f"UV_CACHE_DIR={LOCAL_BUILD_CACHE} uv sync --project {SOURCE_DIR} --frozen --offline",
+            f"UV_CACHE_DIR={LOCAL_BUILD_CACHE} uv sync --project {SOURCE_DIR} "
+            "--frozen --offline --no-build-isolation",
             "local_project_sync_failed",
             env=install_env,
         )

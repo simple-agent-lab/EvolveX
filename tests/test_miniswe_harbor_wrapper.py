@@ -442,6 +442,12 @@ def test_miniswe_wrapper_subclasses_harbor_miniswe_and_installs_candidate_source
         "NO_PROXY": ".internal.example,llm.example",
     }
     assert "UV_CACHE_DIR=/tmp/evolve-candidate-build-cache uv sync" in environment.commands[sync_indices[1]]
+    assert "--no-build-isolation" in environment.commands[sync_indices[1]]
+    build_backend_index = next(
+        index for index, command in enumerate(environment.commands) if "uv pip install" in command
+    )
+    assert sync_indices[0] < build_backend_index < sync_indices[1]
+    assert "setuptools --offline" in environment.commands[build_backend_index]
     for sync_index in sync_indices:
         assert environment.envs[sync_index] == {
             "UV_CACHE_DIR": "/opt/evolve/uv/cache",
