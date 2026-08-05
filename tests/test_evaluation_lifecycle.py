@@ -32,7 +32,11 @@ def _lifecycle_workspace(tmp_path: Path, outcomes: dict[str, list[str]]) -> Path
     )
     script.chmod(script.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     config = workspace / "evolve.yaml"
-    config.write_text(config.read_text().replace("tasks_per_round: 16", "tasks_per_round: 1"))
+    config.write_text(
+        config.read_text().replace(
+            "tasks_per_round: 16", "tasks_per_round: 1\n  task_names: [case-a]"
+        )
+    )
     git(workspace, "add", "evaluator/eval.sh", "evolve.yaml")
     git(workspace, "commit", "-m", "configure lifecycle evaluator")
     git(workspace, "tag", "-f", "gen/0")

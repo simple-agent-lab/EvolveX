@@ -32,7 +32,7 @@ skills/evolve-workspace/      workspace operating manual
 target/                       seed selected by the recipe
 ```
 
-The frozen evaluator is generated under `evaluator/`: `eval.sh`, `eval.env`,
+The frozen evaluator is generated under `evaluator/`: internal `eval.sh`, `eval.env`,
 `agent.env`, `environment.kwargs`, `splits.json`, `dataset.pin`, `runtime.pin`,
 `stub_eval.py`, and `engines/local.sh`. Harbor recipes also receive
 `cleanup_harbor.py`, `harbor_artifacts.py`, `parse_score.py`, and `smoke.sh`.
@@ -45,6 +45,14 @@ generated at the workspace root.
 Commands load local settings only from the project-root `.env`; explicitly
 exported environment variables take precedence. Caller and parent `.env` files
 are not loaded, and `.env` is ignored by Git.
+
+The minimal setup is `OPENAI_API_KEY=...`. `OPENAI_BASE_URL` is optional for a
+custom OpenAI-compatible endpoint. Codex agents may instead use an explicit
+absolute `CODEX_AUTH_JSON_PATH`; it takes precedence over the API key, and the
+framework never searches `~/.codex/auth.json`. Standard `HTTP_PROXY`,
+`HTTPS_PROXY`, `ALL_PROXY`, and `NO_PROXY` values are passed through unchanged.
+Do not invoke `evaluator/eval.sh` directly; workspace evaluation prepares its
+private runtime input files first.
 
 ## Rules
 

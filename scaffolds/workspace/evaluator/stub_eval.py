@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Deterministic stub evaluator with per-task results.
+"""Deterministic evaluator used only when ``EVAL_STUB=1``.
 
 Simulates a task suite (task-0 .. task-{K-1}) whose outcome is a function of the
 candidate: every task passes by default (so a fresh candidate scores 1.0), but a
 candidate may fail specific tasks by declaring `# FAIL task-N` lines in
 target/agent.py. A candidate edit that changes those lines flips which tasks pass —
 which is what makes `predicted_fixes -> verified_fixes` a real signal under the
-stub. Writes score (pass rate), status, task_vector.json, and metrics.json;
+stub. A `# MISSING task-N` line omits that task's evidence so strict evaluation
+can exercise missing-trial handling. Writes score (pass rate), status,
+task_vector.json, and metrics.json;
 exits 0 (complete) when every task passes, else 2 (partial).
 """
 

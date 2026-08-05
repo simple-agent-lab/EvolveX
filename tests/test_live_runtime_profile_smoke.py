@@ -34,7 +34,7 @@ def write_model_smoke_dataset(root: Path) -> Path:
 
 
 def build_live_smoke_workspace(tmp_path: Path, recipe: str) -> Path:
-    for name in ("OPENAI_API_KEY", "OPENAI_BASE_URL", "EVOLVE_RUNTIME_DIGEST"):
+    for name in ("OPENAI_API_KEY", "EVOLVE_RUNTIME_DIGEST"):
         if not os.environ.get(name):
             raise AssertionError(f"live profile smoke requires {name}")
     dataset = write_model_smoke_dataset(tmp_path / f"{recipe}-dataset")
@@ -45,7 +45,7 @@ def build_live_smoke_workspace(tmp_path: Path, recipe: str) -> Path:
 
 @pytest.mark.live_model
 @pytest.mark.skipif(
-    os.environ.get("EVOLVE_LIVE_BYTEDANCE_SMOKE") != "1",
+    os.environ.get("EVOLVE_LIVE_RUNTIME_SMOKE") != "1",
     reason="live model smoke is opt-in",
 )
 @pytest.mark.parametrize("recipe", ["aevolve", "ahe"])
@@ -62,4 +62,5 @@ def test_live_profile_smoke_is_non_mutating(tmp_path: Path, recipe: str) -> None
     assert result.receipt_path is not None
     serialized = result.receipt_path.read_text()
     assert os.environ["OPENAI_API_KEY"] not in serialized
-    assert os.environ["OPENAI_BASE_URL"] not in serialized
+    if endpoint := os.environ.get("OPENAI_BASE_URL"):
+        assert endpoint not in serialized

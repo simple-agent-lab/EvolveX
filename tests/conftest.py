@@ -9,6 +9,8 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
+from harbor.models.registry import DatasetMetadata
+from harbor.models.task.id import PackageTaskId
 
 from evolve import evaluation as evaluation_package
 from evolve.archive import merged_rows as mechanism_merged_rows
@@ -40,6 +42,23 @@ _UV_RUNTIME_ENV = {
 }
 
 
+class _FixtureRegistryClient:
+    async def get_dataset_metadata(self, name: str) -> DatasetMetadata:
+        dataset_name, _, requested_version = name.partition("@")
+        return DatasetMetadata(
+            name=dataset_name,
+            version=requested_version or "test-v1",
+            task_ids=[
+                PackageTaskId(
+                    org="fixture",
+                    name=f"task-{index}",
+                    ref=f"sha256:{index:064x}",
+                )
+                for index in range(100)
+            ],
+        )
+
+
 def generated_workspace_uv_env() -> dict[str, str]:
     return {**os.environ, **_UV_RUNTIME_ENV}
 
@@ -51,9 +70,13 @@ def fixture_recipe_config(name: str, experiment_id: str) -> dict[str, Any]:
     return config
 
 
-def init_fixture_workspace(workspace: Path, name: str = "hill_climb-smoke") -> Path:
+def init_fixture_workspace(
+    workspace: Path, name: str = "hill_climb-smoke", *, dataset_count: int = 10
+) -> Path:
     config = fixture_recipe_config(name, workspace.name)
-    dataset = write_identity_dataset(workspace.parent / f"{workspace.name}-tasks")
+    dataset = write_identity_dataset(
+        workspace.parent / f"{workspace.name}-tasks", count=dataset_count
+    )
     with patch("evolve.workspace.default_config", return_value=config):
         create_workspace(
             InitOptions(workspace=workspace, recipe=name, dataset=str(dataset))
@@ -71,7 +94,7 @@ def write_identity_dataset(root: Path, count: int = 10) -> Path:
 
 
 def init_recipe_with_local_inputs(tmp_path: Path, recipe: str) -> Path:
-    dataset = write_identity_dataset(tmp_path / f"{recipe}-tasks")
+    dataset = write_identity_dataset(tmp_path / f"{recipe}-tasks", count=100)
     seed = (
         write_locked_miniswe_seed(tmp_path / f"{recipe}-seed")
         if recipe in UV_SOURCE_RECIPES
@@ -92,13 +115,17 @@ def init_recipe_with_local_inputs(tmp_path: Path, recipe: str) -> Path:
 @pytest.fixture(autouse=True)
 def evaluator_runtime_digest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("EVOLVE_HOME", str(tmp_path / "evolve-home"))
-    if os.environ.get("EVOLVE_LIVE_BYTEDANCE_SMOKE") != "1":
+    if os.environ.get("EVOLVE_LIVE_RUNTIME_SMOKE") != "1":
         monkeypatch.setenv("HOME", str(tmp_path / "home"))
         monkeypatch.setenv("EVOLVE_RUNTIME_DIGEST", "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
         monkeypatch.setenv("OPENAI_API_KEY", "test-key-not-a-secret")
         monkeypatch.setenv("OPENAI_BASE_URL", "https://model.example/v1")
     monkeypatch.delenv("CODEX_AUTH_JSON_PATH", raising=False)
     monkeypatch.delenv("CODEX_FORCE_AUTH_JSON", raising=False)
+    monkeypatch.setattr(
+        "evolve.evaluation.datasets.RegistryClientFactory.create",
+        lambda: _FixtureRegistryClient(),
+    )
 
 
 @pytest.fixture
@@ -116,6 +143,18 @@ def run_evolve(
     env: dict[str, str | None] | None = None,
     cwd: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
+    command_args = list(args)
+    if (
+        command_args[:1] == ["init"]
+        and len(command_args) > 1
+        and not command_args[1].startswith("-")
+        and "--dataset" not in command_args
+    ):
+        workspace = Path(command_args[1]).resolve()
+        dataset = workspace.parent / f".{workspace.name}-test-dataset"
+        if not dataset.exists():
+            write_identity_dataset(dataset, count=100)
+        command_args.extend(["--dataset", str(dataset)])
     merged_env = os.environ.copy()
     if env:
         for key, value in env.items():
@@ -126,7 +165,7 @@ def run_evolve(
     if env and env.get("EVAL_STUB") == "1" and "EVOLVE_AGENT_COMMAND" not in env:
         merged_env["EVOLVE_AGENT_COMMAND"] = smoke_agent_command()
     return subprocess.run(
-        [sys.executable, "-m", "evolve", *args],
+        [sys.executable, "-m", "evolve", *command_args],
         text=True,
         capture_output=True,
         env=merged_env,
@@ -207,7 +246,7 @@ def allow_local_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
 def init_workspace(tmp_path: Path, experiment: str = "experiment") -> tuple[Path, Path]:
     workspace = tmp_path / experiment
     evolve_home = tmp_path / "evolve-home"
-    init_fixture_workspace(workspace)
+    init_fixture_workspace(workspace, dataset_count=100)
     return workspace, evolve_home
 
 

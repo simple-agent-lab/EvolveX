@@ -70,6 +70,38 @@ def _write_trial(
     return trial
 
 
+def test_harbor_rollout_passes_only_standard_proxy_variables(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _harbor_rollout_module()
+    for name in (
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "ALL_PROXY",
+        "NO_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "all_proxy",
+        "no_proxy",
+        "EVOLVE_HARBOR_HTTP_PROXY",
+        "EVOLVE_HARBOR_HTTPS_PROXY",
+        "EVOLVE_HARBOR_NO_PROXY",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("HTTPS_PROXY", "http://standard.example:8118")
+    monkeypatch.setenv("NO_PROXY", "localhost,.internal.example")
+    monkeypatch.setenv("EVOLVE_HARBOR_HTTPS_PROXY", "http://legacy.example:8118")
+
+    command: list[str] = []
+    module._append_agent_env(command, tmp_path, {})
+
+    values = [command[index + 1] for index, item in enumerate(command) if item == "--ae"]
+    assert values == [
+        "HTTPS_PROXY=http://standard.example:8118",
+        "NO_PROXY=localhost,.internal.example",
+    ]
+
+
 def test_harbor_rollout_distinguishes_task_agent_and_infra_failures(tmp_path: Path) -> None:
     module = _harbor_rollout_module()
     jobs = tmp_path / "jobs"

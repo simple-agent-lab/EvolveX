@@ -31,19 +31,23 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `driver.py` | 1800 | the generation sequencer: orchestrates baseline eval, verbs + operators (incl. novelty, self-modification admission gates, sealed anchors); validates operator outputs; computes verified_fixes; audit quarantine; doctor repair |
 | `evaluation/__init__.py` | 75 | typed evaluation identity, contract, and result facade |
 | `evaluation/contract.py` | 450 | automatically resolve, hash, persist, and certify immutable evaluation contracts |
-| `evaluation/datasets.py` | 200 | content-backed local and Harbor-registry dataset identities |
+| `evaluation/datasets.py` | 250 | content-backed local and Harbor-registry dataset identities |
 | `evaluation/diagnostics.py` | 250 | materialize missing contract trials and project bounded, redacted evaluation diagnostics |
 | `evaluation/evidence.py` | 160 | evaluator-output reading, validation, and conversion into canonical trial results |
 | `evaluation/execution.py` | 400 | clean-checkout canonical evaluation: preflight gate, tree assertion, targeted task execution, lifecycle, artifacts, and score parsing |
-| `evaluation/identity.py` | 150 | canonical task-set identity plus checkout and frozen-baseline comparability |
+| `evaluation/identity.py` | 160 | canonical task-set identity plus checkout and frozen-baseline comparability |
 | `evaluation/results.py` | 225 | evaluation result types, outcome classification, and persisted record shape |
 | `feedback.py` | 250 | assemble current and historical rollout evidence plus ledger-derived feedback for the meta-agent |
 | `operators.py` | 200 | subprocess runner for workspace operator scripts (contract: env vars, --config, timeout) |
 | `patching.py` | 150 | mutable-surface patch creation and parent-reference selection |
 | `population.py` | 100 | genid/lineage bookkeeping for fan-out generations |
-| `preflight.py` | 575 | typed ordered runtime validation, isolated model-smoke delegation, and atomic predefined receipts |
+| `preflight/__init__.py` | 30 | stable public preflight facade |
+| `preflight/checks.py` | 125 | exact-environment host, image, lock, and trusted-profile probes |
+| `preflight/models.py` | 150 | typed checks, failure categories, and atomic receipt serialization |
+| `preflight/runner.py` | 375 | ordered validation, typed domain-error mapping, redaction, and model-smoke delegation |
 | `report.py` | 225 | status/report rendering, best-ever recomputation, claim checklist, and certified evidence coverage |
 | `runtime.py` | 250 | generated-workspace runtime entrypoint helpers |
+| `runtime_auth.py` | 100 | explicit API-key or Codex auth-file selection without home-directory discovery |
 | `runtime_environment.py` | 475 | strict and legacy role-specific credential, endpoint, proxy, template, and redacted Harbor environment planning |
 | `runtime_profiles.py` | 400 | immutable runtime-profile registry, route identity, canonical resolution, and trusted loading |
 | `splits.py` | 300 | freeze content-backed train/gate/sealed Harbor task membership and materialize exact runtime selections |
@@ -73,7 +77,7 @@ each workspace, immutable there because it sits outside the mutable surface
 | `frozen/interfaces.py` | 475 | operator ABCs, registry, result schemas, and strict diagnostics/operator payload validation |
 | `frozen/sdk.py` | 300 | Python operator entrypoint and file-contract IO; no library algorithm policy |
 
-Total `src/evolve/` budget: **12790 lines**. The budget admits the explicit content-backed
+Total `src/evolve/` budget: **13055 lines**. The budget admits the explicit content-backed
 evaluation-contract boundaries, the opt-in in-place Harbor runtime, and the redacted trace-analysis
 boundary between rollout and feedback assembly; if the mechanism wants to
 grow past that, something belongs in a workspace operator instead —

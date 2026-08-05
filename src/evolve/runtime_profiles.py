@@ -165,10 +165,6 @@ def model_endpoint_digest(url: str | None) -> str:
     return hashlib.sha256(normalize_model_endpoint(url).encode()).hexdigest()
 
 
-def normalize_model_route(url: str) -> str:
-    return normalize_model_endpoint(url)
-
-
 def is_protected_runtime_environment_name(name: str) -> bool:
     return name.upper() in _PROTECTED_ENVIRONMENT_NAMES
 

@@ -74,13 +74,21 @@ def parse_manifest(text: str, *, source: str = "split manifest") -> dict[str, An
     identity = payload.get("dataset_identity")
     task_digests = payload.get("task_digests")
     members = [member for split in SPLIT_NAMES for member in tasks[split]]
+    identity_source = identity.get("source") if isinstance(identity, dict) else None
     if (
         any(
             not isinstance(member, str)
             or not member
             or member in {".", ".."}
-            or "/" in member
             or "\\" in member
+            or (
+                identity_source == "local"
+                and "/" in member
+            )
+            or (
+                identity_source == "registry"
+                and any(part in {"", ".", ".."} for part in member.split("/"))
+            )
             for member in members
         )
         or len(set(members)) != len(members)

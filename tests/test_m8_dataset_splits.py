@@ -144,6 +144,7 @@ def test_build_manifest_certifies_registry_dataset(tmp_path: Path) -> None:
     assert sorted(
         name for members in manifest["tasks"].values() for name in members
     ) == ["bench/task-b", "task-a"]
+    assert parse_manifest(json.dumps(manifest)) == manifest
 
 
 def test_local_split_rejects_selected_task_content_drift(tmp_path: Path) -> None:

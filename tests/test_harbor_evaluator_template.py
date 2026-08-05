@@ -33,6 +33,12 @@ def _write_fake_uv(bin_dir: Path) -> None:
     )
 
 
+def _write_runtime_inputs(run_dir: Path) -> None:
+    run_dir.mkdir(parents=True, exist_ok=True)
+    (run_dir / "runtime-agent.env").write_text("")
+    (run_dir / "runtime-verifier.env").write_text("")
+
+
 def test_harbor_evaluator_uses_locked_workspace_runtime() -> None:
     text = _eval_sh("harbor", "fixture")
 
@@ -97,6 +103,7 @@ def test_harbor_evaluator_ignores_ambient_frozen_control_overrides(tmp_path: Pat
 
     args_capture = tmp_path / "args"
     run_dir = tmp_path / "run"
+    _write_runtime_inputs(run_dir)
     env = {
         **os.environ,
         "HOME": str(tmp_path / "home"),
@@ -139,6 +146,52 @@ def test_harbor_shell_consumes_prevalidated_environment_inputs() -> None:
     assert "for credential_name in" not in text
     assert "dependency_hosts =" not in text
     assert "model_base=" not in text
+
+
+def test_engine_rejects_direct_invocation_without_prepared_runtime_inputs(
+    tmp_path: Path,
+) -> None:
+    evaluator = tmp_path / "evaluator"
+    evaluator.mkdir()
+    _write_executable(evaluator / "eval.sh", _eval_sh("harbor", "fixture"))
+    (evaluator / "eval.env").write_text(
+        _eval_env(
+            "experiment",
+            "fixture",
+            n_concurrent=1,
+            tasks_per_round=1,
+            trials=1,
+            partial_floor=0.9,
+            agent="custom:Agent",
+        )
+    )
+    (evaluator / "environment.kwargs").write_text("")
+    (evaluator / "splits.json").write_text('{"resolved":false}\n')
+    _write_evaluator_helpers(evaluator)
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    _write_fake_uv(fake_bin)
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    env = {
+        **os.environ,
+        "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
+        "EVOLVE_RUN_DIR": str(run_dir),
+        "EVOLVE_FRAMEWORK_PYTHON": sys.executable,
+        "EVOLVE_CANDIDATE_RUNTIME_ENV_JSON": "{}",
+        "EVOLVE_CANDIDATE_RUNTIME_MOUNTS_JSON": "[]",
+    }
+
+    completed = subprocess.run(
+        [str(evaluator / "eval.sh")],
+        cwd=tmp_path,
+        env=env,
+        text=True,
+        capture_output=True,
+    )
+
+    assert completed.returncode != 0
+    assert "internal evaluator runtime inputs are missing" in completed.stderr
 
 
 def test_harbor_evaluator_translates_environment_inputs_and_skips_docker_cleanup(
@@ -270,11 +323,13 @@ def test_harbor_stage_limit_and_anchor_task_file_override(tmp_path: Path) -> Non
     )
 
     args_capture = tmp_path / "harbor-args.txt"
+    run_dir = tmp_path / "run"
+    _write_runtime_inputs(run_dir)
     env = {
         **os.environ,
         "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
         "HARBOR_ARGS_CAPTURE": str(args_capture),
-        "EVOLVE_RUN_DIR": str(tmp_path / "run"),
+        "EVOLVE_RUN_DIR": str(run_dir),
         "EVOLVE_EVAL_KIND": "anchor",
         "EVOLVE_TASK_LIMIT": "2",
         "EVOLVE_ATTEMPT_ID": "anchor-attempt",
@@ -324,6 +379,7 @@ def test_harbor_install_smoke_is_install_only_and_exposes_raw_diagnostics(tmp_pa
         "exit 7\n",
     )
     run_dir = tmp_path / "run"
+    _write_runtime_inputs(run_dir)
     cache = tmp_path / "shared-cache"
     python_dir = tmp_path / "shared-python"
     runtime_mounts = [
@@ -412,12 +468,14 @@ def test_harbor_model_smoke_runs_exactly_one_model_trial(tmp_path: Path) -> None
         'printf \'%s\\n\' "$@" > "$HARBOR_ARGS_CAPTURE"\n',
     )
     args_capture = tmp_path / "args"
+    run_dir = tmp_path / "run"
+    _write_runtime_inputs(run_dir)
     env = {
         **os.environ,
         "HOME": str(tmp_path / "home"),
         "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
         "HARBOR_ARGS_CAPTURE": str(args_capture),
-        "EVOLVE_RUN_DIR": str(tmp_path / "run"),
+        "EVOLVE_RUN_DIR": str(run_dir),
         "EVOLVE_CANDIDATE_SMOKE_MODE": "model",
         "EVOLVE_TASK_LIMIT": "8",
         "EVOLVE_ATTEMPT_ID": "model-smoke-attempt",

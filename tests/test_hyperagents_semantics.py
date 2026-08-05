@@ -11,7 +11,7 @@ from evolve.population import valid_parent_rows
 def _init_hyperagents_smoke(tmp_path: Path) -> tuple[Path, Path]:
     workspace = tmp_path / "hyperagents-smoke"
     evolve_home = tmp_path / "evolve-home"
-    init_fixture_workspace(workspace, "hyperagents-smoke")
+    init_fixture_workspace(workspace, "hyperagents-smoke", dataset_count=100)
     return workspace, evolve_home
 
 

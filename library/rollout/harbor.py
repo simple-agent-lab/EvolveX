@@ -41,11 +41,7 @@ _SENSITIVE_ENV_NAME = re.compile(
     r"(?i)(?:proxy|api[_-]?key|access[_-]?token|token|secret|password|authorization|auth)"
 )
 _TRACE_EVENT_LIMIT = 32
-_PROXY_ENV = (
-    ("EVOLVE_HARBOR_HTTP_PROXY", "http_proxy", "HTTP_PROXY"),
-    ("EVOLVE_HARBOR_HTTPS_PROXY", "https_proxy", "HTTPS_PROXY"),
-    ("EVOLVE_HARBOR_NO_PROXY", "no_proxy", "NO_PROXY"),
-)
+_PROXY_ENV = ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY")
 
 
 def _write_json(path: Path, payload: object) -> None:
@@ -563,11 +559,10 @@ def _batch_command(
 
 
 def _append_agent_env(command: list[str], checkout: Path, config: dict[str, Any]) -> None:
-    for override, lower, upper in _PROXY_ENV:
-        value = os.environ.get(override) or os.environ.get(lower) or os.environ.get(upper)
+    for name in _PROXY_ENV:
+        value = os.environ.get(name)
         if value:
-            for key in (lower, upper):
-                command.extend(["--ae", f"{key}={value}", "--ve", f"{key}={value}"])
+            command.extend(["--ae", f"{name}={value}", "--ve", f"{name}={value}"])
     values = _load_eval_env(checkout)
     agent_env = checkout / "evaluator" / "agent.env"
     if agent_env.is_file():

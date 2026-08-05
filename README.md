@@ -104,14 +104,17 @@ uv run evolve init /tmp/evolve-harbor \
 Inspect a run with `evolve status`, `evolve report`, `git tag --list 'gen/*'`,
 and the generated `archive.jsonl`. Run `evolve --help` for the complete CLI.
 
-For future experiments, the complete startup path is intentionally short:
+For future experiments, the startup path is intentionally short. API-key
+authentication is the default, and `OPENAI_BASE_URL` is optional when using the
+official OpenAI endpoint:
 
 ```bash
 export OPENAI_API_KEY="..."
-export OPENAI_BASE_URL="https://your-bytedance-openai-compatible-endpoint/v1"
 export EVOLVE_RUNTIME_DIGEST="sha256:..."
 
 evolve init WORKSPACE --recipe ahe --dataset DATASET
+umask 077
+printf 'OPENAI_API_KEY=%s\n' "$OPENAI_API_KEY" > WORKSPACE/.env
 WORKSPACE/evolve preflight WORKSPACE
 WORKSPACE/evolve preflight WORKSPACE --smoke
 WORKSPACE/evolve run WORKSPACE
@@ -121,15 +124,33 @@ Initialization generates the immutable runtime profile and all evaluation
 contract inputs automatically. Evaluator repetitions default to one. Ordinary
 preflight performs offline, cacheless validation and writes a receipt without
 changing tracked source or preparing dependencies. `--smoke` adds one real
-model request against a detached candidate snapshot. The agent and meta-agent
-receive the ByteDance-compatible endpoint through `OPENAI_API_KEY` and
-`OPENAI_BASE_URL`; credential files are neither required nor supported.
-Runtime policy is resolved by the framework, so recipe and experiment scripts
-only declare the profile they need.
+model request against a detached candidate snapshot.
 
-Opt-in ByteDance-endpoint smoke tests exercise both the Codex and frozen
-MiniSWE runtime profiles. They require Docker and a locally available immutable
-evaluator image; production experiments should still run on Linux.
+`WORKSPACE/.env` is the single user-facing environment file. Workspace
+commands load only that file; explicitly exported variables override it, and
+caller or parent `.env` files are ignored. The file is Git-ignored. It may also
+contain an optional custom endpoint and standard proxy variables:
+
+```dotenv
+OPENAI_API_KEY=...
+OPENAI_BASE_URL=https://openai-compatible.example/v1
+HTTPS_PROXY=http://proxy.example:8118
+NO_PROXY=localhost,127.0.0.1
+```
+
+For Codex agents, an explicit `CODEX_AUTH_JSON_PATH=/absolute/path/auth.json`
+may be used instead of the API key and takes precedence when both are present.
+There is no automatic `~/.codex/auth.json` lookup, and non-Codex agents require
+API authentication. Secret values, endpoint URLs, auth paths, and proxy values
+are not persisted in runtime profiles or evaluation contracts.
+
+Recipes select provider-neutral profiles such as `harbor-v1` and
+`harbor-uv-v1`. Additional safe declarative profiles can live in private
+directories listed by `EVOLVE_RUNTIME_PROFILE_PATH` (using the platform path
+separator); the files must contain policy, never credentials or private
+endpoint literals. Local datasets are content-hashed task by task. Harbor
+registry datasets are accepted only when registry metadata resolves every task
+to an immutable Git commit or package digest.
 
 ## Concepts
 

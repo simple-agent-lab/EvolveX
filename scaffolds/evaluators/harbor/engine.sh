@@ -1,4 +1,4 @@
-# harbor evaluator template
+# Internal Harbor evaluator template; invoke it through the Evolve evaluator.
 . evaluator/eval.env
 if [ -n "${EVOLVE_HARBOR_N_CONCURRENT_OVERRIDE:-}" ]; then
   case "$EVOLVE_HARBOR_N_CONCURRENT_OVERRIDE" in
@@ -70,6 +70,14 @@ then
   printf 'infra_failed\n' > "$EVOLVE_RUN_DIR/status"
   exit 3
 fi
+for required_input in runtime-agent.env runtime-verifier.env candidate-runtime.env; do
+  if [ ! -f "$EVOLVE_RUN_DIR/$required_input" ]; then
+    printf 'evolve: internal evaluator runtime inputs are missing: %s\n' \
+      "$required_input" >&2
+    printf 'infra_failed\n' > "$EVOLVE_RUN_DIR/status"
+    exit 3
+  fi
+done
 runtime_mounts=$(cat "$EVOLVE_RUN_DIR/candidate-runtime.mounts.json")
 jobs_dir="$EVOLVE_RUN_DIR/jobs"
 if ! mkdir "$jobs_dir"; then

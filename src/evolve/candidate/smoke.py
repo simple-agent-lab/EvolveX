@@ -1,3 +1,9 @@
+"""Detached candidate smoke runs for ``candidate-smoke`` and preflight ``--smoke``.
+
+Ordinary evaluation rounds use :mod:`evolve.evaluation.execution`, not this
+module.
+"""
+
 from __future__ import annotations
 
 import hashlib

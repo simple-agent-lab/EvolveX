@@ -70,11 +70,10 @@ def effective_task_set_identity(
         split_path = checkout / "evaluator" / "splits.json"
         if split_path.is_file():
             try:
-                manifest = json.loads(split_path.read_text())
-                split_tasks = manifest.get("tasks", {}).get(evaluation_split_name(evaluator, purpose), [])
-                if isinstance(split_tasks, list) and all(isinstance(name, str) for name in split_tasks):
-                    members = tuple(split_tasks)
-            except (OSError, json.JSONDecodeError, AttributeError):
+                members = _selected_split_members(
+                    split_path.read_text(), evaluator, purpose=purpose, source=str(split_path)
+                )
+            except (OSError, json.JSONDecodeError, RuntimeError):
                 members = ()
     attempts = evaluator_repetitions(evaluator)
     return task_set_identity(
@@ -128,11 +127,29 @@ def _fixed_task_members(workspace: Path, evaluator: dict[str, Any]) -> tuple[str
     split_text = _git_text(workspace, "show", "gen/0:evaluator/splits.json", strip=False)
     if split_text is None:
         return ()
-    manifest = json.loads(split_text)
-    split_tasks = manifest.get("tasks", {}).get(evaluation_split_name(evaluator), [])
-    if not isinstance(split_tasks, list) or not all(isinstance(name, str) for name in split_tasks):
-        return ()
-    return tuple(split_tasks)
+    return _selected_split_members(
+        split_text,
+        evaluator,
+        source="gen/0:evaluator/splits.json",
+    )
+
+
+def _selected_split_members(
+    text: str,
+    evaluator: dict[str, Any],
+    *,
+    purpose: str = "candidate",
+    source: str,
+) -> tuple[str, ...]:
+    payload = json.loads(text)
+    if isinstance(payload, dict) and payload.get("version") in {1, 2}:
+        from ..splits import parse_manifest, selected_task_names
+
+        manifest = parse_manifest(text, source=source)
+        return tuple(selected_task_names(manifest, evaluation_split_name(evaluator, purpose)))
+    tasks = payload.get("tasks") if isinstance(payload, dict) else None
+    members = tasks.get(evaluation_split_name(evaluator, purpose)) if isinstance(tasks, dict) else None
+    return tuple(members) if isinstance(members, list) and all(isinstance(name, str) for name in members) else ()
 
 
 def _git_text(workspace: Path, *args: str, strip: bool = True) -> str | None:

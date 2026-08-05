@@ -22,7 +22,8 @@ Harbor trials run from the locked workspace environment: never rely on a package
 installed globally, injected through `PYTHONPATH`, or installed ad hoc during a
 trial.
 
-Project-root `.env` values are loaded automatically for run, eval, and candidate
-smoke commands and supply live meta-agent/evaluator keys and endpoints. Exported
-environment variables take precedence; caller and parent `.env` files are not
-loaded. Never commit secrets.
+Project-root `.env` values are loaded automatically for run, eval, preflight,
+and candidate-smoke commands. Exported environment variables take precedence;
+caller and parent `.env` files are not loaded. Use API credentials by default,
+or an explicit `CODEX_AUTH_JSON_PATH` for Codex. Never commit secrets or invoke
+the internal `evaluator/eval.sh` directly.

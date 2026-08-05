@@ -53,7 +53,9 @@ def configure_outcome_evaluator(
         f"exit {exit_code}\n",
     )
     config = workspace / "evolve.yaml"
-    text = config.read_text().replace("tasks_per_round: 16", "tasks_per_round: 1")
+    text = config.read_text().replace(
+        "tasks_per_round: 16", "tasks_per_round: 1\n  task_names: [case-a]"
+    )
     if timeout_rule is not None:
         text = text.replace(
             "  tasks_per_round: 1\n", f"  tasks_per_round: 1\n  benchmark_timeout_is_zero: {timeout_rule}\n"
