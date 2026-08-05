@@ -260,6 +260,9 @@ def evaluate(
                             ),
                         )
                         setup_outcome, setup_reason = read_setup_evidence(run_dir)
+                        if not _runtime_selection_matches(run_dir, task_members):
+                            setup_outcome = Outcome.INFRASTRUCTURE_FAILED
+                            setup_reason = "runtime task selection differs from the planned effective task set"
                         try:
                             vector = read_task_vector(run_dir)
                             trials = trial_results(vector) if vector is not None else ()
@@ -350,6 +353,24 @@ def _receipt_reference(workspace: Path, receipt: Path | None) -> dict[str, str] 
     }
 
 
+def _runtime_selection_matches(run_dir: Path, planned_members: tuple[str, ...]) -> bool:
+    if not planned_members:
+        return True
+    selection = run_dir / "task-split.json"
+    plan = run_dir / "run-plan.json"
+    source = selection if selection.is_file() else plan
+    if not source.is_file():
+        return False
+    try:
+        payload = json.loads(source.read_text())
+    except (OSError, json.JSONDecodeError):
+        return False
+    tasks = payload.get("tasks") if isinstance(payload, dict) else None
+    if not isinstance(tasks, list) or any(not isinstance(task, str) or not task for task in tasks):
+        return False
+    return tuple(sorted(set(tasks))) == tuple(sorted(set(planned_members)))
+
+
 def _expected_trials(evaluator: dict[str, Any], task_limit: int | None, *, selected_tasks: int | None = None) -> int:
     attempts = evaluator_repetitions(evaluator)
     tasks = selected_tasks if selected_tasks is not None else int(evaluator.get("tasks_per_round", attempts))
@@ -362,7 +383,7 @@ def _run_eval_script(
     checkout: Path,
     run_dir: Path,
     genid: str,
-    _task_limit: int | None,
+    task_limit: int | None,
     purpose: str,
     evaluation_split: str,
     runtime: CandidateRuntimeResult,
@@ -400,6 +421,8 @@ def _run_eval_script(
     uv_cache = uv_cache.resolve()
     uv_cache.mkdir(parents=True, exist_ok=True)
     env["EVOLVE_UV_CACHE_DIR"] = str(uv_cache)
+    if task_limit is not None:
+        env["EVOLVE_TASK_LIMIT"] = str(task_limit)
     result = run_owned([str(checkout / "evaluator" / "eval.sh")], cwd=checkout, env=env)
     (run_dir / "stdout.log").write_text(result.stdout)
     (run_dir / "stderr.log").write_text(result.stderr)

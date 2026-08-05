@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import math
+import shutil
 import sys
 from glob import escape
 from pathlib import Path
@@ -51,6 +53,7 @@ def build_manifest(
         "digest": identity.digest,
         "resolved_reference": identity.resolved_reference,
     }
+    manifest["dataset_digest"] = f"sha256:{identity.digest}"
     manifest["task_digests"] = identity.task_digest_map()
     return manifest
 
@@ -115,7 +118,12 @@ def selected_task_names(
     return names
 
 
-def split_selection_digest(split_name: str, names: list[str]) -> str:
+def split_selection_digest(
+    split_name: str,
+    names: list[str],
+    task_digests: dict[str, str] | None = None,
+) -> str:
+    del task_digests  # Content identity is certified independently from active membership.
     payload = json.dumps({"split": split_name, "tasks": sorted(names)}, separators=(",", ":"), sort_keys=True).encode()
     return hashlib.sha256(payload).hexdigest()
 
@@ -153,6 +161,10 @@ def select_dataset_tasks(
             "evaluator dataset was not a local task directory during init; "
             "configure evaluator.dataset before init so split membership can be frozen"
         )
+    if manifest.get("version") != 2:
+        raise RuntimeError(
+            "legacy split manifest does not bind task contents; start a new experiment with a v2 split manifest"
+        )
     dataset_path = _resolve_dataset(dataset, manifest_path.parent.parent)
     if dataset_path is None:
         raise RuntimeError(f"evaluator dataset is not a local directory: {dataset}")
@@ -169,7 +181,7 @@ def select_dataset_tasks(
         expected_digests = manifest["task_digests"]
         changed = [name for name in names if local_task_content_digest(dataset_path, name) != expected_digests[name]]
         if changed:
-            raise RuntimeError("evaluator dataset task content changed after init: " + ", ".join(changed))
+            raise RuntimeError("evaluator dataset task contents changed after init: " + ", ".join(changed))
     return names, split_selection_digest(split_name, names)
 
 
@@ -180,8 +192,44 @@ def write_runtime_selection(
     run_dir: Path,
     *,
     round_number: int | None = None,
-) -> None:
-    names, digest = select_dataset_tasks(manifest_path, dataset, split_name, round_number=round_number)
+    limit: int | None = None,
+) -> Path:
+    names, digest = select_dataset_tasks(
+        manifest_path,
+        dataset,
+        split_name,
+        round_number=round_number,
+        limit=limit,
+    )
+    run_dir.mkdir(parents=True, exist_ok=True)
+    snapshot = _snapshot_selected_tasks(manifest_path, dataset, names, run_dir)
+    try:
+        _write_runtime_task_selection(run_dir, split_name, names, digest)
+    except BaseException:
+        shutil.rmtree(snapshot, ignore_errors=True)
+        raise
+    return snapshot
+
+
+def write_runtime_task_file_selection(task_file: Path, run_dir: Path, *, limit: int) -> None:
+    if limit < 1:
+        raise ValueError("task limit must be at least 1")
+    names = [
+        line.strip()
+        for line in task_file.read_text().splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ][:limit]
+    if not names:
+        raise RuntimeError("evaluator task file contains no tasks")
+    _write_runtime_task_selection(
+        run_dir,
+        "task_file",
+        names,
+        split_selection_digest("task_file", names),
+    )
+
+
+def _write_runtime_task_selection(run_dir: Path, split_name: str, names: list[str], digest: str) -> None:
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "task-names.txt").write_text("".join(f"{harbor_task_pattern(name)}\n" for name in names))
     (run_dir / "task_set_hash").write_text(f"{digest}\n")
@@ -190,10 +238,51 @@ def write_runtime_selection(
     )
 
 
+def _snapshot_selected_tasks(
+    manifest_path: Path,
+    dataset: str,
+    names: list[str],
+    run_dir: Path,
+) -> Path:
+    manifest = load_manifest(manifest_path)
+    dataset_path = _resolve_dataset(dataset, manifest_path.parent.parent)
+    if dataset_path is None:
+        raise RuntimeError(f"evaluator dataset is not a local directory: {dataset}")
+    sources = (
+        {dataset_path.name: dataset_path}
+        if (dataset_path / "task.toml").is_file()
+        else {path.name: path for path in dataset_path.iterdir() if path.is_dir() and (path / "task.toml").is_file()}
+    )
+    expected = {name: manifest["task_digests"][name] for name in names}
+    snapshot = run_dir / "task-dataset"
+    pending = run_dir / ".task-dataset.pending"
+    if snapshot.exists() or pending.exists():
+        raise RuntimeError(f"evaluator task snapshot already exists: {snapshot}")
+    pending.mkdir()
+    try:
+        for name in names:
+            shutil.copytree(sources[name], pending / name, symlinks=True)
+        observed = {name: local_task_content_digest(pending, name) for name in names}
+        if observed != expected:
+            raise RuntimeError("evaluator task snapshot does not match the frozen split content identity")
+        pending.replace(snapshot)
+    except BaseException:
+        shutil.rmtree(pending, ignore_errors=True)
+        raise
+    return snapshot
+
+
 def discover_task_names(dataset: Path) -> list[str]:
     if (dataset / "task.toml").is_file():
         return [dataset.name]
     return sorted(path.name for path in dataset.iterdir() if path.is_dir() and (path / "task.toml").is_file())
+
+
+def task_content_digests(dataset: Path) -> dict[str, str]:
+    """Return the certified content digest for every local Harbor task."""
+
+    root = dataset.parent if (dataset / "task.toml").is_file() else dataset
+    return {name: local_task_content_digest(root, name) for name in discover_task_names(dataset)}
 
 
 def _resolve_dataset(dataset: str, base_dir: Path) -> Path | None:
@@ -254,11 +343,31 @@ def _integer(value: Any, label: str, *, minimum: int) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = argv or sys.argv[1:]
-    if len(args) not in {5, 6} or args[0] != "select":
-        raise SystemExit("usage: python -m evolve.splits select MANIFEST DATASET SPLIT RUN_DIR [ROUND]")
-    round_number = int(args[5]) if len(args) == 6 else None
-    write_runtime_selection(Path(args[1]), args[2], args[3], Path(args[4]), round_number=round_number)
+    parser = argparse.ArgumentParser(prog="python -m evolve.splits")
+    commands = parser.add_subparsers(dest="command", required=True)
+    select = commands.add_parser("select")
+    select.add_argument("manifest", type=Path)
+    select.add_argument("dataset")
+    select.add_argument("split")
+    select.add_argument("run_dir", type=Path)
+    select.add_argument("round_number", nargs="?", type=int)
+    select.add_argument("--limit", type=int)
+    task_file = commands.add_parser("limit-file")
+    task_file.add_argument("task_file", type=Path)
+    task_file.add_argument("run_dir", type=Path)
+    task_file.add_argument("--limit", type=int, required=True)
+    args = parser.parse_args(argv or sys.argv[1:])
+    if args.command == "select":
+        write_runtime_selection(
+            args.manifest,
+            args.dataset,
+            args.split,
+            args.run_dir,
+            round_number=args.round_number,
+            limit=args.limit,
+        )
+    else:
+        write_runtime_task_file_selection(args.task_file, args.run_dir, limit=args.limit)
     return 0
 
 
