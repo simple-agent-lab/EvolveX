@@ -72,8 +72,8 @@ each workspace, immutable there because it sits outside the mutable surface
 | `frozen/interfaces.py` | 350 | operator ABCs (incl. trace analyzer, novelty, and reflect), the registry, result schemas, payload validation |
 | `frozen/sdk.py` | 300 | Python operator entrypoint and file-contract IO; no library algorithm policy |
 
-Total `src/evolve/` budget: **13485 lines**. The budget admits the explicit content-backed
-evaluation-contract boundaries, the opt-in in-place Harbor runtime, and the redacted trace-analysis
+Total `src/evolve/` budget: **12210 lines**. The budget admits the explicit evaluation-package
+boundaries, the opt-in in-place Harbor runtime, and the redacted trace-analysis
 boundary between rollout and feedback assembly; if the mechanism wants to
 grow past that, something belongs in a workspace operator instead —
 that is the spec's rule, not a style preference.
