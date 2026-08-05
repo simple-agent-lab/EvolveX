@@ -13,6 +13,7 @@ SOURCE_DIR = "/tmp/evolve-candidate-source"
 VENV_DIR = "/tmp/evolve-candidate-venv"
 VENV_PYTHON = f"{VENV_DIR}/bin/python"
 UV_CACHE_DIR = "/opt/evolve/uv/cache"
+LOCAL_BUILD_CACHE = "/tmp/evolve-candidate-build-cache"
 UV_PYTHON_INSTALL_DIR = "/opt/evolve/uv/python"
 RUNNER_PATH = "/tmp/miniswe-source-run.py"
 TASK_PATH = "/tmp/miniswe-source-task.txt"
@@ -385,7 +386,7 @@ class MiniSweSourceAgent(MiniSweAgent):
             'else export PATH="$HOME/.local/bin:$PATH"; fi; '
             f"uv sync --project {SOURCE_DIR} --frozen --offline",
             "local_project_sync_failed",
-            env=install_env,
+            env={**install_env, "UV_CACHE_DIR": LOCAL_BUILD_CACHE},
         )
         await self._candidate_phase(
             environment,

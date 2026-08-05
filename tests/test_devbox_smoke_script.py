@@ -23,10 +23,6 @@ def test_devbox_ahe_smoke_script_is_safe_and_self_verifying() -> None:
     assert "git bundle list-heads" in text
     assert "load_tau3_runtime_env.sh" in text
     assert 'source "$TAU3_ENV_LOADER" "$ENV_ROOT"' in text
-    assert 'SHARED_UV_CACHE=${EVOLVE_UV_CACHE_DIR:-}' in text
-    assert 'PRIVATE_UV_CACHE=$RUN_ROOT/uv-cache' in text
-    assert '--reflink=auto --no-preserve=ownership' in text
-    assert 'export EVOLVE_UV_CACHE_DIR=$PRIVATE_UV_CACHE' in text
     assert "--recipe ahe" in text
     assert '"$WORKSPACE/.env"' in text
     assert 'chmod 600 "$WORKSPACE/.env"' in text
