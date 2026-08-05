@@ -572,6 +572,7 @@ print(f"Map job written to {job_dir}")
         '[ "$1" = run ] || exit 90\nshift\n'
         '[ "$1" = --project ] || exit 91\nshift 2\n'
         '[ "$1" = --frozen ] || exit 92\nshift\n'
+        '[ "$1" = --python ] || exit 93\nshift 2\n'
         'exec "$@"\n'
     )
     uv.chmod(0o755)

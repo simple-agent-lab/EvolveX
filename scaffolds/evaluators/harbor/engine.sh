@@ -53,7 +53,8 @@ trap cleanup_dataset_snapshot EXIT
 split_name=${EVOLVE_EVAL_SPLIT:-gate}
 if python3 -c 'import json,sys; raise SystemExit(0 if json.load(open(sys.argv[1])).get("resolved") else 1)' evaluator/splits.json; then
   dataset_snapshot="$EVOLVE_RUN_DIR/task-dataset"
-  if ! "$UV" run --project "$EVOLVE_WORKSPACE" --frozen python "$PWD/.evolve/launch_splits.py" \
+  if ! "$UV" run --project "$EVOLVE_WORKSPACE" --frozen \
+    --python "$EVOLVE_FRAMEWORK_PYTHON" python "$PWD/.evolve/launch_splits.py" \
     select evaluator/splits.json "$EVOLVE_HARBOR_TASKS" "$split_name" "$EVOLVE_RUN_DIR"; then
     printf 'infra_failed\n' > "$EVOLVE_RUN_DIR/status"
     exit 3
@@ -303,7 +304,8 @@ for proxy_entry in \
 done
 set -- "$@" --job-name "$EVOLVE_ATTEMPT_ID" --jobs-dir "$jobs_dir" --n-attempts "${EVOLVE_HARBOR_ATTEMPTS:-1}" -n "${EVOLVE_HARBOR_N_CONCURRENT:-$EVOLVE_HARBOR_N}" -y -q
 if [ -n "${EVOLVE_CANDIDATE_SMOKE_MODE:-}" ]; then
-  "$UV" run --project "$EVOLVE_WORKSPACE" --frozen harbor "$@"
+  "$UV" run --project "$EVOLVE_WORKSPACE" --frozen \
+    --python "$EVOLVE_FRAMEWORK_PYTHON" harbor "$@"
   exit $?
 fi
 if [ "${EVOLVE_LIVE_OUTPUT:-0}" = "1" ]; then
@@ -312,11 +314,13 @@ if [ "${EVOLVE_LIVE_OUTPUT:-0}" = "1" ]; then
   mkfifo "$live_fifo"
   tee "$EVOLVE_RUN_DIR/harbor.log" < "$live_fifo" &
   tee_pid=$!
-  "$UV" run --project "$EVOLVE_WORKSPACE" --frozen harbor "$@" > "$live_fifo" 2>&1 || harbor_rc=$?
+  "$UV" run --project "$EVOLVE_WORKSPACE" --frozen \
+    --python "$EVOLVE_FRAMEWORK_PYTHON" harbor "$@" > "$live_fifo" 2>&1 || harbor_rc=$?
   wait "$tee_pid" || true
   rm -f "$live_fifo"
 else
-  "$UV" run --project "$EVOLVE_WORKSPACE" --frozen harbor "$@" > "$EVOLVE_RUN_DIR/harbor.log" 2>&1 || harbor_rc=$?
+  "$UV" run --project "$EVOLVE_WORKSPACE" --frozen \
+    --python "$EVOLVE_FRAMEWORK_PYTHON" harbor "$@" > "$EVOLVE_RUN_DIR/harbor.log" 2>&1 || harbor_rc=$?
 fi
 python3 evaluator/parse_score.py "$jobs_dir" "$EVOLVE_RUN_DIR" "$harbor_rc"
 parser_rc=$?

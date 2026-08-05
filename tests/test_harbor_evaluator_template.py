@@ -30,6 +30,10 @@ def _write_fake_uv(bin_dir: Path) -> None:
         "shift 2\n"
         '[ "$1" = --frozen ] || exit 92\n'
         "shift\n"
+        '[ "$1" = --python ] || exit 93\n'
+        "shift\n"
+        '[ "$1" = "$EVOLVE_FRAMEWORK_PYTHON" ] || exit 94\n'
+        "shift\n"
         'exec "$@"\n',
     )
 
@@ -38,7 +42,9 @@ def test_harbor_evaluator_uses_locked_workspace_runtime() -> None:
     text = _eval_sh("harbor", "fixture")
 
     assert "PYTHONPATH" not in text
-    assert 'run --project "$EVOLVE_WORKSPACE" --frozen harbor' in text
+    assert text.count('--python "$EVOLVE_FRAMEWORK_PYTHON"') == 4
+    assert 'python "$PWD/.evolve/launch_splits.py"' in text
+    assert 'harbor "$@"' in text
     assert '"$PWD/.evolve/launch_splits.py"' in text
 
 
@@ -94,6 +100,10 @@ def test_harbor_evaluator_snapshot_closes_source_mutation_window(tmp_path: Path)
         '[ "$1" = --project ] || exit 91\n'
         "shift 2\n"
         '[ "$1" = --frozen ] || exit 92\n'
+        "shift\n"
+        '[ "$1" = --python ] || exit 93\n'
+        "shift\n"
+        '[ "$1" = "$EVOLVE_FRAMEWORK_PYTHON" ] || exit 94\n'
         "shift\n"
         'if [ "$1" = python ]; then\n'
         "  shift\n"

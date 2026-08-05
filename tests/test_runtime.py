@@ -260,7 +260,8 @@ def test_console_uses_locked_workspace_project(tmp_path: Path) -> None:
     text = (workspace / "evolve").read_text()
 
     assert "EVOLVE_UV_BINARY" in text
-    assert 'run --project "$HERE" --frozen python' in text
+    assert 'PYTHON_ARGS=(--python "$EVOLVE_FRAMEWORK_PYTHON")' in text
+    assert 'run --project "$HERE" --frozen "${PYTHON_ARGS[@]}"' in text
     assert '"$HERE/.evolve/launch_evolve.py"' in text
     assert "PYTHONPATH" not in text
     assert (workspace / ".evolve" / "launch_evolve.py").is_file()
@@ -293,6 +294,7 @@ def test_console_shell_quotes_unusual_uv_path(
     init_fixture_workspace(workspace)
     env = os.environ.copy()
     env["EVOLVE_UV_BINARY"] = str(fake_uv)
+    env["EVOLVE_FRAMEWORK_PYTHON"] = sys.executable
     env["CAPTURE"] = str(capture)
 
     result = subprocess.run(
@@ -310,6 +312,8 @@ def test_console_shell_quotes_unusual_uv_path(
         "--project",
         str(workspace),
         "--frozen",
+        "--python",
+        sys.executable,
         "python",
         str(workspace / ".evolve" / "launch_evolve.py"),
         "probe",
