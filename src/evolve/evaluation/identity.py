@@ -9,7 +9,7 @@ from typing import Any
 import yaml
 
 from ..git import git
-from ..splits import load_manifest, selected_task_names
+from ..splits import selected_task_names
 
 
 @dataclass(frozen=True)
@@ -77,7 +77,10 @@ def effective_task_set_identity(
         split_path = checkout / "evaluator" / "splits.json"
         if split_path.is_file():
             try:
-                manifest = load_manifest(split_path)
+                manifest = json.loads(split_path.read_text())
+                tasks = manifest.get("tasks") if isinstance(manifest, dict) else None
+                if not isinstance(tasks, dict):
+                    raise ValueError(f"invalid split task lists: {split_path}")
                 members = tuple(
                     selected_task_names(
                         manifest,
