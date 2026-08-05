@@ -89,7 +89,7 @@ def test_harbor_meta_agent_uses_shared_legacy_environment_plan(
         "http://dependency-proxy.example:8118"
     )
     assert process_environment["EVOLVE_RUNTIME_AGENT_NO_PROXY"] == (
-        ".internal.example,workspace.example"
+        "pypi.org,.internal.example"
     )
 
 
@@ -104,7 +104,7 @@ def test_harbor_meta_agent_redacts_configured_proxy_literal(monkeypatch: pytest.
     assert redacted == "dependency download through [REDACTED] timed out"
 
 
-def test_harbor_meta_agent_templates_config_only_proxy_in_command_record(
+def test_harbor_meta_agent_templates_project_proxy_in_command_record(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -122,8 +122,8 @@ def test_harbor_meta_agent_templates_config_only_proxy_in_command_record(
     ):
         monkeypatch.delenv(name, raising=False)
     proxy = "http://config-user:config-password@proxy.example.invalid:8118"
+    monkeypatch.setenv("HTTPS_PROXY", proxy)
     ctx = _ctx(checkout, run_dir)
-    ctx.config["agent_env"] = {"HTTPS_PROXY": proxy}
 
     _harbor_runner_module().run_agent(checkout, "failure evidence", ctx)
 
@@ -179,16 +179,25 @@ def test_harbor_meta_agent_child_creates_private_files(tmp_path: Path) -> None:
     assert stat.S_IMODE(log.stat().st_mode) == 0o600
 
 
-def test_legacy_meta_agent_rejects_ambient_file_auth_before_harbor_launch(
+def test_legacy_meta_agent_accepts_explicit_file_auth(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     module = _harbor_runner_module()
     checkout = tmp_path / "legacy-checkout"
     checkout.mkdir()
-    monkeypatch.setenv("CODEX_AUTH_JSON_PATH", "/forbidden/auth.json")
+    auth = tmp_path / "auth.json"
+    auth.write_text("{}\n")
+    monkeypatch.setenv("CODEX_AUTH_JSON_PATH", str(auth))
 
-    with pytest.raises(ValueError, match="forbidden credential variable"):
-        module._runtime_inputs(checkout, {"agent": "codex"})
+    agent_environment, process_environment = module._runtime_inputs(
+        checkout, {"agent": "codex"}
+    )
+    assert agent_environment["CODEX_AUTH_JSON_PATH"] == (
+        "${EVOLVE_RUNTIME_AGENT_CODEX_AUTH_JSON_PATH}"
+    )
+    assert process_environment["EVOLVE_RUNTIME_AGENT_CODEX_AUTH_JSON_PATH"] == str(
+        auth.resolve()
+    )
 
 
 def test_harbor_rejects_oversized_instruction_with_unsafe_agent(tmp_path: Path) -> None:

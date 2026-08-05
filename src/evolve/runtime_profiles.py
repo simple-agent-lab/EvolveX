@@ -56,10 +56,10 @@ class RuntimeProfileV1:
 
     @property
     def required_credentials_by_role(self) -> tuple[tuple[str, tuple[str, ...]], ...]:
-        return (
-            ("agent", ("OPENAI_API_KEY", "OPENAI_BASE_URL")),
-            ("meta_agent", ("OPENAI_API_KEY", "OPENAI_BASE_URL")),
-        )
+        # Authentication is selected at runtime: API key by default, or an
+        # explicit Codex auth.json path. No single credential name is
+        # universally required by the profile itself.
+        return ()
 
     @property
     def forbidden_credentials(self) -> tuple[str, ...]:

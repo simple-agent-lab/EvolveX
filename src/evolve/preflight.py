@@ -23,6 +23,7 @@ from .git import git
 from .host_runtime import uv_executable
 from .runtime import reserve_attempt_directory
 from .runtime_environment import (
+    RuntimeEnvironmentErrorCode,
     RuntimeEnvironmentResolutionError,
     resolve_runtime_environment,
 )
@@ -321,7 +322,7 @@ def run_preflight(
             destination,
             checks,
             "runtime_environment",
-            _environment_failure_category(str(error)),
+            _environment_failure_category(error),
             str(error),
             source_environment,
             profile,
@@ -535,7 +536,16 @@ def _local_command_succeeds(command: list[str], environment: Mapping[str, str]) 
     return completed.returncode == 0
 
 
-def _environment_failure_category(message: str) -> PreflightFailureCategory:
+def _environment_failure_category(
+    error: RuntimeEnvironmentResolutionError,
+) -> PreflightFailureCategory:
+    if error.code is RuntimeEnvironmentErrorCode.CREDENTIAL_FORBIDDEN:
+        return PreflightFailureCategory.CREDENTIAL_FORBIDDEN
+    if error.code is RuntimeEnvironmentErrorCode.CREDENTIAL_MISSING:
+        return PreflightFailureCategory.CREDENTIAL_MISSING
+    if error.code is RuntimeEnvironmentErrorCode.ENDPOINT_INVALID:
+        return PreflightFailureCategory.ENDPOINT_INVALID
+    message = str(error)
     lowered = message.lower()
     if "forbidden credential" in lowered:
         return PreflightFailureCategory.CREDENTIAL_FORBIDDEN

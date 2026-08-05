@@ -42,19 +42,20 @@ def complete_environment() -> dict[str, str]:
     }
 
 
-def test_environment_plan_uses_safe_templates_and_normalized_proxy() -> None:
+def test_environment_plan_uses_safe_templates_and_unchanged_proxy() -> None:
     environment = complete_environment()
     environment["UNRELATED_MULTILINE_VALUE"] = "first\nsecond"
 
-    plan = resolve_runtime_environment(resolved_profile(), environment)
+    plan = resolve_runtime_environment(
+        resolved_profile(), environment, meta_agent_kind="codex"
+    )
 
     assert plan.agent_env()["OPENAI_API_KEY"].startswith("${EVOLVE_RUNTIME_AGENT_")
     assert plan.agent_env()["OPENAI_BASE_URL"].startswith("${EVOLVE_RUNTIME_AGENT_")
     assert plan.meta_agent_env()["OPENAI_API_KEY"].startswith("${EVOLVE_RUNTIME_META_AGENT_")
     assert "OPENAI_API_KEY" not in plan.verifier_env()
     assert "OPENAI_BASE_URL" not in plan.verifier_env()
-    assert "model.example" in plan.process_env()["EVOLVE_RUNTIME_AGENT_NO_PROXY"]
-    assert "pypi.org" not in plan.process_env()["EVOLVE_RUNTIME_AGENT_NO_PROXY"]
+    assert plan.process_env()["EVOLVE_RUNTIME_AGENT_NO_PROXY"] == "pypi.org,.internal.example"
 
     serialized = json.dumps(plan.persisted_payload())
     assert "sensitive-key-value" not in serialized
@@ -62,7 +63,7 @@ def test_environment_plan_uses_safe_templates_and_normalized_proxy() -> None:
     assert "password" not in serialized
 
 
-def test_proxy_names_are_normalized_to_identical_upper_and_lower_templates() -> None:
+def test_only_standard_uppercase_proxy_names_are_forwarded() -> None:
     environment = complete_environment()
     environment.update(
         {
@@ -77,23 +78,21 @@ def test_proxy_names_are_normalized_to_identical_upper_and_lower_templates() -> 
 
     agent = plan.agent_env()
     process = plan.process_env()
-    assert agent["HTTP_PROXY"] == agent["http_proxy"]
-    assert agent["NO_PROXY"] == agent["no_proxy"]
+    assert "http_proxy" not in agent
+    assert "no_proxy" not in agent
     assert process["EVOLVE_RUNTIME_AGENT_HTTP_PROXY"] == "http://proxy.example:8118"
-    assert process["EVOLVE_RUNTIME_AGENT_NO_PROXY"].endswith("localhost,model.example")
+    assert process["EVOLVE_RUNTIME_AGENT_NO_PROXY"] == "localhost"
 
 
-def test_conflicting_proxy_aliases_are_rejected_without_echoing_values() -> None:
+def test_lowercase_proxy_alias_does_not_override_standard_value() -> None:
     environment = complete_environment()
     environment["https_proxy"] = "http://different.example:8118"
 
-    with pytest.raises(RuntimeEnvironmentResolutionError, match="HTTPS_PROXY aliases disagree") as excinfo:
-        resolve_runtime_environment(resolved_profile(), environment)
-
-    assert "proxy.example" not in str(excinfo.value)
+    plan = resolve_runtime_environment(resolved_profile(), environment)
+    assert plan.process_env()["EVOLVE_RUNTIME_AGENT_HTTPS_PROXY"] == environment["HTTPS_PROXY"]
 
 
-@pytest.mark.parametrize("missing", ["OPENAI_API_KEY", "OPENAI_BASE_URL"])
+@pytest.mark.parametrize("missing", ["OPENAI_API_KEY"])
 def test_missing_required_credentials_are_reported_by_name(missing: str) -> None:
     environment = complete_environment()
     environment.pop(missing)
@@ -102,22 +101,19 @@ def test_missing_required_credentials_are_reported_by_name(missing: str) -> None
         resolve_runtime_environment(resolved_profile(), environment)
 
 
-@pytest.mark.parametrize("forbidden", ["CODEX_AUTH_JSON_PATH", "CODEX_FORCE_AUTH_JSON"])
-def test_forbidden_codex_auth_variables_fail_closed(forbidden: str) -> None:
+def test_implicit_codex_auth_switch_is_rejected() -> None:
     environment = complete_environment()
-    environment[forbidden] = "forbidden-value"
+    environment["CODEX_FORCE_AUTH_JSON"] = "1"
 
-    with pytest.raises(RuntimeEnvironmentResolutionError, match=forbidden) as excinfo:
+    with pytest.raises(RuntimeEnvironmentResolutionError, match="CODEX_FORCE_AUTH_JSON"):
         resolve_runtime_environment(resolved_profile(), environment)
 
-    assert "forbidden-value" not in str(excinfo.value)
 
-
-def test_environment_route_must_match_the_resolved_route_digest() -> None:
+def test_environment_endpoint_must_match_the_resolved_endpoint_digest() -> None:
     environment = complete_environment()
     environment["OPENAI_BASE_URL"] = "https://other.example/v1"
 
-    with pytest.raises(RuntimeEnvironmentResolutionError, match="route digest") as excinfo:
+    with pytest.raises(RuntimeEnvironmentResolutionError, match="endpoint digest") as excinfo:
         resolve_runtime_environment(resolved_profile(), environment)
 
     assert "other.example" not in str(excinfo.value)
@@ -172,7 +168,7 @@ def test_harbor_writer_rejects_literal_values(tmp_path: Path) -> None:
         write_harbor_environment_inputs(tmp_path, plan)
 
 
-def test_legacy_environment_plan_preserves_api_and_proxy_compatibility_without_file_auth() -> None:
+def test_legacy_environment_plan_preserves_api_and_proxy_compatibility() -> None:
     plan = resolve_legacy_runtime_environment(
         {
             "OPENAI_API_KEY": "legacy-key",
@@ -188,37 +184,27 @@ def test_legacy_environment_plan_preserves_api_and_proxy_compatibility_without_f
     assert plan.agent_env()["STEP_LIMIT"] == "${EVOLVE_RUNTIME_AGENT_STEP_LIMIT}"
     assert plan.verifier_env()["JUDGE_MODEL"] == "${EVOLVE_RUNTIME_VERIFIER_JUDGE_MODEL}"
     assert plan.process_env()["EVOLVE_RUNTIME_AGENT_OPENAI_API_KEY"] == "legacy-key"
-    assert "model.example" in plan.process_env()["EVOLVE_RUNTIME_AGENT_NO_PROXY"]
-    assert "pypi.org" not in plan.process_env()["EVOLVE_RUNTIME_AGENT_NO_PROXY"]
+    assert plan.process_env()["EVOLVE_RUNTIME_AGENT_NO_PROXY"] == "pypi.org,.internal.example"
     assert not any("CODEX" in name for name in plan.process_env())
 
 
-def test_legacy_environment_plan_rejects_file_auth_variables() -> None:
-    with pytest.raises(RuntimeEnvironmentResolutionError, match="forbidden credential"):
+def test_legacy_environment_plan_accepts_explicit_file_auth(tmp_path: Path) -> None:
+    auth = tmp_path / "auth.json"
+    auth.write_text("{}\n")
+    plan = resolve_legacy_runtime_environment({"CODEX_AUTH_JSON_PATH": str(auth)})
+    assert plan.process_env()["EVOLVE_RUNTIME_AGENT_CODEX_AUTH_JSON_PATH"] == str(
+        auth.resolve()
+    )
+
+
+def test_legacy_proxy_override_is_rejected_in_agent_env() -> None:
+    with pytest.raises(RuntimeEnvironmentResolutionError, match="protected name NO_PROXY"):
         resolve_legacy_runtime_environment(
-            {
-                "OPENAI_API_KEY": "legacy-key",
-                "OPENAI_BASE_URL": "https://model.example/v1",
-                "CODEX_FORCE_AUTH_JSON": "1",
-            }
+            {"NO_PROXY": "::1"}, agent_overrides={"NO_PROXY": "localhost"}
         )
 
 
-def test_legacy_agent_proxy_override_wins_over_ambient_bypass() -> None:
-    plan = resolve_legacy_runtime_environment(
-        {"NO_PROXY": "::1", "no_proxy": "fe80::/10"},
-        agent_overrides={
-            "NO_PROXY": "172.17.0.1,127.0.0.1,localhost",
-            "no_proxy": "172.17.0.1,127.0.0.1,localhost",
-        },
-    )
-
-    assert plan.process_env()["EVOLVE_RUNTIME_AGENT_NO_PROXY"] == (
-        "172.17.0.1,127.0.0.1,localhost"
-    )
-
-
-def test_legacy_proxy_plan_merges_bypass_aliases_and_removes_dependency_hosts() -> None:
+def test_legacy_proxy_plan_passes_standard_bypass_unchanged() -> None:
     plan = resolve_legacy_runtime_environment(
         {
             "OPENAI_BASE_URL": "https://model.example/v1",
@@ -230,6 +216,6 @@ def test_legacy_proxy_plan_merges_bypass_aliases_and_removes_dependency_hosts() 
     )
 
     process = plan.process_env()
-    expected = ".internal.example,.upper.example,model.example"
+    expected = ".upper.example,objects.githubusercontent.com,astral.sh"
     assert process["EVOLVE_RUNTIME_AGENT_NO_PROXY"] == expected
     assert process["EVOLVE_RUNTIME_VERIFIER_NO_PROXY"] == expected

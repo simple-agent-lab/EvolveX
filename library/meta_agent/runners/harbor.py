@@ -642,6 +642,8 @@ def _runtime_environment_plan(
     return resolve_runtime_environment(
         profile,
         os.environ,
+        agent_kind=str(config.get("agent") or ""),
+        meta_agent_kind=str(config.get("agent") or ""),
         agent_overrides=overrides,
     )
 
@@ -657,6 +659,7 @@ def _runtime_inputs(
         raise ValueError("meta-agent agent_env must be a mapping")
     plan = resolve_legacy_runtime_environment(
         os.environ,
+        agent_kind=str(config.get("agent") or ""),
         agent_overrides=cast("Mapping[str, object] | None", configured),
     )
     return plan.agent_env(), plan.process_env()

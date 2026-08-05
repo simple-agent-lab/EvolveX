@@ -258,8 +258,9 @@ def test_eval_runner_writes_templates_and_keeps_literals_only_in_process_env(
     process_env = captured["env"]
     assert isinstance(process_env, dict)
     assert process_env["EVOLVE_RUNTIME_AGENT_OPENAI_API_KEY"] == "sensitive-key-value"
-    assert "model.example" in process_env["EVOLVE_RUNTIME_AGENT_NO_PROXY"]
-    assert "pypi.org" not in process_env["EVOLVE_RUNTIME_AGENT_NO_PROXY"]
+    assert process_env["EVOLVE_RUNTIME_AGENT_NO_PROXY"] == (
+        "pypi.org,.internal.example"
+    )
 
 
 def test_eval_runner_generates_safe_legacy_environment_inputs(

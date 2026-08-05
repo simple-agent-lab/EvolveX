@@ -355,18 +355,32 @@ def test_local_capability_timeout_is_a_failed_check(monkeypatch: pytest.MonkeyPa
     assert not preflight_module._image_available("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", runtime_environment())
 
 
-@pytest.mark.parametrize("missing", ["OPENAI_API_KEY", "OPENAI_BASE_URL"])
-def test_missing_credentials_are_classified(
-    strict_workspace: Path, monkeypatch: pytest.MonkeyPatch, missing: str
+def test_missing_api_key_is_classified(
+    strict_workspace: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     environment = runtime_environment()
-    environment.pop(missing)
+    environment.pop("OPENAI_API_KEY")
     allow_local_runtime(monkeypatch)
 
     result = run_preflight(strict_workspace, environment=environment)
 
     assert result.failure_category is PreflightFailureCategory.CREDENTIAL_MISSING
-    assert missing in (result.failure_message or "")
+    assert "OPENAI_API_KEY" in (result.failure_message or "")
+
+
+def test_openai_base_url_is_optional_for_official_openai(
+    strict_workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    environment = runtime_environment()
+    environment.pop("OPENAI_BASE_URL")
+    allow_local_runtime(monkeypatch)
+
+    # The strict fixture freezes a custom endpoint, so removing it is an
+    # endpoint identity mismatch rather than a missing credential.
+    result = run_preflight(strict_workspace, environment=environment)
+
+    assert result.failure_category is PreflightFailureCategory.ENDPOINT_INVALID
+    assert "credential is missing" not in (result.failure_message or "")
 
 
 def test_forbidden_credential_is_classified_without_value(
