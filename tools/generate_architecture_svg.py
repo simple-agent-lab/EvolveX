@@ -15,21 +15,23 @@ ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "docs" / "architecture.svg"
 
 PALETTE = {
-    "ink": "#1f2d35",
-    "sub": "#6d7c84",
-    "line": "#b9c3c6",
-    "soft": "#d5dcdd",
-    "band_fill": "#f7f8f8",
-    "band_line": "#e2e7e7",
-    "chip_fill": "#eaf1f5",
-    "chip_line": "#a2bccb",
-    "open_line": "#c2cbcd",
-    "stage_line": "#b3c1c5",
-    "accent_fill": "#f5ece1",
-    "accent_line": "#c8a87c",
-    "accent_text": "#a17c46",
-    "guard_fill": "#e6edf0",
-    "guard_line": "#8ba1ac",
+    "ink": "#18362b",
+    "sub": "#607169",
+    "line": "#b5d3c7",
+    "soft": "#dce9e3",
+    "band_fill": "#f7fbf9",
+    "band_line": "#dce9e3",
+    "chip_fill": "#eff7f3",
+    "chip_line": "#b5d3c7",
+    "open_line": "#9fc5b5",
+    "stage_line": "#b5d3c7",
+    "accent_fill": "#dcf5e9",
+    "accent_line": "#65ce9f",
+    "accent_text": "#19785a",
+    "guard_fill": "#10372e",
+    "guard_line": "#10372e",
+    "guard_text": "#ffffff",
+    "surface_fill": "#f2fbf7",
 }
 
 FONT = '"Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
@@ -41,19 +43,19 @@ INNER = W - 2 * M
 METHODS = ["Hill Climb", "A-Evolve", "AHE", "GEPA", "HyperAgents"]
 
 STAGES = [
-    ("Select", "parent from archive"),
-    ("Rollout", "run the tasks"),
-    ("Analyze", "read the traces"),
-    ("Mutate", "meta-agent edits"),
-    ("Gate", "frozen eval decides"),
+    ("Select", "choose a parent"),
+    ("Rollout", "run tasks + evaluator"),
+    ("Analyze", "inspect the traces"),
+    ("Mutate", "edit the candidate"),
+    ("Gate", "accept verified gains"),
     ("Record", "tag + archive"),
 ]
 
 GUARDS = [
-    ("Frozen evaluator", "Harbor or your own"),
+    ("Frozen evaluator", "pinned scoring contract"),
     ("Locked runtime", "pinned deps + digest"),
     ("Surface check", "declared paths only"),
-    ("Stamped evidence", "archive.jsonl + git tags"),
+    ("Stamped evidence", "archive + git lineage"),
 ]
 
 
@@ -110,16 +112,25 @@ def route(points: list[tuple[float, float]], radius: float = 12, cls: str = "flo
 
 
 def node(
-    x: float, y: float, w: float, h: float, cls: str, title: str, sub: str | None = None, r: float = 12
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+    cls: str,
+    title: str,
+    sub: str | None = None,
+    r: float = 12,
+    title_cls: str = "t",
+    sub_cls: str = "s",
 ) -> list[str]:
     cx = x + w / 2
     if sub:
         return [
             rect(x, y, w, h, r, cls),
-            text(title, cx, y + h / 2 - 3, "t", "middle"),
-            text(sub, cx, y + h / 2 + 19, "s", "middle"),
+            text(title, cx, y + h / 2 - 3, title_cls, "middle"),
+            text(sub, cx, y + h / 2 + 19, sub_cls, "middle"),
         ]
-    return [rect(x, y, w, h, r, cls), text(title, cx, y + h / 2 + 6, "t", "middle")]
+    return [rect(x, y, w, h, r, cls), text(title, cx, y + h / 2 + 6, title_cls, "middle")]
 
 
 def row(x: float, width: float, count: int, gap: float) -> tuple[list[float], float]:
@@ -133,27 +144,29 @@ def style() -> str:
     return f"""  <style>
     text {{ font-family: {FONT}; fill: {p["ink"]}; }}
     .t {{ font-size: 16px; font-weight: 600; }}
-    .s {{ font-size: 13px; fill: {p["sub"]}; }}
-    .cap {{ font-size: 13px; fill: {p["sub"]}; }}
-    .cap-accent {{ font-size: 13px; fill: {p["accent_text"]}; }}
-    .lbl {{ font-size: 13px; font-weight: 600; letter-spacing: 0.08em; fill: {p["sub"]}; }}
-    .lbl-accent {{ font-size: 13px; font-weight: 600; letter-spacing: 0.08em; fill: {p["accent_text"]}; }}
+    .s {{ font-size: 13px; fill: {p['sub']}; }}
+    .t-guard {{ font-size: 16px; font-weight: 600; fill: {p['guard_text']}; }}
+    .s-guard {{ font-size: 13px; fill: {p['guard_text']}; }}
+    .cap {{ font-size: 13px; fill: {p['sub']}; }}
+    .cap-accent {{ font-size: 13px; fill: {p['accent_text']}; }}
+    .lbl {{ font-size: 13px; font-weight: 600; letter-spacing: 0.08em; fill: {p['sub']}; }}
+    .lbl-accent {{ font-size: 13px; font-weight: 600; letter-spacing: 0.08em; fill: {p['accent_text']}; }}
     .canvas {{ fill: #ffffff; }}
-    .knock {{ fill: {p["band_fill"]}; }}
-    .band {{ fill: {p["band_fill"]}; stroke: {p["band_line"]}; stroke-width: 1.5; }}
-    .chip {{ fill: {p["chip_fill"]}; stroke: {p["chip_line"]}; stroke-width: 1.5; }}
-    .open {{ fill: #ffffff; stroke: {p["open_line"]}; stroke-width: 1.5; stroke-dasharray: 6 5; }}
-    .stage {{ fill: #ffffff; stroke: {p["stage_line"]}; stroke-width: 1.5; }}
-    .accent {{ fill: {p["accent_fill"]}; stroke: {p["accent_line"]}; stroke-width: 1.5; }}
-    .guard {{ fill: {p["guard_fill"]}; stroke: {p["guard_line"]}; stroke-width: 1.5; }}
-    .mutable {{ fill: none; stroke: {p["accent_line"]}; stroke-width: 1.5; stroke-dasharray: 7 6; }}
-    .flow {{ fill: none; stroke: {p["line"]}; stroke-width: 1.8; }}
-    .soft {{ fill: none; stroke: {p["soft"]}; stroke-width: 1.4; }}
-    .flow-accent {{ fill: none; stroke: {p["accent_line"]}; stroke-width: 1.4; }}
-    .tick-accent {{ fill: none; stroke: {p["accent_line"]}; stroke-width: 1.4; stroke-dasharray: 5 4; }}
-    .arrow-fill {{ fill: {p["line"]}; }}
-    .arrow-accent {{ fill: {p["accent_line"]}; }}
-    .dot-accent {{ fill: {p["accent_line"]}; stroke: none; }}
+    .knock {{ fill: {p['band_fill']}; }}
+    .band {{ fill: {p['band_fill']}; stroke: {p['band_line']}; stroke-width: 1.5; }}
+    .chip {{ fill: {p['chip_fill']}; stroke: {p['chip_line']}; stroke-width: 1.5; }}
+    .open {{ fill: #ffffff; stroke: {p['open_line']}; stroke-width: 1.5; stroke-dasharray: 6 5; }}
+    .stage {{ fill: #ffffff; stroke: {p['stage_line']}; stroke-width: 1.5; }}
+    .accent {{ fill: {p['accent_fill']}; stroke: {p['accent_line']}; stroke-width: 1.5; }}
+    .guard {{ fill: {p['guard_fill']}; stroke: {p['guard_line']}; stroke-width: 1.5; }}
+    .mutable {{ fill: {p['surface_fill']}; stroke: {p['accent_line']}; stroke-width: 1.5; stroke-dasharray: 7 6; }}
+    .flow {{ fill: none; stroke: {p['line']}; stroke-width: 1.8; }}
+    .soft {{ fill: none; stroke: {p['soft']}; stroke-width: 1.4; }}
+    .flow-accent {{ fill: none; stroke: {p['accent_line']}; stroke-width: 1.4; }}
+    .tick-accent {{ fill: none; stroke: {p['accent_line']}; stroke-width: 1.4; stroke-dasharray: 5 4; }}
+    .arrow-fill {{ fill: {p['line']}; }}
+    .arrow-accent {{ fill: {p['accent_line']}; }}
+    .dot-accent {{ fill: {p['accent_line']}; stroke: none; }}
   </style>"""
 
 
@@ -161,7 +174,7 @@ def methods_band() -> list[str]:
     """The top band: five known methods plus room for one of yours."""
     body = [
         text("EVOLUTION METHODS", M, 26, "lbl"),
-        text("or write your own", W - M, 26, "cap", "end"),
+        text("Five built-in strategies, or compose your own", W - M, 26, "cap", "end"),
     ]
     xs, cw = row(M, INNER, 6, 14)
     for x, label in zip(xs, METHODS, strict=False):
@@ -181,11 +194,11 @@ def loop_band() -> list[str]:
     """The middle band: one loop, and the surface that makes it editable."""
     body = [
         rect(M, 140, INNER, 226, 16, "band"),
-        text("ONE LOOP", M + 22, 164, "lbl"),
-        text("the agent may rewrite any stage of it", W - M - 22, 164, "cap-accent", "end"),
+        text("ONE COMPOSABLE LOOP", M + 22, 164, "lbl"),
+        text("recipes choose which stages and targets may evolve", W - M - 22, 164, "cap-accent", "end"),
         rect(M + 16, 178, INNER - 32, 134, 14, "mutable"),
         rect(W / 2 - 172, 167, 344, 22, 11, "knock"),
-        text("MUTABLE SURFACE · target + operators", W / 2, 183, "lbl-accent", "middle"),
+        text("DECLARED MUTABLE SURFACE · target + selected operators", W / 2, 183, "lbl-accent", "middle"),
     ]
 
     xs, sw = row(M + 32, INNER - 64, 6, 18)
@@ -201,7 +214,7 @@ def loop_band() -> list[str]:
         body.append(arrow(cx, 228, "down", "arrow-accent", 0.8))
 
     for x, (title, sub) in zip(xs, STAGES, strict=True):
-        cls = "accent" if title == "Mutate" else "stage"
+        cls = "accent" if title in {"Mutate", "Gate"} else "stage"
         body.extend(node(x, 228, sw, 64, cls, title, sub))
     for x in xs[:-1]:
         body.append(line(x + sw + 2, 260, x + sw + 7, 260))
@@ -222,12 +235,24 @@ def substrate_band() -> list[str]:
         line(840, 397, 840, 375),
         arrow(840, 366, "up"),
         text("contracts", 852, 393, "cap"),
-        text("PROTECTED SUBSTRATE", M, 420, "lbl"),
-        text("outside the surface, and staying that way", W - M, 420, "cap", "end"),
+        text("PROTECTED MECHANISM", M, 420, "lbl"),
+        text("outside candidate control", W - M, 420, "cap", "end"),
     ]
     xs, gw = row(M, INNER, 4, 16)
     for x, (title, sub) in zip(xs, GUARDS, strict=True):
-        body.extend(node(x, 434, gw, 58, "guard", title, sub))
+        body.extend(
+            node(
+                x,
+                434,
+                gw,
+                58,
+                "guard",
+                title,
+                sub,
+                title_cls="t-guard",
+                sub_cls="s-guard",
+            )
+        )
     return body
 
 

@@ -26,6 +26,20 @@ def test_readme_visual_assets_are_current() -> None:
     assert result.returncode == 0, result.stdout + result.stderr
 
 
+def test_architecture_visual_is_current_and_uses_identity_palette() -> None:
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "tools" / "generate_architecture_svg.py"), "--check"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    svg = (ROOT / "docs" / "architecture.svg").read_text()
+    for color in ("#10372e", "#19785a", "#65ce9f", "#b5d3c7", "#f2fbf7"):
+        assert color in svg
+
+
 def test_readme_visual_assets_have_accessible_svg_metadata() -> None:
     for relative in ("docs/evolve-mark.svg", "docs/evolve-lineage.svg"):
         root = ET.parse(ROOT / relative).getroot()
