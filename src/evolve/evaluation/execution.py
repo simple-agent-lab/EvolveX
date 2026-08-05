@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from ..config import evaluator_boolean, evaluator_sampling, experiment_id, load_config
+from ..config import evaluator_boolean, evaluator_repetitions, evaluator_sampling, experiment_id, load_config
 from ..execution_runtime import (
     execution_runtime_config,
     prepare_execution_environment,
@@ -257,7 +257,7 @@ def _read_cost(run_dir: Path) -> float:
 
 
 def _expected_trials(evaluator: dict[str, Any], task_limit: int | None, *, selected_tasks: int | None = None) -> int:
-    attempts = max(1, int(evaluator.get("k", 1)))
+    attempts = evaluator_repetitions(evaluator)
     tasks = selected_tasks if selected_tasks is not None else int(evaluator.get("tasks_per_round", attempts))
     if task_limit is not None:
         tasks = min(tasks, task_limit) if selected_tasks is not None else task_limit

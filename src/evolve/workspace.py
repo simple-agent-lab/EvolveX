@@ -25,8 +25,10 @@ from .config import (
     OPTIONAL_OPERATOR_KINDS,
     SOURCE_ROOT,
     default_config,
+    evaluator_repetitions,
     library_root,
     load_config,
+    normalize_evaluator_config,
     recipe_root,
     render_yaml,
     resource_root,
@@ -34,6 +36,7 @@ from .config import (
     seed_root,
 )
 from .host_runtime import uv_executable
+from .runtime_config import resolve_runtime
 from .splits import build_manifest
 
 _SEED_IGNORE_PATTERNS = (
@@ -60,6 +63,7 @@ class InitOptions:
     seed: str | None = None
     dataset: str | None = None
     recipe_path: Path | None = None
+    tasks_per_round: int | None = None
 
 
 @dataclass(frozen=True)
@@ -95,6 +99,12 @@ def init_workspace(options: InitOptions) -> None:
         evaluator = config["evaluator"]
         assert isinstance(evaluator, dict)
         evaluator["dataset"] = options.dataset
+    if options.tasks_per_round is not None:
+        if options.tasks_per_round < 1:
+            raise ValueError("--tasks must be at least 1")
+        evaluator = config["evaluator"]
+        assert isinstance(evaluator, dict)
+        evaluator["tasks_per_round"] = options.tasks_per_round
 
     evaluator = config["evaluator"]
     assert isinstance(evaluator, dict)
@@ -188,12 +198,16 @@ def _write_files(
     evaluator_agent = str(evaluator.get("agent") or "")
     if evaluator_engine == "harbor" and not evaluator_agent:
         raise ValueError("evaluator.agent is required for harbor recipes")
-    runtime_digest = os.environ.get("EVOLVE_RUNTIME_DIGEST", "").strip()
-    if evaluator_engine == "harbor" and not runtime_digest:
-        raise ValueError(
-            "EVOLVE_RUNTIME_DIGEST must identify the evaluator capsule (normally an immutable image digest)"
+    resolved_runtime = (
+        resolve_runtime(
+            evaluator["runtime"],
+            engine=evaluator_engine,
+            environment=os.environ,
         )
-    evaluator_trials = int(evaluator.get("k", 1))
+        if "runtime" in evaluator
+        else None
+    )
+    evaluator_trials = evaluator_repetitions(evaluator)
     tasks_per_round = int(evaluator.get("tasks_per_round", evaluator_trials))
     evaluator_n = int(evaluator.get("n_concurrent", evaluator_trials))
     evaluator_environment = str(evaluator.get("environment") or "")
@@ -234,7 +248,7 @@ def _write_files(
         ".gitignore": _workspace_scaffold(".gitignore"),
         ".evolve-protocol-version": "1\n",
         "operators/engines/local.sh": _shell_script("operator local engine"),
-        "operators/preflight.sh": _shell_script("operator preflight"),
+        "operators/preflight.sh": _workspace_scaffold("operators/preflight.sh"),
         "operators/select.md": _workspace_scaffold("operators/select.md"),
         "operators/rollout.md": _workspace_scaffold("operators/rollout.md"),
         "operators/gate.md": _workspace_scaffold("operators/gate.md"),
@@ -262,16 +276,16 @@ def _write_files(
         "evaluator/verifier.env": _agent_env(evaluator.get("verifier_env")),
         "evaluator/environment.kwargs": _environment_kwargs(evaluator.get("environment_kwargs")),
         "evaluator/splits.json": json.dumps(split_manifest, indent=2, sort_keys=True) + "\n",
-        "evaluator/dataset.pin": (
-            f"dataset={evaluator_dataset}\nchecksum={split_manifest['dataset_digest'] or 'unresolved'}\n"
-        ),
-        "evaluator/runtime.pin": f"{runtime_digest}\n",
+        "evaluator/dataset.pin": _dataset_pin(evaluator_dataset, split_manifest),
+        "evaluator/runtime.pin": f"{resolved_runtime.digest if resolved_runtime else 'legacy-unverified'}\n",
         "evaluator/stub_eval.py": _workspace_scaffold("evaluator/stub_eval.py"),
         "evaluator/engines/local.sh": _shell_script("canonical local engine"),
         "archive.jsonl": "",
         "best_ever.json": "null\n",
     }
     files.update(_skill_package("evolve-agent"))
+    if resolved_runtime is not None:
+        files["evaluator/runtime.json"] = json.dumps(resolved_runtime.to_dict(), indent=2, sort_keys=True) + "\n"
     if evaluator_engine == "harbor":
         files.update(
             {
@@ -548,6 +562,9 @@ def _with_provenance(kind: str, source: str, source_text: str) -> str:
 
 def _runtime_config(config: dict[str, object]) -> dict[str, object]:
     runtime = copy.deepcopy(config)
+    evaluator = runtime.get("evaluator")
+    if isinstance(evaluator, dict):
+        runtime["evaluator"] = normalize_evaluator_config(cast("dict[str, Any]", evaluator))
     operators = runtime.get("operators")
     if isinstance(operators, dict):
         for kind in OPERATOR_KINDS:
@@ -556,6 +573,21 @@ def _runtime_config(config: dict[str, object]) -> dict[str, object]:
                 block.pop("variant", None)
                 block.pop("script", None)
     return runtime
+
+
+def _dataset_pin(dataset: str, manifest: dict[str, Any]) -> str:
+    identity = manifest.get("dataset_identity")
+    if manifest.get("identity_status") == "verified" and isinstance(identity, dict):
+        members = sorted(str(name) for split in manifest["tasks"].values() for name in split)
+        payload = {
+            "schema_version": 1,
+            "source": identity["source"],
+            "digest": identity["digest"],
+            "resolved_reference": identity["resolved_reference"],
+            "members": members,
+        }
+        return json.dumps(payload, indent=2, sort_keys=True) + "\n"
+    return f"dataset={dataset}\nchecksum=sha256:stub\n"
 
 
 def _component_manifest(recipe: str, config: dict[str, object]) -> dict[str, object]:
@@ -574,6 +606,7 @@ def _component_manifest(recipe: str, config: dict[str, object]) -> dict[str, obj
 
 
 def _validate_evaluator_config(evaluator: dict[str, Any]) -> None:
+    normalize_evaluator_config(evaluator)
     engine = str(evaluator.get("engine") or "")
     _evaluator_scaffold(engine, "engine.sh")
     if engine == "harbor" and not evaluator.get("agent"):

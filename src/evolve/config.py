@@ -8,6 +8,8 @@ from typing import Any
 
 import yaml
 
+from .evaluator_config import evaluator_repetitions as evaluator_repetitions
+from .evaluator_config import normalize_evaluator_config as normalize_evaluator_config
 from .frozen.interfaces import OPTIONAL_OPERATOR_KINDS as _OPTIONAL_OPERATOR_KINDS
 from .frozen.interfaces import REQUIRED_OPERATOR_KINDS
 

@@ -375,20 +375,12 @@ def test_attempt_identity_rejects_unsafe_path_components(tmp_path: Path, value: 
         )
 
 
-def test_harbor_init_requires_evaluator_runtime_digest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("EVOLVE_RUNTIME_DIGEST")
-
-    with pytest.raises(ValueError, match="EVOLVE_RUNTIME_DIGEST.*evaluator capsule"):
-        init_fixture_workspace(tmp_path / "workspace")
-
-
-def test_init_commits_evaluator_owned_runtime_pin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("EVOLVE_RUNTIME_DIGEST", "sha256:immutable-evaluator")
+def test_init_commits_evaluator_owned_runtime_pin(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
 
     init_fixture_workspace(workspace)
 
-    assert (workspace / "evaluator/runtime.pin").read_text() == "sha256:immutable-evaluator\n"
+    assert (workspace / "evaluator/runtime.pin").read_text() == "legacy-unverified\n"
     assert not (workspace / "target/runtime.pin").exists()
 
 
@@ -398,7 +390,8 @@ def test_default_expected_trials_match_generated_evaluator_environment(
 ) -> None:
     config = fixture_recipe_config("hill_climb-smoke", "workspace")
     config["evaluator"].pop("tasks_per_round")
-    config["evaluator"]["k"] = 2
+    config["evaluator"].pop("k", None)
+    config["evaluator"]["repetitions"] = 2
     monkeypatch.setattr(workspace_module, "default_config", lambda _recipe, _experiment: config)
     monkeypatch.setenv("EVAL_STUB", "1")
     workspace = tmp_path / "workspace"
@@ -413,3 +406,7 @@ def test_default_expected_trials_match_generated_evaluator_environment(
 
 def test_anchor_expected_trials_use_selected_sealed_tasks() -> None:
     assert _expected_trials({"k": 2, "tasks_per_round": 4}, None, selected_tasks=1) == 2
+
+
+def test_expected_trials_use_repetitions_for_new_configs() -> None:
+    assert _expected_trials({"repetitions": 3, "tasks_per_round": 4}, None, selected_tasks=2) == 6

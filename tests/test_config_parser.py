@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from evolve import config as config_module
 from evolve.config import CONFIG_SECTIONS, load_config, operator_blocks, render_yaml
 
 
@@ -92,3 +93,75 @@ def test_unknown_top_level_section_is_rejected(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="unknown top-level config sections: unsupported"):
         operator_blocks(workspace)
+
+
+@pytest.mark.parametrize(
+    ("evaluator", "expected"),
+    [
+        ({}, 1),
+        ({"repetitions": 3}, 3),
+        ({"k": 2}, 2),
+        ({"repetitions": 4, "k": 4}, 4),
+    ],
+)
+def test_evaluator_repetitions_normalizes_new_and_legacy_fields(evaluator: dict[str, object], expected: int) -> None:
+    assert config_module.evaluator_repetitions(evaluator) == expected
+
+
+@pytest.mark.parametrize(
+    ("evaluator", "message"),
+    [
+        ({"repetitions": True}, "evaluator.repetitions must be an integer"),
+        ({"repetitions": "2"}, "evaluator.repetitions must be an integer"),
+        ({"repetitions": 0}, "evaluator.repetitions must be between 1 and 100"),
+        ({"repetitions": 101}, "evaluator.repetitions must be between 1 and 100"),
+        ({"k": False}, "evaluator.k must be an integer"),
+        ({"repetitions": 2, "k": 3}, "evaluator.repetitions and evaluator.k must be equal"),
+    ],
+)
+def test_evaluator_repetitions_rejects_invalid_values(evaluator: dict[str, object], message: str) -> None:
+    with pytest.raises(ValueError, match=message.replace(".", r"\.")):
+        config_module.evaluator_repetitions(evaluator)
+
+
+def test_normalize_evaluator_config_writes_repetitions_without_mutating_input() -> None:
+    evaluator = {"engine": "harbor", "k": 2}
+
+    normalized = config_module.normalize_evaluator_config(evaluator)
+
+    assert normalized == {"engine": "harbor", "repetitions": 2}
+    assert evaluator == {"engine": "harbor", "k": 2}
+
+
+def test_normalize_evaluator_config_preserves_inline_runtime() -> None:
+    evaluator = {
+        "engine": "harbor",
+        "runtime": {
+            "candidate": {"variant": "uv", "project": "target", "python": "3.12"},
+            "proxy": {"mode": "optional", "model_endpoint": "bypass"},
+        },
+    }
+
+    normalized = config_module.normalize_evaluator_config(evaluator)
+
+    assert normalized["runtime"] == evaluator["runtime"]
+
+
+@pytest.mark.parametrize(
+    ("runtime", "message"),
+    [
+        ("harbor-v1", "evaluator.runtime must be a mapping"),
+        ({"profile": "harbor-v1"}, "unknown evaluator.runtime fields: profile"),
+        ({"extra": True}, "unknown evaluator.runtime fields: extra"),
+    ],
+)
+def test_normalize_evaluator_config_rejects_invalid_runtime(runtime: object, message: str) -> None:
+    with pytest.raises(ValueError, match=message.replace(".", r"\.")):
+        config_module.normalize_evaluator_config({"runtime": runtime})
+
+
+def test_normalize_evaluator_config_rejects_legacy_candidate_runtime() -> None:
+    with pytest.raises(ValueError, match="candidate_runtime has moved"):
+        config_module.normalize_evaluator_config(
+            {"candidate_runtime": {"variant": "uv", "project": "target", "python": "3.12"}}
+        )
