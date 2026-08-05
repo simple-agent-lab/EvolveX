@@ -78,7 +78,9 @@ Run a deterministic baseline smoke test without a model or Docker:
 export EVOLVE_RUNTIME_DIGEST="sha256:local-smoke-runtime"
 export EVOLVE_HOME="/tmp/evolve-home"
 
-uv run evolve init /tmp/evolve-demo --recipe hill_climb
+uv run evolve init /tmp/evolve-demo \
+  --recipe-path tests/fixtures/recipes/hill_climb-smoke \
+  --seed tests/fixtures/seeds/dummy
 EVAL_STUB=1 /tmp/evolve-demo/evolve run /tmp/evolve-demo --max-generations 0
 /tmp/evolve-demo/evolve status /tmp/evolve-demo
 /tmp/evolve-demo/evolve verify /tmp/evolve-demo

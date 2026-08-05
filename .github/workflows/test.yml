@@ -78,6 +78,8 @@ jobs:
           EVOLVE_RUNTIME_DIGEST: sha256:ci-smoke-runtime
         run: |
           rm -rf "$RUNNER_TEMP/ci-smoke" "$RUNNER_TEMP/ci-smoke-home"
-          uv run evolve init "$RUNNER_TEMP/ci-smoke" --recipe hill_climb
+          uv run evolve init "$RUNNER_TEMP/ci-smoke" \
+            --recipe-path tests/fixtures/recipes/hill_climb-smoke \
+            --seed tests/fixtures/seeds/dummy
           EVAL_STUB=1 EVOLVE_HOME="$RUNNER_TEMP/ci-smoke-home" "$RUNNER_TEMP/ci-smoke/evolve" run "$RUNNER_TEMP/ci-smoke" --max-generations 3
           EVOLVE_HOME="$RUNNER_TEMP/ci-smoke-home" "$RUNNER_TEMP/ci-smoke/evolve" verify "$RUNNER_TEMP/ci-smoke"

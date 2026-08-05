@@ -30,7 +30,7 @@ _VERIFIER_UV_REQUEST_ERROR = "Caused by: Request failed"
 _VERIFIER_UV_INSTALLER_DOWNLOAD_ERROR = "failed to download https://github.com/astral-sh/uv/releases/download/"
 _VERIFIER_UVX_MISSING = "uvx: command not found"
 _VERIFIER_CURL_SERVER_ERROR = re.compile(r"curl: \(\d+\) The requested URL returned error: 5\d\d\b")
-_SAFE_ERROR_CODE = re.compile(r"[a-z0-9_]+")
+_SAFE_ERROR_CODE = re.compile(r"[a-z0-9_]{1,64}")
 _SENSITIVE_ENV_NAME = re.compile(
     r"(?i)(?:proxy|api[_-]?key|access[_-]?token|token|secret|password|authorization|auth)"
 )

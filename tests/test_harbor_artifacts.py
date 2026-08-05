@@ -341,6 +341,18 @@ def test_candidate_error_code_uses_only_explicit_marker() -> None:
     )
 
 
+def test_candidate_error_code_falls_back_when_marker_code_is_too_long() -> None:
+    assert (
+        harbor_artifacts.candidate_error_code(
+            {
+                "exception_type": "NonZeroAgentExitCodeError",
+                "exception_message": f"EVOLVE_CANDIDATE_INVALID: {'a' * 65}",
+            }
+        )
+        == "candidate_invalid"
+    )
+
+
 def test_missing_tool_output_history_is_candidate_invalid(tmp_path: Path) -> None:
     jobs = tmp_path / "jobs"
     write_trial(
