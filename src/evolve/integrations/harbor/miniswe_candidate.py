@@ -8,7 +8,8 @@ from pathlib import Path
 from harbor.agents.installed.codex import Codex
 from harbor.agents.installed.mini_swe_agent import MiniSweAgent
 
-SOURCE_DIR = "/installed-agent/miniswe-source"
+UPLOADED_SOURCE_DIR = "/installed-agent/miniswe-source"
+SOURCE_DIR = "/tmp/evolve-candidate-source"
 VENV_DIR = "/tmp/evolve-candidate-venv"
 VENV_PYTHON = f"{VENV_DIR}/bin/python"
 UV_CACHE_DIR = "/opt/evolve/uv/cache"
@@ -275,7 +276,7 @@ from minisweagent.environments.local import LocalEnvironment, LocalEnvironmentCo
 task = Path(os.environ["MINISWE_TASK_PATH"]).read_text()
 config = get_config_from_spec(os.environ.get("MINISWE_CONFIG", "mini"))
 agent_kwargs = _filtered(config.get("agent"), AgentConfig.model_fields)
-_apply_evolved_context(agent_kwargs, "/installed-agent/miniswe-source")
+_apply_evolved_context(agent_kwargs, "/tmp/evolve-candidate-source")
 env_kwargs = _filtered(config.get("environment"), LocalEnvironmentConfig.model_fields)
 env_kwargs["cwd"] = os.environ.get("MINISWE_CWD") or os.getcwd()
 env_kwargs["timeout"] = int(os.environ.get("MINISWE_ENV_TIMEOUT", env_kwargs.get("timeout") or 30))
@@ -298,7 +299,7 @@ from minisweagent.config import get_config_from_spec
 from minisweagent.environments.local import LocalEnvironment
 
 assert DefaultAgent and LocalEnvironment and get_config_from_spec
-_load_evolved_context("/installed-agent/miniswe-source")
+_load_evolved_context("/tmp/evolve-candidate-source")
 print("EVOLVE_PREFLIGHT: miniswe_import_ok")
 """
 ).strip()
@@ -328,8 +329,14 @@ class MiniSweSourceAgent(MiniSweAgent):
             raise EvolveCandidateInvalidError("EVOLVE_CANDIDATE_INVALID: lock_missing")
         if not ((source_dir / "src" / "minisweagent").is_dir() or (source_dir / "minisweagent").is_dir()):
             raise EvolveCandidateInvalidError("EVOLVE_CANDIDATE_INVALID: source_missing")
-        await environment.upload_dir(source_dir, SOURCE_DIR)
-        await self.exec_as_root(environment, command=f"chmod -R a+rwX {SOURCE_DIR}")
+        await environment.upload_dir(source_dir, UPLOADED_SOURCE_DIR)
+        await self.exec_as_agent(
+            environment,
+            command=(
+                f"mkdir -p {SOURCE_DIR}; "
+                f"cp -R {UPLOADED_SOURCE_DIR}/. {SOURCE_DIR}/"
+            ),
+        )
         host_uv = self._host_uv_binary()
         if host_uv is not None:
             await environment.upload_file(host_uv, HOST_UV_PATH)

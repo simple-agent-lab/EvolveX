@@ -351,7 +351,7 @@ def test_miniswe_wrapper_loads_evolved_skills_and_memory_into_system_prompt(
     assert "Run the task-specific verifier when available" in context
     assert agent_kwargs["system_template"].startswith("Base MiniSwe system prompt.")
     assert context in agent_kwargs["system_template"]
-    assert '_apply_evolved_context(agent_kwargs, "/installed-agent/miniswe-source")' in module.RUNNER
+    assert '_apply_evolved_context(agent_kwargs, "/tmp/evolve-candidate-source")' in module.RUNNER
 
 
 def test_miniswe_wrapper_rejects_invalid_evolved_memory(
@@ -413,7 +413,10 @@ def test_miniswe_wrapper_subclasses_harbor_miniswe_and_installs_candidate_source
     assert environment.uploads == [(target.resolve(), "/installed-agent/miniswe-source"), (host_uv, "/tmp/evolve-uv")]
     joined = "\n".join(environment.commands)
     bootstrap = next(command for command in environment.commands if "if ! command -v uv" in command)
-    assert "chmod -R a+rwX /installed-agent/miniswe-source" in environment.commands
+    assert (
+        "mkdir -p /tmp/evolve-candidate-source; "
+        "cp -R /installed-agent/miniswe-source/. /tmp/evolve-candidate-source/"
+    ) in environment.commands
     assert "apt-get" not in joined
     assert "apk add" not in joined
     assert 'cp /tmp/evolve-uv "$HOME/.local/bin/uv"' in joined
@@ -423,9 +426,9 @@ def test_miniswe_wrapper_subclasses_harbor_miniswe_and_installs_candidate_source
     assert "uv tool install" not in joined
     assert "mini-swe-agent --" not in joined
     assert "curl -LsSf https://astral.sh/uv/0.7.13/install.sh" in joined
-    assert "uv sync --project /installed-agent/miniswe-source --frozen" in joined
+    assert "uv sync --project /tmp/evolve-candidate-source --frozen" in joined
     assert "/tmp/evolve-candidate-venv/bin/python" in joined
-    assert "uv run --project /installed-agent/miniswe-source" not in joined
+    assert "uv run --project /tmp/evolve-candidate-source" not in joined
     assert "from minisweagent.agents.default import DefaultAgent" in joined
     sync_indices = [index for index, command in enumerate(environment.commands) if "uv sync" in command]
     assert len(sync_indices) == 2
@@ -488,7 +491,7 @@ def test_miniswe_wrapper_runs_candidate_source_api_not_cli(tmp_path: Path, monke
     joined = "\n".join(environment.commands)
     assert "mini-swe-agent --" not in joined
     assert "/tmp/evolve-candidate-venv/bin/python /tmp/miniswe-source-run.py" in joined
-    assert "uv run --project /installed-agent/miniswe-source" not in joined
+    assert "uv run --project /tmp/evolve-candidate-source" not in joined
     assert "get_config_from_spec" in joined
     assert "DefaultAgent" in joined
     assert "from minisweagent.environments.local import LocalEnvironment" in joined
