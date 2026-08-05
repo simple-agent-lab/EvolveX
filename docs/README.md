@@ -22,6 +22,12 @@ Current proposals:
   defines deterministic task limiting and runtime-user-owned candidate source
   transport for Harbor evaluations.
 
+Current implementation plans:
+
+- [`plans/2026-08-05-harbor-evaluation-contracts.md`](plans/2026-08-05-harbor-evaluation-contracts.md)
+  implements the Harbor evaluation contracts test-first and verifies them on
+  DevBox.
+
 Regenerate the README architecture diagram after changing its content or style:
 
 ```bash
