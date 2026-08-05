@@ -25,6 +25,9 @@ def test_devbox_ahe_smoke_script_is_safe_and_self_verifying() -> None:
     assert 'source "$TAU3_ENV_LOADER" "$ENV_ROOT"' in text
     assert "--recipe ahe" in text
     assert '"$WORKSPACE/.env"' in text
+    assert 'chmod 600 "$WORKSPACE/.env"' in text
+    assert 'chmod -R go+rX "$WORKSPACE/target"' in text
+    assert "umask 022" in text
     assert "preflight" in text
     assert "--smoke" in text
     assert "--max-generations" in text

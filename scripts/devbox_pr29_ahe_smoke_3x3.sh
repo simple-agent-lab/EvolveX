@@ -109,6 +109,8 @@ cat "$MODEL_ENV" "$RUNTIME_ENV" "$PROXY_ENV" >"$WORKSPACE/.env"
   printf 'no_proxy=%s\n' "$no_proxy"
 } >>"$WORKSPACE/.env"
 chmod 600 "$WORKSPACE/.env"
+chmod -R go+rX "$WORKSPACE/target"
+umask 022
 
 "$WORKSPACE/evolve" preflight "$WORKSPACE"
 "$WORKSPACE/evolve" preflight "$WORKSPACE" --smoke
