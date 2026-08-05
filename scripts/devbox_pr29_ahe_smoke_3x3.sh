@@ -43,7 +43,7 @@ source "$RUNTIME_ENV"
 source "$PROXY_ENV"
 set +a
 
-for command in git uv docker harbor python3; do
+for command in git uv docker harbor; do
   command -v "$command" >/dev/null || fail "required command is unavailable: $command"
 done
 [[ -n ${OPENAI_API_KEY:-} ]] || fail "OPENAI_API_KEY is missing"
@@ -57,6 +57,7 @@ pr_head=$(git bundle list-heads "$REPO_BUNDLE" HEAD | awk 'NR == 1 {print $1}')
 git clone --quiet "$REPO_BUNDLE" "$REPO"
 [[ $(git -C "$REPO" rev-parse HEAD) == "$pr_head" ]] || fail "checkout does not match PR head"
 printf 'PR commit: %s\n' "$pr_head"
+uv --directory "$REPO" sync --dev --frozen
 
 mapfile -t task_dirs < <(
   find "$SOURCE_DATASET" -mindepth 2 -maxdepth 2 -name task.toml -printf '%h\n' |
@@ -70,7 +71,7 @@ done
 [[ $(find "$DATASET" -mindepth 2 -maxdepth 2 -name task.toml | wc -l) -eq $TASKS ]] ||
   fail "copied dataset does not contain exactly $TASKS tasks"
 
-runtime_digest=$(python3 - "$DATASET" <<'PY'
+runtime_digest=$(uv --directory "$REPO" run python - "$DATASET" <<'PY'
 from pathlib import Path
 import re
 import sys
@@ -95,7 +96,6 @@ PY
 docker image inspect "$runtime_digest" >/dev/null || fail "runtime image is unavailable: $runtime_digest"
 export EVOLVE_RUNTIME_DIGEST=$runtime_digest
 
-uv --directory "$REPO" sync --dev --frozen
 uv --directory "$REPO" run evolve init "$WORKSPACE" --recipe ahe --dataset "$DATASET"
 cat "$MODEL_ENV" "$RUNTIME_ENV" "$PROXY_ENV" >"$WORKSPACE/.env"
 printf '\nEVOLVE_RUNTIME_DIGEST=%s\n' "$EVOLVE_RUNTIME_DIGEST" >>"$WORKSPACE/.env"

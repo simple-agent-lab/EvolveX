@@ -29,6 +29,7 @@ def test_devbox_ahe_smoke_script_is_safe_and_self_verifying() -> None:
     assert 'record.get("contract_certified") is True' in text
     assert "import json" in text
     assert "import tomllib" in text
+    assert 'uv --directory "$REPO" run python - "$DATASET"' in text
     assert 'task["environment"]["docker_image"]' in text
     assert "EVOLVE_RUNTIME_DIGEST=%s" in text
     assert " jq" not in text
