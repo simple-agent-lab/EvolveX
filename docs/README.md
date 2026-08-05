@@ -9,6 +9,7 @@ The maintained public documentation has distinct roles:
 | [`../ARCHITECTURE.md`](../ARCHITECTURE.md) | enforced `src/evolve/` module map and budgets |
 | [`glossary.md`](glossary.md) | concise domain definitions |
 | [`coding-style.md`](coding-style.md) | coding conventions |
+| [`experiment-viewer.md`](experiment-viewer.md) | read-only experiment and Harbor inspection |
 | [`architecture.svg`](architecture.svg) | generated README architecture diagram |
 | [`../src/evolve/frozen/interfaces.py`](../src/evolve/frozen/interfaces.py) | machine-readable operator contract |
 

@@ -133,6 +133,9 @@ inspection tool, not an authorization boundary: anyone who can access the
 listener or SSH tunnel can view the raw Harbor artifacts exposed by that
 workspace. Keep the default loopback binding and restrict tunnel access.
 
+See the [experiment viewer guide](docs/experiment-viewer.md) for page behavior,
+artifact previews, Harbor inspection, and troubleshooting.
+
 ## Concepts
 
 | Concept | Meaning |
@@ -196,6 +199,7 @@ See [DESIGN.md](DESIGN.md) for the complete model and invariants.
 | [Recipes](recipes/README.md) | Supported evolution strategies. |
 | [Meta-agents](META_AGENTS.md) | Trusted-host and isolated meta-agent runners. |
 | [Trace analysis](TRACE_ANALYZER.md) | Trace retention and analyzer variants. |
+| [Experiment viewer](docs/experiment-viewer.md) | Read-only experiment inspection, DevBox tunnels, and Harbor drill-down. |
 | [Local environment](LOCAL_ENVIRONMENT.md) | Docker-free trusted local execution. |
 | [Contributing](CONTRIBUTING.md) | Development setup and repository conventions. |
 
