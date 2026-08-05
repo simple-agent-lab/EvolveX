@@ -9,7 +9,8 @@ from harbor.agents.installed.codex import Codex
 from harbor.agents.installed.mini_swe_agent import MiniSweAgent
 
 SOURCE_DIR = "/installed-agent/miniswe-source"
-VENV_PYTHON = f"{SOURCE_DIR}/.venv/bin/python"
+VENV_DIR = "/tmp/evolve-candidate-venv"
+VENV_PYTHON = f"{VENV_DIR}/bin/python"
 UV_CACHE_DIR = "/opt/evolve/uv/cache"
 UV_PYTHON_INSTALL_DIR = "/opt/evolve/uv/python"
 RUNNER_PATH = "/tmp/miniswe-source-run.py"
@@ -328,6 +329,7 @@ class MiniSweSourceAgent(MiniSweAgent):
         if not ((source_dir / "src" / "minisweagent").is_dir() or (source_dir / "minisweagent").is_dir()):
             raise EvolveCandidateInvalidError("EVOLVE_CANDIDATE_INVALID: source_missing")
         await environment.upload_dir(source_dir, SOURCE_DIR)
+        await self.exec_as_root(environment, command=f"chmod -R a+rwX {SOURCE_DIR}")
         host_uv = self._host_uv_binary()
         if host_uv is not None:
             await environment.upload_file(host_uv, HOST_UV_PATH)
@@ -461,6 +463,7 @@ class MiniSweSourceAgent(MiniSweAgent):
             "UV_LINK_MODE": self._get_env("UV_LINK_MODE") or "copy",
             "UV_OFFLINE": self._get_env("UV_OFFLINE") or "1",
             "UV_PYTHON_INSTALL_DIR": self._get_env("UV_PYTHON_INSTALL_DIR") or UV_PYTHON_INSTALL_DIR,
+            "UV_PROJECT_ENVIRONMENT": VENV_DIR,
         }
         env.update(self._proxy_env())
         return env

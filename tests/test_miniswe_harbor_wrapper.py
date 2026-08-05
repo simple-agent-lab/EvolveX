@@ -412,7 +412,8 @@ def test_miniswe_wrapper_subclasses_harbor_miniswe_and_installs_candidate_source
     assert issubclass(module.MiniSweSourceAgent, base)
     assert environment.uploads == [(target.resolve(), "/installed-agent/miniswe-source"), (host_uv, "/tmp/evolve-uv")]
     joined = "\n".join(environment.commands)
-    bootstrap = environment.commands[0]
+    bootstrap = next(command for command in environment.commands if "if ! command -v uv" in command)
+    assert "chmod -R a+rwX /installed-agent/miniswe-source" in environment.commands
     assert "apt-get" not in joined
     assert "apk add" not in joined
     assert 'cp /tmp/evolve-uv "$HOME/.local/bin/uv"' in joined
@@ -423,7 +424,7 @@ def test_miniswe_wrapper_subclasses_harbor_miniswe_and_installs_candidate_source
     assert "mini-swe-agent --" not in joined
     assert "curl -LsSf https://astral.sh/uv/0.7.13/install.sh" in joined
     assert "uv sync --project /installed-agent/miniswe-source --frozen" in joined
-    assert "/installed-agent/miniswe-source/.venv/bin/python" in joined
+    assert "/tmp/evolve-candidate-venv/bin/python" in joined
     assert "uv run --project /installed-agent/miniswe-source" not in joined
     assert "from minisweagent.agents.default import DefaultAgent" in joined
     sync_indices = [index for index, command in enumerate(environment.commands) if "uv sync" in command]
@@ -444,6 +445,7 @@ def test_miniswe_wrapper_subclasses_harbor_miniswe_and_installs_candidate_source
             "UV_LINK_MODE": "copy",
             "UV_OFFLINE": "1",
             "UV_PYTHON_INSTALL_DIR": "/opt/evolve/uv/python",
+            "UV_PROJECT_ENVIRONMENT": "/tmp/evolve-candidate-venv",
             **expected_proxy_env,
         }
     model_index = next(
@@ -485,7 +487,7 @@ def test_miniswe_wrapper_runs_candidate_source_api_not_cli(tmp_path: Path, monke
 
     joined = "\n".join(environment.commands)
     assert "mini-swe-agent --" not in joined
-    assert "/installed-agent/miniswe-source/.venv/bin/python /tmp/miniswe-source-run.py" in joined
+    assert "/tmp/evolve-candidate-venv/bin/python /tmp/miniswe-source-run.py" in joined
     assert "uv run --project /installed-agent/miniswe-source" not in joined
     assert "get_config_from_spec" in joined
     assert "DefaultAgent" in joined
@@ -573,6 +575,7 @@ def test_miniswe_runtime_and_offline_install_forward_download_proxies(tmp_path: 
     for name in (*proxy_names, "no_proxy", "NO_PROXY"):
         assert install_env[name] == os.environ[name]
     assert install_env["UV_OFFLINE"] == "1"
+    assert install_env["UV_PROJECT_ENVIRONMENT"] == "/tmp/evolve-candidate-venv"
 
 
 @pytest.mark.parametrize(
