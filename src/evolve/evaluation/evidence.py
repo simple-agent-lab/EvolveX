@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import json
 import math
+import re
+from pathlib import Path
 from typing import Any, cast
 
 from .results import Outcome, TrialResult
 
 TRIAL_STATUSES = {outcome.value for outcome in Outcome}
+_SAFE_FAILURE_CATEGORY = re.compile(r"[a-z0-9_]{1,64}")
 
 
 class TaskVectorError(ValueError):
@@ -62,6 +66,11 @@ def normalize_task_vector(payload: object) -> dict[str, Any]:
                     raise TaskVectorError(f"invalid {field} for {task_id} trial {trial}")
             if raw.get("repair_reason") is not None and not isinstance(raw["repair_reason"], str):
                 raise TaskVectorError(f"invalid repair_reason for {task_id} trial {trial}")
+            failure_category = raw.get("failure_category")
+            if failure_category is not None and (
+                not isinstance(failure_category, str) or _SAFE_FAILURE_CATEGORY.fullmatch(failure_category) is None
+            ):
+                raise TaskVectorError(f"invalid failure_category for {task_id} trial {trial}")
             score_eligible = (
                 status == Outcome.BENCHMARK_COMPLETE
                 or status == Outcome.TIMEOUT
@@ -84,6 +93,30 @@ def validate_task_vector(payload: object) -> dict[str, Any]:
     return normalize_task_vector(payload)
 
 
+def read_task_vector(run_dir: Path) -> dict[str, Any] | None:
+    path = run_dir / "task_vector.json"
+    return validate_task_vector(json.loads(path.read_text())) if path.exists() else None
+
+
+def read_setup_evidence(run_dir: Path) -> tuple[Outcome | None, str | None]:
+    path = run_dir / "setup_outcome"
+    if not path.exists():
+        return None, None
+    outcome = Outcome(path.read_text().strip())
+    reason = run_dir / "setup_reason"
+    return outcome, reason.read_text().strip() if reason.exists() else f"evaluator reported {outcome.value}"
+
+
+def read_cost(run_dir: Path) -> float:
+    path = run_dir / "cost.json"
+    if not path.exists():
+        return 0.0
+    value = json.loads(path.read_text()).get("usd")
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError("evaluator cost.json must contain numeric usd")
+    return float(value)
+
+
 def trial_results(payload: object) -> tuple[TrialResult, ...]:
     vector = normalize_task_vector(payload)
     return tuple(
@@ -100,6 +133,7 @@ def trial_results(payload: object) -> tuple[TrialResult, ...]:
                 int(raw["repaired_from_attempt"]) if raw.get("repaired_from_attempt") is not None else None
             ),
             repair_reason=str(raw["repair_reason"]) if raw.get("repair_reason") else None,
+            failure_category=str(raw["failure_category"]) if raw.get("failure_category") else None,
         )
         for task_id, task in vector["tasks"].items()
         for raw in task["trials"]

@@ -15,7 +15,8 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from .archive import archive_path, merged_rows
+from .archive import RECEIPT_CERTIFIED_FIELD, archive_path, merged_rows
+from .frozen.interfaces import PayloadValidationError, validate_evaluation_diagnostics_payload
 from .git import git_stdout, tag_exists
 from .surface import surface_patterns
 
@@ -129,6 +130,25 @@ def _rollout_history(workspace: Path, rows: list[Row], history_k: int) -> list[R
     return history
 
 
+def _evaluation_diagnostics(rows: list[Row], history_k: int) -> list[Row]:
+    diagnostics = []
+    for row in rows[-int(history_k) :]:
+        if row.get("diagnostics") is None:
+            continue
+        try:
+            payload = validate_evaluation_diagnostics_payload(row["diagnostics"])
+        except PayloadValidationError:
+            continue
+        diagnostics.append(
+            {
+                "genid": str(row.get("genid")),
+                "diagnostics": payload,
+                "receipt_certified": row.get(RECEIPT_CERTIFIED_FIELD) is True,
+            }
+        )
+    return diagnostics
+
+
 def write_feedback_bundle(*, workspace: Path, run_dir: Path, history_k: int = 8) -> list[str]:
     """Write the feedback bundle under run_dir/feedback/ and return its manifest.
 
@@ -156,6 +176,7 @@ def write_feedback_bundle(*, workspace: Path, run_dir: Path, history_k: int = 8)
     evidence_files = _copy_trace_evidence(run_dir, feedback / "evidence")
     _write_json(feedback / "evidence" / "history.json", _rollout_history(workspace, rows, history_k))
     evidence_files.append("feedback/evidence/history.json")
+    _write_json(feedback / "evaluation_diagnostics.json", _evaluation_diagnostics(rows, history_k))
     (feedback / "last_accepted.diff").write_text(_latest_accepted_diff(workspace, rows))
 
     include, exclude = _surface_rule_lists(workspace)
@@ -179,6 +200,7 @@ def write_feedback_bundle(*, workspace: Path, run_dir: Path, history_k: int = 8)
         f"{trace_link}"
         f"{evidence_link}"
         f"{history_link}"
+        "- [evaluation diagnostics](evaluation_diagnostics.json)\n"
         "- [last accepted diff](last_accepted.diff)\n"
         "- [rules](rules.md)\n"
     )
@@ -187,6 +209,7 @@ def write_feedback_bundle(*, workspace: Path, run_dir: Path, history_k: int = 8)
         "feedback/index.md",
         "feedback/attempts.md",
         "feedback/failures/README.md",
+        "feedback/evaluation_diagnostics.json",
         "feedback/last_accepted.diff",
         "feedback/rules.md",
     ]

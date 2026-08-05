@@ -26,10 +26,17 @@ def _eval_env(name: str) -> str | None:
 
 
 def _attempts() -> int:
+    plan = _run_plan()
+    if isinstance(plan.get("attempts_per_task"), int):
+        return max(1, int(plan["attempts_per_task"]))
     return max(1, int(_eval_env("EVOLVE_HARBOR_ATTEMPTS") or 1))
 
 
 def _task_names(kind: str | None, attempts: int) -> list[str]:
+    plan = _run_plan()
+    planned = plan.get("tasks")
+    if isinstance(planned, list) and planned and all(isinstance(name, str) and name for name in planned):
+        return list(planned)
     split = os.environ.get("EVOLVE_EVAL_SPLIT") or ("sealed" if kind == "anchor" else "gate")
     try:
         manifest = json.loads(Path("evaluator/splits.json").read_text())
@@ -47,20 +54,34 @@ def _task_names(kind: str | None, attempts: int) -> list[str]:
     return names
 
 
+def _run_plan() -> dict[str, object]:
+    configured = os.environ.get("EVOLVE_RUN_PLAN")
+    if not configured:
+        return {}
+    try:
+        payload = json.loads(Path(configured).read_text())
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
 def main() -> int:
     run_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("runs/gen-0/eval")
     run_dir.mkdir(parents=True, exist_ok=True)
 
     agent = Path("target/agent.py")
     failed: set[str] = set()
+    missing: set[str] = set()
     for line in (agent.read_text() if agent.exists() else "").splitlines():
         stripped = line.strip()
         if stripped.startswith("# FAIL "):
             failed.update(stripped[len("# FAIL ") :].split())
+        if stripped.startswith("# MISSING "):
+            missing.update(stripped[len("# MISSING ") :].split())
 
     attempts = _attempts()
     names = _task_names(os.environ.get("EVOLVE_EVAL_KIND"), attempts)
-    task_results = {name: name not in failed for name in names}
+    task_results = {name: name not in failed for name in names if name not in missing}
     task_vector = {
         "schema_version": 1,
         "tasks": {

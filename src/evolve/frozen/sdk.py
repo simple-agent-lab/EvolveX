@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 from typing import Any, cast
 
-from ..archive import MECHANISM_EVAL_FIELD, STAMPED_FIELDS
+from ..archive import MECHANISM_EVAL_FIELD, RECEIPT_CERTIFIED_FIELD, STAMPED_FIELDS
 from ..git import head_tag, working_tree_changed_paths
 from ..surface import check_paths, surface_patterns
 from .interfaces import (
@@ -31,6 +31,7 @@ from .interfaces import (
     SelectOperator,
     TraceAnalyzerOperator,
     ValidateOperator,
+    validate_evaluation_diagnostics_payload,
     validate_gate_payload,
     validate_meta_agent_payload,
     validate_novelty_payload,
@@ -73,6 +74,15 @@ def valid_parents(workspace: Path | str = ".") -> list[dict[str, Any]]:
 
 def best_ever(workspace: Path | str = ".") -> dict[str, Any] | None:
     return ArchiveView(Path(workspace).resolve()).best_ever()
+
+
+def evaluation_diagnostics(workspace: Path | str, genid: str) -> dict[str, Any] | None:
+    candidate = row(workspace, genid)
+    if candidate is None or candidate.get("diagnostics") is None:
+        return None
+    diagnostics = validate_evaluation_diagnostics_payload(candidate["diagnostics"])
+    diagnostics["receipt_certified"] = candidate.get(RECEIPT_CERTIFIED_FIELD) is True
+    return diagnostics
 
 
 def run_dir(workspace: Path | str, genid: str) -> Path:

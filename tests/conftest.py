@@ -12,6 +12,7 @@ import pytest
 from harbor.models.registry import DatasetMetadata
 from harbor.models.task.id import PackageTaskId
 
+from evolve import evaluation as evaluation_package
 from evolve.archive import merged_rows as mechanism_merged_rows
 from evolve.archive import mirror_path
 from evolve.config import load_config
@@ -197,6 +198,18 @@ def allow_local_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
     from evolve.preflight import checks as preflight_checks
 
     monkeypatch.setattr(preflight_checks, "tool_available", lambda name, env: True)
+
+
+def contract_for_gen0(workspace: Path) -> evaluation_package.EvaluationContractV1:
+    commit = git(workspace, "rev-parse", "gen/0^{commit}")
+    return evaluation_package.resolve_evaluation_contract(
+        evaluation_package.ContractResolutionContext(
+            workspace=workspace,
+            candidate_commit=commit,
+            purpose="candidate",
+            generation="0",
+        )
+    )
 
 
 def init_workspace(tmp_path: Path, experiment: str = "experiment") -> tuple[Path, Path]:
