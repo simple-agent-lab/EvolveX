@@ -64,3 +64,27 @@ def test_task_limit_changes_both_members_and_identity(tmp_path: Path) -> None:
     assert full.members == ("task-a", "task-b", "task-c")
     assert limited.members == ("task-a",)
     assert limited.digest != full.digest
+
+
+def test_gate_identity_uses_the_frozen_per_round_limit(tmp_path: Path) -> None:
+    evaluator = tmp_path / "evaluator"
+    evaluator.mkdir()
+    (evaluator / "splits.json").write_text(
+        json.dumps(
+            {
+                "version": 2,
+                "resolved": True,
+                "sampling": "static",
+                "gate_tasks_per_round": 2,
+                "tasks": {"train": [], "gate": ["task-c", "task-a", "task-b"], "sealed": []},
+                "task_digests": {"task-a": "a", "task-b": "b", "task-c": "c"},
+            }
+        )
+    )
+
+    identity = effective_task_set_identity(
+        tmp_path,
+        {"dataset": "local", "k": 1, "evaluation_split": "gate"},
+    )
+
+    assert identity.members == ("task-a", "task-c")

@@ -142,6 +142,28 @@ def test_preflight_accepts_valid_local_task_dataset(tmp_path: Path) -> None:
     assert "(10 tasks)" in result.stdout
 
 
+def test_preflight_accepts_valid_harbor_task_as_dataset_root(tmp_path: Path) -> None:
+    import yaml
+
+    config = yaml.safe_load((Path(__file__).parents[1] / "recipes/gepa_local/evolve.yaml").read_text())
+    config["evaluator"]["split"] = {"train": 1.0, "gate": 0.0, "sealed": 0.0, "seed": 0}
+    recipe_dir = tmp_path / "recipe"
+    recipe_dir.mkdir()
+    (recipe_dir / "evolve.yaml").write_text(yaml.safe_dump(config, sort_keys=False))
+
+    result = run_evolve(
+        "preflight",
+        str(tmp_path / "ws"),
+        "--recipe-path",
+        str(recipe_dir),
+        "--dataset",
+        str(TASKS_LOCAL / "task-0"),
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "(1 tasks)" in result.stdout
+
+
 def test_preflight_writes_nothing(tmp_path: Path) -> None:
     result = run_evolve(
         "preflight",

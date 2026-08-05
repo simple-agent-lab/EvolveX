@@ -9,6 +9,7 @@ from typing import Any
 import yaml
 
 from ..git import git
+from ..splits import selected_task_names
 
 
 @dataclass(frozen=True)
@@ -76,9 +77,10 @@ def effective_task_set_identity(
     else:
         members = ()
         if manifest is not None:
-            split_tasks = manifest.get("tasks", {}).get(evaluation_split_name(evaluator, purpose), [])
+            split_name = evaluation_split_name(evaluator, purpose)
+            split_tasks = manifest.get("tasks", {}).get(split_name, [])
             if isinstance(split_tasks, list) and all(isinstance(name, str) for name in split_tasks):
-                members = tuple(split_tasks)
+                members = tuple(selected_task_names(manifest, split_name))
     try:
         attempts = int(evaluator.get("k", 1))
     except (TypeError, ValueError):
@@ -155,7 +157,7 @@ def _fixed_task_members(
     split_tasks = manifest.get("tasks", {}).get(evaluation_split_name(evaluator), [])
     if not isinstance(split_tasks, list) or not all(isinstance(name, str) for name in split_tasks):
         return ()
-    return tuple(split_tasks)
+    return tuple(selected_task_names(manifest, evaluation_split_name(evaluator)))
 
 
 def _checkout_split_manifest(checkout: Path) -> dict[str, Any] | None:

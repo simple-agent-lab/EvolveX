@@ -73,6 +73,7 @@ if [ -n "${EVOLVE_RUN_PLAN:-}" ]; then
   if ! "$EVOLVE_FRAMEWORK_PYTHON" - "$EVOLVE_RUN_PLAN" "$EVOLVE_RUN_DIR/run-plan-tasks.txt" <<'PY'
 import json
 import sys
+from glob import escape
 from pathlib import Path
 
 payload = json.loads(Path(sys.argv[1]).read_text())
@@ -82,7 +83,7 @@ if not isinstance(tasks, list) or any(not isinstance(task, str) or not task for 
     raise SystemExit("evaluation run plan has invalid tasks")
 if not isinstance(expected, int) or isinstance(expected, bool) or expected < 1:
     raise SystemExit("evaluation run plan has invalid expected_trials")
-Path(sys.argv[2]).write_text("".join(f"{task}\n" for task in tasks))
+Path(sys.argv[2]).write_text("".join(f"{escape(task)}\n" for task in tasks))
 PY
   then
     printf 'infra_failed\n' > "$EVOLVE_RUN_DIR/status"

@@ -82,6 +82,8 @@ def _valid_harbor_task_dirs(dataset: Path) -> tuple[list[str], list[str]]:
     """Split task directories by Harbor's real discovery rule."""
     from harbor.models.task.task import Task
 
+    if Task.is_valid_dir(dataset):
+        return [dataset.name], []
     valid: list[str] = []
     invalid: list[str] = []
     for entry in sorted(dataset.iterdir()):
