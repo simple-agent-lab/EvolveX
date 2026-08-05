@@ -3,6 +3,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from fastapi.testclient import TestClient
+from harbor.viewer.server import create_app as create_harbor_app
+
 from evolve.viewer.harbor_bridge import HarborBridge
 from evolve.viewer.models import JobRootReference
 
@@ -36,7 +39,7 @@ def test_bridge_federates_multiple_roots_without_collisions(tmp_path: Path) -> N
         links = sorted(federation.root.iterdir())
         assert len(links) == 2
         assert links[0].name != links[1].name
-        assert all(path.is_symlink() for path in links)
+        assert all(path.is_dir() and not path.is_symlink() for path in links)
 
 
 def test_bridge_removes_stale_links_and_cleans_up(tmp_path: Path) -> None:
@@ -80,6 +83,26 @@ def test_bridge_builds_full_harbor_trial_route(tmp_path: Path) -> None:
     assert link.url.endswith(
         "/tasks/local%2Fsource/mini%20agent/openai/model%20name/task-a/trials/trial%20one"
     )
+
+
+def test_bridge_jobs_pass_harbor_containment_checks(tmp_path: Path) -> None:
+    jobs = _harbor_jobs(tmp_path / "jobs", "job-a")
+    trajectory = jobs / "job-a/trial-0/agent/trajectory.json"
+    trajectory.parent.mkdir()
+    trajectory.write_text(json.dumps({"steps": []}))
+
+    with HarborBridge(tmp_path / "experiment") as bridge:
+        federation = bridge.refresh(
+            [JobRootReference(generation="3", purpose="candidate", path=jobs)]
+        )
+        job_name = federation.job_names[(jobs.resolve(), "job-a")]
+        with TestClient(create_harbor_app(federation.root)) as client:
+            response = client.get(
+                f"/api/jobs/{job_name}/trials/trial-0/trajectory"
+            )
+
+    assert response.status_code == 200
+    assert response.json() == {"steps": []}
 
 
 def test_bridge_maps_only_unique_canonical_suffix(tmp_path: Path) -> None:

@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import tempfile
 from collections import Counter
 from collections.abc import Iterable, Mapping
@@ -38,7 +39,12 @@ class HarborBridge:
 
     def __enter__(self) -> HarborBridge:
         if self._tempdir is None:
-            self._tempdir = tempfile.TemporaryDirectory(prefix="evolve-view-harbor-")
+            try:
+                self._tempdir = tempfile.TemporaryDirectory(
+                    prefix=".evolve-view-harbor-", dir=self.workspace.parent
+                )
+            except OSError:
+                self._tempdir = tempfile.TemporaryDirectory(prefix="evolve-view-harbor-")
             self.root = Path(self._tempdir.name)
         return self
 
@@ -63,14 +69,16 @@ class HarborBridge:
         references = tuple(job_roots)
         desired = _federated_jobs(references)
         for name, target in desired.values():
-            temporary = root / f".{name}.next"
-            temporary.unlink(missing_ok=True)
-            temporary.symlink_to(target, target_is_directory=True)
-            os.replace(temporary, root / name)
+            destination = root / name
+            if not destination.exists():
+                temporary = root / f".{name}.next"
+                _remove_path(temporary)
+                shutil.copytree(target, temporary, copy_function=_link_or_copy)
+                os.replace(temporary, destination)
         expected = {name for name, _target in desired.values()}
         for entry in root.iterdir():
             if entry.name not in expected:
-                entry.unlink(missing_ok=True)
+                _remove_path(entry)
 
         job_names = {key: value[0] for key, value in desired.items()}
         references_by_job: dict[str, list[JobRootReference]] = {}
@@ -118,6 +126,21 @@ def _job_children(root: Path) -> tuple[Path, ...]:
             key=lambda child: child.name,
         )
     )
+
+
+def _link_or_copy(source: str, destination: str) -> str:
+    try:
+        os.link(source, destination)
+        return destination
+    except OSError:
+        return shutil.copy2(source, destination)
+
+
+def _remove_path(path: Path) -> None:
+    if path.is_symlink() or path.is_file():
+        path.unlink(missing_ok=True)
+    elif path.is_dir():
+        shutil.rmtree(path)
 
 
 def _trial_links(
