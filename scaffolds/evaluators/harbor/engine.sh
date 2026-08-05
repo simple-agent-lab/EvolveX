@@ -10,6 +10,17 @@ if [ -n "${EVOLVE_HARBOR_N_CONCURRENT_OVERRIDE:-}" ]; then
   esac
   EVOLVE_HARBOR_N_CONCURRENT=$EVOLVE_HARBOR_N_CONCURRENT_OVERRIDE
 fi
+if [ "${EVOLVE_CANDIDATE_SMOKE_MODE:-}" = "single" ]; then
+  EVOLVE_TASK_LIMIT=1
+fi
+if [ -n "${EVOLVE_TASK_LIMIT:-}" ]; then
+  case "$EVOLVE_TASK_LIMIT" in
+    *[!0-9]*|""|0)
+      printf 'invalid EVOLVE_TASK_LIMIT=%s\n' "$EVOLVE_TASK_LIMIT" >&2
+      exit 3
+      ;;
+  esac
+fi
 : "${EVOLVE_WORKSPACE:=$PWD}"
 if [ -n "${EVOLVE_UV_BINARY:-}" ]; then UV=$EVOLVE_UV_BINARY; else UV=$(command -v uv || true); fi
 [ -n "$UV" ] && [ -x "$UV" ] || { printf 'uv is required; install uv or set EVOLVE_UV_BINARY\n' >&2; printf 'infra_failed\n' > "$EVOLVE_RUN_DIR/status"; exit 3; }
@@ -27,8 +38,9 @@ export EVOLVE_GENID
 export EVOLVE_ATTEMPT_ID EVOLVE_FRAMEWORK_PYTHON
 split_name=${EVOLVE_EVAL_SPLIT:-gate}
 if python3 -c 'import json,sys; raise SystemExit(0 if json.load(open(sys.argv[1])).get("resolved") else 1)' evaluator/splits.json; then
-  if ! "$UV" run --project "$EVOLVE_WORKSPACE" --frozen python "$PWD/.evolve/launch_splits.py" \
-    select evaluator/splits.json "$EVOLVE_HARBOR_TASKS" "$split_name" "$EVOLVE_RUN_DIR"; then
+  set -- select evaluator/splits.json "$EVOLVE_HARBOR_TASKS" "$split_name" "$EVOLVE_RUN_DIR"
+  if [ -n "${EVOLVE_TASK_LIMIT:-}" ]; then set -- "$@" --limit "$EVOLVE_TASK_LIMIT"; fi
+  if ! "$UV" run --project "$EVOLVE_WORKSPACE" --frozen python "$PWD/.evolve/launch_splits.py" "$@"; then
     printf 'infra_failed\n' > "$EVOLVE_RUN_DIR/status"
     exit 3
   fi
@@ -86,7 +98,6 @@ if [ "${EVOLVE_CANDIDATE_SMOKE_MODE:-}" = "single" ]; then
   EVOLVE_HARBOR_N=1
   EVOLVE_HARBOR_ATTEMPTS=1
   EVOLVE_HARBOR_N_CONCURRENT=1
-  EVOLVE_TASK_LIMIT=1
 elif [ "${EVOLVE_CANDIDATE_SMOKE_MODE:-}" = "full" ]; then
   EVOLVE_HARBOR_ATTEMPTS=1
 fi
@@ -131,6 +142,16 @@ esac
 if [ "${EVOLVE_EVAL_KIND:-research}" = "anchor" ] && [ -n "${EVOLVE_HARBOR_ANCHOR_TASK_FILE:-}" ]; then
   EVOLVE_HARBOR_TASK_FILE=$EVOLVE_HARBOR_ANCHOR_TASK_FILE
 fi
+if [ -n "${EVOLVE_TASK_LIMIT:-}" ] && [ -n "${EVOLVE_HARBOR_TASK_FILE:-}" ] \
+  && [ "$EVOLVE_HARBOR_TASK_FILE" != "$EVOLVE_RUN_DIR/task-names.txt" ]; then
+  if ! "$UV" run --project "$EVOLVE_WORKSPACE" --frozen python "$PWD/.evolve/launch_splits.py" \
+    limit-file "$EVOLVE_HARBOR_TASK_FILE" "$EVOLVE_RUN_DIR" --limit "$EVOLVE_TASK_LIMIT"; then
+    printf 'infra_failed\n' > "$EVOLVE_RUN_DIR/status"
+    exit 3
+  fi
+  EVOLVE_HARBOR_TASK_FILE="$EVOLVE_RUN_DIR/task-names.txt"
+  export EVOLVE_HARBOR_TASK_FILE
+fi
 if [ -n "${EVOLVE_HARBOR_TASK_FILE:-}" ]; then
   while IFS= read -r task_name || [ -n "$task_name" ]; do
     case "$task_name" in
@@ -140,8 +161,13 @@ if [ -n "${EVOLVE_HARBOR_TASK_FILE:-}" ]; then
   done < "$EVOLVE_HARBOR_TASK_FILE"
 fi
 if [ -n "${EVOLVE_TASK_LIMIT:-}" ]; then
-  set -- "$@" --n-tasks "$EVOLVE_TASK_LIMIT"
-  export EVOLVE_HARBOR_EXPECTED_TRIALS=$((EVOLVE_TASK_LIMIT * EVOLVE_HARBOR_ATTEMPTS))
+  effective_task_limit=$EVOLVE_TASK_LIMIT
+  if [ -f "$EVOLVE_RUN_DIR/task-split.json" ]; then
+    effective_task_limit=$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["tasks"]))' \
+      "$EVOLVE_RUN_DIR/task-split.json")
+  fi
+  set -- "$@" --n-tasks "$effective_task_limit"
+  export EVOLVE_HARBOR_EXPECTED_TRIALS=$((effective_task_limit * EVOLVE_HARBOR_ATTEMPTS))
 fi
 set -- "$@" --agent "$EVOLVE_HARBOR_AGENT"
 if [ -n "${EVOLVE_HARBOR_ENVIRONMENT:-}" ]; then

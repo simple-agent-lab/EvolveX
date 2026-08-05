@@ -9,6 +9,7 @@ from typing import Any
 import yaml
 
 from ..git import git
+from ..splits import load_manifest, selected_task_names
 
 
 @dataclass(frozen=True)
@@ -46,32 +47,45 @@ def task_set_identity(
 
 
 def effective_task_set_identity(
-    checkout: Path, evaluator: dict[str, Any], *, purpose: str = "candidate"
+    checkout: Path,
+    evaluator: dict[str, Any],
+    *,
+    purpose: str = "candidate",
+    task_limit: int | None = None,
 ) -> TaskSetIdentity:
+    if task_limit is not None and task_limit < 1:
+        raise ValueError("task limit must be at least 1")
     configured_names = evaluator.get("task_names")
     if isinstance(configured_names, list) and all(isinstance(name, str) and name for name in configured_names):
-        members = tuple(configured_names)
+        members = _limited_members(tuple(configured_names), task_limit)
     elif isinstance(evaluator.get("task_file"), str) and evaluator["task_file"]:
         task_file = (checkout / evaluator["task_file"]).resolve()
         try:
             task_file.relative_to(checkout.resolve())
         except ValueError as error:
             raise ValueError("evaluator task_file escapes checkout") from error
-        members = tuple(
-            line.strip()
-            for line in task_file.read_text().splitlines()
-            if line.strip() and not line.lstrip().startswith("#")
+        members = _limited_members(
+            tuple(
+                line.strip()
+                for line in task_file.read_text().splitlines()
+                if line.strip() and not line.lstrip().startswith("#")
+            ),
+            task_limit,
         )
     else:
         members = ()
         split_path = checkout / "evaluator" / "splits.json"
         if split_path.is_file():
             try:
-                manifest = json.loads(split_path.read_text())
-                split_tasks = manifest.get("tasks", {}).get(evaluation_split_name(evaluator, purpose), [])
-                if isinstance(split_tasks, list) and all(isinstance(name, str) for name in split_tasks):
-                    members = tuple(split_tasks)
-            except (OSError, json.JSONDecodeError, AttributeError):
+                manifest = load_manifest(split_path)
+                members = tuple(
+                    selected_task_names(
+                        manifest,
+                        evaluation_split_name(evaluator, purpose),
+                        limit=task_limit,
+                    )
+                )
+            except (OSError, json.JSONDecodeError, AttributeError, RuntimeError, ValueError):
                 members = ()
     try:
         attempts = int(evaluator.get("k", 1))
@@ -83,6 +97,10 @@ def effective_task_set_identity(
         members,
         purpose=purpose,
     )
+
+
+def _limited_members(members: tuple[str, ...], task_limit: int | None) -> tuple[str, ...]:
+    return members if task_limit is None else members[:task_limit]
 
 
 def fixed_evaluation_identity(workspace: Path) -> dict[str, str] | None:

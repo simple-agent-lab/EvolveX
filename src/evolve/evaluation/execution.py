@@ -14,7 +14,7 @@ from ..host_runtime import clean_python_env
 from ..runtime import OwnedResult, attempt_dir, next_attempt, owned_attempt_id, run_owned
 from ..uv_runtime import CandidateRuntimeResult, prepare_candidate_runtime
 from .evidence import trial_results, validate_task_vector
-from .identity import effective_task_set_identity, evaluation_split_name
+from .identity import TaskSetIdentity, effective_task_set_identity, evaluation_split_name
 from .results import EvaluationRecord, Outcome, classify_evaluation
 
 
@@ -44,7 +44,12 @@ def evaluate(
         try:
             evaluator = load_config(checkout / "evolve.yaml")["evaluator"]
             timeout_zero = evaluator_boolean(evaluator, "benchmark_timeout_is_zero")
-            task_set = effective_task_set_identity(checkout, evaluator, purpose=purpose)
+            task_set = effective_task_set_identity(
+                checkout,
+                evaluator,
+                purpose=purpose,
+                task_limit=task_limit,
+            )
             runtime_fingerprint = hashlib.sha256((checkout / "evaluator" / "runtime.pin").read_bytes()).hexdigest()
             expected = _expected_trials(
                 evaluator,
@@ -110,6 +115,9 @@ def evaluate(
                             runtime,
                         )
                         setup_outcome, setup_reason = _setup_evidence(run_dir)
+                        if not _runtime_selection_matches(run_dir, task_set):
+                            setup_outcome = Outcome.INFRASTRUCTURE_FAILED
+                            setup_reason = "runtime task selection differs from the planned effective task set"
                         try:
                             vector = _read_task_vector(run_dir)
                             trials = trial_results(vector) if vector is not None else ()
@@ -174,6 +182,22 @@ def evaluate(
 def _read_task_vector(run_dir: Path) -> dict | None:
     path = run_dir / "task_vector.json"
     return validate_task_vector(json.loads(path.read_text())) if path.exists() else None
+
+
+def _runtime_selection_matches(run_dir: Path, task_set: TaskSetIdentity) -> bool:
+    if not task_set.members:
+        return True
+    path = run_dir / "task-split.json"
+    if not path.is_file():
+        return False
+    try:
+        payload = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return False
+    tasks = payload.get("tasks") if isinstance(payload, dict) else None
+    if not isinstance(tasks, list) or any(not isinstance(task, str) or not task for task in tasks):
+        return False
+    return tuple(sorted(set(tasks))) == task_set.members
 
 
 def _write_attempt_summary(run_dir: Path, record: EvaluationRecord) -> None:

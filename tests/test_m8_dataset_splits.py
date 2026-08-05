@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from conftest import FIXTURE_SEEDS, run_evolve
 
+from evolve import splits as splits_module
 from evolve.frozen.interfaces import OperatorContext
 from evolve.splits import build_manifest, select_dataset_tasks, selected_task_names, split_selection_digest
 from evolve.workspace import InitOptions, init_workspace
@@ -50,6 +51,74 @@ def test_split_manifest_is_deterministic_disjoint_and_drift_checked(tmp_path: Pa
     (extra / "task.toml").write_text('version = "1.0"\n')
     with pytest.raises(RuntimeError, match="changed after init"):
         select_dataset_tasks(manifest, dataset.as_posix(), "train")
+
+
+def test_runtime_selection_applies_limit_before_recording_identity(tmp_path: Path) -> None:
+    dataset = _dataset(tmp_path / "tasks", count=6)
+    manifest = build_manifest(
+        dataset.as_posix(),
+        {"train": 1.0, "gate": 0.0, "sealed": 0.0, "seed": 7},
+        base_dir=tmp_path,
+        sampling="static",
+        gate_limit=0,
+    )
+    manifest_path = tmp_path / "splits.json"
+    manifest_path.write_text(json.dumps(manifest))
+    run_dir = tmp_path / "run"
+
+    splits_module.write_runtime_selection(manifest_path, dataset.as_posix(), "train", run_dir, limit=1)
+
+    recorded = json.loads((run_dir / "task-split.json").read_text())
+    assert recorded["tasks"] == manifest["tasks"]["train"][:1]
+    assert (run_dir / "task-names.txt").read_text().splitlines() == [
+        splits_module.harbor_task_pattern(recorded["tasks"][0])
+    ]
+    assert (run_dir / "task_set_hash").read_text().strip() == split_selection_digest("train", recorded["tasks"])
+
+
+def test_runtime_task_file_selection_limits_active_declared_names(tmp_path: Path) -> None:
+    task_file = tmp_path / "tasks.txt"
+    task_file.write_text("# frozen selection\n\nthird\nfirst\nsecond\n")
+    run_dir = tmp_path / "run"
+
+    splits_module.write_runtime_task_file_selection(task_file, run_dir, limit=1)
+
+    assert json.loads((run_dir / "task-split.json").read_text()) == {
+        "split": "task_file",
+        "tasks": ["third"],
+    }
+    assert (run_dir / "task-names.txt").read_text() == "third\n"
+
+
+def test_split_cli_accepts_explicit_task_limit(tmp_path: Path) -> None:
+    dataset = _dataset(tmp_path / "tasks", count=3)
+    manifest = build_manifest(
+        dataset.as_posix(),
+        {"train": 1.0, "gate": 0.0, "sealed": 0.0, "seed": 0},
+        base_dir=tmp_path,
+        sampling="static",
+        gate_limit=0,
+    )
+    manifest_path = tmp_path / "splits.json"
+    manifest_path.write_text(json.dumps(manifest))
+    run_dir = tmp_path / "run"
+
+    assert (
+        splits_module.main(
+            ["select", str(manifest_path), str(dataset), "train", str(run_dir), "--limit", "1"]
+        )
+        == 0
+    )
+    assert len(json.loads((run_dir / "task-split.json").read_text())["tasks"]) == 1
+
+
+def test_split_cli_limits_explicit_task_file(tmp_path: Path) -> None:
+    task_file = tmp_path / "tasks.txt"
+    task_file.write_text("one\ntwo\n")
+    run_dir = tmp_path / "run"
+
+    assert splits_module.main(["limit-file", str(task_file), str(run_dir), "--limit", "1"]) == 0
+    assert json.loads((run_dir / "task-split.json").read_text())["tasks"] == ["one"]
 
 
 def test_init_dataset_option_freezes_local_harbor_tasks(tmp_path: Path) -> None:

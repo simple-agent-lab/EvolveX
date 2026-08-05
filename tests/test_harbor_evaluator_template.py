@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 from evolve.config import scaffold_root
+from evolve.splits import build_manifest
 from evolve.workspace import _eval_env, _eval_sh
 
 
@@ -307,11 +308,16 @@ def test_harbor_stage_limit_and_anchor_task_file_override(tmp_path: Path) -> Non
     )
     (evaluator / "tasks" / "train.txt").write_text("train-task\n")
     (evaluator / "tasks" / "sealed.txt").write_text("sealed-a\nsealed-b\n")
+    (evaluator / "splits.json").write_text('{"resolved":false}\n')
     _write_evaluator_helpers(evaluator)
+    evolve_dir = tmp_path / ".evolve"
+    evolve_dir.mkdir()
+    (evolve_dir / "launch_splits.py").write_text((scaffold_root() / "workspace" / "launch_splits.py").read_text())
 
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     _write_fake_uv(fake_bin)
+    _write_executable(fake_bin / "python", f'#!/bin/sh\nexec "{sys.executable}" "$@"\n')
     _write_executable(
         fake_bin / "harbor",
         "#!/bin/sh\n"
@@ -350,6 +356,88 @@ def test_harbor_stage_limit_and_anchor_task_file_override(tmp_path: Path) -> Non
     assert "train-task" not in args
     assert args[args.index("--n-tasks") + 1] == "2"
     assert (tmp_path / "run" / "metrics.json").read_text().count('"expected_trials": 2') == 1
+
+
+def test_resolved_split_task_limit_is_authoritative_for_zero_reward(tmp_path: Path) -> None:
+    dataset = tmp_path / "dataset"
+    dataset.mkdir()
+    for name in ("task-a", "task-b", "task-c"):
+        task = dataset / name
+        task.mkdir()
+        (task / "task.toml").write_text(f'version = "1.0"\nname = "{name}"\n')
+    manifest = build_manifest(
+        str(dataset),
+        {"train": 1.0, "gate": 0.0, "sealed": 0.0, "seed": 0},
+        base_dir=tmp_path,
+        sampling="static",
+        gate_limit=0,
+    )
+    expected_task = manifest["tasks"]["train"][0]
+    evaluator = tmp_path / "evaluator"
+    evaluator.mkdir()
+    _write_executable(evaluator / "eval.sh", _eval_sh("harbor", str(dataset)))
+    (evaluator / "eval.env").write_text(
+        _eval_env(
+            "experiment",
+            str(dataset),
+            n_concurrent=1,
+            tasks_per_round=3,
+            trials=1,
+            partial_floor=0.8,
+            agent="target.agent:HarborAgent",
+        )
+    )
+    (evaluator / "splits.json").write_text(json.dumps(manifest))
+    _write_evaluator_helpers(evaluator)
+    evolve_dir = tmp_path / ".evolve"
+    evolve_dir.mkdir()
+    (evolve_dir / "launch_splits.py").write_text((scaffold_root() / "workspace" / "launch_splits.py").read_text())
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    _write_fake_uv(fake_bin)
+    _write_executable(fake_bin / "python", f'#!/bin/sh\nexec "{sys.executable}" "$@"\n')
+    _write_executable(
+        fake_bin / "harbor",
+        "#!/bin/sh\n"
+        'printf \'%s\\n\' "$@" > "$HARBOR_ARGS_CAPTURE"\n'
+        "jobs_dir=\n"
+        'while [ "$#" -gt 0 ]; do\n'
+        '  if [ "$1" = "--jobs-dir" ]; then shift; jobs_dir=$1; fi\n'
+        "  shift || true\n"
+        "done\n"
+        'mkdir -p "$jobs_dir/trial"\n'
+        f"printf '%s\\n' '{json.dumps({'task_name': expected_task, 'trial_name': 'trial', 'verifier_result': {'rewards': {'reward': 0.0}}})}' > \"$jobs_dir/trial/result.json\"\n",
+    )
+
+    run_dir = tmp_path / "run"
+    args_capture = tmp_path / "args"
+    env = {
+        **os.environ,
+        "HOME": str(tmp_path / "home"),
+        "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
+        "HARBOR_ARGS_CAPTURE": str(args_capture),
+        "EVOLVE_RUN_DIR": str(run_dir),
+        "EVOLVE_WORKSPACE": str(tmp_path),
+        "EVOLVE_ATTEMPT_ID": "limited-zero-reward",
+        "EVOLVE_EVAL_SPLIT": "train",
+        "EVOLVE_FRAMEWORK_PYTHON": sys.executable,
+        "EVOLVE_TASK_LIMIT": "1",
+    }
+
+    result = subprocess.run([str(evaluator / "eval.sh")], cwd=tmp_path, env=env, text=True, capture_output=True)
+
+    assert result.returncode == 0, result.stderr
+    assert (run_dir / "status").read_text().strip() == "complete"
+    assert json.loads((run_dir / "task-split.json").read_text())["tasks"] == [expected_task]
+    metrics = json.loads((run_dir / "metrics.json").read_text())["dimensions"]
+    assert metrics == {
+        "completed_trials": 1,
+        "expected_trials": 1,
+        "harbor_rc": 0,
+        "missing_trials": 0,
+        "pass_rate": 0.0,
+    }
 
 
 def test_harbor_smoke_is_install_only_and_exposes_raw_diagnostics(tmp_path: Path) -> None:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import math
@@ -122,8 +123,37 @@ def write_runtime_selection(
     run_dir: Path,
     *,
     round_number: int | None = None,
+    limit: int | None = None,
 ) -> None:
-    names, digest = select_dataset_tasks(manifest_path, dataset, split_name, round_number=round_number)
+    names, digest = select_dataset_tasks(
+        manifest_path,
+        dataset,
+        split_name,
+        round_number=round_number,
+        limit=limit,
+    )
+    _write_runtime_task_selection(run_dir, split_name, names, digest)
+
+
+def write_runtime_task_file_selection(task_file: Path, run_dir: Path, *, limit: int) -> None:
+    if limit < 1:
+        raise ValueError("task limit must be at least 1")
+    names = [
+        line.strip()
+        for line in task_file.read_text().splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ][:limit]
+    if not names:
+        raise RuntimeError("evaluator task file contains no tasks")
+    _write_runtime_task_selection(
+        run_dir,
+        "task_file",
+        names,
+        split_selection_digest("task_file", names),
+    )
+
+
+def _write_runtime_task_selection(run_dir: Path, split_name: str, names: list[str], digest: str) -> None:
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "task-names.txt").write_text("".join(f"{harbor_task_pattern(name)}\n" for name in names))
     (run_dir / "task_set_hash").write_text(f"{digest}\n")
@@ -192,11 +222,31 @@ def _integer(value: Any, label: str, *, minimum: int) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = argv or sys.argv[1:]
-    if len(args) not in {5, 6} or args[0] != "select":
-        raise SystemExit("usage: python -m evolve.splits select MANIFEST DATASET SPLIT RUN_DIR [ROUND]")
-    round_number = int(args[5]) if len(args) == 6 else None
-    write_runtime_selection(Path(args[1]), args[2], args[3], Path(args[4]), round_number=round_number)
+    parser = argparse.ArgumentParser(prog="python -m evolve.splits")
+    commands = parser.add_subparsers(dest="command", required=True)
+    select = commands.add_parser("select")
+    select.add_argument("manifest", type=Path)
+    select.add_argument("dataset")
+    select.add_argument("split")
+    select.add_argument("run_dir", type=Path)
+    select.add_argument("round_number", nargs="?", type=int)
+    select.add_argument("--limit", type=int)
+    task_file = commands.add_parser("limit-file")
+    task_file.add_argument("task_file", type=Path)
+    task_file.add_argument("run_dir", type=Path)
+    task_file.add_argument("--limit", type=int, required=True)
+    args = parser.parse_args(argv or sys.argv[1:])
+    if args.command == "select":
+        write_runtime_selection(
+            args.manifest,
+            args.dataset,
+            args.split,
+            args.run_dir,
+            round_number=args.round_number,
+            limit=args.limit,
+        )
+    else:
+        write_runtime_task_file_selection(args.task_file, args.run_dir, limit=args.limit)
     return 0
 
 
