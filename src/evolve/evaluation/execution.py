@@ -36,6 +36,16 @@ from .results import EvaluationRecord, Outcome, classify_evaluation, write_attem
 from .run_plan import EvaluationRunPlan
 
 
+def _read_task_vector(run_dir: Path) -> dict[str, Any] | None:
+    """Compatibility boundary for direct evaluator-evidence validation."""
+    return read_task_vector(run_dir)
+
+
+def _runtime_receipt_reference(workspace: Path, receipt: Path | None) -> dict[str, str] | None:
+    """Compatibility name for the compact hashed receipt reference."""
+    return _receipt_reference(workspace, receipt)
+
+
 class EvaluationInterrupted(BaseException):
     """Carries a cancelled attempt to the driver for append-before-reraise."""
 

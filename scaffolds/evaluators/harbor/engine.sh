@@ -279,15 +279,7 @@ if [ -f evaluator/verifier.env ]; then
 fi
 if [ -f "$EVOLVE_RUN_DIR/runtime-agent.env" ]; then
   while IFS= read -r agent_entry || [ -n "$agent_entry" ]; do
-    if [ -n "$agent_entry" ]; then
-      set -- "$@" --ae "$agent_entry"
-      case "$agent_entry" in
-        http_proxy=*|HTTP_PROXY=*) agent_proxy_http=${agent_entry#*=} ;;
-        https_proxy=*|HTTPS_PROXY=*) agent_proxy_https=${agent_entry#*=} ;;
-        no_proxy=*|NO_PROXY=*) agent_proxy_no=${agent_entry#*=} ;;
-        OPENAI_BASE_URL=*|OPENAI_API_BASE=*) agent_model_base=${agent_entry#*=} ;;
-      esac
-    fi
+    [ -n "$agent_entry" ] && set -- "$@" --ae "$agent_entry"
   done < "$EVOLVE_RUN_DIR/runtime-agent.env"
 fi
 if [ -f "$EVOLVE_RUN_DIR/runtime-verifier.env" ]; then

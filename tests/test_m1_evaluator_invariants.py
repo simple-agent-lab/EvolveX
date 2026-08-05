@@ -41,6 +41,7 @@ def configure_outcome_evaluator(
         "#!/bin/sh\n"
         "set -eu\n"
         'mkdir -p "$EVOLVE_RUN_DIR"\n'
+        'task=$("$EVOLVE_FRAMEWORK_PYTHON" -c \'import json,sys; print(json.load(open(sys.argv[1]))["tasks"][0])\' "$EVOLVE_RUN_PLAN")\n'
         'outcome="${TEST_EVAL_OUTCOME:-benchmark_complete}"\n'
         'reward="1.0"; owner="benchmark"\n'
         'case "$outcome" in\n'
@@ -49,8 +50,8 @@ def configure_outcome_evaluator(
         '  timeout) reward="0.0"; owner="benchmark_agent" ;;\n'
         '  cancelled) reward="null"; owner="evaluator" ;;\n'
         "esac\n"
-        'printf \'{"schema_version":1,"tasks":{"case-a":{"trials":[{"trial":0,"status":"%s","reward":%s,"owner":"%s"}]}}}\\n\' '
-        '"$outcome" "$reward" "$owner" > "$EVOLVE_RUN_DIR/task_vector.json"\n'
+        'printf \'{"schema_version":1,"tasks":{"%s":{"trials":[{"trial":0,"status":"%s","reward":%s,"owner":"%s"}]}}}\\n\' '
+        '"$task" "$outcome" "$reward" "$owner" > "$EVOLVE_RUN_DIR/task_vector.json"\n'
         f"exit {exit_code}\n",
     )
     config = workspace / "evolve.yaml"
@@ -60,7 +61,11 @@ def configure_outcome_evaluator(
             "  tasks_per_round: 1\n", f"  tasks_per_round: 1\n  benchmark_timeout_is_zero: {timeout_rule}\n"
         )
     config.write_text(text)
-    git(workspace, "add", "evaluator/eval.sh", "evolve.yaml")
+    splits_path = workspace / "evaluator/splits.json"
+    splits = json.loads(splits_path.read_text())
+    splits["gate_tasks_per_round"] = 1
+    splits_path.write_text(json.dumps(splits) + "\n")
+    git(workspace, "add", "evaluator/eval.sh", "evaluator/splits.json", "evolve.yaml")
     git(workspace, "commit", "-m", "configure canonical outcome evaluator")
     git(workspace, "tag", "-f", "gen/0")
 

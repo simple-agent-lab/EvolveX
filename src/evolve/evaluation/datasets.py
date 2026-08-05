@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import os
 import re
 import stat
 from collections.abc import Iterable, Mapping
@@ -96,7 +97,34 @@ def dataset_content_identity(
         if not members:
             raise ValueError(f"evaluator.dataset contains no Harbor task.toml directories: {resolved}")
         return local_dataset_identity(resolved, members)
+    if client is None and os.environ.get("EVAL_STUB") == "1":
+        return _stub_registry_dataset_identity(dataset)
     return registry_dataset_identity(dataset, client=client)
+
+
+def _stub_registry_dataset_identity(dataset: str) -> DatasetContentIdentity:
+    """Create deterministic offline task identities for the explicit stub evaluator."""
+    name, separator, requested_version = dataset.partition("@")
+    version = requested_version if separator else "stub-v1"
+    tasks = [
+        {
+            "kind": "package",
+            "name": f"task-{index}",
+            "org": "evolve-stub",
+            "package": f"task-{index}",
+            "ref": f"sha256:{index:064x}",
+        }
+        for index in range(100)
+    ]
+    task_digests = tuple((str(task["name"]), _canonical_digest(task)) for task in tasks)
+    payload = {"source": "registry", "name": name, "version": version, "tasks": tasks}
+    return DatasetContentIdentity(
+        "registry",
+        _canonical_digest(payload),
+        tuple(task for task, _digest in task_digests),
+        f"{name}@{version}",
+        task_digests,
+    )
 
 
 def selected_dataset_identity(manifest: Mapping[str, object], members: Iterable[str]) -> DatasetContentIdentity:

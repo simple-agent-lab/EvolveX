@@ -32,7 +32,14 @@ def _attempts() -> int:
     return max(1, int(_eval_env("EVOLVE_HARBOR_ATTEMPTS") or 1))
 
 
-def _task_names(kind: str | None, attempts: int) -> list[str]:
+def _task_names(run_dir: Path, kind: str | None, attempts: int) -> list[str]:
+    try:
+        selection = json.loads((run_dir / "task-split.json").read_text())
+    except (OSError, json.JSONDecodeError):
+        selection = {}
+    selected = selection.get("tasks")
+    if isinstance(selected, list) and selected and all(isinstance(name, str) and name for name in selected):
+        return list(selected)
     plan = _run_plan()
     planned = plan.get("tasks")
     if isinstance(planned, list) and planned and all(isinstance(name, str) and name for name in planned):
@@ -80,7 +87,7 @@ def main() -> int:
             missing.update(stripped[len("# MISSING ") :].split())
 
     attempts = _attempts()
-    names = _task_names(os.environ.get("EVOLVE_EVAL_KIND"), attempts)
+    names = _task_names(run_dir, os.environ.get("EVOLVE_EVAL_KIND"), attempts)
     task_results = {name: name not in failed for name in names if name not in missing}
     task_vector = {
         "schema_version": 1,

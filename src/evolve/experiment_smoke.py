@@ -96,13 +96,15 @@ def _prepare_smoke_workspace(source: Path, destination: Path, task: str, digest:
     experiment["children_per_gen"] = 1
     evaluator["task_names"] = [task]
     evaluator["tasks_per_round"] = 1
-    evaluator["k"] = 1
+    evaluator["anchor"] = {"final": False, "every_rounds": 0}
+    evaluator.pop("k", None)
+    evaluator["repetitions"] = 1
     evaluator["n_concurrent"] = 1
     config_path.write_text(yaml.safe_dump(config, sort_keys=False))
 
     split_path = destination / "evaluator" / "splits.json"
     split = json.loads(split_path.read_text())
-    split["tasks"] = {"train": [task], "gate": [task], "sealed": []}
+    split["tasks"] = {"train": [], "gate": [task], "sealed": []}
     split["task_digests"] = {task: digest}
     split["gate_tasks_per_round"] = 1
     split_path.write_text(json.dumps(split, indent=2, sort_keys=True) + "\n")

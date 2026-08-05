@@ -1,3 +1,4 @@
+import json
 import sys
 from pathlib import Path
 
@@ -33,6 +34,7 @@ def test_hyperagents_meta_agent_change_affects_later_generation_not_current_one(
     workspace, evolve_home = _init_hyperagents_smoke(tmp_path)
     monkeypatch.setenv("EVAL_STUB", "1")
     monkeypatch.setenv("EVOLVE_HOME", str(evolve_home))
+    failed_task = json.loads((workspace / "evaluator/splits.json").read_text())["tasks"]["gate"][0]
     _write_newest_select(workspace)
     (workspace / "operators" / "select.py").write_text(
         "from evolve.frozen import sdk\n"
@@ -53,7 +55,7 @@ def test_hyperagents_meta_agent_change_affects_later_generation_not_current_one(
         "        script = checkout / 'operators' / 'meta_agent.py'\n"
         "        script.write_text(script.read_text().replace('first-child', 'later-child'))\n"
         "        agent = checkout / 'target' / 'agent.py'\n"
-        "        agent.write_text(agent.read_text() + '\\n# first-child\\n# FAIL task-0\\n')\n"
+        f"        agent.write_text(agent.read_text() + '\\n# first-child\\n# FAIL {failed_task}\\n')\n"
         "        return MetaAgentResult(changed=['operators/meta_agent.py', 'target/agent.py'], notes=['self changed'], usage={'usd': 0})\n"
         "if __name__ == '__main__':\n"
         "    sdk.main(M)\n"

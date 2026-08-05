@@ -16,8 +16,14 @@ def test_experiment_smoke_runs_in_isolated_clone_and_produces_real_child(
     split = {
         "version": 2,
         "resolved": True,
-        "tasks": {"train": ["task-a"], "gate": ["task-a"], "sealed": []},
-        "task_digests": {"task-a": "sha256:task-a"},
+        "identity_status": "verified",
+        "dataset_identity": {
+            "source": "local",
+            "digest": "d" * 64,
+            "resolved_reference": "sha256:" + "d" * 64,
+        },
+        "tasks": {"train": [], "gate": ["task-a"], "sealed": []},
+        "task_digests": {"task-a": "a" * 64},
     }
     (workspace / "evaluator" / "splits.json").write_text(json.dumps(split) + "\n")
     git(workspace, "add", "evaluator/splits.json")

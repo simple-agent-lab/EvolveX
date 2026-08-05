@@ -661,6 +661,8 @@ def _agent_env(config: dict[str, Any]) -> dict[str, str]:
     configured = config.get("agent_env")
     if isinstance(configured, dict):
         values.update({str(key): str(value) for key, value in configured.items()})
+    if values.get("OPENAI_BASE_URL"):
+        values.pop("OPENAI_API_BASE", None)
     for _, lower, upper in _PROXY_ENV:
         value = values.get(lower) or values.get(upper)
         if value:

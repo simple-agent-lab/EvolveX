@@ -116,7 +116,7 @@ def test_builtin_codex_wrapper_injects_skills_and_opt_in_compaction(tmp_path: Pa
         "aevolve",
         "--seed",
         "builtin-codex",
-        env={"EVOLVE_HOME": str(tmp_path / "home")},
+        env={"EVAL_STUB": "1", "EVOLVE_HOME": str(tmp_path / "home")},
     )
     assert result.returncode == 0, result.stderr
     _install_fake_harbor(monkeypatch)
