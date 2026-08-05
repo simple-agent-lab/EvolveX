@@ -24,6 +24,30 @@ Harbor trials run from the locked workspace environment: never rely on a package
 installed globally, injected through `PYTHONPATH`, or installed ad hoc during a
 trial.
 
+## Python runtime and uv cache
+
+Treat the Python interpreter and the dependency cache as separate prerequisites.
+The mechanism reuses its current Python 3.12 interpreter for host-side workspace
+commands; do not replace `EVOLVE_FRAMEWORK_PYTHON` with an incompatible or
+short-lived path. Keep `UV_CACHE_DIR` and `EVOLVE_UV_CACHE_DIR` stable across a
+run, and do not point `UV_PYTHON_INSTALL_DIR` at a new empty directory merely to
+isolate an experiment.
+
+On a clean runner, prepare the runtime while network access is available before
+starting an offline experiment:
+
+```bash
+uv python install 3.12
+uv sync --project . --frozen --python 3.12
+```
+
+Use `UV_PYTHON_DOWNLOADS=never` when checking that an existing interpreter is
+reused. Set `UV_OFFLINE=1` only after the locked dependencies are present in the
+selected cache: an empty dependency cache cannot run offline. A missing wheel or
+Python runtime is an infrastructure/provisioning failure, not evidence about a
+candidate; preserve the stderr and runtime receipt and repair the runner before
+continuing the generation.
+
 Workspace-local `.env` values are loaded automatically for run, eval, and
 candidate smoke commands and supply live meta-agent/evaluator keys and
 endpoints. The caller repository's `.env` is used as a fallback for a separate
