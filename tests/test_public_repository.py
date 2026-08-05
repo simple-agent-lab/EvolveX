@@ -1,6 +1,9 @@
 import re
 import shlex
+import subprocess
+import sys
 import tomllib
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import yaml
@@ -9,6 +12,29 @@ from evolve import __version__
 
 ROOT = Path(__file__).resolve().parents[1]
 RELATIVE_LINK = re.compile(r"\[[^\]]+\]\((?!https?://|mailto:|#)([^)#]+)")
+SVG_NS = {"svg": "http://www.w3.org/2000/svg"}
+
+
+def test_readme_visual_assets_are_current() -> None:
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "tools" / "generate_readme_assets.py"), "--check"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_readme_visual_assets_have_accessible_svg_metadata() -> None:
+    for relative in ("docs/evolve-mark.svg", "docs/evolve-lineage.svg"):
+        root = ET.parse(ROOT / relative).getroot()
+        assert root.attrib["role"] == "img"
+        assert root.attrib["viewBox"]
+        labelled_by = root.attrib["aria-labelledby"].split()
+        assert len(labelled_by) == 2
+        assert root.find("svg:title", SVG_NS).attrib["id"] == labelled_by[0]
+        assert root.find("svg:desc", SVG_NS).attrib["id"] == labelled_by[1]
 
 
 def test_license_metadata_and_notice_are_consistent() -> None:
