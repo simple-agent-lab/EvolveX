@@ -146,6 +146,7 @@ def test_readme_uses_approved_identity_and_information_architecture() -> None:
     unsupported_benchmark_placeholder = """> **TODO:** Add reproducible benchmark results and supporting artifacts once
 > the evaluation setup and reporting protocol are finalized."""
     assert unsupported_benchmark_placeholder not in readme
+    assert "reproducible benchmark results" not in readme
     assert (
         "Benchmark results will be added only with a reproducible evaluation setup and\n"
         "supporting artifacts."
