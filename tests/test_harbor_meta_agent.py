@@ -233,10 +233,10 @@ def _enable_strict_profile(checkout: Path, endpoint: str) -> None:
             "evaluator": {
                 "engine": "harbor",
                 "agent": "target.agent:HarborAgent",
-                "runtime": {"profile": "harbor-bytedance-v1"},
+                "runtime": {"profile": "harbor-v1"},
             },
         },
-        "sha256:test-runtime",
+        "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         {"OPENAI_BASE_URL": endpoint},
     )
     assert resolved is not None

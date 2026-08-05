@@ -18,10 +18,10 @@ EXPECTED_OPERATOR_VARIANTS = {
 @pytest.mark.parametrize(
     ("recipe", "profile", "expected_surface"),
     [
-        ("aevolve", "harbor-bytedance-v1", ["target/**"]),
-        ("ahe", "harbor-bytedance-uv-v1", ["target/**"]),
-        ("gepa", "harbor-bytedance-v1", ["target/**"]),
-        ("hyperagents", "harbor-bytedance-uv-v1", ["target/**", "operators/**"]),
+        ("aevolve", "harbor-v1", ["target/**"]),
+        ("ahe", "harbor-uv-v1", ["target/**"]),
+        ("gepa", "harbor-v1", ["target/**"]),
+        ("hyperagents", "harbor-uv-v1", ["target/**", "operators/**"]),
     ],
 )
 def test_all_partner_recipes_resolve_the_same_automatic_contract_schema(

@@ -38,7 +38,7 @@ def _strict_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
             "tasks_per_round": 2,
             "n_concurrent": 3,
             "max_retries": 1,
-            "runtime": {"profile": "harbor-bytedance-v1"},
+            "runtime": {"profile": "harbor-v1"},
             "agent_env": {"STEP_LIMIT": "100"},
         }
     )
@@ -90,15 +90,15 @@ def test_contract_resolver_derives_every_field_from_trusted_workspace_inputs(
     ]
     assert contract.concurrency == 3
     profile = json.loads((workspace / "evaluator/runtime-profile.json").read_text())
-    assert contract.runtime_profile == "harbor-bytedance-v1"
+    assert contract.runtime_profile == "harbor-v1"
     assert contract.runtime_profile_digest == profile["profile_digest"]
-    assert contract.runtime_digest == "sha256:test-runtime"
+    assert contract.runtime_digest == "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     assert contract.candidate_dependency_digest is None
     assert contract.model_identity == {
         "agent": "target.agent:HarborAgent",
         "model": "openai/test-model",
-        "route": "bytedance-openai-compatible",
-        "route_digest": profile["model_route_digest"],
+        "route": "openai-compatible",
+        "route_digest": profile["endpoint_digest"],
     }
     assert contract.retry_policy == {"max_retries": 1}
     assert contract.framework_version == "0.1.0"
@@ -116,15 +116,15 @@ def test_contract_hashes_complete_resolved_runtime_profile(strict_workspace: Pat
     assert contract.runtime_profile == profile["name"]
     assert contract.runtime_profile_digest == profile["profile_digest"]
     assert contract.runtime_digest == profile["runtime_digest"]
-    assert contract.model_identity["route"] == "bytedance-openai-compatible"
-    assert contract.model_identity["route_digest"] == profile["model_route_digest"]
+    assert contract.model_identity["route"] == "openai-compatible"
+    assert contract.model_identity["route_digest"] == profile["endpoint_digest"]
 
 
 def test_contract_mode_is_legacy_without_resolved_profile(legacy_workspace: Path) -> None:
     assert evaluation_package.evaluation_contract_mode(legacy_workspace) is evaluation_package.ContractMode.LEGACY_UNVERIFIED
 
 
-@pytest.mark.parametrize("field", ["profile_digest", "model_route_digest"])
+@pytest.mark.parametrize("field", ["profile_digest", "endpoint_digest"])
 def test_contract_rejects_tampered_resolved_profile(strict_workspace: Path, field: str) -> None:
     path = strict_workspace / "evaluator/runtime-profile.json"
     payload = json.loads(path.read_text())

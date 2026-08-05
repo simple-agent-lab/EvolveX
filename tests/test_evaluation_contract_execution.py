@@ -41,7 +41,7 @@ def _strict_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
             "repetitions": 2,
             "tasks_per_round": 2,
             "n_concurrent": 2,
-            "runtime": {"profile": "harbor-bytedance-v1"},
+            "runtime": {"profile": "harbor-v1"},
         }
     )
     config["evaluator"].pop("k", None)
@@ -57,9 +57,9 @@ def failed_preflight(
 ) -> PreflightResultV1:
     result = PreflightResultV1.failed(
         mode=PreflightMode.ORDINARY,
-        profile_name="harbor-bytedance-v1",
+        profile_name="harbor-v1",
         profile_digest="a" * 64,
-        runtime_digest="sha256:test-runtime",
+        runtime_digest="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         model_route_digest="b" * 64,
         checks=(),
         category=category,

@@ -179,7 +179,7 @@ def test_strict_uv_receipt_contains_profile_identity(tmp_path: Path) -> None:
     assert result.ready
     receipt = json.loads((run_dir / "candidate-runtime.json").read_text())
     assert receipt["schema_version"] == 3
-    assert receipt["runtime_profile"] == "harbor-bytedance-uv-v1"
+    assert receipt["runtime_profile"] == "harbor-uv-v1"
     assert receipt["runtime_profile_digest"] == profile["profile_digest"]
     assert receipt["contract_id"] == "a" * 64
 
@@ -441,7 +441,7 @@ def test_eval_stub_cannot_certify_strict_candidate_runtime(tmp_path: Path) -> No
     assert result.receipt_path is not None
     receipt = json.loads(result.receipt_path.read_text())
     assert receipt["schema_version"] == 3
-    assert receipt["runtime_profile"] == "harbor-bytedance-uv-v1"
+    assert receipt["runtime_profile"] == "harbor-uv-v1"
     assert not calls.exists()
 
 

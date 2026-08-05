@@ -66,7 +66,7 @@ def test_ordinary_preflight_is_typed_atomic_and_non_mutating(
     assert result.mode is PreflightMode.ORDINARY
     assert result.receipt_path is not None
     payload = json.loads(result.receipt_path.read_text())
-    assert payload["profile_name"] == "harbor-bytedance-v1"
+    assert payload["profile_name"] == "harbor-v1"
     assert payload["status"] == "passed"
     assert "receipt_path" not in payload
     assert git(strict_workspace, "write-tree") == before_tree
@@ -352,7 +352,7 @@ def test_local_capability_timeout_is_a_failed_check(monkeypatch: pytest.MonkeyPa
         ),
     )
 
-    assert not preflight_module._image_available("sha256:runtime", runtime_environment())
+    assert not preflight_module._image_available("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", runtime_environment())
 
 
 @pytest.mark.parametrize("missing", ["OPENAI_API_KEY", "OPENAI_BASE_URL"])
@@ -414,9 +414,9 @@ def test_future_smoke_failure_categories_use_the_predefined_receipt(
     receipt = tmp_path / "preflight.json"
     result = PreflightResultV1.failed(
         mode=PreflightMode.SMOKE,
-        profile_name="harbor-bytedance-v1",
+        profile_name="harbor-v1",
         profile_digest="a" * 64,
-        runtime_digest="sha256:runtime",
+        runtime_digest="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         model_route_digest="b" * 64,
         checks=(),
         category=category,

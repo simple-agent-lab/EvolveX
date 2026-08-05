@@ -3,8 +3,6 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from .runtime_profiles import runtime_profile
-
 
 def evaluator_repetitions(evaluator: Mapping[str, Any]) -> int:
     has_repetitions = "repetitions" in evaluator
@@ -30,17 +28,11 @@ def normalize_evaluator_config(evaluator: Mapping[str, Any]) -> dict[str, Any]:
         profile_name = runtime.get("profile")
         if not isinstance(profile_name, str) or not profile_name.strip():
             raise ValueError("evaluator.runtime.profile must be a non-empty string")
-        profile = runtime_profile(profile_name.strip())
         if "candidate_runtime" in evaluator:
             raise ValueError(
                 "cannot combine evaluator.runtime.profile with evaluator.candidate_runtime"
             )
-        engine = evaluator.get("engine")
-        if engine is not None and engine != profile.engine:
-            raise ValueError(
-                f"runtime profile {profile.name} requires evaluator.engine {profile.engine}"
-            )
-        normalized["runtime"] = {"profile": profile.name}
+        normalized["runtime"] = {"profile": profile_name.strip()}
     return normalized
 
 

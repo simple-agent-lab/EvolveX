@@ -91,7 +91,7 @@ def evaluator_runtime_digest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("EVOLVE_HOME", str(tmp_path / "evolve-home"))
     if os.environ.get("EVOLVE_LIVE_BYTEDANCE_SMOKE") != "1":
         monkeypatch.setenv("HOME", str(tmp_path / "home"))
-        monkeypatch.setenv("EVOLVE_RUNTIME_DIGEST", "sha256:test-runtime")
+        monkeypatch.setenv("EVOLVE_RUNTIME_DIGEST", "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
         monkeypatch.setenv("OPENAI_API_KEY", "test-key-not-a-secret")
         monkeypatch.setenv("OPENAI_BASE_URL", "https://model.example/v1")
     monkeypatch.delenv("CODEX_AUTH_JSON_PATH", raising=False)

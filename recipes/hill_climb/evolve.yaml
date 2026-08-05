@@ -24,7 +24,7 @@ operators:
   timeout_s: 600
 evaluator:
   engine: harbor
-  runtime: {profile: harbor-bytedance-uv-v1}
+  runtime: {profile: harbor-uv-v1}
   dataset: swe-bench-lite
   agent: evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent
   split: {train: 0.5, gate: 0.4, sealed: 0.1, seed: 0}

@@ -159,7 +159,7 @@ def test_init_dataset_option_freezes_local_harbor_tasks(tmp_path: Path) -> None:
 def test_init_full_task_scope_freezes_every_task_without_partition(tmp_path: Path, monkeypatch) -> None:
     dataset = _dataset(tmp_path / "tasks", count=4)
     workspace = tmp_path / "workspace"
-    monkeypatch.setenv("EVOLVE_RUNTIME_DIGEST", "sha256:test-runtime")
+    monkeypatch.setenv("EVOLVE_RUNTIME_DIGEST", "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
     monkeypatch.setattr(
         "evolve.workspace.default_config",
         lambda _recipe, name: {

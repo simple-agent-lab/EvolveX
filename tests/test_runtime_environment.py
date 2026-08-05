@@ -23,10 +23,10 @@ def resolved_profile() -> ResolvedRuntimeProfileV1:
             "evaluator": {
                 "engine": "harbor",
                 "agent": "target.agent:HarborAgent",
-                "runtime": {"profile": "harbor-bytedance-v1"},
+                "runtime": {"profile": "harbor-v1"},
             },
         },
-        "sha256:runtime",
+        "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         {"OPENAI_BASE_URL": "https://model.example/v1"},
     )
     assert result is not None

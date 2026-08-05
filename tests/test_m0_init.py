@@ -21,11 +21,11 @@ MINISWE_REVISION = "388da74aad620a384ab47669b17c52133e30e7c3"
 @pytest.mark.parametrize(
     ("recipe", "profile"),
     [
-        ("aevolve", "harbor-bytedance-v1"),
-        ("ahe", "harbor-bytedance-uv-v1"),
-        ("gepa", "harbor-bytedance-v1"),
-        ("hill_climb", "harbor-bytedance-uv-v1"),
-        ("hyperagents", "harbor-bytedance-uv-v1"),
+        ("aevolve", "harbor-v1"),
+        ("ahe", "harbor-uv-v1"),
+        ("gepa", "harbor-v1"),
+        ("hill_climb", "harbor-uv-v1"),
+        ("hyperagents", "harbor-uv-v1"),
     ],
 )
 def test_init_generates_canonical_resolved_runtime_profile(
@@ -35,7 +35,7 @@ def test_init_generates_canonical_resolved_runtime_profile(
 
     payload = json.loads((workspace / "evaluator/runtime-profile.json").read_text())
     assert payload["name"] == profile
-    assert payload["runtime_digest"] == "sha256:test-runtime"
+    assert payload["runtime_digest"] == "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     assert payload["profile_digest"]
     assert "model.example" not in json.dumps(payload)
     assert git(workspace, "show", "gen/0:evaluator/runtime-profile.json")
@@ -44,7 +44,7 @@ def test_init_generates_canonical_resolved_runtime_profile(
 def test_init_keeps_custom_recipe_without_runtime_profile_in_legacy_mode(tmp_path: Path) -> None:
     workspace = init_fixture_workspace(tmp_path / "legacy-workspace")
 
-    assert (workspace / "evaluator/runtime.pin").read_text() == "sha256:test-runtime\n"
+    assert (workspace / "evaluator/runtime.pin").read_text() == "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"
     assert not (workspace / "evaluator/runtime-profile.json").exists()
     assert git(workspace, "ls-tree", "gen/0", "evaluator/runtime-profile.json") == ""
 

@@ -13,10 +13,10 @@ from evolve.preflight import PreflightStatus, run_preflight
 @pytest.mark.parametrize(
     ("recipe", "profile"),
     [
-        ("aevolve", "harbor-bytedance-v1"),
-        ("ahe", "harbor-bytedance-uv-v1"),
-        ("gepa", "harbor-bytedance-v1"),
-        ("hyperagents", "harbor-bytedance-uv-v1"),
+        ("aevolve", "harbor-v1"),
+        ("ahe", "harbor-uv-v1"),
+        ("gepa", "harbor-v1"),
+        ("hyperagents", "harbor-uv-v1"),
     ],
 )
 def test_partner_recipe_runtime_profile_conformance(

@@ -1,0 +1,10 @@
+schema_version: 1
+name: harbor-v1
+engine: harbor
+required_tools: [docker, harbor]
+candidate_runtime: null
+dependency_policy: agent-owned
+cache_policy: none
+network_policy: model-endpoint
+preflight_capabilities: [configuration, evaluation-contract, runtime-image]
+smoke_capabilities: [one-model-request]

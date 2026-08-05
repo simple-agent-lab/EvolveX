@@ -186,7 +186,7 @@ def test_supported_recipes_select_runtime_profiles_and_task_retry() -> None:
     for name in SUPPORTED_RECIPES:
         evaluator = _parsed_config(name)["evaluator"]
         assert isinstance(evaluator, dict)
-        expected = "harbor-bytedance-uv-v1" if name in UV_SOURCE_RECIPES else "harbor-bytedance-v1"
+        expected = "harbor-uv-v1" if name in UV_SOURCE_RECIPES else "harbor-v1"
         assert evaluator["runtime"] == {"profile": expected}
         assert "candidate_runtime" not in evaluator
         assert evaluator["max_retries"] == 1
