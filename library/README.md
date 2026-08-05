@@ -64,6 +64,17 @@ Optional keys are `agent`, `model`, `include_task_name`, `jobs_dir`,
 defaults to `evaluator/eval.env`; `EVOLVE_HARBOR_MODEL` and
 `EVOLVE_ROLLOUT_JOBS_DIR` are additional environment overrides.
 
+`EVOLVE_HARBOR_MODEL` must be a provider-qualified Harbor model identifier,
+such as `openai/gpt-5.4-2026-03-05`. For OpenAI endpoints,
+`OPENAI_MODEL` accepts a bare model name and the evaluator constructs the
+`openai/<name>` identifier explicitly. Evolve does not guess providers for
+bare `EVOLVE_HARBOR_MODEL` values.
+
+For focused evaluator runs, `EVOLVE_TASK_LIMIT` deterministically limits the
+effective task selection before Harbor starts. The limited names drive the
+runtime task file, expected-trial count, scoring coverage, and recorded
+task-set identity; users do not need to coordinate those values separately.
+
 The rollout path is intentionally not inherited from `EVOLVE_HARBOR_TASKS`:
 verifier output is meta-agent feedback and may reveal tests. Set `path` or
 `EVOLVE_HARBOR_ROLLOUT_TASKS` to a train-only task set, never the gate or sealed

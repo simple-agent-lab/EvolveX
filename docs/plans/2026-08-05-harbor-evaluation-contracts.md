@@ -474,4 +474,4 @@ git status --short --branch
 git log --oneline --decorate main..HEAD
 ```
 
-Expected: a clean `codex/miniswe-adapter-contracts` worktree with the design commit and three implementation commits.
+Expected: a clean `codex/miniswe-adapter-contracts` worktree with the design and implementation commits.
