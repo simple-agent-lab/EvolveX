@@ -22,6 +22,10 @@ export function generationsThrough(generations, selectedId) {
   return generations.filter((item) => compareGenerationIds(item.genid, selectedId) <= 0);
 }
 
+export function artifactHref(id) {
+  return `/artifacts/${encodeURIComponent(id)}`;
+}
+
 export function artifactPresentation(metadata, text) {
   const kind = String(metadata.kind || '').toLowerCase();
   if (kind === 'diff' || kind === 'patch') return {mode: 'diff', language: 'diff', text};

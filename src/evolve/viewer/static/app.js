@@ -1,6 +1,11 @@
-import { generationsThrough, scoreTrend } from './viewer-ui.js';
+import {
+  artifactHref,
+  artifactPresentation,
+  generationsThrough,
+  scoreTrend,
+} from './viewer-ui.js';
 
-const state = { snapshot: null, timer: null, refreshing: false };
+const state = { snapshot: null, timer: null, refreshing: false, artifactCache: new Map() };
 const content = document.querySelector('#viewer-content');
 const experimentName = document.querySelector('#experiment-name');
 const healthPill = document.querySelector('#health-pill');
@@ -61,7 +66,10 @@ function activateNavigation(name) {
 
 async function renderRoute(pathname, params) {
   if (!state.snapshot) return;
-  if (pathname === '/trials') {
+  if (pathname.startsWith('/artifacts/')) {
+    activateNavigation(null);
+    await renderArtifact(decodeURIComponent(pathname.slice('/artifacts/'.length)));
+  } else if (pathname === '/trials') {
     activateNavigation('trials');
     await renderTrials(params);
   } else if (pathname === '/generations') {
@@ -129,7 +137,7 @@ function changeCard(detail) {
     <div class="card-header"><div><h3>Latest modification</h3><p>Generation ${escapeHtml(detail.summary.genid)} from parent ${escapeHtml(detail.summary.parent || '—')}</p></div><div class="diff-stat"><span class="plus">+${change.insertions}</span><span class="minus">−${change.deletions}</span></div></div>
     <p class="change-rationale">${escapeHtml(change.rationale || 'No rationale was recorded.')}</p>
     <ul class="file-list">${change.changed_paths.slice(0, 8).map((path) => `<li><span>${escapeHtml(path)}</span></li>`).join('')}</ul>
-    ${change.patch_artifact_id ? `<p><a class="button" target="_blank" href="/api/evolve/artifacts/${encodeURIComponent(change.patch_artifact_id)}">Preview patch</a></p>` : ''}
+    ${change.patch_artifact_id ? `<p><a class="button" data-evolve-link href="${artifactHref(change.patch_artifact_id)}">View formatted diff</a></p>` : ''}
   </section>`;
 }
 
@@ -175,8 +183,87 @@ async function renderGeneration(genid) {
 
 function artifactCard(artifacts) {
   return `<section class="card"><div class="card-header"><div><h3>Artifacts</h3><p>Registered stage and evaluation evidence</p></div><span class="muted">${artifacts.length} files</span></div>
-    ${artifacts.length ? `<ul class="artifact-list">${artifacts.map((artifact) => `<li><a ${artifact.previewable ? `href="/api/evolve/artifacts/${encodeURIComponent(artifact.id)}" target="_blank"` : ''}><span>${escapeHtml(artifact.relative_path)}</span><span class="subtle">${formatBytes(artifact.size)}</span></a></li>`).join('')}</ul>` : '<div class="empty">No registered artifacts for this generation.</div>'}
+    ${artifacts.length ? `<ul class="artifact-list">${artifacts.map((artifact) => `<li><a ${artifact.previewable ? `href="${artifactHref(artifact.id)}" data-evolve-link` : ''}><span>${escapeHtml(artifact.relative_path)}</span><span class="subtle">${formatBytes(artifact.size)}</span></a></li>`).join('')}</ul>` : '<div class="empty">No registered artifacts for this generation.</div>'}
   </section>`;
+}
+
+async function loadArtifact(artifactId) {
+  const cached = state.artifactCache.get(artifactId);
+  if (cached) return cached;
+  const metadata = await getJson(`/api/evolve/artifacts/${encodeURIComponent(artifactId)}/metadata`);
+  const response = await fetch(metadata.content_url, {cache: 'no-store'});
+  if (!response.ok) throw new Error(`${metadata.content_url} returned ${response.status}`);
+  const loaded = {metadata, text: await response.text()};
+  state.artifactCache.set(artifactId, loaded);
+  return loaded;
+}
+
+async function renderArtifact(artifactId) {
+  content.innerHTML = '<section class="loading-card" aria-busy="true"><span class="spinner" aria-hidden="true"></span><div><strong>Loading artifact</strong><p>Reading the bounded preview.</p></div></section>';
+  let loaded;
+  try {
+    loaded = await loadArtifact(artifactId);
+  } catch (error) {
+    content.innerHTML = `<div class="error-card"><strong>Could not read this artifact.</strong><p>${escapeHtml(error.message)}</p></div>`;
+    return;
+  }
+  const {metadata, text} = loaded;
+  const generationMatch = metadata.relative_path.match(/^runs\/gen-([^/]+)\//);
+  const backHref = generationMatch ? `/generations/${encodeURIComponent(generationMatch[1])}` : '/';
+  content.innerHTML = `
+    <div class="page-heading artifact-heading">
+      <div><p class="eyebrow">Artifact preview</p><h2>${escapeHtml(metadata.label)}</h2><p class="artifact-path">${escapeHtml(metadata.relative_path)}</p></div>
+      <div class="page-actions"><a class="button" data-evolve-link href="${backHref}">Back</a><a class="button" target="_blank" href="${escapeHtml(metadata.content_url)}">Raw</a><button class="button" id="artifact-wrap" type="button" aria-pressed="false">Wrap lines</button></div>
+    </div>
+    ${metadata.truncated ? '<div class="artifact-notice">Preview limited to the first 1 MiB of this artifact.</div>' : ''}
+    <section class="card artifact-card"><div class="artifact-meta"><span>${escapeHtml(metadata.kind || 'text')}</span><span>${formatBytes(metadata.size)}</span></div><div id="artifact-preview" class="artifact-preview no-wrap"></div></section>`;
+
+  const preview = document.querySelector('#artifact-preview');
+  const wrapButton = document.querySelector('#artifact-wrap');
+  wrapButton.addEventListener('click', () => {
+    const wrapping = preview.classList.toggle('wrap');
+    preview.classList.toggle('no-wrap', !wrapping);
+    wrapButton.setAttribute('aria-pressed', String(wrapping));
+    wrapButton.textContent = wrapping ? 'Do not wrap' : 'Wrap lines';
+  });
+  renderArtifactPresentation(preview, artifactPresentation(metadata, text));
+}
+
+function renderArtifactPresentation(container, presentation) {
+  try {
+    if (presentation.mode === 'diff') {
+      if (!globalThis.Diff2Html) throw new Error('Diff renderer is unavailable');
+      container.classList.add('diff-preview');
+      container.innerHTML = globalThis.Diff2Html.html(presentation.text, {
+        drawFileList: true,
+        matching: 'none',
+        outputFormat: 'line-by-line',
+        diffMaxChanges: 5000,
+      });
+      return;
+    }
+    const pre = document.createElement('pre');
+    const code = document.createElement('code');
+    if (presentation.mode === 'highlight') {
+      if (!globalThis.hljs) throw new Error('Syntax highlighter is unavailable');
+      code.className = `language-${presentation.language}`;
+      code.innerHTML = globalThis.hljs.highlight(presentation.text, {language: presentation.language}).value;
+    } else {
+      code.textContent = presentation.text;
+    }
+    pre.append(code);
+    container.append(pre);
+  } catch (error) {
+    container.classList.remove('diff-preview');
+    const warning = document.createElement('div');
+    warning.className = 'artifact-render-warning';
+    warning.textContent = `${error.message}; showing plain text.`;
+    const pre = document.createElement('pre');
+    const code = document.createElement('code');
+    code.textContent = presentation.text;
+    pre.append(code);
+    container.replaceChildren(warning, pre);
+  }
 }
 
 async function renderTrials(params) {

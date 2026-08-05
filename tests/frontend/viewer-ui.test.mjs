@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  artifactHref,
   artifactPresentation,
   compareGenerationIds,
   generationsThrough,
@@ -46,4 +47,8 @@ test('malformed JSON falls back to plain text mode', () => {
     artifactPresentation({kind: 'json', label: 'broken.json'}, '{oops'),
     {mode: 'plain', language: 'plaintext', text: '{oops'},
   );
+});
+
+test('artifact links stay inside the evolve preview', () => {
+  assert.equal(artifactHref('abc def'), '/artifacts/abc%20def');
 });
