@@ -473,6 +473,7 @@ def test_miniswe_wrapper_subclasses_harbor_miniswe_and_installs_candidate_source
     assert environment.uploads[1] == (host_uv, "/tmp/evolve-uv")
     assert environment.uploaded_source_modes
     assert all(mode & stat.S_IROTH for mode in environment.uploaded_source_modes.values())
+    assert all(mode & stat.S_IWOTH for mode in environment.uploaded_source_modes.values())
     assert all(
         mode & stat.S_IXOTH
         for name, mode in environment.uploaded_source_modes.items()

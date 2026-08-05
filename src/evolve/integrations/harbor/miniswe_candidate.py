@@ -62,14 +62,14 @@ class EvolveRuntimeInfrastructureError(RuntimeError):
     pass
 
 
-def _readable_source_copy(source: Path, destination: Path) -> Path:
+def _installable_source_copy(source: Path, destination: Path) -> Path:
     staged = destination / "source"
     shutil.copytree(source, staged, symlinks=True)
     for path in (staged, *staged.rglob("*")):
         if path.is_symlink():
             continue
         mode = path.stat().st_mode
-        path.chmod(mode | 0o444 | (0o111 if path.is_dir() or mode & 0o111 else 0))
+        path.chmod(mode | 0o666 | (0o111 if path.is_dir() or mode & 0o111 else 0))
     return staged
 
 
@@ -343,7 +343,7 @@ class CandidateMiniSweAgent(MiniSweAgent):
         if not ((source_dir / "src" / "minisweagent").is_dir() or (source_dir / "minisweagent").is_dir()):
             raise EvolveCandidateInvalidError("EVOLVE_CANDIDATE_INVALID: source_missing")
         with tempfile.TemporaryDirectory(prefix="evolve-miniswe-source-") as temporary:
-            staged_source = _readable_source_copy(source_dir, Path(temporary))
+            staged_source = _installable_source_copy(source_dir, Path(temporary))
             await environment.upload_dir(staged_source, SOURCE_DIR)
         host_uv = self._host_uv_binary()
         if host_uv is not None:
