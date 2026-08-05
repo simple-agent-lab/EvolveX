@@ -93,11 +93,9 @@ def _load_task_trials(jobs_dir: Path) -> list[dict[str, Any]]:
         if not isinstance(task_name, str) or not isinstance(trial_name, str):
             continue
         trial_dir = result_path.parent
-        verifier_configuration_failure = _verifier_configuration_failure(trial_dir)
-        verifier_dependency_failure = (
+        verifier_failure = (
             None if (_reward(result) or 0.0) > 0.0 else _verifier_dependency_failure(trial_dir)
         )
-        verifier_failure = verifier_configuration_failure or verifier_dependency_failure
         status, reward, owner, failure_category = _trial_result(
             result,
             verifier_timeout_is_final_zero=verifier_timeout_is_final_zero,
@@ -112,11 +110,7 @@ def _load_task_trials(jobs_dir: Path) -> list[dict[str, Any]]:
             exception_type = str(raw_type) if raw_type else None
             exception_message = _exception_message(raw_message)
         if exception_type is None and verifier_failure:
-            exception_type = (
-                "VerifierConfigurationError"
-                if verifier_configuration_failure
-                else "VerifierDependencyError"
-            )
+            exception_type = "VerifierDependencyError"
             exception_message = verifier_failure[1]
         trials.append(
             {
@@ -241,19 +235,6 @@ def _verifier_dependency_failure(trial_dir: Path) -> tuple[str, str] | None:
         return "verifier_bootstrap_download", "verifier uv bootstrap download failed"
     if _VERIFIER_CURL_SERVER_ERROR.search(text):
         return "verifier_bootstrap_download", "verifier dependency bootstrap download failed"
-    return None
-
-
-def _verifier_configuration_failure(trial_dir: Path) -> tuple[str, str] | None:
-    result_path = trial_dir / "verifier" / "result.json"
-    try:
-        result = json.loads(result_path.read_text())
-    except (OSError, json.JSONDecodeError):
-        return None
-    initialization = result.get("runtime_initialization") if isinstance(result, dict) else None
-    accepted = initialization.get("accepted") if isinstance(initialization, dict) else None
-    if isinstance(accepted, dict) and "seed" in accepted and accepted["seed"] is None:
-        return "verifier_runtime_unseeded", "verifier runtime accepted an unseeded rollout"
     return None
 
 

@@ -176,7 +176,7 @@ def test_positive_verifier_reward_wins_over_recovered_bootstrap_output(tmp_path:
     assert scoring_rewards == [1.0]
 
 
-def test_unseeded_tau3_runtime_is_infrastructure_even_with_positive_reward(tmp_path: Path) -> None:
+def test_unseeded_tau3_runtime_reward_remains_scoreable(tmp_path: Path) -> None:
     jobs = tmp_path / "jobs"
     trial_dir = jobs / "case-a__one"
     write_trial(trial_dir, task="case-a", trial="one", reward=1.0)
@@ -198,12 +198,12 @@ def test_unseeded_tau3_runtime_is_infrastructure_even_with_positive_reward(tmp_p
     vector, _artifacts, scoring_rewards = collect_harbor_artifacts(jobs)
 
     trial = vector["tasks"]["case-a"]["trials"][0]
-    assert trial["status"] == "infrastructure_failed"
-    assert trial["reward"] is None
-    assert trial["owner"] == "evaluator"
-    assert trial["exception_type"] == "VerifierConfigurationError"
-    assert trial["failure_category"] == "verifier_runtime_unseeded"
-    assert scoring_rewards == []
+    assert trial["status"] == "benchmark_complete"
+    assert trial["reward"] == 1.0
+    assert trial["owner"] == "benchmark"
+    assert "exception_type" not in trial
+    assert "failure_category" not in trial
+    assert scoring_rewards == [1.0]
 
 
 def test_collect_harbor_artifacts_scores_agent_timeouts_as_zero(tmp_path: Path) -> None:
