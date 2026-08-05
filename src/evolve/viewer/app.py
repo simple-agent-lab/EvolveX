@@ -67,7 +67,10 @@ def create_viewer_app(workspace: Path, *, bridge: HarborBridge | None = None) ->
         path = request.url.path
         if request.method not in {"GET", "HEAD", "OPTIONS"} or _is_action_path(path):
             return Response(status_code=405, headers={"Allow": "GET, HEAD, OPTIONS"})
-        return await call_next(request)
+        response = await call_next(request)
+        if path.startswith(("/evolve-assets/", "/generations", "/trials", "/artifacts")) or path == "/":
+            response.headers["Cache-Control"] = "no-store"
+        return response
 
     @app.get("/api/evolve/snapshot")
     def snapshot() -> Any:

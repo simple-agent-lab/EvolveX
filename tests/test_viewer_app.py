@@ -136,6 +136,15 @@ def test_frontend_routes_serve_evolve_shell(viewer_workspace: Path) -> None:
             assert 'id="evolve-viewer"' in response.text
 
 
+def test_frontend_shell_and_assets_are_not_cached_across_deployments(viewer_workspace: Path) -> None:
+    with TestClient(create_viewer_app(viewer_workspace)) as client:
+        shell = client.get("/")
+        javascript = client.get("/evolve-assets/app.js")
+
+    assert shell.headers["cache-control"] == "no-store"
+    assert javascript.headers["cache-control"] == "no-store"
+
+
 def test_frontend_has_required_navigation_and_refresh_contract() -> None:
     static = Path(__file__).parents[1] / "src/evolve/viewer/static"
     html = (static / "index.html").read_text()
