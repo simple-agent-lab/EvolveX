@@ -73,7 +73,8 @@ def _rewrite_eval_env(path: Path) -> None:
 
 
 def _prepare_smoke_workspace(source: Path, destination: Path, task: str, digest: str) -> None:
-    git(source, "clone", "--quiet", "--no-hardlinks", str(source), str(destination))
+    # The destination is inside source/runs; pack transport avoids macOS local-clone copy races.
+    git(source, "clone", "--quiet", "--no-local", str(source), str(destination))
     git(destination, "config", "user.name", "Evolve Experiment Smoke")
     git(destination, "config", "user.email", "smoke@evolve.invalid")
     for tag in git_stdout(destination, "tag", "--list").splitlines():
