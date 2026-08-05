@@ -185,10 +185,11 @@ def test_candidate_adapter_disables_codex_websockets_for_responses_endpoint(monk
     assert "model_providers.evolve_http.supports_websockets=false" in flags
 
 
-def test_miniswe_wrapper_uses_responses_reasoning_and_session_for_openai(adapter_path: Path, monkeypatch) -> None:
+def test_miniswe_wrapper_omits_session_header_when_unset(adapter_path: Path, monkeypatch) -> None:
     _, build_model, (FakeLitellmModel, FakeLitellmResponseModel) = _load_model_factory(adapter_path, monkeypatch)
     monkeypatch.setenv("MSWEA_MODEL_NAME", "openai/gpt-5.4")
     monkeypatch.setenv("MINISWE_REASONING_EFFORT", "high")
+    monkeypatch.delenv("EVOLVE_SESSION_ID", raising=False)
 
     model = build_model(
         {
@@ -211,9 +212,47 @@ def test_miniswe_wrapper_uses_responses_reasoning_and_session_for_openai(adapter
     assert kwargs["reasoning"] == {"effort": "high"}
     assert kwargs["include"] == ["reasoning.encrypted_content"]
     assert kwargs["prompt_cache_key"].startswith("evolve-")
-    assert json.loads(kwargs["extra_headers"]["extra"]) == {"session_id": kwargs["prompt_cache_key"]}
+    assert "extra_headers" not in kwargs
     assert "reasoning_effort" not in kwargs
     assert "store" not in kwargs
+
+
+def test_miniswe_wrapper_treats_blank_session_id_as_unset(adapter_path: Path, monkeypatch) -> None:
+    _, build_model, _ = _load_model_factory(adapter_path, monkeypatch)
+    monkeypatch.setenv("MSWEA_MODEL_NAME", "openai/gpt-5.4")
+    monkeypatch.setenv("EVOLVE_SESSION_ID", "   ")
+
+    model = build_model({"model": {}})
+
+    kwargs = model.kwargs["model_kwargs"]
+    assert kwargs["prompt_cache_key"].startswith("evolve-")
+    assert "extra_headers" not in kwargs
+
+
+def test_miniswe_wrapper_uses_configured_session_id_literally(adapter_path: Path, monkeypatch) -> None:
+    _, build_model, (_, FakeLitellmResponseModel) = _load_model_factory(adapter_path, monkeypatch)
+    monkeypatch.setenv("MSWEA_MODEL_NAME", "openai/gpt-5.4")
+    monkeypatch.setenv("EVOLVE_SESSION_ID", "experiment-42")
+
+    model = build_model({"model": {}})
+
+    assert type(model) is FakeLitellmResponseModel
+    kwargs = model.kwargs["model_kwargs"]
+    assert kwargs["prompt_cache_key"] == "experiment-42"
+    assert json.loads(kwargs["extra_headers"]["extra"]) == {"session_id": "experiment-42"}
+
+
+def test_candidate_source_environment_forwards_only_configured_session_id(
+    adapter_path: Path, monkeypatch
+) -> None:
+    _install_fake_harbor(monkeypatch)
+    module = _load(adapter_path)
+    monkeypatch.delenv("EVOLVE_SESSION_ID", raising=False)
+
+    assert "EVOLVE_SESSION_ID" not in module.CandidateMiniSweAgent()._source_env()
+
+    monkeypatch.setenv("EVOLVE_SESSION_ID", "experiment-42")
+    assert module.CandidateMiniSweAgent()._source_env()["EVOLVE_SESSION_ID"] == "experiment-42"
 
 
 def test_miniswe_wrapper_preserves_explicit_responses_output_budget(adapter_path: Path, monkeypatch) -> None:

@@ -1,6 +1,7 @@
 import asyncio
 import importlib.util
 import json
+import os
 import shlex
 import sys
 import types
@@ -17,6 +18,13 @@ def _load(monkeypatch, max_output_tokens: int | str | None = None):
     mini = types.ModuleType("harbor.agents.installed.mini_swe_agent")
 
     class MiniSweAgent:
+        def __init__(self, *args, **kwargs) -> None:
+            del args
+            self._extra_env = dict(kwargs.get("extra_env") or {})
+
+        def _get_env(self, name: str):
+            return self._extra_env.get(name) or os.environ.get(name)
+
         async def run(self, instruction, environment, context):
             await self.exec_as_agent(environment, command="setup", env={"ROLE": "agent"})
             output_budget = max_output_tokens
@@ -90,7 +98,7 @@ def test_file_task_agent_externalizes_large_miniswe_instruction(monkeypatch) -> 
     assert model_kwargs["max_output_tokens"] == 64_000
     assert model_kwargs["include"] == ["reasoning.encrypted_content"]
     assert model_kwargs["prompt_cache_key"].startswith("evolve-")
-    assert json.loads(model_kwargs["extra_headers"]["extra"]) == {"session_id": model_kwargs["prompt_cache_key"]}
+    assert "extra_headers" not in model_kwargs
     assert "store" not in model_kwargs
     assert "unset HTTP_PROXY" not in runtime_command
     assert environment.envs[-1] == {"ROLE": "agent"}
@@ -100,6 +108,34 @@ def test_installed_miniswe_exposes_canonical_name_and_legacy_alias(monkeypatch) 
     module = _load(monkeypatch)
 
     assert module.FileTaskMiniSweAgent is module.InstalledMiniSweAgent
+
+
+def test_installed_miniswe_uses_configured_session_id_literally(monkeypatch) -> None:
+    module = _load(monkeypatch)
+    environment = Environment()
+    agent = module.InstalledMiniSweAgent(extra_env={"EVOLVE_SESSION_ID": "experiment-42"})
+
+    asyncio.run(agent.run("Fix the constant.", environment, object()))
+
+    responses_config = json.loads(dict(environment.uploads)[module.RESPONSES_CONFIG_PATH])
+    model_kwargs = responses_config["model"]["model_kwargs"]
+    assert model_kwargs["prompt_cache_key"] == "experiment-42"
+    assert json.loads(model_kwargs["extra_headers"]["extra"]) == {"session_id": "experiment-42"}
+
+
+def test_installed_miniswe_treats_blank_session_id_as_unset(monkeypatch) -> None:
+    module = _load(monkeypatch)
+    environment = Environment()
+
+    asyncio.run(
+        module.InstalledMiniSweAgent(extra_env={"EVOLVE_SESSION_ID": "   "}).run(
+            "Fix the constant.", environment, object()
+        )
+    )
+
+    model_kwargs = json.loads(dict(environment.uploads)[module.RESPONSES_CONFIG_PATH])["model"]["model_kwargs"]
+    assert model_kwargs["prompt_cache_key"].startswith("evolve-")
+    assert "extra_headers" not in model_kwargs
 
 
 def test_file_task_agent_forwards_execution_options_for_passthrough_and_rewritten_commands(monkeypatch) -> None:

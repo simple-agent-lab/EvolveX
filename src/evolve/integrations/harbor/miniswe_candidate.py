@@ -104,11 +104,14 @@ def build_model(config):
         if "reasoning.encrypted_content" not in include:
             include.append("reasoning.encrypted_content")
         nested_kwargs["include"] = include
-        cache_key = f"evolve-{uuid.uuid4().hex}"
+        configured_session_id = os.environ.get("EVOLVE_SESSION_ID", "")
+        session_id = configured_session_id if configured_session_id.strip() else ""
+        cache_key = session_id or f"evolve-{uuid.uuid4().hex}"
         nested_kwargs["prompt_cache_key"] = cache_key
-        extra_headers = dict(nested_kwargs.get("extra_headers") or {})
-        extra_headers["extra"] = json.dumps({"session_id": cache_key}, separators=(",", ":"))
-        nested_kwargs["extra_headers"] = extra_headers
+        if session_id:
+            extra_headers = dict(nested_kwargs.get("extra_headers") or {})
+            extra_headers["extra"] = json.dumps({"session_id": session_id}, separators=(",", ":"))
+            nested_kwargs["extra_headers"] = extra_headers
         model_kwargs["model_kwargs"] = nested_kwargs
         return LitellmResponseModel(**model_kwargs)
 
@@ -525,6 +528,9 @@ class CandidateMiniSweAgent(MiniSweAgent):
         smoke_mode = self._get_env("EVOLVE_CANDIDATE_SMOKE_MODE")
         if smoke_mode is not None:
             env["EVOLVE_CANDIDATE_SMOKE_MODE"] = smoke_mode
+        session_id = self._get_env("EVOLVE_SESSION_ID") or ""
+        if session_id.strip():
+            env["EVOLVE_SESSION_ID"] = session_id
         return env
 
 
