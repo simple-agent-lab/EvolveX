@@ -5,6 +5,7 @@ import os
 import stat
 import subprocess
 import sys
+import tarfile
 import time
 import types
 from pathlib import Path
@@ -418,6 +419,67 @@ def test_miniswe_wrapper_rejects_invalid_evolved_memory(
         namespace["_load_evolved_context"](tmp_path / "candidate")
 
 
+def test_candidate_archive_normalizes_owner_modes_without_mutating_source(tmp_path: Path) -> None:
+    archive_module = importlib.import_module("evolve.integrations.harbor._candidate_source")
+    source = tmp_path / "source"
+    package = source / "src" / "minisweagent"
+    package.mkdir(parents=True)
+    (source / "pyproject.toml").write_text("[project]\nname='fixture'\n")
+    executable = source / "run.sh"
+    executable.write_text("#!/bin/sh\n")
+    source.chmod(0o700)
+    (source / "pyproject.toml").chmod(0o600)
+    executable.chmod(0o700)
+
+    with archive_module.candidate_source_archive(source) as archive_path:
+        assert stat.S_IMODE(archive_path.stat().st_mode) == 0o644
+        with tarfile.open(archive_path) as archive:
+            members = {member.name: member for member in archive.getmembers()}
+        assert members["."].mode == 0o700
+        assert members["./pyproject.toml"].mode == 0o600
+        assert members["./src"].mode == 0o700
+        assert members["./run.sh"].mode == 0o700
+        assert not (members["./pyproject.toml"].mode & stat.S_IWOTH)
+        retained_path = archive_path
+
+    assert not retained_path.exists()
+    assert stat.S_IMODE(source.stat().st_mode) == 0o700
+    assert stat.S_IMODE((source / "pyproject.toml").stat().st_mode) == 0o600
+
+
+@pytest.mark.parametrize("target", ["/outside", "../../outside"])
+def test_candidate_archive_rejects_symlinks_escaping_source(tmp_path: Path, target: str) -> None:
+    archive_module = importlib.import_module("evolve.integrations.harbor._candidate_source")
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "escape").symlink_to(target)
+
+    with pytest.raises(archive_module.UnsafeCandidateSourceError, match="symlink escapes candidate source"):
+        with archive_module.candidate_source_archive(source):
+            pytest.fail("unsafe source must be rejected before archive creation")
+
+
+def test_candidate_adapter_classifies_escaping_source_symlink_as_candidate_invalid(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _install_fake_harbor(monkeypatch)
+    source = tmp_path / "source"
+    (source / "src" / "minisweagent").mkdir(parents=True)
+    (source / "pyproject.toml").write_text("[project]\nname='fixture'\n")
+    (source / "uv.lock").write_text("version = 1\n")
+    (source / "escape").symlink_to("../../outside")
+    monkeypatch.setenv("EVOLVE_CANDIDATE_SOURCE", str(source))
+    module = _load(ADAPTER)
+
+    class Environment:
+        async def upload_file(self, source_path, target_path):
+            pytest.fail(f"unsafe source must not be uploaded: {source_path} -> {target_path}")
+
+    with pytest.raises(module.EvolveCandidateInvalidError, match="unsafe_source_tree"):
+        asyncio.run(module.CandidateMiniSweAgent().install(Environment()))
+
+
 def test_miniswe_wrapper_subclasses_harbor_miniswe_and_installs_candidate_source(
     tmp_path: Path,
     monkeypatch,
@@ -436,21 +498,22 @@ def test_miniswe_wrapper_subclasses_harbor_miniswe_and_installs_candidate_source
     class Environment:
         def __init__(self) -> None:
             self.uploads = []
+            self.uploaded_directories = []
             self.commands = []
             self.envs = []
-            self.uploaded_source_modes = {}
+            self.archive_modes = {}
+            self.uploaded_archive_destination = None
 
         async def upload_dir(self, source_dir, target_dir):
-            source = Path(source_dir)
-            self.uploads.append((source, target_dir))
-            self.uploaded_source_modes = {
-                path.relative_to(source).as_posix() or ".": path.stat().st_mode
-                for path in (source, *source.rglob("*"))
-                if not path.is_symlink()
-            }
+            self.uploaded_directories.append((Path(source_dir), target_dir))
 
         async def upload_file(self, source_path, target_path):
-            self.uploads.append((Path(source_path), target_path))
+            source = Path(source_path)
+            self.uploads.append((source, target_path))
+            if target_path == "/tmp/evolve-miniswe-source.tar":
+                self.uploaded_archive_destination = target_path
+                with tarfile.open(source) as archive:
+                    self.archive_modes = {member.name: member.mode for member in archive.getmembers()}
 
     environment = Environment()
     host_uv = tmp_path / "uv"
@@ -467,24 +530,22 @@ def test_miniswe_wrapper_subclasses_harbor_miniswe_and_installs_candidate_source
     asyncio.run(agent.install(environment))
 
     assert issubclass(module.MiniSweSourceAgent, base)
-    uploaded_source, uploaded_destination = environment.uploads[0]
-    assert uploaded_source != target.resolve()
-    assert uploaded_destination == "/installed-agent/miniswe-source"
+    assert not environment.uploaded_directories
+    assert environment.uploaded_archive_destination == "/tmp/evolve-miniswe-source.tar"
     assert environment.uploads[1] == (host_uv, "/tmp/evolve-uv")
-    assert environment.uploaded_source_modes
-    assert all(mode & stat.S_IROTH for mode in environment.uploaded_source_modes.values())
-    assert all(mode & stat.S_IWOTH for mode in environment.uploaded_source_modes.values())
-    assert all(
-        mode & stat.S_IXOTH
-        for name, mode in environment.uploaded_source_modes.items()
-        if name in {".", "src", "src/minisweagent"}
-    )
+    assert environment.archive_modes["./pyproject.toml"] == 0o600
+    assert environment.archive_modes["./src"] == 0o700
+    assert not (environment.archive_modes["./pyproject.toml"] & stat.S_IWOTH)
     assert stat.S_IMODE(target.stat().st_mode) == 0o700
     assert stat.S_IMODE((target / "pyproject.toml").stat().st_mode) == 0o600
     assert stat.S_IMODE((target / "uv.lock").stat().st_mode) == 0o600
     joined = "\n".join(environment.commands)
     assert "chmod -R a+rX" not in joined
-    bootstrap = environment.commands[0]
+    extraction = environment.commands[0]
+    assert "tar -xf /tmp/evolve-miniswe-source.tar" in extraction
+    assert "--no-same-owner" in extraction
+    assert "mkdir -p /installed-agent/miniswe-source" in extraction
+    bootstrap = environment.commands[1]
     assert "apt-get" not in joined
     assert "apk add" not in joined
     assert 'cp /tmp/evolve-uv "$HOME/.local/bin/uv"' in joined
