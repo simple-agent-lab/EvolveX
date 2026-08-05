@@ -1,3 +1,5 @@
+import { generationsThrough, scoreTrend } from './viewer-ui.js';
+
 const state = { snapshot: null, timer: null, refreshing: false };
 const content = document.querySelector('#viewer-content');
 const experimentName = document.querySelector('#experiment-name');
@@ -137,28 +139,9 @@ function performanceCard(detail, generations) {
   return `<section class="card">
     <div class="card-header"><div><h3>Performance</h3><p>Canonical evaluation only</p></div>${performance.contract_certified == null ? '' : badge(performance.contract_certified ? 'certified' : 'uncertified')}</div>
     <div class="score-value">${number(performance.score)}${delta == null ? '' : `<span class="score-delta ${delta >= 0 ? 'plus' : 'minus'}">${delta >= 0 ? '+' : ''}${number(delta)}</span>`}</div>
-    ${scoreTrend(generations)}
+    ${scoreTrend(generations, detail?.summary?.genid)}
     <div class="legend"><span><strong>${performance.observed_trials ?? '—'}</strong> observed trials</span><span><strong>${performance.expected_trials ?? '—'}</strong> expected</span><span>${performance.comparable ? 'Parent delta comparable' : 'Parent delta not comparable'}</span></div>
   </section>`;
-}
-
-function scoreTrend(generations) {
-  const points = generations.filter((generation) => generation.score != null);
-  if (!points.length) return '<div class="empty">No scored generations yet.</div>';
-  const width = 480, height = 130, pad = 10;
-  const values = points.map((point) => Number(point.score));
-  let min = Math.min(...values), max = Math.max(...values);
-  if (min === max) { min -= .05; max += .05; }
-  const coords = values.map((value, index) => ({
-    x: points.length === 1 ? width / 2 : pad + index * (width - pad * 2) / (points.length - 1),
-    y: pad + (max - value) * (height - pad * 2) / (max - min),
-  }));
-  const line = coords.map((point) => `${point.x},${point.y}`).join(' ');
-  const area = `${coords[0].x},${height} ${line} ${coords.at(-1).x},${height}`;
-  return `<svg class="trend" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img" aria-label="Score trend">
-    <defs><linearGradient id="trend-gradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#40a379" stop-opacity=".18"/><stop offset="1" stop-color="#40a379" stop-opacity="0"/></linearGradient></defs>
-    <line class="trend-grid" x1="0" x2="${width}" y1="${height / 2}" y2="${height / 2}"/><polygon class="trend-fill" points="${area}"/><polyline class="trend-line" points="${line}"/>${coords.map((point) => `<circle class="trend-dot" cx="${point.x}" cy="${point.y}" r="3.5"/>`).join('')}
-  </svg>`;
 }
 
 function renderGenerations() {
@@ -185,7 +168,7 @@ async function renderGeneration(genid) {
     <div class="page-heading"><div><p class="eyebrow">Generation detail</p><h2>Generation ${escapeHtml(summary.genid)}</h2><div class="detail-meta"><span>Status ${badge(summary.status)}</span><span>Parent <strong>${escapeHtml(summary.parent || '—')}</strong></span><span>Score <strong>${number(summary.score)}</strong></span></div></div><div class="page-actions"><a class="button" data-evolve-link href="/trials?generation=${encodeURIComponent(summary.genid)}">View trials</a></div></div>
     <div class="stack">
       <section class="card"><div class="card-header"><div><h3>Stage progress</h3><p>Evidence inferred from this generation's artifacts</p></div></div><div class="stage-strip">${detail.stages.map(stageItem).join('')}</div></section>
-      <div class="grid-two">${changeCard(detail)}${performanceCard(detail, state.snapshot.generations.filter((generation) => generation.genid <= summary.genid))}</div>
+      <div class="grid-two">${changeCard(detail)}${performanceCard(detail, generationsThrough(state.snapshot.generations, summary.genid))}</div>
       ${artifactCard(detail.artifacts)}
     </div>`;
 }

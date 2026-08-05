@@ -100,11 +100,15 @@ main { width: min(1280px, 100%); margin: 0 auto; padding: 34px clamp(22px, 4vw, 
 .plus { color: var(--accent); }.minus { color: var(--danger); }
 .score-value { margin: 3px 0 15px; font-size: 31px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.04em; }
 .score-delta { margin-left: 8px; font-size: 12px; letter-spacing: 0; }
-.trend { width: 100%; height: 135px; overflow: visible; }
+.trend-scroll { width: 100%; overflow-x: auto; }
+.trend { display: block; min-width: 480px; width: 100%; height: 180px; overflow: visible; }
 .trend-line { fill: none; stroke: var(--accent); stroke-width: 2.5; vector-effect: non-scaling-stroke; }
-.trend-fill { fill: url(#trend-gradient); }
 .trend-grid { stroke: #e5ebe7; stroke-width: 1; vector-effect: non-scaling-stroke; }
 .trend-dot { fill: white; stroke: var(--accent); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.trend-dot.selected { fill: var(--accent); stroke: white; stroke-width: 3; filter: drop-shadow(0 0 2px rgb(24 124 86 / 55%)); }
+.trend-axis-label, .trend-x-label { fill: var(--subtle); font: 9px Inter, ui-sans-serif, sans-serif; }
+.trend-axis-label { text-anchor: end; }
+.trend-x-label { text-anchor: middle; }
 .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 10px; color: var(--muted); font-size: 11px; }
 .legend strong { color: var(--ink); }
 .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
