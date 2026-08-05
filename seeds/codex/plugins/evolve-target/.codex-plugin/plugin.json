@@ -1,0 +1,26 @@
+{
+  "name": "evolve-target",
+  "version": "0.1.0",
+  "description": "Candidate-owned Codex behaviors evolved against coding benchmarks.",
+  "author": {
+    "name": "Evolve Framework"
+  },
+  "license": "Apache-2.0",
+  "keywords": [
+    "agent-evolution",
+    "hooks"
+  ],
+  "interface": {
+    "displayName": "Evolve Target",
+    "shortDescription": "Evolvable Codex benchmark behavior",
+    "longDescription": "Candidate-owned lifecycle hooks and context evaluated by Evolve Framework.",
+    "developerName": "Evolve Framework",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Hooks"
+    ],
+    "defaultPrompt": [
+      "Solve the benchmark task and verify the result."
+    ]
+  }
+}

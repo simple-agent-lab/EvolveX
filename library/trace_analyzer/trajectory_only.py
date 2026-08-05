@@ -5,6 +5,7 @@ from __future__ import annotations
 import concurrent.futures
 import hashlib
 import json
+import math
 import os
 import re
 from dataclasses import replace
@@ -28,7 +29,9 @@ Case = dict[str, Any]
 
 JUDGE_SYSTEM_PROMPT = """You are evaluating whether an AI agent successfully completed a command-line task.
 You can ONLY see the agent's actions (commands run and their outputs). You do NOT have access to actual test
-results. Based on the trajectory, estimate whether the task was completed successfully."""
+results. Based on the trajectory, estimate whether the task was completed successfully. Agents such as Codex
+normally finish with a final response instead of calling a submit tool; `Completion: final_response` is a normal
+completion signal and must not be treated as a missing submission."""
 
 JUDGE_USER_TEMPLATE = """Task: {task_id}
 
@@ -132,7 +135,7 @@ def _json_object(text: str) -> Case:
         if not isinstance(payload, dict):
             continue
         score = payload.get("score")
-        if not isinstance(score, (int, float)) or isinstance(score, bool):
+        if not isinstance(score, (int, float)) or isinstance(score, bool) or not math.isfinite(float(score)):
             continue
         return {
             "score": max(0, min(10, score)),

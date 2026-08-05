@@ -50,6 +50,40 @@ archive, workspace configuration, task partitions, model selection, credentials,
 endpoints, or resource limits.
 """
 
+CODEX_AHE_PROMPT = """# Agentic Harness Engineering
+
+Improve the Codex harness under `target/`; do not solve a benchmark task
+directly. Optimize pass@1. Treat debugger reports as evidence, not proof.
+
+For this generation:
+1. Read the debugger overview and relevant task details first.
+2. Read change_evaluation.json and the previous change context.
+3. Decide KEEP, REVISE, or ROLLBACK + PIVOT before editing.
+4. Cite specific debugger tasks and distinguish evidence from causal inference.
+5. Choose the harness component matching the root cause.
+6. If the same failure survived repeated changes at one component, pivot levels.
+7. Make one coherent target/** change and run proportionate checks.
+8. Write one official-style change manifest to the required control file.
+
+Files under `target/` become the deployed benchmark-solving harness. The
+evolvable surface includes the runtime prompt, skills, Codex configuration, and
+the local plugin under `target/plugins/`, including lifecycle hooks.
+Evolution artifacts and instructions in this prompt are not available inside
+benchmark episodes. If you edit runtime instructions or hook-provided context,
+include only guidance usable by the benchmark-solving agent. Do not copy this
+evolution workflow, evidence paths, KEEP/REVISE/ROLLBACK decisions, or manifest
+requirements into target files. Do not refer to debuggers or other
+evolution-only context in target runtime prompts, skills, or plugin output.
+Canonical evaluation runs `target.agent:HarborAgent`, installs the candidate
+plugin into a temporary Codex home, and invokes the pinned Codex CLI. Make
+changes on that execution path.
+
+Current debugger reports evaluate the selected parent. The new edit will be
+evaluated by the next loop. Do not edit the evaluator, mechanism, archive,
+workspace configuration, task partitions, model selection, credentials,
+endpoints, or resource limits.
+"""
+
 MANIFEST_TEMPLATE = {
     "iteration": 1,
     "changes": [
@@ -61,7 +95,7 @@ MANIFEST_TEMPLATE = {
             "failure_pattern": "failure class addressed",
             "predicted_fixes": ["task-name"],
             "risk_tasks": [],
-            "constraint_level": "middleware|tool_impl|tool_desc|skill|prompt",
+            "constraint_level": "middleware|tool_impl|tool_desc|skill|prompt|plugin|hook",
             "why_this_component": "why this component level fits the root cause",
         }
     ],
@@ -163,7 +197,7 @@ def _read_manifest_file(checkout: Path, genid: str) -> dict[str, Any]:
 def build_prompt(checkout: Path, observation: str, ctx: OperatorContext) -> str:
     del observation
     template = dict(MANIFEST_TEMPLATE)
-    template["iteration"] = int(ctx.genid)
+    template["iteration"] = ctx.genid
     if runner_name(ctx) == "harbor":
         repository = Path("/app/task/workspace")
         current_run = repository / "runs" / f"gen-{ctx.genid}"
@@ -186,8 +220,9 @@ def build_prompt(checkout: Path, observation: str, ctx: OperatorContext) -> str:
             "Inspect the selected parent manifest and patch. "
             f"Selected parent meta-agent artifacts: `{parent_meta_agent}`"
         )
+    target_prompt = CODEX_AHE_PROMPT if (checkout / "target" / "codex.toml").is_file() else AHE_PROMPT
     return (
-        f"{AHE_PROMPT.rstrip()}\n\n"
+        f"{target_prompt.rstrip()}\n\n"
         "# Evidence reading order\n\n"
         f"1. Read `{overview}`.\n"
         f"2. Read `{attribution}` and decide KEEP, REVISE, or ROLLBACK + PIVOT.\n"

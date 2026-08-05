@@ -7,23 +7,30 @@ import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import cast
 
 import typer
 from dotenv import dotenv_values
 
 from .archive import archive_path, merged_rows, verify_integrity
 from .candidate.smoke import run_candidate_smoke
-from .config import RECIPE_NAMES, experiment_int
-from .driver import RunOptions, commit_child, eval_child, fork_child, record_fields
-from .driver import doctor as doctor_workspace
+from .config import DEFAULT_RECIPE, RECIPE_NAMES, experiment_int
+from .doctor import DoctorProfile, run_doctor
+from .driver import RunOptions
+from .driver import repair as repair_workspace
 from .driver import run as driver_run
+from .experiment_smoke import run_experiment_smoke
 from .git import head_tag, working_tree_changed_paths
-from .population import best_row
+from .operator_cli import attach_orchestration_commands
+from .orchestration import commit_agent_child, eval_agent_child, fork_agent_child, record_agent_fields
+from .population import best_row, fixed_evaluation_identity
 from .report import format_report, format_status
+from .run_summary import assert_run_success, write_run_summary
 from .surface import check_paths, surface_patterns
 from .workspace import InitOptions, init_workspace
 
 app = typer.Typer(add_completion=False, no_args_is_help=True, help="evolve mechanism CLI")
+DEFAULT_WORKSPACE = Path("~/.evolve-workspace")
 
 
 def _enable_live_output(enabled: bool) -> None:
@@ -66,31 +73,36 @@ def _guard(fn):
     return wrapper
 
 
+attach_orchestration_commands(app, _guard, _workspace_environment, _enable_live_output)
+
+
 @app.command()
 @_guard
 def init(
-    workspace: Path,
+    workspace: Path | None = typer.Argument(
+        None,
+        help="workspace directory (default: ~/.evolve-workspace)",
+    ),
     recipe: str | None = typer.Option(
         None,
-        help="supported public recipe to scaffold (default: hill_climb)",
+        help=f"supported public recipe to scaffold (default: {DEFAULT_RECIPE})",
     ),
     recipe_path: Path | None = typer.Option(
         None,
         "--recipe-path",
         help="opt-in recipe directory or evolve.yaml path",
     ),
-    seed: str | None = typer.Option(
-        None, help="git URL to vendor into target/; local target dir; builtin-codex"
-    ),
+    seed: str | None = typer.Option(None, help="git URL to vendor into target/; local target dir; builtin-codex"),
     dataset: str | None = typer.Option(None, help="local Harbor task directory to split and freeze"),
 ) -> None:
     """Scaffold a new evolve workspace."""
+    workspace = (workspace or DEFAULT_WORKSPACE).expanduser()
     if recipe is not None and recipe_path is not None:
         raise typer.BadParameter(
             "cannot combine --recipe with --recipe-path",
             param_hint="--recipe-path",
         )
-    selected_recipe = recipe or "hill_climb"
+    selected_recipe = recipe or DEFAULT_RECIPE
     if recipe_path is None and selected_recipe not in RECIPE_NAMES:
         raise typer.BadParameter(
             f"invalid choice: {selected_recipe!r} (choose from {', '.join(RECIPE_NAMES)})",
@@ -110,27 +122,85 @@ def init(
 
 @app.command()
 @_guard
+def preflight(
+    workspace: Path | None = typer.Argument(
+        None,
+        help="workspace directory (default: ~/.evolve-workspace)",
+    ),
+    recipe: str | None = typer.Option(
+        None,
+        help=f"supported public recipe to scaffold (default: {DEFAULT_RECIPE})",
+    ),
+    recipe_path: Path | None = typer.Option(
+        None,
+        "--recipe-path",
+        help="opt-in recipe directory or evolve.yaml path",
+    ),
+    seed: str | None = typer.Option(None, help="git URL to vendor into target/; local target dir; builtin-codex"),
+    dataset: str | None = typer.Option(None, help="local Harbor task directory to split and freeze"),
+) -> None:
+    """Check every `evolve init` precondition without writing anything.
+
+    Takes the same arguments as init and reports one checklist instead of one
+    refusal at a time."""
+    from .preflight import render, run_preflight
+
+    checks = run_preflight(
+        workspace=(workspace or DEFAULT_WORKSPACE).expanduser(),
+        recipe=recipe,
+        recipe_path=recipe_path,
+        seed=seed,
+        dataset=dataset,
+    )
+    output, ready = render(checks)
+    print(output)
+    if not ready:
+        raise typer.Exit(1)
+
+
+@app.command()
+@_guard
 def run(
     workspace: Path,
     max_generations: int | None = typer.Option(None, "--max-generations"),
     children_per_gen: int | None = typer.Option(None, "--children-per-gen"),
     resume: bool = typer.Option(False, "--resume", help="accepted no-op; resume is the default"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="stream evaluator and operator output"),
+    assert_success: bool = typer.Option(
+        True,
+        "--assert-success/--no-assert-success",
+        help="fail unless every requested generation reached a recipe-valid terminal state",
+    ),
 ) -> None:
-    """Start or resume the built-in evolution loop."""
+    """Start or resume the driver, the unattended evolution loop."""
     gens = max_generations if max_generations is not None else experiment_int(workspace, "max_generations", 40)
     children = children_per_gen if children_per_gen is not None else experiment_int(workspace, "children_per_gen", 1)
     _enable_live_output(verbose)
     with _workspace_environment(workspace):
         driver_run(RunOptions(workspace=workspace, max_generations=gens, children_per_gen=children))
-    print(f"Ran evolve loop through generation {gens}")
+    summary, summary_path = write_run_summary(workspace, through=gens)
+    print(f"Evolution loop stopped at generation {summary['completed_through']}; summary: {summary_path}")
+    if assert_success and summary["status"] != "passed":
+        details = "; ".join(str(finding) for finding in summary["findings"][:5])
+        raise RuntimeError(f"run assertion failed: {details}")
+
+
+@app.command("assert-run")
+@_guard
+def assert_run_cmd(
+    workspace: Path = typer.Argument(Path(".")),
+    through: int = typer.Option(..., "--through", min=0),
+) -> None:
+    """Assert recipe-aware completion and write runs/run-summary.json."""
+    summary = assert_run_success(workspace, through=through)
+    print(f"run assertion passed through generation {summary['completed_through']}")
 
 
 @app.command()
 @_guard
 def fork(workspace: Path, parent: str, child_worktree: Path) -> None:
     """Create a child worktree from a parent generation."""
-    fork_child(workspace, parent, child_worktree)
+    fork_agent_child(workspace, parent, child_worktree)
     print(child_worktree)
 
 
@@ -143,7 +213,7 @@ def commit(
     genid: str = typer.Option(..., "--genid"),
 ) -> None:
     """Commit and tag a child worktree."""
-    commit_child(workspace, child_worktree, parent, genid)
+    commit_agent_child(workspace, child_worktree, parent, genid)
     print(f"Committed gen/{genid}")
 
 
@@ -156,8 +226,19 @@ def eval_cmd(
 ) -> None:
     """Evaluate a tagged child version."""
     with _workspace_environment(workspace):
-        eval_child(workspace, genid, force=force)
-    print(f"Evaluated gen/{genid}")
+        record = eval_agent_child(workspace, genid, force=force)
+    print(f"Evaluated gen/{genid}" if record is not None else f"Skipped gen/{genid}; evaluation is already terminal")
+
+
+@app.command()
+@_guard
+def retry(workspace: Path, genid: str) -> None:
+    """Retry a failed or otherwise terminal evaluation as a new certified attempt."""
+    with _workspace_environment(workspace):
+        record = eval_agent_child(workspace, genid, force=True)
+    if record is None:
+        raise RuntimeError(f"gen/{genid} could not be retried")
+    print(f"Retried gen/{genid}: {record.outcome.value} (attempt {record.attempt})")
 
 
 @app.command()
@@ -168,7 +249,7 @@ def record(
     fields: str = typer.Option(..., "--fields", help="JSON object of fields"),
 ) -> None:
     """Append non-stamped archive fields."""
-    record_fields(workspace, genid, json.loads(fields))
+    record_agent_fields(workspace, genid, json.loads(fields))
     print(f"Recorded fields for gen/{genid}")
 
 
@@ -180,7 +261,8 @@ def surface_check(
 ) -> None:
     """Report pending out-of-surface edits."""
     include, exclude = surface_patterns(workspace)
-    parent_ref = parent or head_tag(workspace) or "gen/0"
+    parent_ref = f"gen/{parent}" if parent and not parent.startswith("gen/") else parent
+    parent_ref = parent_ref or head_tag(workspace) or "gen/0"
     mutated = working_tree_changed_paths(workspace, parent_ref)
     violations = check_paths(mutated, include, exclude)
     print({"ok": not violations, "mutated": mutated, "violations": violations})
@@ -215,6 +297,31 @@ def candidate_smoke(
         raise typer.Exit(3)
 
 
+@app.command("smoke")
+@_guard
+def smoke(
+    workspace: Path = typer.Argument(Path(".")),
+    profile: str = typer.Option("experiment", "--profile", help="local or experiment"),
+    task: str | None = typer.Option(None, "--task"),
+) -> None:
+    """Run a local candidate check or an isolated full-loop experiment canary."""
+    if profile == "local":
+        with _workspace_environment(workspace):
+            result = run_candidate_smoke(workspace.resolve(), workspace=workspace.resolve())
+        print(f"local smoke: {result.status} result={result.attempt_dir / 'result.json'}")
+        if result.status != "passed":
+            raise typer.Exit(2 if result.status == "failed" else 3)
+        return
+    if profile != "experiment":
+        raise typer.BadParameter("choose local or experiment", param_hint="--profile")
+    with _workspace_environment(workspace):
+        result = run_experiment_smoke(workspace, task=task)
+    print(f"experiment smoke: {result.status} task={result.task} workspace={result.workspace}")
+    print(f"result: {result.result_path}")
+    if result.status != "passed":
+        raise typer.Exit(2)
+
+
 @app.command()
 @_guard
 def status(workspace: Path = typer.Argument(Path("."))) -> None:
@@ -229,28 +336,61 @@ def report(workspace: Path = typer.Argument(Path("."))) -> None:
     print(format_report(workspace), end="")
 
 
+@app.command("doctor")
+@_guard
+def doctor_profile(
+    workspace: Path = typer.Argument(Path(".")),
+    profile: str = typer.Option("experiment", "--profile", help="local or experiment"),
+    probe_model: bool = typer.Option(False, "--probe-model"),
+) -> None:
+    """Run read-only local or long-running experiment preflight checks."""
+    if profile not in {"local", "experiment"}:
+        raise typer.BadParameter("choose local or experiment", param_hint="--profile")
+    report = run_doctor(workspace, profile=cast(DoctorProfile, profile), probe_model=probe_model)
+    for check in report.checks:
+        print(f"{check.status.upper():4} {check.name}: {check.detail}")
+    print(f"doctor report: {report.report_path}")
+    if not report.healthy:
+        raise typer.Exit(2)
+
+
 @app.command()
 @_guard
-def doctor(workspace: Path = typer.Argument(Path("."))) -> None:
-    """Detect and repair interrupted state (stale worktrees, pending generations)."""
-    actions = doctor_workspace(workspace)
+def repair(workspace: Path = typer.Argument(Path("."))) -> None:
+    """Explicitly repair interrupted state such as stale child worktrees."""
+    actions = repair_workspace(workspace)
     for action in actions:
         print(action)
-    print("doctor: healthy" if not actions else f"doctor: repaired/observed {len(actions)} item(s)")
+    print("repair: healthy" if not actions else f"repair: completed/observed {len(actions)} item(s)")
 
 
 @app.command()
 @_guard
 def verify(workspace: Path = typer.Argument(Path("."))) -> None:
-    """Integrity fsck: recompute the champion and expose any hand-edited ledger."""
+    """Integrity fsck: recompute the champion and expose any hand-edited archive."""
     findings = verify_integrity(workspace)
+    identity_unverifiable = fixed_evaluation_identity(workspace.resolve()) is None
+    champion = best_row(workspace)
+    best_ever_path = workspace / "best_ever.json"
+    try:
+        materialized = json.loads(best_ever_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        materialized = object()
+    if materialized != champion:
+        findings.append("best_ever.json does not match the mechanism-derived champion")
     for finding in findings:
         print(f"TAMPER: {finding}", file=sys.stderr)
-    champion = best_row(workspace)
     champ = f"gen {champion['genid']} score {champion.get('score')}" if champion else "none"
     print(f"champion: {champ}")
-    print(f"rows: {len(merged_rows(archive_path(workspace)))}  integrity: {'FAIL' if findings else 'ok'}")
-    if findings:
+    if identity_unverifiable:
+        print(
+            "UNVERIFIABLE: fixed evaluation identity is unavailable; legacy v1 local split manifests "
+            "require a new experiment with a v2 split manifest",
+            file=sys.stderr,
+        )
+    failed = bool(findings) or identity_unverifiable
+    print(f"rows: {len(merged_rows(archive_path(workspace)))}  integrity: {'FAIL' if failed else 'ok'}")
+    if failed:
         raise typer.Exit(1)
 
 

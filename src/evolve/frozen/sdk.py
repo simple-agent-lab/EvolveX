@@ -82,7 +82,8 @@ def run_dir(workspace: Path | str, genid: str) -> Path:
 def surface_check(workspace: Path | str = ".", parent: str | None = None) -> dict[str, Any]:
     workspace_path = Path(workspace).resolve()
     include, exclude = surface_patterns(workspace_path)
-    base = parent or head_tag(workspace_path) or "gen/0"
+    base = f"gen/{parent}" if parent and not parent.startswith("gen/") else parent
+    base = base or head_tag(workspace_path) or "gen/0"
     mutated = working_tree_changed_paths(workspace_path, base)
     violations = check_paths(mutated, include, exclude)
     return {"ok": not violations, "mutated": mutated, "violations": violations}

@@ -260,11 +260,24 @@ def test_console_uses_locked_workspace_project(tmp_path: Path) -> None:
     text = (workspace / "evolve").read_text()
 
     assert "EVOLVE_UV_BINARY" in text
+    assert '--python "$EVOLVE_FRAMEWORK_PYTHON" python' in text
     assert 'run --project "$HERE" --frozen python' in text
     assert '"$HERE/.evolve/launch_evolve.py"' in text
     assert "PYTHONPATH" not in text
     assert (workspace / ".evolve" / "launch_evolve.py").is_file()
     assert (workspace / "evaluator" / "cleanup_harbor.py").is_file()
+
+
+def test_workspace_agent_guidance_distinguishes_python_from_dependency_cache(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    init_fixture_workspace(workspace)
+
+    guidance = (workspace / "AGENTS.md").read_text()
+
+    assert "UV_PYTHON_DOWNLOADS=never" in guidance
+    assert "Set `UV_OFFLINE=1` only after" in guidance
+    assert "empty dependency cache cannot run offline" in guidance
+    assert "infrastructure/provisioning failure" in guidance
 
 
 def test_init_and_feedback_do_not_create_prediction_contracts(tmp_path: Path) -> None:

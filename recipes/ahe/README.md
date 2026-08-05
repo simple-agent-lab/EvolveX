@@ -14,7 +14,8 @@ tool call; the change-producing meta-agent also uses `high`. Both paths receive
 an explicit 64k output budget through Harbor's `max_tokens` constructor field
 because mini-swe-agent otherwise uses its 1,000-token default. Failures
 stop the generation after three attempts; there is no silent deterministic
-fallback.
+fallback. This is configured as `debugger_max_retries: 2`: one initial
+debugger call plus at most two retries.
 
 The MiniSWE target is pinned to commit
 `388da74aad620a384ab47669b17c52133e30e7c3`, whose checked-in `uv.lock` is part
@@ -43,19 +44,46 @@ Candidate execution uses Harbor's native task timeouts
 
 ```bash
 export EVOLVE_RUNTIME_DIGEST="sha256:replace-with-your-immutable-evaluator-image-digest"
-export HARBOR_TASKS="/absolute/path/to/terminal-bench-2-10-10-10"
+harbor download terminal-bench@2.0 --export -o /absolute/path/to/raw
+python recipes/ahe/prepare_dataset.py \
+  /absolute/path/to/raw/terminal-bench \
+  /absolute/path/to/terminal-bench-2-ahe-30-v1
+
+export HARBOR_TASKS="/absolute/path/to/terminal-bench-2-ahe-30-v1"
 cd /path/to/simple-evolve-agent
 evolve init /path/to/ahe-run --recipe ahe --dataset "$HARBOR_TASKS"
 cd /path/to/ahe-run
+./evolve doctor . --profile experiment
+./evolve smoke . --profile experiment --task cancel-async-tasks
 ./evolve run . --max-generations 1
 ```
+
+To let an outer coding agent perform the harness edit, keep the same workspace
+and call the AHE capabilities individually:
+
+```bash
+./evolve operator run . select --genid 1
+# Read runs/gen-1/parents.json, then set PARENT and fork its child worktree.
+./evolve fork . "$PARENT" runs/worktrees/gen-1
+./evolve operator run . rollout --genid 1 --parent "$PARENT" \
+  --checkout runs/worktrees/gen-1
+./evolve operator run . trace_analyzer --genid 1 --parent "$PARENT" \
+  --checkout runs/worktrees/gen-1 \
+  --config '{"max_tasks":5,"max_concurrent":3}'
+```
+
+The outer agent reads `runs/gen-1/trace_analyzer/`, edits the harness, and
+finishes through `surface-check`, `commit`, `eval`, and `finalize`. Omit the
+temporary limits for the canonical full analysis. The `meta_agent` stage is
+optional on this path and remains the mutation stage for `evolve run`.
 
 Live runs need Docker, Harbor, model credentials, and an immutable evaluator
 runtime. Build the small workspace image once before running:
 
 ```bash
+IMAGE_CONTEXT="$(python -c 'from evolve.config import resource_root; print(resource_root("containers") / "meta-agent")')"
 docker build --build-arg MINISWE_VERSION=2.4.5 \
-  -t evolve-meta-agent-app:20260724-tools-mswe245 containers/meta-agent
+  -t evolve-meta-agent-app:20260724-tools-mswe245 "$IMAGE_CONTEXT"
 ```
 
 The recipe never requires a local Codex command.

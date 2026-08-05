@@ -134,10 +134,7 @@ def test_positive_verifier_reward_wins_over_recovered_bootstrap_output(tmp_path:
     write_trial(trial_dir, task="case-a", trial="one", reward=1.0)
     verifier = trial_dir / "verifier"
     verifier.mkdir()
-    (verifier / "test-stdout.txt").write_text(
-        "curl: (22) The requested URL returned error: 504\n"
-        "retry succeeded\n"
-    )
+    (verifier / "test-stdout.txt").write_text("curl: (22) The requested URL returned error: 504\nretry succeeded\n")
 
     vector, _artifacts, scoring_rewards = collect_harbor_artifacts(jobs)
 
@@ -289,8 +286,7 @@ def test_missing_tool_output_history_is_candidate_invalid(tmp_path: Path) -> Non
         reward=None,
         exception_type="NonZeroAgentExitCodeError",
         exception_message=(
-            "litellm.BadRequestError: invalid request: "
-            "No tool output found for function call call_123."
+            "litellm.BadRequestError: invalid request: No tool output found for function call call_123."
         ),
     )
 

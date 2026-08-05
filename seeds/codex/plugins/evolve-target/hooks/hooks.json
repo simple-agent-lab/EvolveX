@@ -1,0 +1,19 @@
+{
+  "description": "Inject candidate-owned benchmark guidance at session start.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${PLUGIN_ROOT}/hooks/session_start.py",
+            "timeout": 10,
+            "statusMessage": "Loading evolved agent context",
+            "additionalContextLimit": 2000
+          }
+        ]
+      }
+    ]
+  }
+}

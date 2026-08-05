@@ -18,8 +18,11 @@ CASES = {
     "hill_climb": ("external", CANDIDATE, "codex"),
     "aevolve": ("codex", "target.agent:HarborAgent", "codex"),
     "ahe": ("external", CANDIDATE, FILE_TASK),
+    "ahe_codex": ("codex", "target.agent:HarborAgent", "codex"),
     "gepa": ("codex", "target.agent:HarborAgent", "codex"),
     "hyperagents": ("external", CANDIDATE, FILE_TASK),
+    "hill_climb_codex": ("codex", "target.agent:HarborAgent", "codex"),
+    "hyperagents_codex": ("codex", "target.agent:HarborAgent", "codex"),
 }
 MINISWE_REVISION = "388da74aad620a384ab47669b17c52133e30e7c3"
 
@@ -52,11 +55,7 @@ def test_supported_recipe_initializes_only_selected_components(
     assert components["target_seed"] == rendered["target"]["seed"]
     assert components["evaluator_engine"] == "harbor"
     assert components["integrations"] == sorted(
-        {
-            ref.split(":", 1)[0]
-            for ref in (evaluator_agent, meta_agent)
-            if ref.startswith("evolve.integrations.")
-        }
+        {ref.split(":", 1)[0] for ref in (evaluator_agent, meta_agent) if ref.startswith("evolve.integrations.")}
     )
     assert (workspace / "target" / "codex.toml").is_file() is (target_kind == "codex")
     assert (workspace / "evaluator" / "cleanup_harbor.py").is_file()
@@ -194,9 +193,7 @@ def test_dataset_override_preserves_recipe_target_and_integrations(
 
     clone_source = write_locked_miniswe_seed(tmp_path / "clone-source")
 
-    def clone_reviewed_miniswe(
-        url: str, destination: Path, *, revision: str | None = None
-    ) -> None:
+    def clone_reviewed_miniswe(url: str, destination: Path, *, revision: str | None = None) -> None:
         assert url == "https://github.com/SWE-agent/mini-swe-agent.git"
         assert revision == MINISWE_REVISION
         shutil.copytree(clone_source, destination)
@@ -225,9 +222,7 @@ def test_dataset_override_preserves_recipe_target_and_integrations(
     assert rendered["target"] == expected_target
     assert rendered["evaluator"]["agent"] == evaluator_agent
     assert rendered["operators"]["meta_agent"]["agent"] == meta_agent
-    assert json.loads((workspace / ".evolve-components.json").read_text())[
-        "integrations"
-    ] == sorted(
+    assert json.loads((workspace / ".evolve-components.json").read_text())["integrations"] == sorted(
         {
             reference.split(":", 1)[0]
             for reference in (evaluator_agent, meta_agent)
@@ -252,17 +247,13 @@ def test_every_production_resource_has_a_supported_consumer() -> None:
     seeds = {path.name for path in seed_root().iterdir() if path.is_dir()}
     integration_modules = {
         f"evolve.integrations.harbor.{path.name[:-3]}"
-        for path in (
-            Path(__file__).resolve().parents[1] / "src" / "evolve" / "integrations" / "harbor"
-        ).glob("*.py")
+        for path in (Path(__file__).resolve().parents[1] / "src" / "evolve" / "integrations" / "harbor").glob("*.py")
         if path.name != "__init__.py"
     }
 
     assert evaluator_scaffolds == engines
     assert seeds == builtin_seeds
-    assert integration_modules == {
-        ref.split(":", 1)[0] for ref in agent_refs if ref.startswith("evolve.integrations.")
-    }
+    assert integration_modules == {ref.split(":", 1)[0] for ref in agent_refs if ref.startswith("evolve.integrations.")}
 
 
 COMMON_OUTPUTS = {

@@ -50,9 +50,7 @@ class FileTaskMiniSweAgent(MiniSweAgent):
         task = command.find(_TASK, launch)
         output = command.rfind(_OUTPUT)
         if launch < 0 or task < 0 or output < task:
-            return await super().exec_as_agent(
-                environment, command=command, env=env, cwd=cwd, timeout_sec=timeout_sec
-            )
+            return await super().exec_as_agent(environment, command=command, env=env, cwd=cwd, timeout_sec=timeout_sec)
 
         values = shlex.split(command[task + len(_TASK) : output])
         if len(values) != 1:
@@ -103,6 +101,4 @@ class FileTaskMiniSweAgent(MiniSweAgent):
             f'"$MSWEA_PY" {SHIM_PATH} "$MSWEA_BIN"'
         )
         rewritten = prefix + file_launch + flags_before_task + f" --task-file={TASK_PATH}" + flags_after_task
-        return await super().exec_as_agent(
-            environment, command=rewritten, env=env, cwd=cwd, timeout_sec=timeout_sec
-        )
+        return await super().exec_as_agent(environment, command=rewritten, env=env, cwd=cwd, timeout_sec=timeout_sec)

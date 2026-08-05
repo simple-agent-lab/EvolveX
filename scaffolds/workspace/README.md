@@ -17,17 +17,19 @@ Every workspace receives these files or directories:
 AGENTS.md                     workspace agent entry point
 PROTOCOL.md                   human-readable operator contract
 README.md                     this workspace guide
-archive.jsonl                 append-only lineage ledger
+archive.jsonl                 append-only lineage record
 evolve                        workspace console
 evolve.yaml                   rendered recipe configuration
 library/                      recipe-relevant operator variants
+LICENSE.evolve-framework      license for the vendored framework and operator library
+NOTICE.evolve-framework       framework and third-party attribution notices
 operators/                    active operator scripts, supporting Markdown, and index
 program.md                    loop orchestration guidance
 pyproject.toml, uv.lock       locked workspace runtime
 runs/                         generated per-generation state
 artifacts/user/               durable user context
 artifacts/generations/        durable per-generation context
-skills/evolve-workspace/      workspace operating manual
+skills/evolve-agent/          method guide and workspace operating manual
 target/                       seed selected by the recipe
 ```
 
@@ -37,13 +39,22 @@ The frozen evaluator is generated under `evaluator/`: `eval.sh`, `eval.env`,
 `cleanup_harbor.py`, `harbor_artifacts.py`, `parse_score.py`, and `smoke.sh`.
 Recipes may add selected operator assets and evaluator assets.
 
+For a local dataset, `splits.json` and `dataset.pin` bind both split membership
+and each task tree's paths, bytes, file types, and modes. If those contents
+change, canonical evaluation stops and requires a newly initialized experiment.
+Legacy version-1 local split manifests are inspection-only.
+
 The vendored framework includes framework-owned integrations under
 `.evolve/evolve/integrations/harbor/`. No standalone Harbor adapter package is
 generated at the workspace root.
+
+The vendored framework runtime and operator library are provided under
+Apache-2.0; see `LICENSE.evolve-framework` and `NOTICE.evolve-framework`.
+The target under `target/` retains its own upstream licensing terms.
 
 ## Rules
 
 Only paths allowed by `surface` in `evolve.yaml` may evolve. `evaluator/`, the
 vendored `.evolve/` runtime, and stamped archive fields are not candidate
-inputs. Use `./evolve status`, `./evolve report`, and `./evolve verify` to
+inputs. Use `./evolve status .`, `./evolve report .`, and `./evolve verify .` to
 inspect the experiment rather than editing its lineage records directly.

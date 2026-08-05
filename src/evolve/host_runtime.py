@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import sys
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -38,4 +39,13 @@ def uv_run(
         path = root / name
         if not path.is_file():
             raise RuntimeError(f"workspace uv project is missing {path}")
-    return [uv_executable(clean), "run", "--project", str(root), "--frozen", *command], clean
+    return [
+        uv_executable(clean),
+        "run",
+        "--project",
+        str(root),
+        "--frozen",
+        "--python",
+        sys.executable,
+        *command,
+    ], clean

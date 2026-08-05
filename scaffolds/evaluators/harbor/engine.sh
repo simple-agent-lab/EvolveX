@@ -11,11 +11,17 @@ if [ -n "${EVOLVE_HARBOR_N_CONCURRENT_OVERRIDE:-}" ]; then
   EVOLVE_HARBOR_N_CONCURRENT=$EVOLVE_HARBOR_N_CONCURRENT_OVERRIDE
 fi
 : "${EVOLVE_WORKSPACE:=$PWD}"
+: "${EVOLVE_FRAMEWORK_PYTHON:=$(command -v python3)}"
 if [ -n "${EVOLVE_UV_BINARY:-}" ]; then UV=$EVOLVE_UV_BINARY; else UV=$(command -v uv || true); fi
 [ -n "$UV" ] && [ -x "$UV" ] || { printf 'uv is required; install uv or set EVOLVE_UV_BINARY\n' >&2; printf 'infra_failed\n' > "$EVOLVE_RUN_DIR/status"; exit 3; }
-if [ -z "${DOCKER_HOST:-}" ] && [ -S "$HOME/.colima/default/docker.sock" ]; then
-  DOCKER_HOST="unix://$HOME/.colima/default/docker.sock"
-  export DOCKER_HOST
+if [ "${EVOLVE_HARBOR_ENVIRONMENT:-docker}" = "docker" ] && [ -z "${DOCKER_HOST:-}" ]; then
+  resolved_docker_host=$(
+    "$EVOLVE_FRAMEWORK_PYTHON" -m evolve.execution_runtime.command docker-host 2>/dev/null || true
+  )
+  if [ -n "$resolved_docker_host" ]; then
+    DOCKER_HOST=$resolved_docker_host
+    export DOCKER_HOST
+  fi
 fi
 if [ -z "${EVOLVE_GENID:-}" ]; then
   EVOLVE_GENID=$(basename "$(dirname "$EVOLVE_RUN_DIR")")
@@ -23,16 +29,67 @@ if [ -z "${EVOLVE_GENID:-}" ]; then
 fi
 export EVOLVE_GENID
 : "${EVOLVE_ATTEMPT_ID:=manual-$EVOLVE_GENID}"
-: "${EVOLVE_FRAMEWORK_PYTHON:=$(command -v python3)}"
 export EVOLVE_ATTEMPT_ID EVOLVE_FRAMEWORK_PYTHON
+dataset_snapshot=
+cleanup_dataset_snapshot() {
+  [ -n "$dataset_snapshot" ] || return 0
+  "$EVOLVE_FRAMEWORK_PYTHON" - "$dataset_snapshot" <<'PY' || :
+import shutil
+import sys
+from pathlib import Path
+
+snapshot = Path(sys.argv[1])
+if snapshot.name != "task-dataset":
+    raise SystemExit("refusing to remove an unexpected task snapshot path")
+for path in (snapshot, snapshot.with_name(".task-dataset.pending")):
+    if path.is_symlink():
+        path.unlink()
+    elif path.exists():
+        shutil.rmtree(path)
+PY
+  dataset_snapshot=
+}
+trap cleanup_dataset_snapshot EXIT
 split_name=${EVOLVE_EVAL_SPLIT:-gate}
 if python3 -c 'import json,sys; raise SystemExit(0 if json.load(open(sys.argv[1])).get("resolved") else 1)' evaluator/splits.json; then
-  if ! "$UV" run --project "$EVOLVE_WORKSPACE" --frozen python "$PWD/.evolve/launch_splits.py" \
+  dataset_snapshot="$EVOLVE_RUN_DIR/task-dataset"
+  if ! "$UV" run --project "$EVOLVE_WORKSPACE" --frozen \
+    --python "$EVOLVE_FRAMEWORK_PYTHON" python "$PWD/.evolve/launch_splits.py" \
     select evaluator/splits.json "$EVOLVE_HARBOR_TASKS" "$split_name" "$EVOLVE_RUN_DIR"; then
     printf 'infra_failed\n' > "$EVOLVE_RUN_DIR/status"
     exit 3
   fi
+  if [ ! -d "$dataset_snapshot" ]; then
+    printf 'verified evaluator task snapshot is missing: %s\n' "$dataset_snapshot" >&2
+    printf 'infra_failed\n' > "$EVOLVE_RUN_DIR/status"
+    exit 3
+  fi
+  EVOLVE_HARBOR_TASKS=$dataset_snapshot
+  EVOLVE_HARBOR_DATASET_MODE=path
   EVOLVE_HARBOR_TASK_FILE="$EVOLVE_RUN_DIR/task-names.txt"
+  export EVOLVE_HARBOR_TASKS EVOLVE_HARBOR_DATASET_MODE EVOLVE_HARBOR_TASK_FILE
+fi
+if [ -n "${EVOLVE_RUN_PLAN:-}" ]; then
+  if ! "$EVOLVE_FRAMEWORK_PYTHON" - "$EVOLVE_RUN_PLAN" "$EVOLVE_RUN_DIR/run-plan-tasks.txt" <<'PY'
+import json
+import sys
+from glob import escape
+from pathlib import Path
+
+payload = json.loads(Path(sys.argv[1]).read_text())
+tasks = payload.get("tasks") if isinstance(payload, dict) else None
+expected = payload.get("expected_trials") if isinstance(payload, dict) else None
+if not isinstance(tasks, list) or any(not isinstance(task, str) or not task for task in tasks):
+    raise SystemExit("evaluation run plan has invalid tasks")
+if not isinstance(expected, int) or isinstance(expected, bool) or expected < 1:
+    raise SystemExit("evaluation run plan has invalid expected_trials")
+Path(sys.argv[2]).write_text("".join(f"{escape(task)}\n" for task in tasks))
+PY
+  then
+    printf 'infra_failed\n' > "$EVOLVE_RUN_DIR/status"
+    exit 3
+  fi
+  EVOLVE_HARBOR_TASK_FILE="$EVOLVE_RUN_DIR/run-plan-tasks.txt"
   export EVOLVE_HARBOR_TASK_FILE
 fi
 : "${EVOLVE_UV_CACHE_DIR:=$HOME/.evolve/uv-cache}"
@@ -99,12 +156,14 @@ cleanup_on_exit() {
   cleanup_rc=$?
   trap - EXIT TERM INT
   cleanup_harbor
+  cleanup_dataset_snapshot
   exit "$cleanup_rc"
 }
 cleanup_on_signal() {
   cleanup_signal=$1
   trap - EXIT TERM INT
   cleanup_harbor
+  cleanup_dataset_snapshot
   if [ "$cleanup_signal" = TERM ]; then
     exit 143
   fi
@@ -246,13 +305,23 @@ for proxy_entry in \
 done
 set -- "$@" --job-name "$EVOLVE_ATTEMPT_ID" --jobs-dir "$jobs_dir" --n-attempts "${EVOLVE_HARBOR_ATTEMPTS:-1}" -n "${EVOLVE_HARBOR_N_CONCURRENT:-$EVOLVE_HARBOR_N}" -y -q
 if [ -n "${EVOLVE_CANDIDATE_SMOKE_MODE:-}" ]; then
-  "$UV" run --project "$EVOLVE_WORKSPACE" --frozen harbor "$@"
+  "$UV" run --project "$EVOLVE_WORKSPACE" --frozen \
+    --python "$EVOLVE_FRAMEWORK_PYTHON" harbor "$@"
   exit $?
 fi
 if [ "${EVOLVE_LIVE_OUTPUT:-0}" = "1" ]; then
-  "$UV" run --project "$EVOLVE_WORKSPACE" --frozen harbor "$@" 2>&1 | tee "$EVOLVE_RUN_DIR/harbor.log" || harbor_rc=$?
+  live_fifo="$EVOLVE_RUN_DIR/.harbor-live.fifo"
+  rm -f "$live_fifo"
+  mkfifo "$live_fifo"
+  tee "$EVOLVE_RUN_DIR/harbor.log" < "$live_fifo" &
+  tee_pid=$!
+  "$UV" run --project "$EVOLVE_WORKSPACE" --frozen \
+    --python "$EVOLVE_FRAMEWORK_PYTHON" harbor "$@" > "$live_fifo" 2>&1 || harbor_rc=$?
+  wait "$tee_pid" || true
+  rm -f "$live_fifo"
 else
-  "$UV" run --project "$EVOLVE_WORKSPACE" --frozen harbor "$@" > "$EVOLVE_RUN_DIR/harbor.log" 2>&1 || harbor_rc=$?
+  "$UV" run --project "$EVOLVE_WORKSPACE" --frozen \
+    --python "$EVOLVE_FRAMEWORK_PYTHON" harbor "$@" > "$EVOLVE_RUN_DIR/harbor.log" 2>&1 || harbor_rc=$?
 fi
 python3 evaluator/parse_score.py "$jobs_dir" "$EVOLVE_RUN_DIR" "$harbor_rc"
 parser_rc=$?

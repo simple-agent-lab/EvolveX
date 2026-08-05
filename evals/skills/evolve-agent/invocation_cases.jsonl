@@ -1,0 +1,6 @@
+{"id":"invoke-improve-agent","expected_skill":"evolve-agent","prompt":"Use repeated evaluations to improve this coding Agent's prompt and harness, preserve lineage, and report the best candidate."}
+{"id":"invoke-choose-method","expected_skill":"evolve-agent","prompt":"Should this experiment use A-Evolve, GEPA, AHE, or a simple hill climb? We have traces and per-task feedback."}
+{"id":"invoke-inspect-lineage","expected_skill":"evolve-agent","prompt":"Inspect this evolution workspace and tell me whether best_ever is supported by the retained generations."}
+{"id":"skip-one-off-bugfix","expected_skill":null,"prompt":"Fix the off-by-one error in this parser and run its unit test."}
+{"id":"skip-general-theory","expected_skill":null,"prompt":"Explain the difference between genetic algorithms and gradient descent."}
+{"id":"skip-read-only-code-review","expected_skill":null,"prompt":"Review this pull request for correctness and list concrete defects. Do not modify it."}

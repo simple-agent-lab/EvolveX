@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 from conftest import git, init_fixture_workspace, run_evolve, write_locked_miniswe_seed
+from typer.testing import CliRunner
 
 from evolve.config import load_config, surface_lists
 from evolve.workspace import InitOptions, _write_target, init_workspace
@@ -68,6 +69,37 @@ def test_init_help_advertises_only_supported_seed_options() -> None:
     assert "git URL to vendor" in result.stdout
     assert "into target/" in result.stdout
     assert "builtin-dummy" not in result.stdout
+    assert "[WORKSPACE]" in result.stdout
+    assert "~/.evolve-workspace" in result.stdout
+
+
+def test_init_defaults_to_home_workspace(monkeypatch, tmp_path: Path) -> None:
+    from evolve import cli as cli_module
+
+    captured: list[InitOptions] = []
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(cli_module, "init_workspace", captured.append)
+
+    result = CliRunner().invoke(cli_module.app, ["init"])
+
+    assert result.exit_code == 0, result.output
+    assert len(captured) == 1
+    assert captured[0].workspace == tmp_path / ".evolve-workspace"
+    assert f"Initialized evolve workspace at {tmp_path / '.evolve-workspace'}" in result.output
+
+
+def test_init_explicit_workspace_still_wins(monkeypatch, tmp_path: Path) -> None:
+    from evolve import cli as cli_module
+
+    captured: list[InitOptions] = []
+    explicit = tmp_path / "named-experiment"
+    monkeypatch.setattr(cli_module, "init_workspace", captured.append)
+
+    result = CliRunner().invoke(cli_module.app, ["init", str(explicit)])
+
+    assert result.exit_code == 0, result.output
+    assert len(captured) == 1
+    assert captured[0].workspace == explicit
 
 
 def test_git_seed_revision_freezes_exact_commit(tmp_path: Path) -> None:
@@ -98,6 +130,57 @@ def test_git_seed_revision_freezes_exact_commit(tmp_path: Path) -> None:
     assert (workspace / "target" / "uv.lock").is_file()
     upstream = json.loads((workspace / "target" / "UPSTREAM.json").read_text())
     assert upstream == {"commit": locked_commit, "remote": seed.as_uri()}
+
+
+def test_local_seed_preserves_internal_symlink_without_dereferencing(tmp_path: Path) -> None:
+    seed = tmp_path / "seed"
+    seed.mkdir()
+    (seed / "source.txt").write_text("source\n")
+    (seed / "alias.txt").symlink_to("source.txt")
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    _write_target(workspace, {"seed": str(seed)})
+
+    alias = workspace / "target" / "alias.txt"
+    assert alias.is_symlink()
+    assert alias.readlink() == Path("source.txt")
+
+
+def test_local_seed_rejects_symlink_escaping_source_tree(tmp_path: Path) -> None:
+    seed = tmp_path / "seed"
+    seed.mkdir()
+    outside = tmp_path / "outside.txt"
+    outside.write_text("outside\n")
+    (seed / "escape.txt").symlink_to(outside)
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    with pytest.raises(ValueError, match="symlink"):
+        _write_target(workspace, {"seed": str(seed)})
+
+    assert not (workspace / "target").exists()
+
+
+def test_upstream_metadata_strips_remote_credentials_and_query(tmp_path: Path) -> None:
+    seed = tmp_path / "seed"
+    seed.mkdir()
+    git(seed, "init")
+    git(seed, "config", "user.name", "Seed Test")
+    git(seed, "config", "user.email", "seed@example.invalid")
+    (seed / "README.md").write_text("seed\n")
+    git(seed, "add", "README.md")
+    git(seed, "commit", "-m", "seed")
+    git(seed, "remote", "add", "origin", "https://user:secret@example.com/org/repo.git?token=hidden#frag")
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    _write_target(workspace, {"seed": str(seed)})
+
+    upstream = json.loads((workspace / "target" / "UPSTREAM.json").read_text())
+    assert upstream["remote"] == "https://example.com/org/repo.git"
+    assert "secret" not in json.dumps(upstream)
+    assert "hidden" not in json.dumps(upstream)
 
 
 def test_git_seed_can_explicitly_generate_missing_lock(tmp_path: Path) -> None:
@@ -349,6 +432,8 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
         ".evolve/evolve/harbor_local.py",
         "AGENTS.md",
         "program.md",
+        "LICENSE.evolve-framework",
+        "NOTICE.evolve-framework",
         "operators/select.py",
         "operators/rollout.py",
         "operators/meta_agent.py",
@@ -360,7 +445,9 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
         "operators/rollout.md",
         "operators/gate.md",
         "operators/record.md",
-        "skills/evolve-workspace/SKILL.md",
+        "skills/evolve-agent/SKILL.md",
+        "skills/evolve-agent/references/workspace-contract.md",
+        "skills/evolve-agent/references/hill-climb.md",
         "target/agent.py",
         "target/README.md",
         "target/UPSTREAM.json",
@@ -376,9 +463,18 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
         "artifacts/generations",
         ".gitignore",
         "archive.jsonl",
+        "best_ever.json",
     ]
     for relative_path in expected_paths:
         assert (workspace / relative_path).exists(), relative_path
+    for method_card in ("a-evolve.md", "gepa.md", "ahe.md", "hyperagents.md"):
+        assert (workspace / "skills/evolve-agent/references" / method_card).is_file()
+    for capability in (
+        "library/trace_analyzer/ahe.py",
+        "library/trace_analyzer/gepa.py",
+        "library/validate/minibatch_improvement.py",
+    ):
+        assert (workspace / capability).is_file(), capability
     assert "artifacts/" in (workspace / ".gitignore").read_text().splitlines()
     assert not (workspace / "operators" / "mutate.py").exists()
     assert not (workspace / "operators" / "mutate.md").exists()
@@ -391,6 +487,8 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
     assert (workspace / ".python-version").read_text() == "3.12\n"
     assert "harbor==0.18.0" in (workspace / "pyproject.toml").read_text()
     assert 'packages = [".evolve/evolve", "library"]' in (workspace / "pyproject.toml").read_text()
+    assert "Apache License" in (workspace / "LICENSE.evolve-framework").read_text()
+    assert "GEPA" in (workspace / "NOTICE.evolve-framework").read_text()
 
     config = (workspace / "evolve.yaml").read_text()
     assert "children_per_gen: 1" in config
@@ -411,10 +509,12 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
     gitignore = (workspace / ".gitignore").read_text()
     assert "runs/" in gitignore
     assert "archive.jsonl" in gitignore
+    assert "best_ever.json" in gitignore
+    assert json.loads((workspace / "best_ever.json").read_text()) is None
     assert ".venv/" in gitignore
 
     splits = json.loads((workspace / "evaluator" / "splits.json").read_text())
-    assert splits["version"] == 1
+    assert splits["version"] == 2
     assert splits["resolved"] is False
     assert splits["ratios"] == {"train": 0.5, "gate": 0.4, "sealed": 0.1}
     assert splits["tasks"] == {"train": [], "gate": [], "sealed": []}

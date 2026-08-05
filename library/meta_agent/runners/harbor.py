@@ -19,6 +19,8 @@ from typing import Any, SupportsFloat, SupportsIndex, cast
 from urllib.parse import urlsplit
 
 from evolve.agent import AgentCommandError, AgentRunResult
+from evolve.config import load_config
+from evolve.execution_runtime import execution_runtime_config, resolve_execution_runtime
 from evolve.frozen.interfaces import OperatorContext
 from evolve.git import git, head_commit, working_tree_changed_paths
 from evolve.host_runtime import uv_run
@@ -261,11 +263,22 @@ def _copy_visible_generation_inputs(source: Path, destination: Path) -> None:
     for name in _VISIBLE_RUN_INPUTS:
         subtree = source / name
         if subtree.exists():
-            _copy_tree(subtree, destination / name)
+            copied = destination / name
+            _copy_tree(subtree, copied)
+            # Certified replay snapshots are intentionally frozen in the
+            # experiment workspace. Docker Compose's artifact copier preserves
+            # those directory modes, then cannot create their descendants in
+            # the host destination. The meta-agent bundle is disposable and
+            # changes under runs/ are never imported, so keep the files intact
+            # while allowing the bundle itself to round-trip as an artifact.
+            for current, _, _ in os.walk(copied, followlinks=False):
+                directory = Path(current)
+                directory.chmod(stat.S_IMODE(directory.stat().st_mode) | stat.S_IWUSR)
 
 
 def _copy_visible_run_inputs(ctx: OperatorContext, workspace: Path) -> None:
     runs = ctx.workspace / "runs"
+    copied_sources: set[Path] = set()
     if runs.is_dir():
         for generation in sorted(runs.glob("gen-*")):
             if generation.is_dir() and not generation.is_symlink():
@@ -273,10 +286,12 @@ def _copy_visible_run_inputs(ctx: OperatorContext, workspace: Path) -> None:
                     generation,
                     workspace / "runs" / generation.name,
                 )
-    _copy_visible_generation_inputs(
-        ctx.run_dir,
-        workspace / "runs" / f"gen-{ctx.genid}",
-    )
+                copied_sources.add(generation.resolve())
+    if ctx.run_dir.resolve() not in copied_sources:
+        _copy_visible_generation_inputs(
+            ctx.run_dir,
+            workspace / "runs" / f"gen-{ctx.genid}",
+        )
 
 
 def _private_task_names(workspace: Path) -> tuple[str, ...]:
@@ -680,12 +695,16 @@ def _agent_env(config: dict[str, Any]) -> dict[str, str]:
     return values
 
 
-def _harbor_process_env(config: dict[str, Any], values: dict[str, str]) -> dict[str, str]:
+def _harbor_process_env(
+    config: dict[str, Any], values: dict[str, str], *, workspace: Path | None = None
+) -> dict[str, str]:
     sanitized = dict(values)
     if str(config.get("agent") or "").strip().lower() == "codex":
         for name in _CREDENTIAL_ENV:
             sanitized.pop(name, None)
-    return sanitized
+    runtime_values = load_config(workspace / "evolve.yaml")["execution_runtime"] if workspace is not None else {}
+    runtime = resolve_execution_runtime(execution_runtime_config(runtime_values), sanitized)
+    return runtime.process_environment(sanitized)
 
 
 def _uv_cache_dir(workspace: Path) -> Path:
@@ -1066,7 +1085,7 @@ def run_readonly_agent(
             )
         redaction_environment = _redaction_environment(ctx.config)
         harbor, harbor_env = uv_run(ctx.workspace, "harbor")
-        harbor_env = _harbor_process_env(ctx.config, harbor_env)
+        harbor_env = _harbor_process_env(ctx.config, harbor_env, workspace=ctx.workspace)
         task_root = output_dir / "task"
         prompt_path = output_dir / "prompt.md"
         jobs_root = output_dir / "jobs"
@@ -1178,7 +1197,7 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
         if (jobs_root / job_name).exists():
             raise RuntimeError(f"Harbor meta-agent job already exists: {jobs_root / job_name}")
         harbor, harbor_env = uv_run(ctx.workspace, "harbor")
-        harbor_env = _harbor_process_env(ctx.config, harbor_env)
+        harbor_env = _harbor_process_env(ctx.config, harbor_env, workspace=ctx.workspace)
         prompt_path.parent.mkdir(parents=True, exist_ok=True)
         evidence_contract = (
             "It contains the selected parent, full Git history, configuration, archive, evaluator, and complete "

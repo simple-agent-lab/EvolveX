@@ -69,7 +69,7 @@ def test_gepa_validation_replays_exact_parent_minibatch_and_accepts_improvement(
     assert comparison["delta"] == 1
 
 
-def test_gepa_validation_scores_infra_cases_as_zero_without_aborting(tmp_path: Path, monkeypatch) -> None:
+def test_gepa_validation_excludes_infra_scores_and_rejects_incomplete_comparison(tmp_path: Path, monkeypatch) -> None:
     module = _module("gepa_validate_infra_under_test", ROOT / "library/validate/minibatch_improvement.py")
     ctx = _ctx(tmp_path, {"criterion": "strict", "n_concurrent": 2})
     parent_cases = [
@@ -82,6 +82,8 @@ def test_gepa_validation_scores_infra_cases_as_zero_without_aborting(tmp_path: P
 
     class FakeRollout:
         def rollout(self, _checkout, child_ctx):
+            assert child_ctx.config["task_names"] == ["task-a", "task-b"]
+            assert child_ctx.config["budget_tasks"] == 2
             root = child_ctx.run_dir / "rollout"
             root.mkdir(parents=True)
             root.joinpath("cases.json").write_text(
@@ -101,8 +103,51 @@ def test_gepa_validation_scores_infra_cases_as_zero_without_aborting(tmp_path: P
     comparison = json.loads((ctx.run_dir / "validate/comparison.json").read_text())
     assert result.accept is False
     assert comparison["parent_total"] == comparison["child_total"] == 1
+    assert comparison["parent_scores"] == {"task-b": 1.0}
+    assert comparison["child_scores"] == {"task-a": 1.0}
+    assert comparison["comparison_complete"] is False
     assert comparison["parent_infra_cases"] == ["task-a"]
     assert comparison["child_infra_cases"] == ["task-b"]
+    assert "incomplete" in result.reason
+
+
+def test_gepa_validation_cannot_accept_apparent_improvement_with_parent_infra(tmp_path: Path, monkeypatch) -> None:
+    module = _module("gepa_validate_parent_infra_under_test", ROOT / "library/validate/minibatch_improvement.py")
+    ctx = _ctx(tmp_path, {"criterion": "strict", "n_concurrent": 2})
+    parent_path = ctx.run_dir / "rollout/cases.json"
+    parent_path.parent.mkdir(parents=True)
+    parent_path.write_text(
+        json.dumps(
+            [
+                {"task_name": "task-a", "outcome": "infra_error", "reward": None},
+                {"task_name": "task-b", "outcome": "failed", "reward": 0},
+            ]
+        )
+    )
+
+    class FakeRollout:
+        def rollout(self, _checkout, child_ctx):
+            root = child_ctx.run_dir / "rollout"
+            root.mkdir(parents=True)
+            root.joinpath("cases.json").write_text(
+                json.dumps(
+                    [
+                        {"task_name": "task-a", "outcome": "passed", "reward": 1},
+                        {"task_name": "task-b", "outcome": "passed", "reward": 1},
+                    ]
+                )
+            )
+            root.joinpath("harbor.log").write_text("ok\n")
+            return RolloutResult(summary={"infra_errors": 0}, artifacts=["rollout/cases.json"])
+
+    monkeypatch.setattr(module, "HarborRollout", FakeRollout)
+    result = module.MinibatchImprovementValidate().validate(tmp_path, ctx)
+
+    comparison = json.loads((ctx.run_dir / "validate/comparison.json").read_text())
+    assert comparison["delta"] == 2
+    assert comparison["comparison_complete"] is False
+    assert comparison["accepted"] is False
+    assert result.accept is False
 
 
 def test_gepa_record_points_to_evidence_and_comparison(tmp_path: Path) -> None:

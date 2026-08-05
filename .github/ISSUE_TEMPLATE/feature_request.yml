@@ -1,0 +1,35 @@
+name: Feature request
+description: Propose a scoped improvement to Evolve Framework.
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Describe the research or engineering workflow that is difficult today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: Explain the smallest framework, recipe, or documentation change that would solve it.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence or example
+      description: Share a minimal public example, experiment, or artifact when available.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This request does not require sharing private credentials, datasets, or run artifacts.
+          required: true

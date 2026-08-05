@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import Any
 
 from .archive import RECEIPT_CERTIFIED_FIELD
 from .evaluation.identity import fixed_evaluation_identity
-from .git import tag_exists
+from .git import git
 
 
 def valid_genid(genid: str) -> bool:
@@ -42,8 +43,10 @@ def looks_mechanism_written(workspace: Path, row: dict[str, Any]) -> bool:
     evaluations = [row]
     if isinstance(row.get("evals"), list):
         evaluations.extend(row["evals"])
-    return tag_exists(workspace, f"gen/{genid}") and any(
-        isinstance(entry, dict) and entry.get(RECEIPT_CERTIFIED_FIELD) is True and entry.get("tag") == f"gen/{genid}"
+    return any(
+        isinstance(entry, dict)
+        and entry.get(RECEIPT_CERTIFIED_FIELD) is True
+        and tag_matches_candidate(workspace, entry, genid)
         for entry in evaluations
     )
 
@@ -57,7 +60,7 @@ def valid_parent_rows(workspace: Path, rows_: list[dict[str, Any]] | None = None
     expected = fixed_evaluation_identity(view.workspace)
     if expected is None:
         return []
-    return [row for row in rows_ if is_parent_record(row, expected)]
+    return [row for row in rows_ if is_parent_record(row, expected, view.workspace)]
 
 
 def best_row(workspace: Path, rows_: list[dict[str, Any]] | None = None) -> dict[str, Any] | None:
@@ -65,15 +68,30 @@ def best_row(workspace: Path, rows_: list[dict[str, Any]] | None = None) -> dict
     return max(candidates, key=lambda row: float(row["score"]), default=None)
 
 
-def is_parent_record(row: dict[str, Any], expected: dict[str, str]) -> bool:
+def tag_matches_candidate(workspace: Path, row: dict[str, Any], genid: str | None = None) -> bool:
+    generation = str(row.get("genid", "")) if genid is None else str(genid)
+    tag = f"gen/{generation}"
+    candidate_commit = row.get("candidate_commit")
+    if row.get("tag") != tag or not isinstance(candidate_commit, str) or not candidate_commit:
+        return False
+    resolved = git(workspace, "rev-parse", "-q", "--verify", f"refs/tags/{tag}^{{commit}}", check=False)
+    return resolved.returncode == 0 and resolved.stdout.strip() == candidate_commit
+
+
+def is_parent_record(row: dict[str, Any], expected: dict[str, str], workspace: Path | None = None) -> bool:
+    score = row.get("score")
     return (
-        row.get("outcome") == "benchmark_complete"
+        workspace is not None
+        and row.get("outcome") == "benchmark_complete"
         and row.get("purpose") in {"candidate", "genesis"}
         and row.get("selection_eligible") is True
         and row.get("pending_gate_record") is False
         and row.get("valid_parent") is True
+        and row.get("verdict") == "keep"
         and row.get(RECEIPT_CERTIFIED_FIELD) is True
         and all(row.get(field) == value for field, value in expected.items())
-        and isinstance(row.get("score"), (int, float))
-        and not isinstance(row.get("score"), bool)
+        and isinstance(score, (int, float))
+        and not isinstance(score, bool)
+        and math.isfinite(float(score))
+        and tag_matches_candidate(workspace, row)
     )

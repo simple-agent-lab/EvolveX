@@ -25,9 +25,25 @@ class FakeCodex:
         self.model_name = model_name
         self.kwargs = kwargs
         self.base_setup_called = False
+        self.agent_commands: list[str] = []
 
     def _get_env(self, _name: str) -> str | None:
         return None
+
+    def _build_register_skills_command(self) -> str | None:
+        return "register-base-skills"
+
+    async def exec_as_agent(
+        self,
+        environment: object,
+        command: str,
+        env: dict[str, str] | None = None,
+        cwd: str | None = None,
+        timeout_sec: int | None = None,
+    ) -> str:
+        del environment, env, cwd, timeout_sec
+        self.agent_commands.append(command)
+        return command
 
     async def setup(self, environment: object) -> None:
         self.base_setup_called = True
@@ -98,9 +114,26 @@ def test_builtin_codex_wrapper_injects_skills_and_opt_in_compaction(tmp_path: Pa
     environment = RecordingEnvironment()
     asyncio.run(agent.setup(environment))
     assert agent.base_setup_called is True
+    assert agent.agent_commands == [
+        "mkdir -p /tmp/evolve-target-skills "
+        "/tmp/evolve-target-marketplace/.agents /tmp/evolve-target-marketplace/plugins"
+    ]
     assert environment.uploads == [
         (workspace / "target" / "skills", "/tmp/evolve-target-skills"),
+        (workspace / "target" / ".agents", "/tmp/evolve-target-marketplace/.agents"),
+        (workspace / "target" / "plugins", "/tmp/evolve-target-marketplace/plugins"),
     ]
+
+    registration = agent._build_register_skills_command()
+    assert registration is not None
+    assert "register-base-skills" in registration
+    assert registration.count(". ~/.nvm/nvm.sh") == 2
+    assert "codex plugin marketplace add /tmp/evolve-target-marketplace" in registration
+    assert "codex plugin add evolve-target@evolve-target" in registration
+    rewritten = asyncio.run(agent.exec_as_agent(environment, "codex exec --json -- task"))
+    assert rewritten == "codex exec --dangerously-bypass-hook-trust --json -- task"
+    unchanged = asyncio.run(agent.exec_as_agent(environment, "codex plugin list"))
+    assert unchanged == "codex plugin list"
 
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     auth_path = tmp_path / "home" / ".codex" / "auth.json"
@@ -109,6 +142,11 @@ def test_builtin_codex_wrapper_injects_skills_and_opt_in_compaction(tmp_path: Pa
     auth_path.parent.mkdir(parents=True)
     auth_path.write_text("{}\n")
     assert agent._resolve_auth_json_path() == auth_path
+    custom_home = tmp_path / "custom-codex-home"
+    custom_home.mkdir()
+    (custom_home / "auth.json").write_text("{}\n")
+    agent._get_env = lambda name: str(custom_home) if name == "CODEX_HOME" else None
+    assert agent._resolve_auth_json_path() == custom_home / "auth.json"
 
     config_path = workspace / "target" / "codex.toml"
     config_path.write_text(config_path.read_text().replace("override_defaults = false", "override_defaults = true"))
@@ -116,3 +154,19 @@ def test_builtin_codex_wrapper_injects_skills_and_opt_in_compaction(tmp_path: Pa
     assert compacting_agent.kwargs["auto_compact_token_limit"] == 100000
     assert compacting_agent.kwargs["auto_compact_token_limit_scope"] == "total"
     assert compacting_agent.kwargs["tool_output_token_limit"] == 12000
+
+
+def test_builtin_codex_seed_contains_valid_plugin_layout() -> None:
+    root = Path(__file__).resolve().parents[1] / "seeds" / "codex"
+    marketplace = __import__("json").loads((root / ".agents" / "plugins" / "marketplace.json").read_text())
+    plugin = root / "plugins" / "evolve-target"
+    manifest = __import__("json").loads((plugin / ".codex-plugin" / "plugin.json").read_text())
+    hooks = __import__("json").loads((plugin / "hooks" / "hooks.json").read_text())
+
+    assert marketplace["name"] == "evolve-target"
+    assert marketplace["plugins"][0]["source"]["path"] == "./plugins/evolve-target"
+    assert manifest["name"] == plugin.name
+    assert "hooks" not in manifest
+    assert hooks["hooks"]["SessionStart"][0]["hooks"][0]["type"] == "command"
+    assert (plugin / "hooks" / "session_start.py").is_file()
+    assert "EVOLVE_PLUGIN_SESSION_CONTEXT_V1" in (plugin / "context.md").read_text()

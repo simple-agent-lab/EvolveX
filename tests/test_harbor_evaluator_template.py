@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 from evolve.config import scaffold_root
+from evolve.splits import build_manifest
 from evolve.workspace import _eval_env, _eval_sh
 
 
@@ -29,6 +30,10 @@ def _write_fake_uv(bin_dir: Path) -> None:
         "shift 2\n"
         '[ "$1" = --frozen ] || exit 92\n'
         "shift\n"
+        '[ "$1" = --python ] || exit 93\n'
+        "shift\n"
+        '[ "$1" = "$EVOLVE_FRAMEWORK_PYTHON" ] || exit 94\n'
+        "shift\n"
         'exec "$@"\n',
     )
 
@@ -37,8 +42,118 @@ def test_harbor_evaluator_uses_locked_workspace_runtime() -> None:
     text = _eval_sh("harbor", "fixture")
 
     assert "PYTHONPATH" not in text
-    assert 'run --project "$EVOLVE_WORKSPACE" --frozen harbor' in text
+    assert text.count('--python "$EVOLVE_FRAMEWORK_PYTHON"') == 4
+    assert 'python "$PWD/.evolve/launch_splits.py"' in text
+    assert 'harbor "$@"' in text
     assert '"$PWD/.evolve/launch_splits.py"' in text
+
+
+def test_harbor_evaluator_runs_resolved_tasks_from_the_verified_snapshot() -> None:
+    text = _eval_sh("harbor", "fixture")
+
+    assert 'dataset_snapshot="$EVOLVE_RUN_DIR/task-dataset"' in text
+    assert "EVOLVE_HARBOR_TASKS=$dataset_snapshot" in text
+    assert "EVOLVE_HARBOR_DATASET_MODE=path" in text
+    assert "cleanup_dataset_snapshot" in text
+
+
+def test_harbor_evaluator_snapshot_closes_source_mutation_window(tmp_path: Path) -> None:
+    dataset = tmp_path / "tasks"
+    task = dataset / "task-a"
+    task.mkdir(parents=True)
+    source_task_file = task / "task.toml"
+    source_task_file.write_text('version = "1.0"\nsource = "frozen"\n')
+    manifest = build_manifest(
+        str(dataset),
+        {"train": 0.0, "gate": 1.0, "sealed": 0.0, "seed": 1},
+        base_dir=tmp_path,
+        sampling="static",
+        gate_limit=1,
+    )
+    evaluator = tmp_path / "evaluator"
+    evaluator.mkdir()
+    _write_executable(evaluator / "eval.sh", _eval_sh("harbor", "fixture"))
+    (evaluator / "eval.env").write_text(
+        _eval_env(
+            "experiment",
+            str(dataset),
+            n_concurrent=1,
+            tasks_per_round=1,
+            trials=1,
+            partial_floor=0.8,
+            agent="custom:Agent",
+        )
+    )
+    (evaluator / "splits.json").write_text(json.dumps(manifest))
+    _write_evaluator_helpers(evaluator)
+    launcher = tmp_path / ".evolve" / "launch_splits.py"
+    launcher.parent.mkdir()
+    launcher.write_text((scaffold_root() / "workspace" / "launch_splits.py").read_text())
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    _write_executable(
+        fake_bin / "uv",
+        "#!/bin/sh\n"
+        '[ "$1" = run ] || exit 90\n'
+        "shift\n"
+        '[ "$1" = --project ] || exit 91\n'
+        "shift 2\n"
+        '[ "$1" = --frozen ] || exit 92\n'
+        "shift\n"
+        '[ "$1" = --python ] || exit 93\n'
+        "shift\n"
+        '[ "$1" = "$EVOLVE_FRAMEWORK_PYTHON" ] || exit 94\n'
+        "shift\n"
+        'if [ "$1" = python ]; then\n'
+        "  shift\n"
+        '  "$EVOLVE_FRAMEWORK_PYTHON" "$@"\n'
+        "  command_rc=$?\n"
+        "  printf '%s\\n' 'version = \"2.0\"' 'source = \"mutated\"' > \"$SOURCE_TASK_FILE\"\n"
+        '  exit "$command_rc"\n'
+        "fi\n"
+        'exec "$@"\n',
+    )
+    _write_executable(
+        fake_bin / "harbor",
+        "#!/bin/sh\n"
+        "dataset_path=\n"
+        "jobs_dir=\n"
+        'while [ "$#" -gt 0 ]; do\n'
+        '  if [ "$1" = "-p" ]; then shift; dataset_path=$1; fi\n'
+        '  if [ "$1" = "--jobs-dir" ]; then shift; jobs_dir=$1; fi\n'
+        "  shift || true\n"
+        "done\n"
+        'printf \'%s\\n\' "$dataset_path" > "$HARBOR_DATASET_CAPTURE"\n'
+        'cat "$dataset_path/task-a/task.toml" > "$HARBOR_CONTENT_CAPTURE"\n'
+        'mkdir -p "$jobs_dir/trial"\n'
+        'printf \'%s\\n\' \'{"task_name":"task-a","trial_name":"trial","verifier_result":{"rewards":{"reward":1}}}\' > "$jobs_dir/trial/result.json"\n',
+    )
+    _write_executable(fake_bin / "docker", "#!/bin/sh\nexit 0\n")
+    run_dir = tmp_path / "run"
+    dataset_capture = tmp_path / "dataset-capture"
+    content_capture = tmp_path / "content-capture"
+    env = {
+        **os.environ,
+        "HOME": str(tmp_path / "home"),
+        "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
+        "EVOLVE_RUN_DIR": str(run_dir),
+        "EVOLVE_ATTEMPT_ID": "snapshot-test",
+        "EVOLVE_FRAMEWORK_PYTHON": sys.executable,
+        "EVOLVE_CANDIDATE_RUNTIME_ENV_JSON": "{}",
+        "EVOLVE_CANDIDATE_RUNTIME_MOUNTS_JSON": "[]",
+        "SOURCE_TASK_FILE": str(source_task_file),
+        "HARBOR_DATASET_CAPTURE": str(dataset_capture),
+        "HARBOR_CONTENT_CAPTURE": str(content_capture),
+    }
+
+    result = subprocess.run([str(evaluator / "eval.sh")], cwd=tmp_path, env=env, text=True, capture_output=True)
+
+    assert result.returncode == 0, result.stderr
+    assert dataset_capture.read_text().strip() == str(run_dir / "task-dataset")
+    assert content_capture.read_text() == 'version = "1.0"\nsource = "frozen"\n'
+    assert source_task_file.read_text() == 'version = "2.0"\nsource = "mutated"\n'
+    assert not (run_dir / "task-dataset").exists()
 
 
 def test_harbor_evaluator_passes_agent_timeout_multiplier() -> None:
@@ -91,7 +206,8 @@ def test_harbor_evaluator_ignores_ambient_frozen_control_overrides(tmp_path: Pat
         "  shift || true\n"
         "done\n"
         'mkdir -p "$jobs_dir/trial"\n'
-        'printf \'%s\\n\' \'{"task_name":"task","trial_name":"trial","verifier_result":{"rewards":{"reward":1}}}\' > "$jobs_dir/trial/result.json"\n',
+        'printf \'%s\\n\' \'{"task_name":"task","trial_name":"trial","verifier_result":{"rewards":{"reward":1}}}\' > "$jobs_dir/trial/result.json"\n'
+        "exit 7\n",
     )
     _write_executable(fake_bin / "docker", "#!/bin/sh\nexit 0\n")
 
@@ -112,6 +228,7 @@ def test_harbor_evaluator_ignores_ambient_frozen_control_overrides(tmp_path: Pat
         "EVOLVE_HARBOR_AGENT_TIMEOUT_MULTIPLIER": "9",
         "EVOLVE_HARBOR_VERIFIER_TIMEOUT_MULTIPLIER": "9",
         "EVOLVE_HARBOR_MAX_RETRIES": "9",
+        "EVOLVE_LIVE_OUTPUT": "1",
     }
 
     result = subprocess.run(
@@ -129,6 +246,8 @@ def test_harbor_evaluator_ignores_ambient_frozen_control_overrides(tmp_path: Pat
     assert "--agent-timeout-multiplier" not in args
     assert "--verifier-timeout-multiplier" not in args
     assert "--max-retries" not in args
+    metrics = json.loads((run_dir / "metrics.json").read_text())["dimensions"]
+    assert metrics["harbor_rc"] == 7
 
 
 def test_harbor_evaluator_forwards_workspace_openai_environment() -> None:
@@ -352,6 +471,62 @@ def test_harbor_stage_limit_and_anchor_task_file_override(tmp_path: Path) -> Non
     assert (tmp_path / "run" / "metrics.json").read_text().count('"expected_trials": 2') == 1
 
 
+def test_harbor_run_plan_escapes_literal_task_name_patterns(tmp_path: Path) -> None:
+    evaluator = tmp_path / "evaluator"
+    evaluator.mkdir()
+    _write_executable(evaluator / "eval.sh", _eval_sh("harbor", "fixture"))
+    (evaluator / "eval.env").write_text(
+        _eval_env(
+            "experiment",
+            "fixture",
+            n_concurrent=1,
+            tasks_per_round=1,
+            trials=1,
+            partial_floor=0.8,
+            agent="custom:Agent",
+        )
+    )
+    (evaluator / "splits.json").write_text('{"resolved":false}\n')
+    _write_evaluator_helpers(evaluator)
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    _write_fake_uv(fake_bin)
+    _write_executable(
+        fake_bin / "harbor",
+        "#!/bin/sh\n"
+        'printf \'%s\\n\' "$@" > "$HARBOR_ARGS_CAPTURE"\n'
+        "jobs_dir=\n"
+        'while [ "$#" -gt 0 ]; do\n'
+        '  if [ "$1" = "--jobs-dir" ]; then shift; jobs_dir=$1; fi\n'
+        "  shift || true\n"
+        "done\n"
+        'mkdir -p "$jobs_dir/trial"\n'
+        'printf \'%s\\n\' \'{"task_name":"task[1]","trial_name":"trial","verifier_result":{"rewards":{"reward":1}}}\' > "$jobs_dir/trial/result.json"\n',
+    )
+    run_plan = tmp_path / "run-plan.json"
+    run_plan.write_text(json.dumps({"tasks": ["task[1]"], "expected_trials": 1}))
+    args_capture = tmp_path / "args"
+    env = {
+        **os.environ,
+        "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
+        "HARBOR_ARGS_CAPTURE": str(args_capture),
+        "EVOLVE_RUN_DIR": str(tmp_path / "run"),
+        "EVOLVE_RUN_PLAN": str(run_plan),
+        "EVOLVE_ATTEMPT_ID": "literal-task-pattern",
+        "EVOLVE_FRAMEWORK_PYTHON": sys.executable,
+        "EVOLVE_CANDIDATE_RUNTIME_ENV_JSON": "{}",
+        "EVOLVE_CANDIDATE_RUNTIME_MOUNTS_JSON": "[]",
+    }
+
+    result = subprocess.run([str(evaluator / "eval.sh")], cwd=tmp_path, env=env, text=True, capture_output=True)
+
+    assert result.returncode == 0, result.stderr
+    args = args_capture.read_text().splitlines()
+    included = [args[index + 1] for index, value in enumerate(args) if value == "--include-task-name"]
+    assert included == ["task[[]1]"]
+
+
 def test_harbor_smoke_is_install_only_and_exposes_raw_diagnostics(tmp_path: Path) -> None:
     evaluator = tmp_path / "evaluator"
     evaluator.mkdir()
@@ -562,8 +737,47 @@ def test_score_parser_accepts_complete_final_vector_after_nonzero_harbor_exit(tm
     assert metrics["completed_trials"] == 2
 
 
+def test_score_parser_respects_explicit_task_limit_over_frozen_selection(tmp_path: Path) -> None:
+    evaluator = tmp_path / "evaluator"
+    evaluator.mkdir()
+    _write_evaluator_helpers(evaluator)
+    (evaluator / "eval.env").write_text("EVOLVE_HARBOR_EXPECTED_TRIALS=30\nEVOLVE_HARBOR_ATTEMPTS=1\n")
+    jobs = tmp_path / "jobs"
+    trial = jobs / "job" / "trial"
+    trial.mkdir(parents=True)
+    (trial / "result.json").write_text(
+        json.dumps(
+            {
+                "task_name": "case-a",
+                "trial_name": "trial",
+                "verifier_result": {"rewards": {"reward": 1.0}},
+            }
+        )
+    )
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / "task-split.json").write_text(json.dumps({"tasks": [f"case-{index}" for index in range(30)]}))
+    env = {**os.environ, "EVOLVE_HARBOR_EXPECTED_TRIALS": "1"}
+
+    result = subprocess.run(
+        [sys.executable, str(evaluator / "parse_score.py"), str(jobs), str(run_dir), "0"],
+        cwd=tmp_path,
+        env=env,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert (run_dir / "status").read_text().strip() == "complete"
+    metrics = json.loads((run_dir / "metrics.json").read_text())["dimensions"]
+    assert metrics["expected_trials"] == 1
+    assert metrics["completed_trials"] == 1
+
+
 def test_harbor_shell_uses_canonical_parser_result() -> None:
     text = _eval_sh("harbor", "fixture")
 
     assert '[ "$harbor_rc" -eq 0 ] || exit 3' not in text
     assert 'exit "$parser_rc"' in text
+    assert 'harbor "$@" 2>&1 | tee' not in text
+    assert 'harbor "$@" > "$live_fifo" 2>&1 || harbor_rc=$?' in text

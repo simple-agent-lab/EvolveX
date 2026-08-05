@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+import math
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -29,13 +30,34 @@ def _task_scores(cases: list[dict[str, Any]]) -> dict[str, float]:
     grouped: dict[str, list[float]] = defaultdict(list)
     for case in cases:
         task_name = str(case.get("task_name") or "")
-        if not task_name:
+        if not task_name or case.get("outcome") in {"infra_error", "incomplete"}:
             continue
         reward = case.get("reward")
-        grouped[task_name].append(
-            float(reward) if isinstance(reward, (int, float)) and not isinstance(reward, bool) else 0.0
-        )
+        if not isinstance(reward, (int, float)) or isinstance(reward, bool) or not math.isfinite(float(reward)):
+            continue
+        grouped[task_name].append(float(reward))
     return {task_name: sum(values) / len(values) for task_name, values in grouped.items()}
+
+
+def _task_names(cases: list[dict[str, Any]]) -> list[str]:
+    return list(
+        dict.fromkeys(
+            str(case.get("task_name"))
+            for case in cases
+            if isinstance(case.get("task_name"), str) and case.get("task_name")
+        )
+    )
+
+
+def _unscorable_cases(cases: list[dict[str, Any]]) -> list[str]:
+    unscorable = []
+    for case in cases:
+        reward = case.get("reward")
+        if case.get("outcome") in {"infra_error", "incomplete"} or (
+            not isinstance(reward, (int, float)) or isinstance(reward, bool) or not math.isfinite(float(reward))
+        ):
+            unscorable.append(str(case.get("task_name") or case.get("trial_name") or "unknown"))
+    return unscorable
 
 
 def _infra_cases(cases: list[dict[str, Any]]) -> list[str]:
@@ -52,10 +74,12 @@ class MinibatchImprovementValidate(ValidateOperator):
         parent_cases = _cases(parent_path)
         if not parent_cases:
             raise SystemExit(f"GEPA validation requires parent Harbor cases: {parent_path}")
-        parent_infra = _infra_cases(parent_cases)
-        parent_scores = _task_scores(parent_cases)
-        if not parent_scores:
+        parent_task_names = _task_names(parent_cases)
+        if not parent_task_names:
             raise SystemExit("GEPA parent minibatch contains no named tasks")
+        parent_infra = _infra_cases(parent_cases)
+        parent_unscorable = _unscorable_cases(parent_cases)
+        parent_scores = _task_scores(parent_cases)
 
         child_run_dir = ctx.run_dir / "validate" / "child-eval"
         child_config = {
@@ -64,8 +88,8 @@ class MinibatchImprovementValidate(ValidateOperator):
         child_config.update(
             {
                 "split": "train",
-                "task_names": list(parent_scores),
-                "budget_tasks": len(parent_scores),
+                "task_names": parent_task_names,
+                "budget_tasks": len(parent_task_names),
             }
         )
         child_ctx = OperatorContext(
@@ -85,42 +109,50 @@ class MinibatchImprovementValidate(ValidateOperator):
         child_cases_path = child_run_dir / "rollout" / "cases.json"
         child_cases = _cases(child_cases_path)
         child_infra = _infra_cases(child_cases)
+        child_unscorable = _unscorable_cases(child_cases)
         child_scores = _task_scores(child_cases)
-        if set(child_scores) != set(parent_scores):
-            missing = sorted(set(parent_scores) - set(child_scores))
-            extra = sorted(set(child_scores) - set(parent_scores))
+        child_task_names = _task_names(child_cases)
+        if set(child_task_names) != set(parent_task_names):
+            missing = sorted(set(parent_task_names) - set(child_task_names))
+            extra = sorted(set(child_task_names) - set(parent_task_names))
             raise SystemExit(f"GEPA child minibatch mismatch; missing={missing}, extra={extra}")
 
         parent_total = sum(parent_scores.values())
         child_total = sum(child_scores.values())
         criterion = str(ctx.config.get("criterion") or "strict")
         if criterion == "strict":
-            accept = child_total > parent_total
+            score_accept = child_total > parent_total
         elif criterion == "non_decreasing":
-            accept = child_total >= parent_total
+            score_accept = child_total >= parent_total
         else:
             raise ValueError("criterion must be 'strict' or 'non_decreasing'")
+        comparison_complete = not parent_unscorable and not child_unscorable
+        accept = comparison_complete and score_accept
         comparison = {
             "criterion": criterion,
-            "task_names": list(parent_scores),
+            "task_names": parent_task_names,
             "parent_scores": parent_scores,
             "child_scores": child_scores,
             "parent_total": parent_total,
             "child_total": child_total,
             "delta": child_total - parent_total,
             "accepted": accept,
+            "comparison_complete": comparison_complete,
             "parent_infra_cases": parent_infra,
             "child_infra_cases": child_infra,
+            "parent_unscorable_cases": parent_unscorable,
+            "child_unscorable_cases": child_unscorable,
         }
         root = ctx.run_dir / "validate"
         _write_json(root / "comparison.json", comparison)
         _write_json(root / "parent-cases.json", parent_cases)
         _write_json(root / "child-cases.json", child_cases)
-        reason = (
-            f"GEPA minibatch improved by {child_total - parent_total:.6g}"
-            if accept
-            else f"GEPA minibatch did not improve: delta {child_total - parent_total:.6g}"
-        )
+        if not comparison_complete:
+            reason = "GEPA minibatch comparison is incomplete due to infrastructure or missing reward results"
+        elif accept:
+            reason = f"GEPA minibatch improved by {child_total - parent_total:.6g}"
+        else:
+            reason = f"GEPA minibatch did not improve: delta {child_total - parent_total:.6g}"
         return ValidateResult(
             accept=accept,
             reason=reason,

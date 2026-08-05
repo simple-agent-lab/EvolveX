@@ -5,7 +5,7 @@ from pathlib import Path
 
 from conftest import git, init_workspace
 
-from evolve.archive import MECHANISM_EVAL_FIELD, append_event, eval_receipt_path, read_events
+from evolve.archive import MECHANISM_EVAL_FIELD, append_event, eval_receipt_path, mirror_path, read_events
 from evolve.frozen.interfaces import OperatorContext
 
 _REJECTING_VALIDATE = """
@@ -41,7 +41,7 @@ def _rewrite_baseline_task_failure(workspace: Path, evolve_home: Path) -> None:
     )
     parent["task_vector"]["tasks"]["task-0"]["trials"][0]["reward"] = 0.0
     parent["note"] = "baseline evaluated"
-    mirror = evolve_home / "mirrors" / workspace.name / "archive.jsonl"
+    mirror = mirror_path(workspace.name, workspace)
     for archive in (local, mirror):
         archive.write_text("")
         eval_receipt_path(archive).unlink(missing_ok=True)

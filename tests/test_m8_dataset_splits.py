@@ -6,7 +6,14 @@ import pytest
 from conftest import FIXTURE_SEEDS, run_evolve
 
 from evolve.frozen.interfaces import OperatorContext
-from evolve.splits import build_manifest, select_dataset_tasks, selected_task_names, split_selection_digest
+from evolve.splits import (
+    build_manifest,
+    select_dataset_tasks,
+    selected_task_names,
+    split_selection_digest,
+    task_content_digests,
+    write_runtime_selection,
+)
 from evolve.workspace import InitOptions, init_workspace
 
 
@@ -27,6 +34,9 @@ def test_split_manifest_is_deterministic_disjoint_and_drift_checked(tmp_path: Pa
     second = build_manifest(dataset.as_posix(), config, base_dir=tmp_path, sampling="static", gate_limit=2)
 
     assert first == second
+    assert first["version"] == 2
+    assert first["dataset_digest"].startswith("sha256:")
+    assert set(first["task_digests"]) == {f"task-{index}" for index in range(10)}
     assert {name: len(first["tasks"][name]) for name in ("train", "gate", "sealed")} == {
         "train": 5,
         "gate": 3,
@@ -45,11 +55,86 @@ def test_split_manifest_is_deterministic_disjoint_and_drift_checked(tmp_path: Pa
     selected, _ = select_dataset_tasks(manifest, dataset.as_posix(), "train", limit=3)
     assert selected == first["tasks"]["train"][:3]
 
+    changed_task = dataset / "task-0" / "task.toml"
+    original = changed_task.read_text()
+    changed_task.write_text(original + 'description = "changed"\n')
+    with pytest.raises(RuntimeError, match="task contents changed after init"):
+        select_dataset_tasks(manifest, dataset.as_posix(), "train")
+    changed_task.write_text(original)
+
+    verifier = dataset / "task-0" / "tests" / "verify.sh"
+    verifier.parent.mkdir()
+    verifier.write_text("#!/bin/sh\nexit 0\n")
+    refreshed = build_manifest(dataset.as_posix(), config, base_dir=tmp_path, sampling="static", gate_limit=2)
+    manifest.write_text(json.dumps(refreshed))
+    verifier.chmod(0o755)
+    with pytest.raises(RuntimeError, match="task contents changed after init"):
+        select_dataset_tasks(manifest, dataset.as_posix(), "train")
+    verifier.chmod(0o644)
+
     extra = dataset / "task-extra"
     extra.mkdir()
     (extra / "task.toml").write_text('version = "1.0"\n')
     with pytest.raises(RuntimeError, match="changed after init"):
         select_dataset_tasks(manifest, dataset.as_posix(), "train")
+
+
+def test_runtime_selection_executes_from_a_verified_content_snapshot(tmp_path: Path) -> None:
+    dataset = _dataset(tmp_path / "tasks")
+    manifest_payload = build_manifest(
+        dataset.as_posix(),
+        {"train": 0.5, "gate": 0.3, "sealed": 0.2, "seed": 7},
+        base_dir=tmp_path,
+        sampling="static",
+        gate_limit=2,
+    )
+    manifest = tmp_path / "splits.json"
+    manifest.write_text(json.dumps(manifest_payload))
+    run_dir = tmp_path / "run"
+
+    snapshot = write_runtime_selection(manifest, dataset.as_posix(), "train", run_dir)
+
+    names = manifest_payload["tasks"]["train"]
+    expected = {name: manifest_payload["task_digests"][name] for name in names}
+    assert snapshot == run_dir / "task-dataset"
+    assert sorted(path.name for path in snapshot.iterdir()) == sorted(names)
+    assert task_content_digests(snapshot) == expected
+    assert (run_dir / "task_set_hash").read_text().strip() == split_selection_digest("train", names, expected)
+
+    selected = names[0]
+    original_snapshot = (snapshot / selected / "task.toml").read_text()
+    (dataset / selected / "task.toml").write_text('version = "2.0"\nsource = "mutated"\n')
+    assert (snapshot / selected / "task.toml").read_text() == original_snapshot
+    assert task_content_digests(snapshot) == expected
+
+
+def test_runtime_selection_rejects_a_snapshot_that_misses_the_frozen_digest(tmp_path: Path, monkeypatch) -> None:
+    import evolve.splits as splits
+
+    dataset = _dataset(tmp_path / "tasks", count=3)
+    manifest_payload = build_manifest(
+        dataset.as_posix(),
+        {"train": 1.0, "gate": 0.0, "sealed": 0.0, "seed": 1},
+        base_dir=tmp_path,
+        sampling="static",
+        gate_limit=0,
+    )
+    manifest = tmp_path / "splits.json"
+    manifest.write_text(json.dumps(manifest_payload))
+    run_dir = tmp_path / "run"
+    copytree = splits.shutil.copytree
+
+    def copy_then_mutate(source: Path, destination: Path, **kwargs) -> Path:
+        result = copytree(source, destination, **kwargs)
+        (destination / "post-copy-mutation").write_text("changed")
+        return result
+
+    monkeypatch.setattr(splits.shutil, "copytree", copy_then_mutate)
+
+    with pytest.raises(RuntimeError, match="does not match the frozen split content identity"):
+        write_runtime_selection(manifest, dataset.as_posix(), "train", run_dir)
+    assert not (run_dir / "task-dataset").exists()
+    assert not (run_dir / ".task-dataset.pending").exists()
 
 
 def test_init_dataset_option_freezes_local_harbor_tasks(tmp_path: Path) -> None:
@@ -70,6 +155,9 @@ def test_init_dataset_option_freezes_local_harbor_tasks(tmp_path: Path) -> None:
     manifest = json.loads((workspace / "evaluator" / "splits.json").read_text())
     assert manifest["resolved"] is True
     assert manifest["dataset"] == str(dataset)
+    assert (workspace / "evaluator" / "dataset.pin").read_text() == (
+        f"dataset={dataset}\nchecksum={manifest['dataset_digest']}\n"
+    )
     assert sum(len(manifest["tasks"][name]) for name in ("train", "gate", "sealed")) == 10
 
 
@@ -134,6 +222,23 @@ def test_split_rejects_invalid_ratios_and_datasets_too_small_for_isolation(tmp_p
             sampling="static",
             gate_limit=1,
         )
+
+
+def test_legacy_local_manifest_is_readable_but_cannot_run_new_canonical_evaluation(tmp_path: Path) -> None:
+    dataset = _dataset(tmp_path / "tasks", count=3)
+    manifest = tmp_path / "splits.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "resolved": True,
+                "tasks": {"train": ["task-0"], "gate": ["task-1"], "sealed": ["task-2"]},
+            }
+        )
+    )
+
+    with pytest.raises(RuntimeError, match="legacy split manifest does not bind task contents"):
+        select_dataset_tasks(manifest, dataset.as_posix(), "train")
 
 
 def test_harbor_rollout_uses_only_frozen_train_task_names(tmp_path: Path, monkeypatch) -> None:

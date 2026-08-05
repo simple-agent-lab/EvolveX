@@ -11,8 +11,9 @@
 - **Integration** — framework-owned runtime behavior for an external system.
   Harbor integrations live under `src/evolve/integrations/harbor/` and travel
   inside the vendored framework runtime.
-- **Supported recipe** — one of the five public YAML configurations in
-  `recipes/`: `aevolve`, `ahe`, `gepa`, `hill_climb`, or `hyperagents`.
+- **Supported recipe** — one of the public YAML configurations in `recipes/`:
+  `aevolve`, `ahe`, `ahe_codex`, `gepa`, `hill_climb`, `hill_climb_codex`,
+  `hyperagents`, or `hyperagents_codex`.
 - **Test fixture** — deterministic test-only data under `tests/fixtures/`. It
   is not a supported recipe or seed.
 - **Evaluator / ruler** — the frozen scoring harness in `evaluator/`. It runs

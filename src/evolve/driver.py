@@ -8,7 +8,7 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, TextIO
+from typing import Any
 
 from .archive import (
     EVALUATION_FIELDS,
@@ -50,6 +50,7 @@ from .frozen.interfaces import (
 from .git import (
     add_worktree,
     create_tag,
+    dirty_paths,
     git,
     git_common_dir,
     git_stdout,
@@ -57,9 +58,11 @@ from .git import (
     remove_worktree,
     tag_exists,
     working_tree_changed_paths,
+    worktree_paths,
 )
 from .operators import OperatorResult, operator_timeout, run_operator
-from .population import best_row, format_genid, generation_number, valid_genid
+from .population import best_row, fixed_evaluation_identity, format_genid, generation_number, valid_genid
+from .report import materialize_best_ever
 from .surface import check_paths, surface_patterns
 
 PENDING_GATE_RECORD_NOTE = "mechanism evaluation recorded before gate/record"
@@ -100,8 +103,7 @@ class OperatorOutputError:
 def workspace_run_lock(workspace: Path) -> Iterator[None]:
     lock_path = workspace / "runs" / ".driver.lock"
     lock_path.parent.mkdir(parents=True, exist_ok=True)
-    handle: TextIO = lock_path.open("a+", encoding="utf-8")
-    try:
+    with lock_path.open("a+", encoding="utf-8") as handle:
         try:
             fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as exc:
@@ -115,12 +117,10 @@ def workspace_run_lock(workspace: Path) -> Iterator[None]:
         handle.truncate()
         handle.write(f"{os.getpid()}\n")
         handle.flush()
-        yield
-    finally:
         try:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            yield
         finally:
-            handle.close()
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 def run(options: RunOptions) -> None:
@@ -135,6 +135,13 @@ def _run_locked(options: RunOptions, workspace: Path) -> None:
     exp_id = experiment_id(workspace)
     ensure_local_archive(workspace, exp_id)
     evaluator_sampling(workspace)
+    active_worktrees = _workspace_child_worktrees(workspace)
+    if active_worktrees:
+        names = ", ".join(path.name for path in active_worktrees)
+        raise RuntimeError(
+            f"active child worktree(s): {names}; finish the agent commit, "
+            "or run evolve repair after preserving any edits"
+        )
     _ensure_genesis_evaluated(workspace)
     operators_config = operator_blocks(workspace)
 
@@ -247,6 +254,17 @@ def _run_operator_or_fail(
     return True
 
 
+@contextmanager
+def _managed_child_worktree(workspace: Path, child: Path) -> Iterator[None]:
+    if child.exists():
+        raise RuntimeError(f"refusing to replace existing child worktree: {child}")
+    try:
+        yield
+    finally:
+        if child.exists():
+            remove_worktree(workspace, child)
+
+
 def _run_child(
     workspace: Path,
     exp_id: str,
@@ -265,11 +283,9 @@ def _run_child(
         recorded = True
         _run_terminal_record(workspace, exp_id, genid, parent, operators_config, candidate_checkout, round_number)
 
-    if child.exists():
-        remove_worktree(workspace, child)
-    try:
+    with _managed_child_worktree(workspace, child):
         try:
-            fork_child(workspace, parent, child)
+            parent_commit = fork_child(workspace, parent, child)
         except Exception as exc:
             _append_operator_failed(
                 workspace,
@@ -303,7 +319,7 @@ def _run_child(
                 record_terminal_attempt()
                 return
 
-        mutated_paths = working_tree_changed_paths(child, f"gen/{parent}")
+        mutated_paths = working_tree_changed_paths(child, parent_commit)
         if not mutated_paths:
             _append_candidate_rejected(
                 workspace,
@@ -385,9 +401,6 @@ def _run_child(
                 return
 
         commit_child(workspace, child, parent, genid)
-    finally:
-        if child.exists():
-            remove_worktree(workspace, child)
 
     row = rows_by_genid(workspace).get(genid, {})
     if row.get("status") in {"no_proposal", "invalid_proposal", "operator_failed"}:
@@ -399,9 +412,9 @@ def _run_child(
     _run_gate_and_record(workspace, exp_id, genid, parent, operators_config, round_number=round_number)
 
     # Reflect (mechanism 2, DESIGN §7) — optional, off unless the recipe configures
-    # `operators.reflect`. Reads the ledger after the record operator annotates it
+    # `operators.reflect`. Reads the archive after the record operator annotates it
     # and appends playbook insights. Best-effort: a reflect failure never unwinds
-    # the recorded generation. Runs against the workspace (it needs the ledger,
+    # the recorded generation. Runs against the workspace (it needs the archive,
     # not the candidate worktree).
     if _operator_present(operators_config, "reflect"):
         _run_operator_guarded(
@@ -419,16 +432,36 @@ def _run_child(
     _maybe_quarantine(workspace, genid)
 
 
-def doctor(workspace: Path) -> list[str]:
+def repair(workspace: Path) -> list[str]:
     """Detect + repair interrupted state: prune stale child worktrees a crash
     left behind, and report generations pending gate/record that `run` resumes.
     Returns the actions taken/observations (empty means nothing to do)."""
+    workspace = workspace.resolve()
+    with workspace_run_lock(workspace):
+        return _repair_locked(workspace)
+
+
+def doctor(workspace: Path) -> list[str]:
+    """Backward-compatible alias for the pre-0.2 repair API."""
+    return repair(workspace)
+
+
+def _repair_locked(workspace: Path) -> list[str]:
     actions: list[str] = []
     worktrees = workspace / "runs" / "worktrees"
     if worktrees.exists():
         for path in sorted(p for p in worktrees.iterdir() if p.is_dir()):
+            changed = dirty_paths(path)
+            if changed:
+                actions.append(f"preserved dirty worktree {path.name}: {', '.join(changed)}")
+                continue
             remove_worktree(workspace, path)
             actions.append(f"removed stale worktree {path.name}")
+    managed_root = worktrees.resolve()
+    for path in _workspace_child_worktrees(workspace):
+        if path.is_relative_to(managed_root):
+            continue
+        actions.append(f"preserved linked worktree outside runs/worktrees: {path}")
     git(workspace, "worktree", "prune", check=False)
     pending = sorted(_evaluation_pending_gate_record_genids(workspace))
     if pending:
@@ -436,11 +469,16 @@ def doctor(workspace: Path) -> list[str]:
     return actions
 
 
+def _workspace_child_worktrees(workspace: Path) -> list[Path]:
+    root = workspace.resolve()
+    return sorted(path for path in worktree_paths(root) if path != root)
+
+
 def _maybe_quarantine(workspace: Path, genid: str) -> None:
     """Audit (DESIGN observability): quarantine a suspicious score jump past the
     champion by more than EVOLVE_AUDIT_JUMP (off by default). A `pending` audit
     flags the generation for human review — a huge unexplained gain is often an
-    exploit of the ruler, not real progress."""
+    exploit of the evaluator, not real progress."""
     margin = os.environ.get("EVOLVE_AUDIT_JUMP")
     if not margin:
         return
@@ -479,7 +517,7 @@ def _run_gate_and_record(
     operators_config: dict[str, Any],
     *,
     round_number: int | None = None,
-) -> None:
+) -> bool:
     with tempfile.TemporaryDirectory(prefix=f"evolve-gate-{genid}-") as tempdir:
         checkout = Path(tempdir) / "checkout"
         add_worktree(workspace, checkout, f"gen/{genid}")
@@ -517,7 +555,7 @@ def _run_gate_and_record(
                     round_number=round_number,
                     operator_ref=f"gen/{genid}",
                 )
-                return
+                return False
             gate_payload, gate_error = _load_gate_payload(run_dir)
             if gate_error is not None or gate_payload is None:
                 _append_operator_failed(
@@ -538,7 +576,7 @@ def _run_gate_and_record(
                     round_number=round_number,
                     operator_ref=f"gen/{genid}",
                 )
-                return
+                return False
 
             append_event(workspace, exp_id, {"genid": genid, "pending_gate_record": False, **gate_payload})
             _run_terminal_record(
@@ -552,8 +590,10 @@ def _run_gate_and_record(
                 operator_ref=f"gen/{genid}",
                 allowed_fields=RECORD_ANNOTATION_FIELDS,
             )
+            return True
         finally:
             remove_worktree(workspace, checkout)
+            materialize_best_ever(workspace)
 
 
 def _run_terminal_record(
@@ -609,28 +649,31 @@ def _run_terminal_record(
             remove_worktree(workspace, operator_checkout)
 
 
-def fork_child(workspace: Path, parent: str, child_worktree: Path) -> None:
+def fork_child(workspace: Path, parent: str, child_worktree: Path) -> str:
     workspace = workspace.resolve()
-    _assert_valid_parent(workspace, parent)
+    parent_commit = _assert_valid_parent(workspace, parent)
     if child_worktree.exists():
         if any(child_worktree.iterdir()):
             raise RuntimeError(f"child worktree path is not empty: {child_worktree}")
         child_worktree.rmdir()
-    add_worktree(workspace, child_worktree, f"gen/{parent}")
+    # Use the commit certified by the evaluation row, not the mutable tag name.
+    # The tag can move after parent validation; a detached worktree at this SHA
+    # still starts from exactly the code whose score was certified.
+    add_worktree(workspace, child_worktree, parent_commit)
+    return parent_commit
 
 
 def commit_child(workspace: Path, child_worktree: Path, parent: str, genid: str) -> None:
     workspace = workspace.resolve()
     genid = _validate_genid(genid)
-    _assert_valid_parent(workspace, parent)
+    parent_commit = _assert_valid_parent(workspace, parent)
     if tag_exists(workspace, f"gen/{genid}") or genid in rows_by_genid(workspace):
         raise RuntimeError(f"generation already exists: {genid}")
-    _assert_child_worktree_for_parent(workspace, child_worktree, parent)
+    _assert_child_worktree_for_parent(workspace, child_worktree, parent, parent_commit)
     exp_id = experiment_id(workspace)
     ensure_local_archive(workspace, exp_id)
-    parent_tag = f"gen/{parent}"
     tag = f"gen/{genid}"
-    mutated = working_tree_changed_paths(child_worktree, parent_tag)
+    mutated = working_tree_changed_paths(child_worktree, parent_commit)
     if not mutated:
         append_event(
             workspace,
@@ -671,7 +714,7 @@ def commit_child(workspace: Path, child_worktree: Path, parent: str, genid: str)
 
     snapshot = build_candidate_snapshot(
         child_worktree,
-        parent_tag,
+        parent_commit,
         include=include,
         exclude=exclude,
     )
@@ -725,7 +768,7 @@ def eval_child(
         return None
     if force:
         kind = "forced_eval"
-    if status in UNRETRYABLE_STATUSES:
+    if status in UNRETRYABLE_STATUSES and not force:
         return None
     parent = str(row.get("parent") or (genid if genid == "0" else _fallback_parent_for_eval(workspace, rows)))
     tag = f"gen/{genid}"
@@ -895,6 +938,7 @@ def _append_lifecycle_evaluation(
         else {}
     )
     append_evaluation_record(workspace, record, metadata={**metadata, **gate_metadata})
+    materialize_best_ever(workspace)
 
 
 def _select_generation_parents(
@@ -1096,8 +1140,10 @@ def _matched_gate_parent(parent: dict[str, Any] | None, child: dict[str, Any]) -
 
 
 def _operator_output_error(name: str, run_dir: Path) -> OperatorOutputError | None:
-    checks: tuple[tuple[Path, str, Callable[[object], object]], ...]
-    if name == "rollout":
+    checks: tuple[tuple[Path, str, Callable[[Any], object]], ...]
+    if name == "select":
+        checks = ((Path("parents.json"), "parents", validate_select_payload),)
+    elif name == "rollout":
         checks = (
             (Path("rollout") / "summary.json", "summary", validate_rollout_summary_payload),
             (Path("rollout") / "artifacts.json", "artifacts", validate_rollout_artifacts_payload),
@@ -1165,6 +1211,7 @@ def _append_operator_failed(
             "valid_parent": False,
             "verdict": "discard",
             "reason": f"operator {operator_name} failed",
+            "failure_stage": operator_name,
             "mutated": [],
             "surface_violations": [],
             "note": note,
@@ -1299,31 +1346,40 @@ def _run_operator_guarded(
     round_number: int | None = None,
 ) -> OperatorResult:
     before = _archive_line_snapshots(workspace, exp_id)
-    if checkout.resolve() != workspace.resolve():
-        checkout_archive = archive_path(checkout)
-        before[checkout_archive] = _archive_lines(checkout_archive)
-        _write_archive_lines(checkout_archive, before[archive_path(workspace)])
-        receipts = _archive_lines(eval_receipt_path(archive_path(workspace)))
-        if receipts:
-            _write_archive_lines(eval_receipt_path(archive_path(checkout)), receipts)
-    result = run_operator(
-        name=name,
-        checkout=checkout,
-        workspace=workspace,
-        genid=genid,
-        parent=parent,
-        run_dir=run_dir,
-        config_block=config_block,
-        timeout_s=timeout_s,
-        round_number=round_number,
-        operator_checkout=operator_checkout,
-    )
-    _restore_operator_archive_writes(before)
-    return result
+    try:
+        if checkout.resolve() != workspace.resolve():
+            checkout_archive = archive_path(checkout)
+            checkout_receipts = eval_receipt_path(checkout_archive)
+            checkout_best = checkout / "best_ever.json"
+            before[checkout_archive] = _archive_lines(checkout_archive)
+            before[checkout_receipts] = _archive_lines(checkout_receipts)
+            before[checkout_best] = _archive_lines(checkout_best)
+            _write_archive_lines(checkout_archive, before[archive_path(workspace)])
+            _write_archive_lines(
+                checkout_receipts,
+                before[eval_receipt_path(archive_path(workspace))],
+            )
+            _write_archive_lines(checkout_best, before[workspace / "best_ever.json"])
+        return run_operator(
+            name=name,
+            checkout=checkout,
+            workspace=workspace,
+            genid=genid,
+            parent=parent,
+            run_dir=run_dir,
+            config_block=config_block,
+            timeout_s=timeout_s,
+            round_number=round_number,
+            operator_checkout=operator_checkout,
+        )
+    finally:
+        _restore_operator_archive_writes(before)
 
 
 def _archive_line_snapshots(workspace: Path, exp_id: str) -> dict[Path, list[str]]:
-    return {path: _archive_lines(path) for path in (archive_path(workspace), mirror_path(exp_id))}
+    archives = (archive_path(workspace), mirror_path(exp_id, workspace))
+    paths = (*archives, *(eval_receipt_path(path) for path in archives), workspace / "best_ever.json")
+    return {path: _archive_lines(path) for path in paths}
 
 
 def _archive_lines(path: Path) -> list[str]:
@@ -1369,6 +1425,11 @@ def _fallback_parent_for_eval(
     rows: dict[str, dict[str, object]],
     max_generation: int | None = None,
 ) -> str:
+    if fixed_evaluation_identity(workspace) is None:
+        raise RuntimeError(
+            "fixed evaluation identity is unavailable; legacy v1 local split manifests do not bind task "
+            "contents, so start a new experiment with a v2 split manifest"
+        )
     filtered_rows = []
     for genid, row in rows.items():
         generation = generation_number(genid)
@@ -1389,21 +1450,33 @@ def _validate_genid(genid: str) -> str:
     return genid
 
 
-def _assert_valid_parent(workspace: Path, parent: str) -> None:
+def _assert_valid_parent(workspace: Path, parent: str) -> str:
     parent = _validate_genid(parent)
     view = ArchiveView(workspace)
     row = view.row(parent)
     if row is None:
         raise RuntimeError(f"unknown parent: {parent}")
-    if not any(str(candidate.get("genid")) == parent for candidate in view.valid_parents()):
+    certified = next(
+        (candidate for candidate in view.valid_parents() if str(candidate.get("genid")) == parent),
+        None,
+    )
+    if certified is None:
         raise RuntimeError(f"parent gen/{parent} is not a valid parent")
     if not tag_exists(workspace, f"gen/{parent}"):
         raise RuntimeError(f"missing tag for parent gen/{parent}")
+    candidate_commit = certified.get("candidate_commit")
+    if not isinstance(candidate_commit, str) or not candidate_commit:
+        raise RuntimeError(f"parent gen/{parent} has no certified candidate commit")
+    return candidate_commit
 
 
-def _assert_child_worktree_for_parent(workspace: Path, child_worktree: Path, parent: str) -> None:
+def _assert_child_worktree_for_parent(
+    workspace: Path,
+    child_worktree: Path,
+    parent: str,
+    parent_commit: str,
+) -> None:
     if git_common_dir(workspace) != git_common_dir(child_worktree):
         raise RuntimeError("child worktree does not belong to the workspace repository")
-    parent_head = git_stdout(workspace, "rev-parse", f"gen/{parent}^{{commit}}")
-    if head_commit(child_worktree) != parent_head:
+    if head_commit(child_worktree) != parent_commit:
         raise RuntimeError(f"child worktree is not based on gen/{parent}")

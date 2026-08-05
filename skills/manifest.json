@@ -3,15 +3,8 @@
     {
       "name": "evolve-agent",
       "path": "evolve-agent/SKILL.md",
-      "role": "outer",
-      "summary": "Router: create a workspace, then enter and operate it."
-    },
-    {
-      "name": "evolve-workspace",
-      "path": "evolve-workspace/SKILL.md",
-      "role": "inner",
-      "summary": "The meta-agent's manual; travels into every workspace."
+      "role": "outer-and-workspace",
+      "summary": "Method guide and workspace operating manual for evidence-driven agent evolution."
     }
-  ],
-  "shared": ["_invariants.md", "_conventions.md"]
+  ]
 }

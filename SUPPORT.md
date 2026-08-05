@@ -1,7 +1,10 @@
 # Support
 
-Use the [bug report form](https://github.com/simple-agent-lab/simple-evolve-agent/issues/new?template=bug_report.yml)
-for reproducible defects. Use the
+Search [existing issues](https://github.com/simple-agent-lab/simple-evolve-agent/issues)
+before filing. Use the
+[bug report form](https://github.com/simple-agent-lab/simple-evolve-agent/issues/new?template=bug_report.yml)
+for reproducible defects and include the framework version, recipe, environment,
+and a minimal reproducer. Use the
 [feature request form](https://github.com/simple-agent-lab/simple-evolve-agent/issues/new?template=feature_request.yml)
 for scoped enhancements.
 

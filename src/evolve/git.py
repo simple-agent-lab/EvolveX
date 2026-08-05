@@ -100,6 +100,16 @@ def add_worktree(repo: Path, path: Path, ref: str) -> None:
     git(repo, "worktree", "add", "--detach", str(path), ref)
 
 
+def worktree_paths(repo: Path) -> list[Path]:
+    """Return every registered worktree path from Git's stable porcelain form."""
+
+    return [
+        Path(line.removeprefix("worktree ")).resolve()
+        for line in git_stdout(repo, "worktree", "list", "--porcelain").splitlines()
+        if line.startswith("worktree ")
+    ]
+
+
 def remove_worktree(repo: Path, path: Path) -> None:
     git(repo, "worktree", "remove", "--force", str(path), check=False)
     if path.exists():

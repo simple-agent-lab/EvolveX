@@ -18,6 +18,18 @@ def _module():
     return module
 
 
+def test_trajectory_judge_rejects_non_finite_scores() -> None:
+    module = _module()
+
+    for score in ("NaN", "Infinity", "-Infinity"):
+        try:
+            module._json_object(f'{{"score": {score}}}')
+        except ValueError as exc:
+            assert "required JSON object" in str(exc)
+        else:
+            raise AssertionError(f"non-finite score was accepted: {score}")
+
+
 def test_trajectory_only_runs_separate_behavior_judge_and_exposes_one_selected_view(
     tmp_path: Path, monkeypatch
 ) -> None:

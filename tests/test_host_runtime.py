@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -33,7 +35,17 @@ def test_uv_run_uses_locked_workspace_and_cleans_python_environment(tmp_path: Pa
 
     command, env = uv_run(tmp_path, "harbor", "run", env=source)
 
-    assert command == [str(uv), "run", "--project", str(tmp_path.resolve()), "--frozen", "harbor", "run"]
+    assert command == [
+        str(uv),
+        "run",
+        "--project",
+        str(tmp_path.resolve()),
+        "--frozen",
+        "--python",
+        sys.executable,
+        "harbor",
+        "run",
+    ]
     assert not {"PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV"} & env.keys()
     assert env["OPENAI_API_KEY"] == "secret"
     assert env["TMPDIR"] == "/tmp/custom"
@@ -54,6 +66,46 @@ def test_uv_run_does_not_redirect_temp_root_into_workspace(tmp_path: Path) -> No
 
     assert "TMPDIR" not in env
     assert not (tmp_path / "runs" / ".tmp").exists()
+
+
+def test_uv_run_reuses_framework_python_with_empty_offline_uv_directories(tmp_path: Path) -> None:
+    _project(tmp_path)
+    (tmp_path / "pyproject.toml").write_text(
+        "[project]\nname='test'\nversion='0'\nrequires-python='>=3.12'\n[tool.uv]\npackage=false\n"
+    )
+    (tmp_path / "uv.lock").unlink()
+    locked = subprocess.run(
+        [uv_executable(os.environ), "lock", "--project", str(tmp_path), "--python", sys.executable],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert locked.returncode == 0, locked.stderr
+    home = tmp_path / "empty-home"
+    cache = tmp_path / "empty-cache"
+    python_dir = tmp_path / "empty-python"
+    home.mkdir()
+    cache.mkdir()
+    python_dir.mkdir()
+    command, env = uv_run(
+        tmp_path,
+        "python",
+        "-c",
+        "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')",
+        env={
+            **os.environ,
+            "HOME": str(home),
+            "UV_CACHE_DIR": str(cache),
+            "UV_OFFLINE": "1",
+            "UV_PYTHON_INSTALL_DIR": str(python_dir),
+        },
+    )
+
+    result = subprocess.run(command, env=env, text=True, capture_output=True, check=False)
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == f"{sys.version_info.major}.{sys.version_info.minor}"
+    assert not any(python_dir.iterdir())
 
 
 def test_uv_run_reports_missing_runtime_inputs(tmp_path: Path) -> None:

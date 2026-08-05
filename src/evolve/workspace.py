@@ -11,6 +11,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import urllib.parse
 from dataclasses import dataclass
 from importlib.resources.abc import Traversable
 from pathlib import Path
@@ -19,6 +20,7 @@ from typing import Any, cast
 from . import __version__ as _EVOLVE_VERSION
 from .archive import append_event
 from .config import (
+    DEFAULT_RECIPE,
     OPERATOR_KINDS,
     OPTIONAL_OPERATOR_KINDS,
     SOURCE_ROOT,
@@ -78,7 +80,7 @@ def init_workspace(options: InitOptions) -> None:
         raise ValueError(f"workspace is not empty: {workspace}")
 
     if options.recipe_path is None:
-        recipe = options.recipe or "hill_climb"
+        recipe = options.recipe or DEFAULT_RECIPE
         recipe_directory: Path | Traversable | None = None
         config = default_config(recipe, workspace.name)
     else:
@@ -153,6 +155,7 @@ if [ -z "$UV" ] || [ ! -x "$UV" ]; then
   echo "evolve: uv is required; install uv or set EVOLVE_UV_BINARY" >&2
   exit 1
 fi
+if [ -n "${EVOLVE_FRAMEWORK_PYTHON:-}" ]; then exec "$UV" run --project "$HERE" --frozen --python "$EVOLVE_FRAMEWORK_PYTHON" python "$HERE/.evolve/launch_evolve.py" "$@"; fi
 exec "$UV" run --project "$HERE" --frozen python "$HERE/.evolve/launch_evolve.py" "$@"
 """
 
@@ -226,6 +229,8 @@ def _write_files(
         "README.md": _workspace_scaffold("README.md"),
         "AGENTS.md": _workspace_scaffold("AGENTS.md"),
         "program.md": _workspace_scaffold("program.md"),
+        "LICENSE.evolve-framework": _framework_legal_text("LICENSE"),
+        "NOTICE.evolve-framework": _framework_legal_text("NOTICE"),
         ".gitignore": _workspace_scaffold(".gitignore"),
         ".evolve-protocol-version": "1\n",
         "operators/engines/local.sh": _shell_script("operator local engine"),
@@ -234,7 +239,6 @@ def _write_files(
         "operators/rollout.md": _workspace_scaffold("operators/rollout.md"),
         "operators/gate.md": _workspace_scaffold("operators/gate.md"),
         "operators/record.md": _workspace_scaffold("operators/record.md"),
-        "skills/evolve-workspace/SKILL.md": _skill("evolve-workspace/SKILL.md"),
         "PROTOCOL.md": (library_root() / "PROTOCOL.md").read_text(),
         "evaluator/eval.sh": _eval_sh(evaluator_engine, evaluator_dataset),
         "evaluator/eval.env": _eval_env(
@@ -258,12 +262,16 @@ def _write_files(
         "evaluator/verifier.env": _agent_env(evaluator.get("verifier_env")),
         "evaluator/environment.kwargs": _environment_kwargs(evaluator.get("environment_kwargs")),
         "evaluator/splits.json": json.dumps(split_manifest, indent=2, sort_keys=True) + "\n",
-        "evaluator/dataset.pin": f"dataset={evaluator_dataset}\nchecksum=sha256:stub\n",
+        "evaluator/dataset.pin": (
+            f"dataset={evaluator_dataset}\nchecksum={split_manifest['dataset_digest'] or 'unresolved'}\n"
+        ),
         "evaluator/runtime.pin": f"{runtime_digest}\n",
         "evaluator/stub_eval.py": _workspace_scaffold("evaluator/stub_eval.py"),
         "evaluator/engines/local.sh": _shell_script("canonical local engine"),
         "archive.jsonl": "",
+        "best_ever.json": "null\n",
     }
+    files.update(_skill_package("evolve-agent"))
     if evaluator_engine == "harbor":
         files.update(
             {
@@ -588,7 +596,7 @@ def _validate_target_config(target: dict[str, Any]) -> None:
     if not isinstance(generate_lock, bool):
         raise ValueError("target.generate_lock must be a boolean")
 
-    if seed == "builtin-codex" or _looks_like_git_url(seed):
+    if seed in ("builtin-codex", "builtin-local-smoke") or _looks_like_git_url(seed):
         return
     if revision is not None:
         raise ValueError("target.revision requires a git URL seed")
@@ -635,10 +643,10 @@ def _write_target(workspace: Path, target_config: dict[str, Any]) -> None:
     revision_value = target_config.get("revision")
     revision = cast(str | None, revision_value)
     generate_lock = target_config.get("generate_lock", False)
-    if seed_text == "builtin-codex":
-        _copy_resource_tree(seed_root() / "codex", workspace / "target")
+    if seed_text in ("builtin-codex", "builtin-local-smoke"):
+        _copy_resource_tree(seed_root() / seed_text.removeprefix("builtin-"), workspace / "target")
         (workspace / "target" / "UPSTREAM.json").write_text(
-            json.dumps({"kind": "builtin", "seed": "builtin-codex"}, sort_keys=True) + "\n"
+            json.dumps({"kind": "builtin", "seed": seed_text}, sort_keys=True) + "\n"
         )
     elif _looks_like_git_url(seed_text):
         with tempfile.TemporaryDirectory(prefix="evolve-seed-") as tmp:
@@ -667,7 +675,13 @@ def _copy_resource_tree(source: Traversable, destination: Path) -> None:
 
 
 def _vendor_seed(workspace: Path, source: Path, fallback_remote: str) -> None:
-    shutil.copytree(source, workspace / "target", ignore=shutil.ignore_patterns(*_SEED_IGNORE_PATTERNS))
+    _validate_seed_symlinks(source)
+    shutil.copytree(
+        source,
+        workspace / "target",
+        symlinks=True,
+        ignore=shutil.ignore_patterns(*_SEED_IGNORE_PATTERNS),
+    )
     upstream = _git_upstream(source, fallback_remote)
     if upstream:
         (workspace / "target" / "UPSTREAM.json").write_text(json.dumps(upstream, sort_keys=True) + "\n")
@@ -677,9 +691,39 @@ def _git_upstream(source: Path, fallback_remote: str) -> dict[str, str] | None:
     if not (source / ".git").exists():
         return None
     return {
-        "remote": _git_optional(source, "remote", "get-url", "origin") or fallback_remote,
+        "remote": _sanitize_upstream_remote(_git_optional(source, "remote", "get-url", "origin") or fallback_remote),
         "commit": _git(source, "rev-parse", "HEAD").strip(),
     }
+
+
+def _validate_seed_symlinks(source: Path) -> None:
+    root = source.resolve()
+    for path in source.rglob("*"):
+        if not path.is_symlink():
+            continue
+        target = path.readlink()
+        if target.is_absolute():
+            raise ValueError(f"target seed contains an absolute symlink: {path}")
+        resolved = (path.parent / target).resolve(strict=False)
+        try:
+            resolved.relative_to(root)
+        except ValueError:
+            raise ValueError(f"target seed contains a symlink escaping its root: {path}") from None
+
+
+def _sanitize_upstream_remote(remote: str) -> str:
+    parsed = urllib.parse.urlsplit(remote)
+    if not parsed.scheme or not parsed.netloc:
+        return remote
+    hostname = parsed.hostname or ""
+    if ":" in hostname and not hostname.startswith("["):
+        hostname = f"[{hostname}]"
+    try:
+        parsed_port = parsed.port
+    except ValueError:
+        parsed_port = None
+    port = f":{parsed_port}" if parsed_port is not None else ""
+    return urllib.parse.urlunsplit((parsed.scheme, f"{hostname}{port}", parsed.path, "", ""))
 
 
 def _looks_like_git_url(seed: str) -> bool:
@@ -914,6 +958,13 @@ def _workspace_scaffold(relative_path: str) -> str:
     return (scaffold_root() / "workspace" / relative_path).read_text()
 
 
+def _framework_legal_text(name: str) -> str:
+    source = SOURCE_ROOT / name
+    if (SOURCE_ROOT / "pyproject.toml").is_file() and source.is_file():
+        return source.read_text()
+    return (resource_root("licenses") / name).read_text()
+
+
 def _evaluator_scaffold(engine: str, relative_path: str) -> str:
     root = scaffold_root() / "evaluators" / engine
     path = root / relative_path
@@ -922,8 +973,22 @@ def _evaluator_scaffold(engine: str, relative_path: str) -> str:
     return path.read_text()
 
 
-def _skill(relative_path: str) -> str:
-    return (resource_root("skills") / relative_path).read_text()
+def _skill_package(name: str) -> dict[str, str]:
+    root = resource_root("skills") / name
+    if not root.is_dir():
+        raise ValueError(f"skill package not found: {name}")
+    files: dict[str, str] = {}
+
+    def visit(directory: Traversable, relative: str = "") -> None:
+        for child in sorted(directory.iterdir(), key=lambda item: item.name):
+            child_relative = f"{relative}/{child.name}" if relative else child.name
+            if child.is_dir():
+                visit(child, child_relative)
+            elif child.is_file():
+                files[f"skills/{name}/{child_relative}"] = child.read_text()
+
+    visit(root)
+    return files
 
 
 def _source_label(source: object) -> str:

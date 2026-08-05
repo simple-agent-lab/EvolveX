@@ -2,8 +2,8 @@
 
 Folded out of the retired `observe` operator (DESIGN §7: the canonical verb set
 is select/rollout/trace_analyzer/meta_agent/…/gate/record). The bundle is derived
-from the ledger + workspace, plus bounded evidence emitted by trace analysis. The driver calls
-`write_feedback_bundle` after trace analysis and before meta_agent, which reads
+from the archive + workspace, plus bounded evidence emitted by trace_analyzer. The driver calls
+`write_feedback_bundle` after trace_analyzer and before meta_agent, which reads
 `runs/gen-<id>/feedback/`. It therefore exists even when rollout is a noop
 variant. This is the one home for the logic — `library/observe/*` is deleted.
 """
@@ -132,7 +132,7 @@ def _rollout_history(workspace: Path, rows: list[Row], history_k: int) -> list[R
 def write_feedback_bundle(*, workspace: Path, run_dir: Path, history_k: int = 8) -> list[str]:
     """Write the feedback bundle under run_dir/feedback/ and return its manifest.
 
-    Rows come from the ledger (the bundle is ledger-derived); the driver only
+    Rows come from the archive (the bundle is archive-derived); the driver only
     passes the workspace and the persistent run_dir.
     """
     rows = merged_rows(archive_path(workspace))

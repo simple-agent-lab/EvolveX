@@ -410,11 +410,7 @@ class MiniSweSourceAgent(MiniSweAgent):
             raise EvolveRuntimeInfrastructureError(f"EVOLVE_RUNTIME_INFRASTRUCTURE: {code}: {error}") from None
 
     def _preflight_command(self, marker: str, script: str) -> str:
-        return (
-            "set -euo pipefail; "
-            f"echo {shlex.quote(marker)} >/dev/null; "
-            f"{VENV_PYTHON} -c {shlex.quote(script)}"
-        )
+        return f"set -euo pipefail; echo {shlex.quote(marker)} >/dev/null; {VENV_PYTHON} -c {shlex.quote(script)}"
 
     def _runtime_evidence_command(self) -> str:
         mode = self._get_env("EVOLVE_CANDIDATE_SMOKE_MODE") or "normal"
@@ -464,11 +460,7 @@ class MiniSweSourceAgent(MiniSweAgent):
         return env
 
     def _proxy_env(self) -> dict[str, str]:
-        return {
-            name: value
-            for name in PROXY_ENV_NAMES
-            if (value := self._get_env(name)) is not None
-        }
+        return {name: value for name in PROXY_ENV_NAMES if (value := self._get_env(name)) is not None}
 
     def _augment_instruction(self, instruction: str) -> str:
         if not getattr(self, "mcp_servers", None):

@@ -11,6 +11,7 @@ from unittest.mock import patch
 import pytest
 
 from evolve.archive import merged_rows as mechanism_merged_rows
+from evolve.archive import mirror_path
 from evolve.config import load_config
 from evolve.workspace import InitOptions
 from evolve.workspace import init_workspace as create_workspace
@@ -88,15 +89,8 @@ def run_evolve(
 
 
 def smoke_agent_command() -> str:
-    code = (
-        "import os\n"
-        "from pathlib import Path\n"
-        "target = Path('target/agent.py')\n"
-        "genid = os.environ.get('EVOLVE_GENID', 'unknown')\n"
-        "target.write_text(target.read_text() + f'\\n# smoke-meta-agent gen {genid}\\n')\n"
-        "print('predicted_fixes: []')\n"
-    )
-    return f"{shlex.quote(sys.executable)} -c {shlex.quote(code)}"
+    script = ROOT / "tests" / "fixtures" / "smoke_agent.py"
+    return f"{shlex.quote(sys.executable)} {shlex.quote(str(script))}"
 
 
 def smoke_env(evolve_home: Path) -> dict[str, str]:
@@ -179,6 +173,6 @@ def append_archive_event(workspace: Path, evolve_home: Path, event: dict[str, ob
     line = json.dumps(event, sort_keys=True) + "\n"
     with (workspace / "archive.jsonl").open("a") as archive:
         archive.write(line)
-    mirror = evolve_home / "mirrors" / workspace.name / "archive.jsonl"
+    mirror = mirror_path(workspace.name, workspace)
     with mirror.open("a") as archive:
         archive.write(line)

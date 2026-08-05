@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Any, cast
 
 from .results import Outcome, TrialResult
@@ -53,6 +54,8 @@ def normalize_task_vector(payload: object) -> dict[str, Any]:
                 raise TaskVectorError(f"invalid status {status!r} for {task_id}")
             if reward is not None and (isinstance(reward, bool) or not isinstance(reward, (int, float))):
                 raise TaskVectorError(f"invalid reward for {task_id} trial {trial}")
+            if reward is not None and not math.isfinite(float(reward)):
+                raise TaskVectorError(f"non-finite reward for {task_id} trial {trial}")
             for field in ("source_attempt", "repaired_from_attempt"):
                 value = raw.get(field)
                 if value is not None and (isinstance(value, bool) or not isinstance(value, int) or value < 1):

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import sys
 import tempfile
 import time
@@ -9,6 +10,11 @@ from pathlib import Path
 from typing import Any
 
 from ..config import evaluator_boolean, evaluator_sampling, experiment_id, load_config
+from ..execution_runtime import (
+    execution_runtime_config,
+    prepare_execution_environment,
+    resolve_execution_runtime,
+)
 from ..git import evaluator_tree, git, git_stdout
 from ..host_runtime import clean_python_env
 from ..runtime import OwnedResult, attempt_dir, next_attempt, owned_attempt_id, run_owned
@@ -16,6 +22,7 @@ from ..uv_runtime import CandidateRuntimeResult, prepare_candidate_runtime
 from .evidence import trial_results, validate_task_vector
 from .identity import effective_task_set_identity, evaluation_split_name
 from .results import EvaluationRecord, Outcome, classify_evaluation
+from .run_plan import EvaluationRunPlan
 
 
 class EvaluationInterrupted(BaseException):
@@ -42,9 +49,11 @@ def evaluate(
         git(workspace, "worktree", "add", "--detach", str(checkout), candidate_commit)
         cleanup_needed = True
         try:
-            evaluator = load_config(checkout / "evolve.yaml")["evaluator"]
+            config = load_config(checkout / "evolve.yaml")
+            evaluator = config["evaluator"]
+            execution_runtime = resolve_execution_runtime(execution_runtime_config(config["execution_runtime"]))
             timeout_zero = evaluator_boolean(evaluator, "benchmark_timeout_is_zero")
-            task_set = effective_task_set_identity(checkout, evaluator, purpose=purpose)
+            task_set = effective_task_set_identity(checkout, evaluator, purpose=purpose, task_limit=task_limit)
             runtime_fingerprint = hashlib.sha256((checkout / "evaluator" / "runtime.pin").read_bytes()).hexdigest()
             expected = _expected_trials(
                 evaluator,
@@ -66,6 +75,23 @@ def evaluate(
                 attempt=attempt,
             )
             run_dir.mkdir(parents=True)
+            run_plan = EvaluationRunPlan(
+                schema_version=1,
+                experiment_id=experiment_id(workspace),
+                generation=genid,
+                candidate_commit=candidate_commit,
+                purpose=purpose,
+                canonical=purpose in {"candidate", "genesis", "anchor"},
+                tasks=task_set.members,
+                attempts_per_task=max(1, int(evaluator.get("k", 1))),
+                expected_trials=expected,
+                concurrency=max(1, int(evaluator.get("n_concurrent", 1))),
+                evaluator_fingerprint=evaluator_fingerprint,
+                task_set_hash=task_set.digest,
+                runtime_fingerprint=runtime_fingerprint,
+                execution_runtime_fingerprint=execution_runtime.receipt.fingerprint,
+            )
+            run_plan_path = run_plan.write(run_dir / "run-plan.json")
             base: dict[str, Any] = {
                 "experiment_id": experiment_id(workspace),
                 "generation": genid,
@@ -108,6 +134,12 @@ def evaluate(
                             purpose,
                             evaluation_split_name(evaluator, purpose),
                             runtime,
+                            run_plan_path,
+                            prepare_execution_environment(
+                                execution_runtime,
+                                clean_python_env(),
+                                runtime_root=workspace / "runs" / "runtime" / "execution",
+                            ),
                         )
                         setup_outcome, setup_reason = _setup_evidence(run_dir)
                         try:
@@ -219,6 +251,8 @@ def _read_cost(run_dir: Path) -> float:
     value = json.loads(path.read_text()).get("usd")
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValueError("evaluator cost.json must contain numeric usd")
+    if not math.isfinite(float(value)) or float(value) < 0:
+        raise ValueError("evaluator cost.json usd must be finite and non-negative")
     return float(value)
 
 
@@ -234,20 +268,24 @@ def _run_eval_script(
     checkout: Path,
     run_dir: Path,
     genid: str,
-    task_limit: int | None,
+    _task_limit: int | None,
     purpose: str,
     evaluation_split: str,
     runtime: CandidateRuntimeResult,
+    run_plan_path: Path | None = None,
+    process_environment: dict[str, str] | None = None,
 ) -> OwnedResult:
     runs_dir = next(parent for parent in run_dir.parents if parent.name == "runs")
     env: dict[str, str] = {
-        **clean_python_env(),
+        **(process_environment or clean_python_env()),
         "EVOLVE_RUN_DIR": str(run_dir),
         "EVOLVE_GENID": genid,
         "EVOLVE_EVAL_KIND": purpose,
         "EVOLVE_ATTEMPT_ID": owned_attempt_id(runs_dir.parent, run_dir),
         "EVOLVE_WORKSPACE": str(runs_dir.parent.resolve()),
     }
+    if run_plan_path is not None:
+        env["EVOLVE_RUN_PLAN"] = str(run_plan_path.resolve())
     env["EVOLVE_EVAL_SPLIT"] = evaluation_split
     if runtime.variant is not None:
         env["EVOLVE_CANDIDATE_RUNTIME_ENV_JSON"] = runtime.environment_json()
@@ -260,8 +298,6 @@ def _run_eval_script(
     uv_cache = uv_cache.resolve()
     uv_cache.mkdir(parents=True, exist_ok=True)
     env["EVOLVE_UV_CACHE_DIR"] = str(uv_cache)
-    if task_limit is not None:
-        env["EVOLVE_TASK_LIMIT"] = str(task_limit)
     result = run_owned([str(checkout / "evaluator" / "eval.sh")], cwd=checkout, env=env)
     (run_dir / "stdout.log").write_text(result.stdout)
     (run_dir / "stderr.log").write_text(result.stderr)

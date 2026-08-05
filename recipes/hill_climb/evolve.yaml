@@ -18,10 +18,12 @@ operators:
   select: {variant: greedy}
   rollout: {variant: harbor, budget_tasks: 32, n_concurrent: 16, agent_setup_timeout_multiplier: 1, max_retries: 1, timeout_s: 3600}
   trace_analyzer: {variant: failure_patterns, max_chars: 30000, timeout_s: 600}
-  meta_agent: {variant: hyperagents, runner: harbor, expose_gate_data: false, agent: codex, model: gpt-5.4, environment: docker, editable_roots: [target], prompt_path: target/src/minisweagent/config/mini.yaml, skills_dir: target/skills, memory_dir: target/memory, tools_dir: target/tools, max_retries: 1, timeout_s: 3600}
+  meta_agent: {variant: hyperagents, runner: harbor, expose_gate_data: false, agent: codex, model: gpt-5.4, environment: docker, image: evolve-meta-agent-codex:20260805-codex0145, editable_roots: [target], prompt_path: target/src/minisweagent/config/mini.yaml, skills_dir: target/skills, memory_dir: target/memory, tools_dir: target/tools, max_retries: 1, timeout_s: 3600}
   gate: {variant: hillclimb}
   record: {variant: jsonl}
   timeout_s: 600
+execution_runtime:
+  backend: docker
 evaluator:
   engine: harbor
   candidate_runtime: {variant: uv, project: target, python: "3.12"}

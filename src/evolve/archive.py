@@ -4,6 +4,9 @@ import hashlib
 import json
 import os
 import re
+import shutil
+import subprocess
+import uuid
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -38,7 +41,13 @@ STAMPED_FIELDS = {
 MECHANISM_EVAL_FIELD = "_evolve_mechanism_eval"
 RECEIPT_CERTIFIED_FIELD = "_evolve_receipt_certified"
 RECORD_ATTEMPT_FIELD = "_evolve_record_attempted"
-RESERVED_AUXILIARY_FIELDS = {"evals", "kind", "round", MECHANISM_EVAL_FIELD, RECORD_ATTEMPT_FIELD}
+RESERVED_AUXILIARY_FIELDS = {
+    "evals",
+    "kind",
+    "round",
+    MECHANISM_EVAL_FIELD,
+    RECORD_ATTEMPT_FIELD,
+}
 LEGACY_WRITE_BLOCKED_FIELDS = {"predicted_fixes", "verified_fixes"}
 EVALUATION_FIELDS = STAMPED_FIELDS | {
     "genid",
@@ -53,24 +62,43 @@ EVALUATION_FIELDS = STAMPED_FIELDS | {
     "kind",
     "round",
     "pending_gate_record",
+    "failure_stage",
     RECEIPT_CERTIFIED_FIELD,
 }
 AUXILIARY_BLOCKED_FIELDS = (EVALUATION_FIELDS - {"note"}) | {"evals", MECHANISM_EVAL_FIELD}
 _SAFE_EXPERIMENT_ID = re.compile(r"^[A-Za-z0-9._-]+$")
+_WORKSPACE_ID = re.compile(r"^[0-9a-f]{32}$")
 
 
 def archive_path(workspace: Path) -> Path:
     return workspace / "archive.jsonl"
 
 
-def mirror_path(experiment_id: str) -> Path:
-    evolve_home = Path(os.environ.get("EVOLVE_HOME", Path.home() / ".evolve"))
-    return evolve_home / "mirrors" / _safe_experiment_dir(experiment_id) / "archive.jsonl"
+def mirror_path(experiment_id: str, workspace: Path | None = None) -> Path:
+    experiment_dir = _experiment_mirror_dir(experiment_id)
+    if workspace is None:
+        return experiment_dir / "archive.jsonl"
+    workspace_id = _workspace_mirror_id(workspace, create=True)
+    assert workspace_id is not None
+    return experiment_dir / workspace_id / "archive.jsonl"
 
 
 def ensure_local_archive(workspace: Path, experiment_id: str) -> None:
     local = archive_path(workspace)
-    mirror = mirror_path(experiment_id)
+    experiment_dir = _experiment_mirror_dir(experiment_id)
+    workspace_id = _workspace_mirror_id(workspace, create=False)
+    if workspace_id is None and not local.exists():
+        orphaned = _orphaned_mirrors(experiment_dir)
+        if not orphaned:
+            return
+        raise RuntimeError(
+            "existing mirror history cannot be safely attributed to this workspace; explicitly restore and audit "
+            "both archive.jsonl and .evolve-eval-receipts.jsonl before continuing"
+        )
+    if workspace_id is None:
+        workspace_id = _workspace_mirror_id(workspace, create=True)
+        assert workspace_id is not None
+    mirror = experiment_dir / workspace_id / "archive.jsonl"
     if not local.exists() and not mirror.exists():
         return
     events: list[str] = []
@@ -91,9 +119,61 @@ def ensure_local_archive(workspace: Path, experiment_id: str) -> None:
     _ensure_receipts(local, mirror)
 
 
+def _experiment_mirror_dir(experiment_id: str) -> Path:
+    evolve_home = Path(os.environ.get("EVOLVE_HOME", Path.home() / ".evolve"))
+    return evolve_home / "mirrors" / _safe_experiment_dir(experiment_id)
+
+
+def _workspace_mirror_id(workspace: Path, *, create: bool) -> str | None:
+    marker = _workspace_id_path(workspace)
+    if not marker.exists():
+        if not create:
+            return None
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        candidate = uuid.uuid4().hex
+        try:
+            descriptor = os.open(marker, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except FileExistsError:
+            pass
+        else:
+            with os.fdopen(descriptor, "w") as stream:
+                stream.write(f"{candidate}\n")
+    try:
+        workspace_id = marker.read_text().strip()
+    except OSError as error:
+        raise RuntimeError(f"cannot read persistent workspace mirror identity: {marker}") from error
+    if _WORKSPACE_ID.fullmatch(workspace_id) is None:
+        raise RuntimeError(f"invalid persistent workspace mirror identity: {marker}")
+    return workspace_id
+
+
+def _workspace_id_path(workspace: Path) -> Path:
+    executable = shutil.which("git")
+    if executable is not None:
+        result = subprocess.run(
+            [executable, "-C", str(workspace), "rev-parse", "--git-common-dir"],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            common = Path(result.stdout.strip())
+            if not common.is_absolute():
+                common = workspace / common
+            return common.resolve() / "evolve-workspace-id"
+    return workspace.resolve() / ".evolve-workspace-id"
+
+
+def _orphaned_mirrors(experiment_dir: Path) -> list[Path]:
+    if not experiment_dir.is_dir():
+        return []
+    candidates = [experiment_dir / "archive.jsonl", *experiment_dir.glob("*/archive.jsonl")]
+    return sorted(path for path in candidates if path.is_file())
+
+
 def append_event(workspace: Path, experiment_id: str, event: dict[str, Any]) -> None:
     line = json.dumps(event, sort_keys=True) + "\n"
-    targets = (archive_path(workspace), mirror_path(experiment_id))
+    targets = (archive_path(workspace), mirror_path(experiment_id, workspace))
     for target in targets:
         target.parent.mkdir(parents=True, exist_ok=True)
         with target.open("a") as archive:
@@ -221,7 +301,7 @@ def verify_integrity(workspace: Path) -> list[str]:
         if event.get(MECHANISM_EVAL_FIELD) is True and _eval_receipt(event) not in receipts:
             findings.append(
                 f"gen {event.get('genid')} round {event.get('round')}: mechanism-eval "
-                "carries no matching receipt — the ledger was hand-edited"
+                "carries no matching receipt — the archive was hand-edited"
             )
     return findings
 

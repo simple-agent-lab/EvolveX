@@ -1,11 +1,19 @@
 # Evolution Program
 
-Run select, rollout, meta_agent, commit, eval, gate, and record through the
-mechanism verbs. The rollout writes its summary to
-`runs/gen-<id>/rollout/summary.json` for the meta-agent to read. The canonical
-evaluator and archive are not part of the mutable surface. Meta-agents should
-run `evolve surface-check` before proposing a child so out-of-surface edits are
-caught early.
+Use either `./evolve run .` to run the driver or let the outer agent
+orchestrate one generation. In the latter mode, run `operator list`, then
+invoke configured select, rollout, and trace-analyzer capabilities with
+`operator run`. Read their files under `runs/gen-<id>/`, form a hypothesis, and
+edit the child worktree directly. `meta_agent` is optional when the outer agent
+owns the mutation.
+
+All state transitions still go through the mechanism: fork the selected parent,
+surface-check the child, run every configured `validate` and `novelty` operator,
+commit it, evaluate the exact tag, then call `finalize` to apply gate and
+record. Admission results are bound to the candidate tree; edit again and they
+must be rerun. The canonical evaluator and archive are not part of the mutable
+surface. Never write their fields manually, and do not start the unattended
+driver while an Agent child worktree is open.
 
 ## Split contract (evaluator/splits.json)
 

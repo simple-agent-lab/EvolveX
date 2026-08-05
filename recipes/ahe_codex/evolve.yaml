@@ -1,0 +1,40 @@
+experiment:
+  id: ahe_codex
+  max_generations: 10
+  target_score: null
+  children_per_gen: 1
+  mode: driver
+  seed: 0
+target:
+  seed: builtin-codex
+surface:
+  include:
+    - target/**
+  exclude: []
+operators:
+  select: {variant: ahe_latest, timeout_s: 600}
+  rollout: {variant: evaluation_replay, field_limit: 2000, timeout_s: 600}
+  trace_analyzer: {variant: ahe, max_tasks: 30, max_concurrent: 5, timeout_per_task: 600, debugger_max_retries: 2, debugger_agent_kwargs: {reasoning_effort: high}, field_limit: 2000, timeout_s: 3600}
+  meta_agent: {variant: ahe, runner: harbor, expose_gate_data: false, agent: codex, model: gpt-5.4, environment: docker, image: evolve-meta-agent-codex:20260805-codex0145, editable_roots: [target], prompt_path: target/prompt.md, skills_dir: target/skills, agent_kwargs: {reasoning_effort: high}, max_retries: 1, timeout_s: 3600}
+  gate: {variant: ahe_artifact_valid, timeout_s: 600}
+  record: {variant: jsonl, timeout_s: 600}
+  timeout_s: 600
+execution_runtime:
+  backend: docker
+  minimum_free_gib: 80
+evaluator:
+  engine: harbor
+  model: gpt-5.4
+  dataset: terminal-bench-2-ahe-30-v1
+  agent: target.agent:HarborAgent
+  task_scope: full
+  evaluation_split: train
+  sampling: static
+  tasks_per_round: 30
+  k: 1
+  n_concurrent: 5
+  agent_setup_timeout_multiplier: 1
+  agent_timeout_multiplier: 1
+  max_retries: 1
+  benchmark_timeout_is_zero: true
+  partial_floor: 0.8

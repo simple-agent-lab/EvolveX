@@ -37,9 +37,7 @@ _SECRET_ASSIGNMENT = re.compile(
     r"([\"']?)(\s*[:=]\s*)([^\s,;}]+)"
 )
 _BEARER = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+")
-_SENSITIVE_ENV_NAME = re.compile(
-    r"(?i)(?:proxy|api[_-]?key|access[_-]?token|token|secret|password|authorization|auth)"
-)
+_SENSITIVE_ENV_NAME = re.compile(r"(?i)(?:proxy|api[_-]?key|access[_-]?token|token|secret|password|authorization|auth)")
 _TRACE_EVENT_LIMIT = 32
 _PROXY_ENV = (
     ("EVOLVE_HARBOR_HTTP_PROXY", "http_proxy", "HTTP_PROXY"),
@@ -55,11 +53,7 @@ def _write_json(path: Path, payload: object) -> None:
 
 def _redact(text: str, environment: Mapping[str, str] | None = None) -> str:
     configured = os.environ if environment is None else environment
-    values = {
-        value
-        for name, value in configured.items()
-        if _SENSITIVE_ENV_NAME.search(name) and len(value) >= 8
-    }
+    values = {value for name, value in configured.items() if _SENSITIVE_ENV_NAME.search(name) and len(value) >= 8}
     for value in sorted(values, key=len, reverse=True):
         text = text.replace(value, "[REDACTED]")
     text = _BEARER.sub("Bearer [REDACTED]", text)
@@ -460,6 +454,11 @@ def _nonnegative_int(value: object, default: int) -> int:
     return max(0, parsed)
 
 
+def _configured_max_retries(config: Mapping[str, Any], eval_env: Mapping[str, str]) -> int:
+    value = config["max_retries"] if "max_retries" in config else eval_env.get("EVOLVE_HARBOR_MAX_RETRIES")
+    return _nonnegative_int(value, 0)
+
+
 def _float_value(value: object, default: float) -> float:
     try:
         return float(value)
@@ -749,10 +748,7 @@ class HarborRollout(RolloutOperator):
             ctx.config.get("agent_timeout_multiplier"),
             _float_value(eval_env.get("EVOLVE_HARBOR_AGENT_TIMEOUT_MULTIPLIER"), 1),
         )
-        max_retries = _nonnegative_int(
-            ctx.config.get("max_retries") or eval_env.get("EVOLVE_HARBOR_MAX_RETRIES"),
-            0,
-        )
+        max_retries = _configured_max_retries(ctx.config, eval_env)
         field_limit = _positive_int(ctx.config.get("field_limit"), 2000)
         pass_threshold = _float_value(ctx.config.get("pass_threshold"), 1.0)
         jobs_root = _jobs_root(ctx)

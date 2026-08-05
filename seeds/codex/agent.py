@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shlex
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,9 @@ from harbor.environments.base import BaseEnvironment
 
 TARGET_ROOT = Path(__file__).resolve().parent
 REMOTE_SKILLS_DIR = "/tmp/evolve-target-skills"
+REMOTE_PLUGIN_MARKETPLACE = "/tmp/evolve-target-marketplace"
+PLUGIN_NAME = "evolve-target"
+PLUGIN_MARKETPLACE = "evolve-target"
 
 
 def _settings() -> dict[str, Any]:
@@ -82,13 +86,78 @@ class HarborAgent(Codex):
 
     def _resolve_auth_json_path(self) -> Path:
         configured = self._get_env("CODEX_AUTH_JSON_PATH")
-        auth_path = Path(configured).expanduser() if configured else Path.home() / ".codex" / "auth.json"
+        codex_home = Path(self._get_env("CODEX_HOME") or Path.home() / ".codex")
+        auth_path = Path(configured).expanduser() if configured else codex_home / "auth.json"
         if not auth_path.is_file():
             raise ValueError(f"Codex auth.json does not exist: {auth_path}")
         return auth_path
 
+    def _build_register_skills_command(self) -> str | None:
+        commands: list[str] = []
+        base = super()._build_register_skills_command()
+        if base:
+            commands.append(base)
+        marketplace = shlex.quote(REMOTE_PLUGIN_MARKETPLACE)
+        load_codex = "if [ -s ~/.nvm/nvm.sh ]; then . ~/.nvm/nvm.sh; fi;"
+        commands.extend(
+            [
+                (f'{load_codex} CODEX_HOME="$CODEX_HOME" codex plugin marketplace add {marketplace} >/dev/null'),
+                (
+                    f'{load_codex} CODEX_HOME="$CODEX_HOME" codex plugin add '
+                    f"{PLUGIN_NAME}@{PLUGIN_MARKETPLACE} >/dev/null"
+                ),
+            ]
+        )
+        return " && ".join(commands)
+
+    async def exec_as_agent(
+        self,
+        environment: BaseEnvironment,
+        command: str,
+        env: dict[str, str] | None = None,
+        cwd: str | None = None,
+        timeout_sec: int | None = None,
+    ) -> Any:
+        marker = "codex exec "
+        if marker in command and "--dangerously-bypass-hook-trust" not in command:
+            command = command.replace(marker, marker + "--dangerously-bypass-hook-trust ", 1)
+        return await super().exec_as_agent(
+            environment,
+            command=command,
+            env=env,
+            cwd=cwd,
+            timeout_sec=timeout_sec,
+        )
+
     async def setup(self, environment: BaseEnvironment) -> None:
         await super().setup(environment)
         skills = TARGET_ROOT / "skills"
+        marketplace_root = TARGET_ROOT / ".agents"
+        marketplace = marketplace_root / "plugins" / "marketplace.json"
+        plugins = TARGET_ROOT / "plugins"
+        remote_directories: list[str] = []
+        if self._skills_enabled and skills.is_dir():
+            remote_directories.append(REMOTE_SKILLS_DIR)
+        if marketplace.is_file() and plugins.is_dir():
+            remote_directories.extend(
+                [
+                    f"{REMOTE_PLUGIN_MARKETPLACE}/.agents",
+                    f"{REMOTE_PLUGIN_MARKETPLACE}/plugins",
+                ]
+            )
+        if remote_directories:
+            await self.exec_as_agent(
+                environment,
+                command="mkdir -p " + " ".join(shlex.quote(path) for path in remote_directories),
+            )
         if self._skills_enabled and skills.is_dir():
             await environment.upload_dir(source_dir=skills, target_dir=REMOTE_SKILLS_DIR)
+        if marketplace.is_file() and plugins.is_dir():
+            await environment.upload_dir(
+                source_dir=marketplace_root,
+                target_dir=f"{REMOTE_PLUGIN_MARKETPLACE}/.agents",
+            )
+            await environment.upload_dir(
+                source_dir=plugins,
+                target_dir=f"{REMOTE_PLUGIN_MARKETPLACE}/plugins",
+            )

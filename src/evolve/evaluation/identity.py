@@ -9,6 +9,7 @@ from typing import Any
 import yaml
 
 from ..git import git
+from ..splits import selected_task_names
 
 
 @dataclass(frozen=True)
@@ -32,6 +33,7 @@ def task_set_identity(
     members: tuple[str, ...],
     *,
     purpose: str = "candidate",
+    task_digests: dict[str, str] | None = None,
 ) -> TaskSetIdentity:
     normalized_members = tuple(sorted(set(members)))
     payload = {
@@ -39,6 +41,11 @@ def task_set_identity(
         "attempts": int(attempts),
         "tasks": list(normalized_members),
     }
+    if task_digests:
+        missing = [name for name in normalized_members if name not in task_digests]
+        if missing:
+            raise ValueError(f"split manifest has no content digest for tasks: {', '.join(missing)}")
+        payload["task_digests"] = {name: task_digests[name] for name in normalized_members}
     if purpose == "anchor":
         payload["split"] = "sealed"
     digest = hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
@@ -46,8 +53,13 @@ def task_set_identity(
 
 
 def effective_task_set_identity(
-    checkout: Path, evaluator: dict[str, Any], *, purpose: str = "candidate"
+    checkout: Path,
+    evaluator: dict[str, Any],
+    *,
+    purpose: str = "candidate",
+    task_limit: int | None = None,
 ) -> TaskSetIdentity:
+    manifest = _checkout_split_manifest(checkout)
     configured_names = evaluator.get("task_names")
     if isinstance(configured_names, list) and all(isinstance(name, str) and name for name in configured_names):
         members = tuple(configured_names)
@@ -64,24 +76,27 @@ def effective_task_set_identity(
         )
     else:
         members = ()
-        split_path = checkout / "evaluator" / "splits.json"
-        if split_path.is_file():
-            try:
-                manifest = json.loads(split_path.read_text())
-                split_tasks = manifest.get("tasks", {}).get(evaluation_split_name(evaluator, purpose), [])
-                if isinstance(split_tasks, list) and all(isinstance(name, str) for name in split_tasks):
-                    members = tuple(split_tasks)
-            except (OSError, json.JSONDecodeError, AttributeError):
-                members = ()
+        if manifest is not None:
+            split_name = evaluation_split_name(evaluator, purpose)
+            split_tasks = manifest.get("tasks", {}).get(split_name, [])
+            if isinstance(split_tasks, list) and all(isinstance(name, str) for name in split_tasks):
+                members = tuple(selected_task_names(manifest, split_name))
     try:
         attempts = int(evaluator.get("k", 1))
     except (TypeError, ValueError):
         attempts = 1
+    if task_limit is not None:
+        if task_limit < 1:
+            raise ValueError("task_limit must be positive")
+        if not members:
+            raise ValueError("task_limit requires a resolved task manifest")
+        members = tuple(sorted(set(members)))[:task_limit]
     return task_set_identity(
         evaluator.get("dataset", ""),
         attempts,
         members,
         purpose=purpose,
+        task_digests=_manifest_task_digests(manifest),
     )
 
 
@@ -96,10 +111,20 @@ def fixed_evaluation_identity(workspace: Path) -> dict[str, str] | None:
         evaluator = loaded.get("evaluator") if isinstance(loaded, dict) else None
         if not isinstance(evaluator, dict):
             return None
+        manifest = _fixed_split_manifest(workspace)
+        members = _fixed_task_members(workspace, evaluator, manifest)
+        if (
+            manifest is not None
+            and manifest.get("resolved") is True
+            and members
+            and _manifest_task_digests(manifest) is None
+        ):
+            return None
         task_set = task_set_identity(
             evaluator.get("dataset", ""),
             evaluator.get("k", 1),
-            _fixed_task_members(workspace, evaluator),
+            members,
+            task_digests=_manifest_task_digests(manifest),
         )
     except (OSError, TypeError, ValueError, yaml.YAMLError):
         return None
@@ -110,7 +135,9 @@ def fixed_evaluation_identity(workspace: Path) -> dict[str, str] | None:
     }
 
 
-def _fixed_task_members(workspace: Path, evaluator: dict[str, Any]) -> tuple[str, ...]:
+def _fixed_task_members(
+    workspace: Path, evaluator: dict[str, Any], manifest: dict[str, Any] | None = None
+) -> tuple[str, ...]:
     names = evaluator.get("task_names")
     if isinstance(names, list) and all(isinstance(name, str) and name for name in names):
         return tuple(names)
@@ -125,14 +152,42 @@ def _fixed_task_members(workspace: Path, evaluator: dict[str, Any]) -> tuple[str
         return tuple(
             line.strip() for line in contents.splitlines() if line.strip() and not line.lstrip().startswith("#")
         )
-    split_text = _git_text(workspace, "show", "gen/0:evaluator/splits.json", strip=False)
-    if split_text is None:
+    if manifest is None:
         return ()
-    manifest = json.loads(split_text)
     split_tasks = manifest.get("tasks", {}).get(evaluation_split_name(evaluator), [])
     if not isinstance(split_tasks, list) or not all(isinstance(name, str) for name in split_tasks):
         return ()
-    return tuple(split_tasks)
+    return tuple(selected_task_names(manifest, evaluation_split_name(evaluator)))
+
+
+def _checkout_split_manifest(checkout: Path) -> dict[str, Any] | None:
+    split_path = checkout / "evaluator" / "splits.json"
+    if not split_path.is_file():
+        return None
+    try:
+        payload = json.loads(split_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _fixed_split_manifest(workspace: Path) -> dict[str, Any] | None:
+    split_text = _git_text(workspace, "show", "gen/0:evaluator/splits.json", strip=False)
+    if split_text is None:
+        return None
+    payload = json.loads(split_text)
+    return payload if isinstance(payload, dict) else None
+
+
+def _manifest_task_digests(manifest: dict[str, Any] | None) -> dict[str, str] | None:
+    if manifest is None or manifest.get("version") != 2:
+        return None
+    task_digests = manifest.get("task_digests")
+    if not isinstance(task_digests, dict) or not task_digests:
+        return None
+    if any(not isinstance(name, str) or not isinstance(digest, str) for name, digest in task_digests.items()):
+        raise ValueError("invalid split manifest task content digests")
+    return dict(task_digests)
 
 
 def _git_text(workspace: Path, *args: str, strip: bool = True) -> str | None:

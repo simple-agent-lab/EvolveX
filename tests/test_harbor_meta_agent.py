@@ -172,17 +172,79 @@ def test_harbor_meta_agent_child_creates_private_files(tmp_path: Path) -> None:
     assert stat.S_IMODE(log.stat().st_mode) == 0o600
 
 
-def test_codex_harbor_process_cannot_fall_back_to_host_openai_environment() -> None:
+def test_codex_harbor_process_cannot_fall_back_to_host_openai_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     module = _harbor_runner_module()
+    monkeypatch.setattr(
+        module,
+        "resolve_execution_runtime",
+        lambda *_args, **_kwargs: SimpleNamespace(process_environment=lambda values: dict(values)),
+    )
     host = {
+        "HOME": str(tmp_path),
         "PATH": "/usr/bin",
         "OPENAI_API_KEY": "judge-key",
         "OPENAI_BASE_URL": "http://judge-bridge.example/v1",
         "OPENAI_API_BASE": "http://judge-bridge.example/v1",
     }
 
-    assert module._harbor_process_env({"agent": "codex"}, host) == {"PATH": "/usr/bin"}
+    assert module._harbor_process_env({"agent": "codex"}, host) == {
+        "HOME": str(tmp_path),
+        "PATH": "/usr/bin",
+    }
     assert module._harbor_process_env({"agent": "mini-swe-agent"}, host) == host
+
+
+def test_harbor_process_discovers_colima_socket(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _harbor_runner_module()
+    socket_path = tmp_path / ".colima" / "default" / "docker.sock"
+    resolve = module.resolve_execution_runtime
+    monkeypatch.setattr(
+        module,
+        "resolve_execution_runtime",
+        lambda config, environment: resolve(
+            config,
+            environment,
+            host_platform="darwin",
+            home=tmp_path,
+            socket_probe=lambda path: path == socket_path,
+        ),
+    )
+
+    assert module._harbor_process_env({}, {"HOME": str(tmp_path)}) == {
+        "HOME": str(tmp_path),
+        "DOCKER_HOST": f"unix://{socket_path}",
+    }
+    assert (
+        module._harbor_process_env({}, {"HOME": str(tmp_path), "DOCKER_HOST": "unix:///custom/docker.sock"})[
+            "DOCKER_HOST"
+        ]
+        == "unix:///custom/docker.sock"
+    )
+
+
+def test_harbor_process_discovers_linux_system_socket(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _harbor_runner_module()
+    socket_path = Path("/var/run/docker.sock")
+    resolve = module.resolve_execution_runtime
+    monkeypatch.setattr(
+        module,
+        "resolve_execution_runtime",
+        lambda config, environment: resolve(
+            config,
+            environment,
+            host_platform="linux",
+            home=tmp_path,
+            uid=1234,
+            socket_probe=lambda path: path == socket_path,
+        ),
+    )
+
+    assert module._harbor_process_env({}, {"HOME": str(tmp_path)}) == {
+        "HOME": str(tmp_path),
+        "DOCKER_HOST": "unix:///var/run/docker.sock",
+    }
 
 
 def test_harbor_rejects_oversized_instruction_with_unsafe_agent(tmp_path: Path) -> None:
@@ -275,6 +337,27 @@ def _ctx(checkout: Path, run_dir: Path) -> OperatorContext:
         },
         rng=random.Random(0),
     )
+
+
+def test_visible_run_inputs_do_not_merge_current_generation_twice(tmp_path: Path) -> None:
+    checkout, _ = _checkout(tmp_path)
+    run_dir = checkout / "runs" / "gen-1"
+    snapshot = run_dir / "rollout" / "certified-jobs" / "snapshot" / "job"
+    snapshot.mkdir(parents=True)
+    (snapshot / "result.json").write_text('{"reward": 1}\n')
+    for path in (snapshot, snapshot.parent):
+        path.chmod(0o555)
+    destination = tmp_path / "bundle"
+    destination.mkdir()
+
+    _harbor_runner_module()._copy_visible_run_inputs(_ctx(checkout, run_dir), destination)
+
+    assert (
+        destination / "runs" / "gen-1" / "rollout" / "certified-jobs" / "snapshot" / "job" / "result.json"
+    ).read_text() == '{"reward": 1}\n'
+    copied_snapshot = destination / "runs" / "gen-1" / "rollout" / "certified-jobs" / "snapshot"
+    assert stat.S_IMODE(copied_snapshot.stat().st_mode) & stat.S_IWUSR
+    assert stat.S_IMODE((copied_snapshot / "job" / "result.json").stat().st_mode) == 0o644
 
 
 def _install_fake_harbor(bin_dir: Path) -> Path:
@@ -489,6 +572,7 @@ print(f"Map job written to {job_dir}")
         '[ "$1" = run ] || exit 90\nshift\n'
         '[ "$1" = --project ] || exit 91\nshift 2\n'
         '[ "$1" = --frozen ] || exit 92\nshift\n'
+        '[ "$1" = --python ] || exit 93\nshift 2\n'
         'exec "$@"\n'
     )
     uv.chmod(0o755)

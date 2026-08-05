@@ -1,13 +1,32 @@
 from __future__ import annotations
 
+import json
+import math
+import os
+import tempfile
 from collections import Counter
 from pathlib import Path
 from typing import Any
 
 from .archive import RECEIPT_CERTIFIED_FIELD
 from .frozen.interfaces import ArchiveView
-from .git import tag_exists
-from .population import fixed_evaluation_identity, is_parent_record, looks_mechanism_written
+from .population import fixed_evaluation_identity, is_parent_record, looks_mechanism_written, tag_matches_candidate
+
+
+def materialize_best_ever(workspace: Path) -> dict[str, Any] | None:
+    """Write the mechanism-derived champion cache for operators and humans."""
+
+    workspace = workspace.resolve()
+    champion = ArchiveView(workspace).best_ever()
+    target = workspace / "best_ever.json"
+    with tempfile.NamedTemporaryFile("w", dir=workspace, prefix=".best-ever-", delete=False) as handle:
+        temporary = Path(handle.name)
+        handle.write(json.dumps(champion, indent=2, sort_keys=True) + "\n")
+    try:
+        os.replace(temporary, target)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return champion
 
 
 def format_status(workspace: Path) -> str:
@@ -22,16 +41,27 @@ def format_status(workspace: Path) -> str:
     ]
     for status, count in sorted(Counter(str(row.get("status", "pending")) for row in rows).items()):
         lines.append(f"status.{status}: {count}")
+    if rows:
+        latest = max(rows, key=lambda row: _generation_key(row.get("genid")))
+        lines.append(f"latest.genid: {_value(latest.get('genid'))}")
+        lines.append(f"latest.status: {_value(latest.get('status'))}")
+        if latest.get("failure_stage"):
+            lines.append(f"latest.failure_stage: {_value(latest.get('failure_stage'))}")
     return "\n".join(lines) + "\n"
+
+
+def _generation_key(value: object) -> tuple[int, int | str]:
+    text = str(value or "")
+    return (1, int(text)) if text.isdigit() else (0, text)
 
 
 def format_report(workspace: Path) -> str:
     view = ArchiveView(workspace.resolve())
     rows = view.rows()
     expected = fixed_evaluation_identity(view.workspace)
-    parents = [] if expected is None else [row for row in rows if is_parent_record(row, expected)]
+    parents = [] if expected is None else [row for row in rows if is_parent_record(row, expected, view.workspace)]
     claims = _claim_evaluations(view.workspace, rows, parents, expected)
-    task_set_status = _task_set_hash_status(claims)
+    task_set_status = "unverifiable" if expected is None else _task_set_hash_status(claims)
     best = max(parents, key=lambda row: float(row["score"]), default=None) if task_set_status == "consistent" else None
     cohorts = _cohort_bests(claims)
     anchor = _anchor_best(claims)
@@ -41,9 +71,11 @@ def format_report(workspace: Path) -> str:
         f"best_genid: {_value(best.get('genid') if best else None)}",
         f"best_score: {_value(best.get('score') if best else None)}",
         f"task_set_hash: {task_set_status}",
+        f"evaluation_identity: {'verified' if expected is not None else 'unverifiable'}",
+        f"migration_required: {str(expected is None).lower()}",
         f"unstamped_rows: {_unstamped_count(view.workspace, rows)}",
         f"comparison_allowed: {str(task_set_status == 'consistent').lower()}",
-        f"cross_round_claim: {'anchor_only' if task_set_status != 'consistent' else 'same_hash'}",
+        f"cross_round_claim: {'same_hash' if task_set_status == 'consistent' else 'unavailable'}",
         f"budget_spent_usd: {_format_number(_budget_spent(rows))}",
     ]
     for task_hash, row in sorted(cohorts.items()):
@@ -118,8 +150,7 @@ def _reportable_anchor(
         and entry.get("purpose") == "anchor"
         and entry.get("evaluator_fingerprint") == expected["evaluator_fingerprint"]
         and entry.get("runtime_fingerprint") == expected["runtime_fingerprint"]
-        and entry.get("tag") == f"gen/{genid}"
-        and tag_exists(workspace, f"gen/{genid}")
+        and tag_matches_candidate(workspace, entry, genid)
         and _is_number(entry.get("score"))
         and isinstance(entry.get("task_set_hash"), str)
     )
@@ -153,4 +184,4 @@ def _format_number(value: float) -> str:
 
 
 def _is_number(value: Any) -> bool:
-    return isinstance(value, int | float) and not isinstance(value, bool)
+    return isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(float(value))

@@ -11,6 +11,12 @@ from typing import Any
 
 from evolve.meta_agent_budget import harbor_meta_agent_budget, uses_harbor_per_attempt_timeout
 
+from .config import load_config
+from .execution_runtime import (
+    execution_runtime_config,
+    prepare_execution_environment,
+    resolve_execution_runtime,
+)
 from .runtime import _terminate
 
 
@@ -32,6 +38,7 @@ sys.argv = sys.argv[1:]
 namespace = {"__name__": "__main__", "__file__": str(script), "__package__": None, "__cached__": None}
 exec(compile(script.read_bytes(), str(script), "exec"), namespace)
 """
+
 
 def _text(value: object | None) -> str:
     if value is None:
@@ -89,8 +96,17 @@ def run_operator(
         if checkout.resolve() != workspace.resolve()
         else os.environ
     )
+    workspace_config = load_config(workspace / "evolve.yaml")
+    execution_runtime = resolve_execution_runtime(
+        execution_runtime_config(workspace_config["execution_runtime"]),
+        base_env,
+    )
     env: dict[str, str] = {
-        **base_env,
+        **prepare_execution_environment(
+            execution_runtime,
+            base_env,
+            runtime_root=workspace / "runs" / "runtime" / "execution",
+        ),
         "EVOLVE_GENID": genid,
         "EVOLVE_PARENT": parent or "",
         "EVOLVE_OPERATOR_TIMEOUT_S": str(deadline_s),

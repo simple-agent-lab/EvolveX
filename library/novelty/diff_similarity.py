@@ -20,6 +20,9 @@ from evolve.frozen.interfaces import NoveltyOperator, NoveltyResult, OperatorCon
 
 def _git(repo: Path, *args: str) -> str:
     result = subprocess.run(["git", "-C", str(repo), *args], text=True, capture_output=True, check=False)
+    if result.returncode != 0:
+        detail = result.stderr.strip().splitlines()[-1] if result.stderr.strip() else "no diagnostic output"
+        raise RuntimeError(f"git {' '.join(args)} failed with exit code {result.returncode}: {detail}")
     return result.stdout
 
 

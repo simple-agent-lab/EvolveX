@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 concurrency:
   group: test-${{ github.ref }}
   cancel-in-progress: true
@@ -16,8 +19,11 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Install uv
         uses: astral-sh/setup-uv@v6
@@ -37,9 +43,13 @@ jobs:
         id: reset-uv-cache
         run: rm -rf "$UV_CACHE_DIR"
 
+      - name: Check root lock
+        id: check-root-lock
+        run: uv lock --check
+
       - name: Warm root Python 3.12 runtime
         id: warm-root-runtime
-        run: uv sync --dev --python 3.12
+        run: uv sync --dev --locked --python 3.12
 
       - name: Warm scaffold Python 3.12 runtime
         id: warm-scaffold-runtime
@@ -71,13 +81,60 @@ jobs:
       # operator registry single-source are all enforced here). It must pass on
       # every PR — this is what keeps an agent/human-built codebase from rotting.
       - name: pytest
-        run: uv run pytest -q
+        run: uv run --frozen pytest -q
 
-      - name: self-driving smoke (init → run → verify)
+      - name: deterministic mechanism smoke (init → run → verify progress)
         env:
           EVOLVE_RUNTIME_DIGEST: sha256:ci-smoke-runtime
+          EVOLVE_AGENT_COMMAND: >-
+            "${{ github.workspace }}/.venv/bin/python"
+            "${{ github.workspace }}/tests/fixtures/smoke_agent.py"
         run: |
           rm -rf "$RUNNER_TEMP/ci-smoke" "$RUNNER_TEMP/ci-smoke-home"
-          uv run evolve init "$RUNNER_TEMP/ci-smoke" --recipe hill_climb
+          EVOLVE_HOME="$RUNNER_TEMP/ci-smoke-home" uv run --frozen evolve init "$RUNNER_TEMP/ci-smoke" \
+            --recipe-path tests/fixtures/recipes/hill_climb-smoke \
+            --seed tests/fixtures/seeds/dummy
           EVAL_STUB=1 EVOLVE_HOME="$RUNNER_TEMP/ci-smoke-home" "$RUNNER_TEMP/ci-smoke/evolve" run "$RUNNER_TEMP/ci-smoke" --max-generations 3
+          EVOLVE_HOME="$RUNNER_TEMP/ci-smoke-home" "$RUNNER_TEMP/ci-smoke/evolve" assert-run "$RUNNER_TEMP/ci-smoke" --through 3
           EVOLVE_HOME="$RUNNER_TEMP/ci-smoke-home" "$RUNNER_TEMP/ci-smoke/evolve" verify "$RUNNER_TEMP/ci-smoke"
+          uv run --frozen python tests/assert_self_driving_smoke.py "$RUNNER_TEMP/ci-smoke" 3
+
+  release-artifact:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: false
+          python-version: "3.12"
+
+      - name: Check lockfile
+        run: uv lock --check
+
+      - name: Install test runtime
+        run: uv sync --dev --locked --python 3.12
+
+      - name: Build distributions
+        run: uv build --out-dir "$RUNNER_TEMP/dist"
+
+      - name: Inspect wheel contents and metadata
+        env:
+          EVOLVE_RELEASE_DIST: ${{ runner.temp }}/dist
+        run: uv run --frozen pytest -q -n 0 tests/test_release_artifact.py -p no:cacheprovider
+
+      - name: Install wheel and initialize a workspace
+        run: |
+          wheel="$(find "$RUNNER_TEMP/dist" -maxdepth 1 -name '*.whl' -print -quit)"
+          test -n "$wheel"
+          uv pip install --python .venv/bin/python --reinstall --no-deps "$wheel"
+          cd "$RUNNER_TEMP"
+          "$GITHUB_WORKSPACE/.venv/bin/python" -c 'from pathlib import Path; import sys, evolve; assert Path(evolve.__file__).resolve().is_relative_to(Path(sys.prefix).resolve()), evolve.__file__'
+          EVOLVE_HOME="$RUNNER_TEMP/wheel-smoke-home" EVOLVE_RUNTIME_DIGEST="sha256:release-artifact-smoke" "$GITHUB_WORKSPACE/.venv/bin/evolve" init "$RUNNER_TEMP/wheel-smoke" --recipe aevolve
+          EVOLVE_HOME="$RUNNER_TEMP/wheel-smoke-home" "$GITHUB_WORKSPACE/.venv/bin/evolve" status "$RUNNER_TEMP/wheel-smoke"
+          test -f "$RUNNER_TEMP/wheel-smoke/LICENSE.evolve-framework"
+          test -f "$RUNNER_TEMP/wheel-smoke/NOTICE.evolve-framework"

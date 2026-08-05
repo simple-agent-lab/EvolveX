@@ -10,7 +10,7 @@ from conftest import init_workspace
 
 from evolve.feedback import write_feedback_bundle
 from evolve.frozen.interfaces import OperatorContext
-from evolve.trace_analysis import VARIANTS, _trajectory_only_cases, write_evidence_bundle
+from evolve.trace_analysis import VARIANTS, _trajectory_only_cases, trajectory_signal_records, write_evidence_bundle
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -172,6 +172,19 @@ def test_harbor_rollout_defaults_jobs_to_workspace_runs(tmp_path: Path, monkeypa
     )
 
     assert module._jobs_root(ctx) == tmp_path / "runs" / "harbor-rollouts"
+
+
+def test_harbor_rollout_explicit_zero_retries_overrides_environment() -> None:
+    module = _harbor_rollout_module()
+
+    assert (
+        module._configured_max_retries(
+            {"max_retries": 0},
+            {"EVOLVE_HARBOR_MAX_RETRIES": "9"},
+        )
+        == 0
+    )
+    assert module._configured_max_retries({}, {"EVOLVE_HARBOR_MAX_RETRIES": "2"}) == 2
 
 
 def test_harbor_rollout_reuses_only_a_complete_explicitly_enabled_stage(
@@ -412,6 +425,7 @@ def test_trajectory_only_matches_aevolve_behavior_only_evidence(tmp_path: Path) 
                     ],
                     "observations": ["diff output"],
                 },
+                {"source": "agent", "message": "Implemented and verified the requested change."},
             ],
         }
     ]
@@ -435,13 +449,20 @@ def test_trajectory_only_matches_aevolve_behavior_only_evidence(tmp_path: Path) 
     records = json.loads((evidence / "trajectory_only.json").read_text())
     manifest = json.loads((evidence / "manifest.json").read_text())
     assert records[0]["task_id"] == "terminal/task-a"
-    assert records[0]["signals"]["n_turns"] == 2
+    assert records[0]["signals"]["n_turns"] == 3
     assert records[0]["signals"]["n_tool_calls"] == 2
     assert records[0]["signals"]["n_errors"] == 1
+    assert records[0]["signals"]["submitted"] is False
+    assert records[0]["signals"]["completed"] is True
+    assert records[0]["signals"]["completion_signal"] == "final_response"
+    assert records[0]["signals"]["final_response"] == "Implemented and verified the requested change."
     assert records[0]["judge_verdict"]["score"] == 2
     assert records[0]["judge_verdict"]["failure_reason"].startswith("The agent stopped")
     assert "[start] bash(pytest -q)" in records[0]["compressed_trajectory"]
     assert "ERROR: one test failed" in records[0]["compressed_trajectory"]
+    assert "Completion: final_response" in records[0]["compressed_trajectory"]
+    assert "[final response] Implemented and verified the requested change." in records[0]["compressed_trajectory"]
+    assert "Submitted: False" not in records[0]["compressed_trajectory"]
     assert "secret ground-truth failure" not in selected
     assert "Do a benchmark-specific thing" not in selected
     assert "reward" not in selected
@@ -480,6 +501,46 @@ def test_trajectory_only_follows_recent_parent_lineage(tmp_path: Path) -> None:
     combined = _trajectory_only_cases(ctx, [{"task_name": "current-a"}, {"task_name": "current-b"}])
 
     assert [case["task_name"] for case in combined] == ["prior-b", "current-a", "current-b"]
+
+
+def test_trajectory_only_prefers_explicit_submit_over_final_response() -> None:
+    records = trajectory_signal_records(
+        [
+            {
+                "task_name": "task-a",
+                "events": [
+                    {"source": "agent", "type": "message", "message": "done"},
+                    {"type": "tool_call", "name": "submit", "arguments": {"answer": "42"}},
+                ],
+            }
+        ]
+    )
+
+    assert records[0]["signals"]["completion_signal"] == "explicit_submit"
+    assert records[0]["signals"]["submitted"] is True
+    assert "Completion: explicit_submit" in records[0]["compressed_trajectory"]
+    assert "[submitted] 42" in records[0]["compressed_trajectory"]
+
+
+def test_trajectory_only_does_not_treat_pre_tool_commentary_as_final_response() -> None:
+    records = trajectory_signal_records(
+        [
+            {
+                "task_name": "task-a",
+                "events": [
+                    {
+                        "source": "agent",
+                        "message": "I will run one last check.",
+                        "tool_calls": [{"name": "bash", "arguments": {"command": "pytest -q"}}],
+                        "observations": ["1 passed"],
+                    }
+                ],
+            }
+        ]
+    )
+
+    assert records[0]["signals"]["completion_signal"] == "none"
+    assert records[0]["signals"]["completed"] is False
 
 
 def test_feedback_bundle_copies_selected_evidence_and_history(tmp_path: Path) -> None:

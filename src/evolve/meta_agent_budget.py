@@ -62,9 +62,7 @@ def harbor_agent_supports_per_attempt_timeout(agent: object) -> bool:
 def uses_harbor_per_attempt_timeout(config: Mapping[str, object]) -> bool:
     """Whether a meta-agent config receives Harbor's per-attempt timeout."""
 
-    return config.get("runner") == "harbor" and harbor_agent_supports_per_attempt_timeout(
-        config.get("agent")
-    )
+    return config.get("runner") == "harbor" and harbor_agent_supports_per_attempt_timeout(config.get("agent"))
 
 
 @dataclass(frozen=True)
@@ -92,18 +90,13 @@ class HarborMetaAgentBudget:
     @property
     def harbor_process_s(self) -> float:
         return (
-            HARBOR_TASK_COMPILATION_S
-            + self.attempts * self.per_trial_s
-            + self.max_retries * HARBOR_RETRY_RECREATION_S
+            HARBOR_TASK_COMPILATION_S + self.attempts * self.per_trial_s + self.max_retries * HARBOR_RETRY_RECREATION_S
         )
 
     @property
     def operator_s(self) -> float:
         return (
-            PRE_HARBOR_BUNDLE_GIT_S
-            + self.harbor_process_s
-            + POST_HARBOR_VALIDATION_INSTALL_S
-            + OUTER_FINAL_CLEANUP_S
+            PRE_HARBOR_BUNDLE_GIT_S + self.harbor_process_s + POST_HARBOR_VALIDATION_INSTALL_S + OUTER_FINAL_CLEANUP_S
         )
 
 

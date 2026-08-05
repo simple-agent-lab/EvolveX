@@ -53,13 +53,22 @@ def test_operator_blocks_preserve_arbitrary_nested_yaml(tmp_path: Path) -> None:
     }
 
 
-def test_render_yaml_round_trips_all_five_sections(tmp_path: Path) -> None:
+def test_render_yaml_round_trips_all_sections(tmp_path: Path) -> None:
     config = {section: {} for section in CONFIG_SECTIONS}
     config["operators"] = {"rollout": {"custom": {"list": [1, "two"], "flag": True}}}
     rendered = render_yaml(config)
     config_path = tmp_path / "evolve.yaml"
     config_path.write_text(rendered)
     assert load_config(config_path) == config
+
+
+def test_render_yaml_preserves_execution_runtime(tmp_path: Path) -> None:
+    config = {section: {} for section in CONFIG_SECTIONS}
+    config["execution_runtime"] = {"backend": "docker", "minimum_free_gib": 80}
+    config_path = tmp_path / "evolve.yaml"
+    config_path.write_text(render_yaml(config))
+
+    assert load_config(config_path)["execution_runtime"] == config["execution_runtime"]
 
 
 def test_render_yaml_preserves_nested_candidate_runtime(tmp_path: Path) -> None:
