@@ -18,6 +18,8 @@ def test_devbox_ahe_smoke_script_is_safe_and_self_verifying() -> None:
     assert syntax.returncode == 0, syntax.stderr
     assert "TASKS=3" in text
     assert "GENERATIONS=3" in text
+    assert "pr29-runtime-profiles-phase3.bundle" in text
+    assert "git bundle list-heads" in text
     assert "--recipe ahe" in text
     assert '"$WORKSPACE/.env"' in text
     assert "preflight" in text

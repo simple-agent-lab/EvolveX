@@ -3,8 +3,7 @@ set -Eeuo pipefail
 
 umask 077
 
-REPO_URL=${REPO_URL:-https://github.com/simple-agent-lab/simple-evolve-agent.git}
-PR_BRANCH=${PR_BRANCH:-codex/runtime-profiles-phase3}
+REPO_BUNDLE=${REPO_BUNDLE:-/data00/home/zimuwang/pr29-runtime-profiles-phase3.bundle}
 RUN_ROOT=${RUN_ROOT:-/data00/home/zimuwang/pr29-ahe-3x3-$(date -u +%Y%m%dT%H%M%SZ)}
 SOURCE_DATASET=${SOURCE_DATASET:-/data00/home/zimuwang/simple-evolve-agent-full89-20260724/datasets/tau3-banking-97-codex-safe-health-v033-1d244f5dca42944b67a379b44bfeb9f5748f189d}
 MODEL_ENV=${MODEL_ENV:-/data00/home/zimuwang/modelhub-codex-smokes-20260804/evolve.env}
@@ -35,6 +34,7 @@ trap finish EXIT
 for file in "$MODEL_ENV" "$RUNTIME_ENV" "$PROXY_ENV"; do
   [[ -f "$file" ]] || fail "private environment file is missing: $file"
 done
+[[ -f "$REPO_BUNDLE" ]] || fail "PR bundle is missing: $REPO_BUNDLE"
 [[ -d "$SOURCE_DATASET" ]] || fail "source dataset is missing: $SOURCE_DATASET"
 
 set -a
@@ -53,9 +53,9 @@ mkdir -p "$RUN_ROOT" "$DATASET"
 exec > >(tee -a "$LOG") 2>&1
 printf 'Run root: %s\n' "$RUN_ROOT"
 
-pr_head=$(git ls-remote "$REPO_URL" "refs/heads/$PR_BRANCH" | awk 'NR == 1 {print $1}')
-[[ -n "$pr_head" ]] || fail "cannot resolve remote branch: $PR_BRANCH"
-git clone --quiet --single-branch --branch "$PR_BRANCH" "$REPO_URL" "$REPO"
+pr_head=$(git bundle list-heads "$REPO_BUNDLE" HEAD | awk 'NR == 1 {print $1}')
+[[ -n "$pr_head" ]] || fail "cannot resolve HEAD from PR bundle"
+git clone --quiet "$REPO_BUNDLE" "$REPO"
 [[ $(git -C "$REPO" rev-parse HEAD) == "$pr_head" ]] || fail "checkout does not match PR head"
 printf 'PR commit: %s\n' "$pr_head"
 
