@@ -13,7 +13,7 @@ from conftest import git, write_locked_miniswe_seed
 
 ROOT = Path(__file__).resolve().parents[1]
 ADAPTER = ROOT / "src" / "evolve" / "integrations" / "harbor" / "miniswe_candidate.py"
-CANDIDATE_AGENT = "evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent"
+CANDIDATE_AGENT = "evolve.integrations.harbor.miniswe_candidate:CandidateMiniSweAgent"
 
 
 def _known_unbounded_local_run(command, cwd, env, timeout):
@@ -141,6 +141,13 @@ def _load_model_factory(adapter_path: Path, monkeypatch):
     namespace = {}
     exec(module.MODEL_SETUP, namespace)
     return module, namespace["build_model"], model_classes
+
+
+def test_candidate_miniswe_exposes_canonical_name_and_legacy_alias(adapter_path: Path, monkeypatch) -> None:
+    _install_fake_harbor(monkeypatch)
+    module = _load(adapter_path)
+
+    assert module.MiniSweSourceAgent is module.CandidateMiniSweAgent
 
 
 def test_miniswe_wrapper_forwards_reasoning_effort(adapter_path: Path, monkeypatch) -> None:
@@ -668,7 +675,7 @@ def test_init_with_local_miniswe_seed_writes_protected_harbor_adapter(tmp_path: 
 
     wrapper = workspace / ".evolve" / "evolve" / "integrations" / "harbor" / "miniswe_candidate.py"
     assert wrapper.exists()
-    assert "class MiniSweSourceAgent(MiniSweAgent):" in wrapper.read_text()
+    assert "class CandidateMiniSweAgent(MiniSweAgent):" in wrapper.read_text()
     assert not (workspace / "evolve_harbor_adapter").exists()
     assert not (workspace / "evolve_harbor_agent").exists()
     assert (workspace / "target" / "uv.lock").read_bytes() == expected_lock

@@ -30,7 +30,7 @@ def _repo(tmp_path: Path) -> Path:
         "surface:\n  include:\n    - target/**\n  exclude:\n    - target/tmp/**\n"
         "operators:\n  meta_agent: {timeout_s: 30}\n"
         "evaluator:\n  engine: harbor\n  dataset: pass@k\n"
-        "  agent: evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent\n"
+        "  agent: evolve.integrations.harbor.miniswe_candidate:CandidateMiniSweAgent\n"
     )
     _git(root, "add", ".")
     _git(root, "commit", "-qm", "parent")

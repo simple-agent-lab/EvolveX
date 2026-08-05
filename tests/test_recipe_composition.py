@@ -11,8 +11,8 @@ from conftest import fixture_recipe_config, generated_workspace_uv_env, run_evol
 from evolve.config import RECIPE_NAMES, default_config, load_config, recipe_root, scaffold_root, seed_root
 from evolve.workspace import InitOptions, _write_target, init_workspace
 
-CANDIDATE = "evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent"
-FILE_TASK = "evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent"
+CANDIDATE = "evolve.integrations.harbor.miniswe_candidate:CandidateMiniSweAgent"
+FILE_TASK = "evolve.integrations.harbor.miniswe_task_file:InstalledMiniSweAgent"
 ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 CASES = {
     "hill_climb": ("external", CANDIDATE, "codex"),
@@ -255,7 +255,7 @@ def test_every_production_resource_has_a_supported_consumer() -> None:
         for path in (
             Path(__file__).resolve().parents[1] / "src" / "evolve" / "integrations" / "harbor"
         ).glob("*.py")
-        if path.name != "__init__.py"
+        if not path.name.startswith("_")
     }
 
     assert evaluator_scaffolds == engines

@@ -315,7 +315,7 @@ print("EVOLVE_PREFLIGHT: model_path_init_ok")
 ).strip()
 
 
-class MiniSweSourceAgent(MiniSweAgent):
+class CandidateMiniSweAgent(MiniSweAgent):
     async def install(self, environment):
         source = self._get_env("EVOLVE_CANDIDATE_SOURCE")
         if not source:
@@ -526,3 +526,6 @@ class MiniSweSourceAgent(MiniSweAgent):
         if smoke_mode is not None:
             env["EVOLVE_CANDIDATE_SMOKE_MODE"] = smoke_mode
         return env
+
+
+MiniSweSourceAgent = CandidateMiniSweAgent

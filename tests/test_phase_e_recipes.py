@@ -96,10 +96,10 @@ def test_supported_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "max_tasks: 30" in config
             assert "max_cases" not in config
             assert "budget_usd" not in config
-            assert "agent: evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent" in config
+            assert "agent: evolve.integrations.harbor.miniswe_task_file:InstalledMiniSweAgent" in config
             assert "editable_roots: [target]" in config
             assert "max_retries: 1" in config
-            assert "agent: evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent" in config
+            assert "agent: evolve.integrations.harbor.miniswe_candidate:CandidateMiniSweAgent" in config
             assert "image: evolve-meta-agent-app:20260724-tools-mswe245" in config
             assert "task_scope: full" in config
             assert "evaluation_split: train" in config
@@ -122,7 +122,7 @@ def test_supported_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "meta_agent: {variant: hyperagents" in config
             assert "expose_gate_data: false" in config
             assert "runner: harbor" in config
-            assert "agent: evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent" in config
+            assert "agent: evolve.integrations.harbor.miniswe_task_file:InstalledMiniSweAgent" in config
             assert "editable_roots: [target, operators]" in config
             assert "max_retries: 1" in config
             assert "validate: {variant: hyperagents" in config
@@ -148,7 +148,7 @@ def test_supported_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "variant: noop" not in config
         assert "mutate:" not in config
         if name not in {"aevolve", "gepa"}:
-            assert "agent: evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent" in config
+            assert "agent: evolve.integrations.harbor.miniswe_candidate:CandidateMiniSweAgent" in config
             assert "harbor_agent:" not in config
         assert "variant: fixed" not in config
 

@@ -32,6 +32,7 @@ from .config import (
     seed_root,
 )
 from .host_runtime import uv_executable
+from .integrations.harbor._agent_roles import is_candidate_miniswe_agent
 from .splits import build_manifest
 
 _SEED_IGNORE_PATTERNS = (
@@ -48,7 +49,6 @@ _SEED_IGNORE_PATTERNS = (
 )
 _ENV_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _GIT_COMMIT = re.compile(r"[0-9a-fA-F]{40}")
-_MINISWE_CANDIDATE_AGENT = "evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent"
 
 
 @dataclass(frozen=True)
@@ -597,7 +597,7 @@ def _validate_target_config(target: dict[str, Any]) -> None:
 
 
 def _validate_candidate_target_contract(prepared_target: Path, evaluator: dict[str, Any]) -> None:
-    if evaluator.get("agent") != _MINISWE_CANDIDATE_AGENT:
+    if not is_candidate_miniswe_agent(evaluator.get("agent")):
         return
     missing = [relative for relative in ("pyproject.toml", "uv.lock") if not (prepared_target / relative).is_file()]
     if missing:

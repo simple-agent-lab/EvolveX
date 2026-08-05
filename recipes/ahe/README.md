@@ -22,7 +22,7 @@ of the candidate runtime contract. Because upstream does not track that lock,
 workspace initialization generates and freezes it explicitly.
 
 Canonical evaluation is deliberately different: the frozen
-`MiniSweSourceAgent` adapter installs the returned candidate source and invokes
+`CandidateMiniSweAgent` adapter installs the returned candidate source and invokes
 its Python API with evaluator-owned model and resource limits. The prompt asks
 for a change manifest linking target edits to debugger evidence and predicted
 effects, but that manifest is best-effort metadata: a missing or malformed block

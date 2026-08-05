@@ -63,7 +63,7 @@ def test_ahe_recipe_initializes_harbor_miniswe_composition(tmp_path: Path) -> No
     assert "variant: ahe" in config
     assert "runner: harbor" in config
     assert "expose_gate_data: false" in config
-    assert "agent: evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent" in config
+    assert "agent: evolve.integrations.harbor.miniswe_task_file:InstalledMiniSweAgent" in config
     assert "editable_roots:" in config
     operators = operator_blocks(workspace)
     assert "agent_env" not in operators["meta_agent"]

@@ -8,7 +8,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 ADAPTER = ROOT / "src" / "evolve" / "integrations" / "harbor" / "miniswe_task_file.py"
-FILE_TASK_AGENT = "evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent"
 
 
 def _load(monkeypatch, max_output_tokens: int | str | None = None):
@@ -95,6 +94,12 @@ def test_file_task_agent_externalizes_large_miniswe_instruction(monkeypatch) -> 
     assert "store" not in model_kwargs
     assert "unset HTTP_PROXY" not in runtime_command
     assert environment.envs[-1] == {"ROLE": "agent"}
+
+
+def test_installed_miniswe_exposes_canonical_name_and_legacy_alias(monkeypatch) -> None:
+    module = _load(monkeypatch)
+
+    assert module.FileTaskMiniSweAgent is module.InstalledMiniSweAgent
 
 
 def test_file_task_agent_forwards_execution_options_for_passthrough_and_rewritten_commands(monkeypatch) -> None:

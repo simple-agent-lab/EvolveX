@@ -37,7 +37,7 @@ runpy.run_path(entrypoint, run_name="__main__")
 """
 
 
-class FileTaskMiniSweAgent(MiniSweAgent):
+class InstalledMiniSweAgent(MiniSweAgent):
     async def exec_as_agent(
         self,
         environment: BaseEnvironment,
@@ -106,3 +106,6 @@ class FileTaskMiniSweAgent(MiniSweAgent):
         return await super().exec_as_agent(
             environment, command=rewritten, env=env, cwd=cwd, timeout_sec=timeout_sec
         )
+
+
+FileTaskMiniSweAgent = InstalledMiniSweAgent

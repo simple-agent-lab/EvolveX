@@ -24,7 +24,7 @@ def test_hyperagents_recipe_initializes_broad_harbor_bundle(tmp_path: Path) -> N
     assert "variant: hyperagents" in config
     assert "runner: harbor" in config
     assert "expose_gate_data: false" in config
-    assert "agent: evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent" in config
+    assert "agent: evolve.integrations.harbor.miniswe_task_file:InstalledMiniSweAgent" in config
     assert "editable_roots:" in config
     assert "- target" in config and "- operators" in config
     assert "agent_env" not in operator_blocks(workspace)["meta_agent"]
