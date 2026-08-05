@@ -49,6 +49,13 @@ def task_set_identity(
 def effective_task_set_identity(
     checkout: Path, evaluator: dict[str, Any], *, purpose: str = "candidate"
 ) -> TaskSetIdentity:
+    split_path = checkout / "evaluator" / "splits.json"
+    if split_path.is_file():
+        verified = _verified_task_set_identity(
+            split_path.read_text(), evaluator, purpose=purpose, source=str(split_path)
+        )
+        if verified is not None:
+            return verified
     configured_names = evaluator.get("task_names")
     if purpose != "anchor" and isinstance(configured_names, list) and all(
         isinstance(name, str) and name for name in configured_names
@@ -67,7 +74,6 @@ def effective_task_set_identity(
         )
     else:
         members = ()
-        split_path = checkout / "evaluator" / "splits.json"
         if split_path.is_file():
             try:
                 members = _selected_split_members(
@@ -95,11 +101,7 @@ def fixed_evaluation_identity(workspace: Path) -> dict[str, str] | None:
         evaluator = loaded.get("evaluator") if isinstance(loaded, dict) else None
         if not isinstance(evaluator, dict):
             return None
-        task_set = task_set_identity(
-            evaluator.get("dataset", ""),
-            evaluator_repetitions(evaluator),
-            _fixed_task_members(workspace, evaluator),
-        )
+        task_set = _fixed_task_set_identity(workspace, evaluator)
     except (OSError, TypeError, ValueError, yaml.YAMLError):
         return None
     return {
@@ -107,6 +109,55 @@ def fixed_evaluation_identity(workspace: Path) -> dict[str, str] | None:
         "task_set_hash": task_set.digest,
         "runtime_fingerprint": hashlib.sha256(runtime_pin.encode()).hexdigest(),
     }
+
+
+def _fixed_task_set_identity(
+    workspace: Path, evaluator: dict[str, Any]
+) -> TaskSetIdentity:
+    split_text = _git_text(
+        workspace, "show", "gen/0:evaluator/splits.json", strip=False
+    )
+    if split_text is not None:
+        verified = _verified_task_set_identity(
+            split_text, evaluator, source="gen/0:evaluator/splits.json"
+        )
+        if verified is not None:
+            return verified
+    return task_set_identity(
+        evaluator.get("dataset", ""),
+        evaluator_repetitions(evaluator),
+        _fixed_task_members(workspace, evaluator),
+    )
+
+
+def _verified_task_set_identity(
+    text: str,
+    evaluator: dict[str, Any],
+    *,
+    purpose: str = "candidate",
+    source: str,
+) -> TaskSetIdentity | None:
+    payload = json.loads(text)
+    if not isinstance(payload, dict) or payload.get("version") != 2:
+        return None
+    from ..splits import parse_manifest, selected_task_names
+    from .datasets import selected_dataset_identity
+
+    manifest = parse_manifest(text, source=source)
+    split = evaluation_split_name(evaluator, purpose)
+    selected = selected_dataset_identity(
+        manifest, selected_task_names(manifest, split)
+    )
+    digest_payload = {
+        "dataset_content_digest": selected.digest,
+        "split": split,
+        "task_members": list(selected.members),
+        "repetitions": evaluator_repetitions(evaluator),
+    }
+    digest = hashlib.sha256(
+        json.dumps(digest_payload, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    return TaskSetIdentity(digest, selected.members)
 
 
 def _fixed_task_members(workspace: Path, evaluator: dict[str, Any]) -> tuple[str, ...]:

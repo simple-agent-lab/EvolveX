@@ -12,6 +12,7 @@ from conftest import (
 )
 
 from evolve import evaluation as evaluation_package
+from evolve.population import fixed_evaluation_identity
 from evolve.workspace import InitOptions, init_workspace
 
 
@@ -102,6 +103,7 @@ def test_contract_resolver_derives_every_field_from_trusted_workspace_inputs(
     assert contract.retry_policy == {"max_retries": 1}
     assert contract.framework_version == "0.1.0"
     assert len(contract.contract_id) == 64
+    assert fixed_evaluation_identity(workspace)["task_set_hash"] == contract.task_set_digest
 
     serialized = json.dumps(contract.to_dict(), sort_keys=True)
     assert str(tmp_path) not in serialized
