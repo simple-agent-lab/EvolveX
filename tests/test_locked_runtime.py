@@ -162,9 +162,9 @@ def test_legacy_uv_runtime_receipt_with_contract_id_remains_schema_two(tmp_path:
     assert receipt["contract_id"] == "a" * 64
 
 
-def test_strict_uv_receipt_contains_profile_identity(tmp_path: Path) -> None:
+def test_strict_uv_receipt_contains_runtime_identity(tmp_path: Path) -> None:
     checkout, run_dir, runtime_root, evaluator, env, _calls = _strict_runtime_fixture(tmp_path)
-    profile = json.loads((checkout / "evaluator/runtime-profile.json").read_text())
+    runtime = json.loads((checkout / "evaluator/runtime.json").read_text())
 
     result = prepare_candidate_runtime(
         checkout,
@@ -179,8 +179,7 @@ def test_strict_uv_receipt_contains_profile_identity(tmp_path: Path) -> None:
     assert result.ready
     receipt = json.loads((run_dir / "candidate-runtime.json").read_text())
     assert receipt["schema_version"] == 3
-    assert receipt["runtime_profile"] == "harbor-uv-v1"
-    assert receipt["runtime_profile_digest"] == profile["profile_digest"]
+    assert receipt["runtime_digest"] == runtime["digest"]
     assert receipt["contract_id"] == "a" * 64
 
 
@@ -364,7 +363,7 @@ def test_uv_runtime_config_resolves_project_inside_checkout(tmp_path: Path) -> N
     assert config.python == "3.12"
 
 
-def test_uv_runtime_config_is_derived_from_resolved_profile(tmp_path: Path) -> None:
+def test_uv_runtime_config_is_derived_from_resolved_runtime(tmp_path: Path) -> None:
     workspace = init_recipe_with_local_inputs(tmp_path, "ahe")
     evaluator = load_config(workspace / "evolve.yaml")["evaluator"]
 
@@ -377,7 +376,7 @@ def test_uv_runtime_config_is_derived_from_resolved_profile(tmp_path: Path) -> N
     assert config.python == "3.12"
 
 
-def test_strict_profile_rejects_legacy_candidate_runtime_override(tmp_path: Path) -> None:
+def test_strict_runtime_rejects_legacy_candidate_runtime_override(tmp_path: Path) -> None:
     workspace = init_recipe_with_local_inputs(tmp_path, "ahe")
 
     with pytest.raises(ValueError, match="cannot combine"):
@@ -441,7 +440,7 @@ def test_eval_stub_cannot_certify_strict_candidate_runtime(tmp_path: Path) -> No
     assert result.receipt_path is not None
     receipt = json.loads(result.receipt_path.read_text())
     assert receipt["schema_version"] == 3
-    assert receipt["runtime_profile"] == "harbor-uv-v1"
+    assert receipt["runtime_digest"] == json.loads((checkout / "evaluator/runtime.json").read_text())["digest"]
     assert not calls.exists()
 
 

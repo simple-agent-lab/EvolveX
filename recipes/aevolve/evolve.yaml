@@ -43,7 +43,8 @@ operators:
   timeout_s: 600
 evaluator:
   engine: harbor
-  runtime: {profile: harbor-v1}
+  runtime:
+    proxy: {mode: optional, model_endpoint: bypass}
   dataset: swe-bench-lite
   agent: target.agent:HarborAgent
   split: {train: 0.5, gate: 0.4, sealed: 0.1, seed: 0}

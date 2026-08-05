@@ -22,7 +22,7 @@ from harbor.utils.env import resolve_env_vars
 from evolve.agent import AgentCommandError
 from evolve.frozen.interfaces import OperatorContext
 from evolve.operators import _operator_deadline_s
-from evolve.runtime_profiles import resolve_runtime_profile
+from evolve.runtime_config import resolve_runtime
 
 ROOT = Path(__file__).resolve().parents[1]
 FILE_TASK_AGENT = "evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent"
@@ -40,9 +40,7 @@ def _harbor_runner_module():
     return module
 
 
-def test_codex_meta_agent_uses_shared_endpoint_plan(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_codex_meta_agent_uses_shared_endpoint_plan(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     module = _harbor_runner_module()
     checkout = init_recipe_with_local_inputs(tmp_path, "aevolve")
 
@@ -60,14 +58,10 @@ def test_installed_harbor_resolves_framework_runtime_templates(
     internal_name = "EVOLVE_RUNTIME_META_AGENT_OPENAI_API_KEY"
     monkeypatch.setenv(internal_name, "resolved-key")
 
-    assert resolve_env_vars({"OPENAI_API_KEY": f"${{{internal_name}}}"}) == {
-        "OPENAI_API_KEY": "resolved-key"
-    }
+    assert resolve_env_vars({"OPENAI_API_KEY": f"${{{internal_name}}}"}) == {"OPENAI_API_KEY": "resolved-key"}
 
 
-def test_harbor_meta_agent_uses_shared_legacy_environment_plan(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_harbor_meta_agent_uses_shared_legacy_environment_plan(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     module = _harbor_runner_module()
     checkout = tmp_path / "legacy-checkout"
     checkout.mkdir()
@@ -85,12 +79,8 @@ def test_harbor_meta_agent_uses_shared_legacy_environment_plan(
     assert agent_environment["OPENAI_BASE_URL"] == "${EVOLVE_RUNTIME_AGENT_OPENAI_BASE_URL}"
     assert agent_environment["STEP_LIMIT"] == "${EVOLVE_RUNTIME_AGENT_STEP_LIMIT}"
     assert process_environment["EVOLVE_RUNTIME_AGENT_OPENAI_API_KEY"] == "workspace-key"
-    assert process_environment["EVOLVE_RUNTIME_AGENT_HTTPS_PROXY"] == (
-        "http://dependency-proxy.example:8118"
-    )
-    assert process_environment["EVOLVE_RUNTIME_AGENT_NO_PROXY"] == (
-        "pypi.org,.internal.example"
-    )
+    assert process_environment["EVOLVE_RUNTIME_AGENT_HTTPS_PROXY"] == ("http://dependency-proxy.example:8118")
+    assert process_environment["EVOLVE_RUNTIME_AGENT_NO_PROXY"] == ("pypi.org,.internal.example")
 
 
 def test_harbor_meta_agent_redacts_configured_proxy_literal(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -146,7 +136,7 @@ def test_strict_codex_command_record_contains_templates_not_runtime_literals(
     monkeypatch.setenv("OPENAI_API_KEY", key)
     monkeypatch.setenv("OPENAI_BASE_URL", endpoint)
     monkeypatch.setenv("HTTPS_PROXY", proxy)
-    _enable_strict_profile(checkout, endpoint)
+    _enable_strict_runtime(checkout, endpoint)
     ctx = _ctx(checkout, run_dir)
     ctx.config["agent"] = "codex"
 
@@ -179,9 +169,7 @@ def test_harbor_meta_agent_child_creates_private_files(tmp_path: Path) -> None:
     assert stat.S_IMODE(log.stat().st_mode) == 0o600
 
 
-def test_legacy_meta_agent_accepts_explicit_file_auth(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_legacy_meta_agent_accepts_explicit_file_auth(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     module = _harbor_runner_module()
     checkout = tmp_path / "legacy-checkout"
     checkout.mkdir()
@@ -189,15 +177,9 @@ def test_legacy_meta_agent_accepts_explicit_file_auth(
     auth.write_text("{}\n")
     monkeypatch.setenv("CODEX_AUTH_JSON_PATH", str(auth))
 
-    agent_environment, process_environment = module._runtime_inputs(
-        checkout, {"agent": "codex"}
-    )
-    assert agent_environment["CODEX_AUTH_JSON_PATH"] == (
-        "${EVOLVE_RUNTIME_AGENT_CODEX_AUTH_JSON_PATH}"
-    )
-    assert process_environment["EVOLVE_RUNTIME_AGENT_CODEX_AUTH_JSON_PATH"] == str(
-        auth.resolve()
-    )
+    agent_environment, process_environment = module._runtime_inputs(checkout, {"agent": "codex"})
+    assert agent_environment["CODEX_AUTH_JSON_PATH"] == ("${EVOLVE_RUNTIME_AGENT_CODEX_AUTH_JSON_PATH}")
+    assert process_environment["EVOLVE_RUNTIME_AGENT_CODEX_AUTH_JSON_PATH"] == str(auth.resolve())
 
 
 def test_harbor_rejects_oversized_instruction_with_unsafe_agent(tmp_path: Path) -> None:
@@ -232,30 +214,19 @@ def _git(root: Path, *args: str) -> str:
     return result.stdout.strip()
 
 
-def _enable_strict_profile(checkout: Path, endpoint: str) -> None:
-    resolved = resolve_runtime_profile(
+def _enable_strict_runtime(checkout: Path, endpoint: str) -> None:
+    resolved = resolve_runtime(
         {
-            "experiment": {"id": "test"},
-            "target": {"seed": "builtin-codex"},
-            "surface": {"include": ["target/**"], "exclude": []},
-            "operators": {"meta_agent": {"agent": "codex"}},
-            "evaluator": {
-                "engine": "harbor",
-                "agent": "target.agent:HarborAgent",
-                "runtime": {"profile": "harbor-v1"},
-            },
+            "proxy": {"mode": "optional", "model_endpoint": "bypass"},
         },
-        "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        {"OPENAI_BASE_URL": endpoint},
+        engine="harbor",
+        environment={"OPENAI_BASE_URL": endpoint},
     )
-    assert resolved is not None
     evaluator = checkout / "evaluator"
     evaluator.mkdir()
-    (evaluator / "runtime-profile.json").write_text(
-        json.dumps(resolved.to_dict(), indent=2, sort_keys=True) + "\n"
-    )
-    _git(checkout, "add", "evaluator/runtime-profile.json")
-    _git(checkout, "commit", "-qm", "add strict runtime profile")
+    (evaluator / "runtime.json").write_text(json.dumps(resolved.to_dict(), indent=2, sort_keys=True) + "\n")
+    _git(checkout, "add", "evaluator/runtime.json")
+    _git(checkout, "commit", "-qm", "add strict runtime")
 
 
 def _checkout(tmp_path: Path) -> tuple[Path, Path]:

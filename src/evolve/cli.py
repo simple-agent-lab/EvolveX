@@ -77,10 +77,11 @@ def init(
         "--recipe-path",
         help="opt-in recipe directory or evolve.yaml path",
     ),
-    seed: str | None = typer.Option(
-        None, help="git URL to vendor into target/; local target dir; builtin-codex"
+    seed: str | None = typer.Option(None, help="git URL to vendor into target/; local target dir; builtin-codex"),
+    dataset: str | None = typer.Option(
+        None, help="local task directory or published Harbor dataset to split and freeze"
     ),
-    dataset: str | None = typer.Option(None, help="local Harbor task directory to split and freeze"),
+    tasks_per_round: int | None = typer.Option(None, "--tasks", min=1, help="limit evaluation tasks per generation"),
 ) -> None:
     """Scaffold a new evolve workspace."""
     if recipe is not None and recipe_path is not None:
@@ -101,6 +102,7 @@ def init(
             seed=seed,
             dataset=dataset,
             recipe_path=recipe_path,
+            tasks_per_round=tasks_per_round,
         )
     )
     print(f"Initialized evolve workspace at {workspace}")

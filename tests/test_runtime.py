@@ -362,20 +362,12 @@ def test_attempt_identity_rejects_unsafe_path_components(tmp_path: Path, value: 
         )
 
 
-def test_harbor_init_requires_evaluator_runtime_digest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("EVOLVE_RUNTIME_DIGEST")
-
-    with pytest.raises(ValueError, match="EVOLVE_RUNTIME_DIGEST.*evaluator capsule"):
-        init_fixture_workspace(tmp_path / "workspace")
-
-
-def test_init_commits_evaluator_owned_runtime_pin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("EVOLVE_RUNTIME_DIGEST", "sha256:immutable-evaluator")
+def test_init_commits_evaluator_owned_runtime_pin(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
 
     init_fixture_workspace(workspace)
 
-    assert (workspace / "evaluator/runtime.pin").read_text() == "sha256:immutable-evaluator\n"
+    assert (workspace / "evaluator/runtime.pin").read_text() == "legacy-unverified\n"
     assert not (workspace / "target/runtime.pin").exists()
 
 

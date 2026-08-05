@@ -14,15 +14,11 @@ from ..evaluation.contract import (
     trusted_evaluator_config,
 )
 from ..runtime import reserve_attempt_directory
+from ..runtime_config import ResolvedRuntimeV1, RuntimeConfigError
 from ..runtime_environment import (
     RuntimeEnvironmentErrorCode,
     RuntimeEnvironmentResolutionError,
     resolve_runtime_environment,
-)
-from ..runtime_profiles import (
-    ResolvedRuntimeProfileV1,
-    RuntimeProfileErrorCode,
-    RuntimeProfileResolutionError,
 )
 from . import checks as host_checks
 from .models import (
@@ -56,11 +52,10 @@ def run_preflight(
     source_environment = dict(os.environ if environment is None else environment)
     destination = receipt_path or next_receipt_path(root)
     completed: list[PreflightCheckV1] = []
-    profile: ResolvedRuntimeProfileV1 | None = None
+    runtime: ResolvedRuntimeV1 | None = None
 
     try:
         evaluator = trusted_evaluator_config(root)
-        configured_profile = host_checks.configured_profile_name(evaluator)
     except (EvaluationContractResolutionError, ValueError) as error:
         return _failed_result(
             mode,
@@ -74,34 +69,30 @@ def run_preflight(
     completed.append(_passed_check("configuration"))
 
     try:
-        profile = host_checks.trusted_profile(root)
-        if profile.profile.name != configured_profile:
-            raise RuntimeProfileResolutionError(
-                "resolved profile name does not match evaluator.runtime.profile"
-            )
-    except RuntimeProfileResolutionError as error:
+        runtime = host_checks.trusted_runtime(root)
+    except RuntimeConfigError as error:
         return _failed_result(
             mode,
             destination,
             completed,
-            "runtime_profile",
-            _profile_failure_category(error),
+            "runtime",
+            PreflightFailureCategory.RUNTIME_INVALID,
             str(error),
             source_environment,
         )
-    completed.append(_passed_check("runtime_profile"))
+    completed.append(_passed_check("runtime"))
 
     pinned_runtime = host_checks.git_text(root, "gen/0:evaluator/runtime.pin")
-    if not pinned_runtime or pinned_runtime.strip() != profile.runtime_digest:
+    if not pinned_runtime or pinned_runtime.strip() != runtime.digest:
         return _failed_result(
             mode,
             destination,
             completed,
             "runtime_digest",
             PreflightFailureCategory.RUNTIME_UNAVAILABLE,
-            "runtime.pin does not match the resolved runtime profile",
+            "runtime.pin does not match the resolved runtime",
             source_environment,
-            profile,
+            runtime,
         )
     completed.append(_passed_check("runtime_digest"))
 
@@ -124,11 +115,14 @@ def run_preflight(
             PreflightFailureCategory.CONFIGURATION_INVALID,
             str(error),
             source_environment,
-            profile,
+            runtime,
         )
     completed.append(_passed_check("evaluation_contract"))
 
-    for tool in profile.profile.required_tools:
+    tools = ["docker", "harbor"] if runtime.engine == "harbor" else []
+    if runtime.config.candidate is not None:
+        tools.append(runtime.config.candidate.variant)
+    for tool in tools:
         if not host_checks.tool_available(tool, source_environment):
             return _failed_result(
                 mode,
@@ -138,24 +132,11 @@ def run_preflight(
                 PreflightFailureCategory.DEPENDENCY_TOOL_UNAVAILABLE,
                 f"required dependency tool is unavailable: {tool}",
                 source_environment,
-                profile,
+                runtime,
             )
     completed.append(_passed_check("dependency_tools"))
 
-    if not host_checks.image_available(profile.runtime_digest, source_environment):
-        return _failed_result(
-            mode,
-            destination,
-            completed,
-            "runtime_image",
-            PreflightFailureCategory.RUNTIME_IMAGE_UNAVAILABLE,
-            "the immutable evaluator container image is not available locally",
-            source_environment,
-            profile,
-        )
-    completed.append(_passed_check("runtime_image"))
-
-    candidate_runtime = profile.profile.candidate_runtime
+    candidate_runtime = runtime.config.candidate
     if candidate_runtime is not None:
         project = candidate_root / candidate_runtime.project
         if not host_checks.lock_valid(project, source_environment):
@@ -167,13 +148,13 @@ def run_preflight(
                 PreflightFailureCategory.DEPENDENCY_LOCK_INVALID,
                 "candidate uv lock validation failed",
                 source_environment,
-                profile,
+                runtime,
             )
         completed.append(_passed_check("dependency_lock"))
 
     try:
         resolve_runtime_environment(
-            profile,
+            runtime,
             source_environment,
             agent_kind=str(evaluator.get("agent") or ""),
         )
@@ -186,7 +167,7 @@ def run_preflight(
             _environment_failure_category(error),
             str(error),
             source_environment,
-            profile,
+            runtime,
         )
     completed.append(_passed_check("runtime_environment"))
 
@@ -207,22 +188,19 @@ def run_preflight(
                 PreflightFailureCategory.MODEL_SMOKE_FAILED,
                 str(error) or type(error).__name__,
                 source_environment,
-                profile,
+                runtime,
             )
-        smoke_artifact = host_checks.artifact_reference(
-            smoke.attempt_dir / "result.json", relative_to=root
-        )
+        smoke_artifact = host_checks.artifact_reference(smoke.attempt_dir / "result.json", relative_to=root)
         if smoke.status != "passed":
             return _failed_result(
                 mode,
                 destination,
                 completed,
                 "model_agent_request",
-                _structured_smoke_failure_category(smoke)
-                or PreflightFailureCategory.MODEL_SMOKE_FAILED,
+                _structured_smoke_failure_category(smoke) or PreflightFailureCategory.MODEL_SMOKE_FAILED,
                 _smoke_failure_message(smoke),
                 source_environment,
-                profile,
+                runtime,
                 artifact=smoke_artifact,
             )
         completed.append(
@@ -236,10 +214,8 @@ def run_preflight(
     result = PreflightResultV1(
         schema_version=1,
         status=PreflightStatus.PASSED,
-        profile_name=profile.profile.name,
-        profile_digest=profile.profile_digest,
-        runtime_digest=profile.runtime_digest,
-        endpoint_digest=profile.endpoint_digest,
+        runtime_digest=runtime.digest,
+        endpoint_digest=runtime.endpoint_digest,
         mode=mode,
         checks=tuple(completed),
         receipt_path=destination,
@@ -256,17 +232,15 @@ def _failed_result(
     category: PreflightFailureCategory,
     message: str,
     environment: Mapping[str, str],
-    profile: ResolvedRuntimeProfileV1 | None = None,
+    runtime: ResolvedRuntimeV1 | None = None,
     *,
     artifact: ArtifactReferenceV1 | None = None,
 ) -> PreflightResultV1:
     bounded = _bounded_message(message, environment)
     result = PreflightResultV1.failed(
         mode=mode,
-        profile_name=profile.profile.name if profile is not None else "unknown",
-        profile_digest=profile.profile_digest if profile is not None else "",
-        runtime_digest=profile.runtime_digest if profile is not None else "",
-        endpoint_digest=profile.endpoint_digest if profile is not None else "",
+        runtime_digest=runtime.digest if runtime is not None else "",
+        endpoint_digest=runtime.endpoint_digest if runtime is not None else "",
         checks=(
             *completed,
             PreflightCheckV1(
@@ -289,18 +263,6 @@ def _passed_check(name: str) -> PreflightCheckV1:
     return PreflightCheckV1(name=name, status=PreflightCheckStatus.PASSED)
 
 
-def _profile_failure_category(
-    error: RuntimeProfileResolutionError,
-) -> PreflightFailureCategory:
-    if error.code is RuntimeProfileErrorCode.PROFILE_NOT_FOUND:
-        return PreflightFailureCategory.PROFILE_NOT_FOUND
-    if error.code is RuntimeProfileErrorCode.PROFILE_AMBIGUOUS:
-        return PreflightFailureCategory.PROFILE_AMBIGUOUS
-    if error.code is RuntimeProfileErrorCode.ENDPOINT_INVALID:
-        return PreflightFailureCategory.ENDPOINT_INVALID
-    return PreflightFailureCategory.RUNTIME_PROFILE_INVALID
-
-
 def _environment_failure_category(
     error: RuntimeEnvironmentResolutionError,
 ) -> PreflightFailureCategory:
@@ -311,9 +273,7 @@ def _environment_failure_category(
         RuntimeEnvironmentErrorCode.AUTH_JSON_UNSUPPORTED: PreflightFailureCategory.AUTH_JSON_UNSUPPORTED,
         RuntimeEnvironmentErrorCode.ENDPOINT_INVALID: PreflightFailureCategory.ENDPOINT_INVALID,
     }
-    return categories.get(
-        error.code, PreflightFailureCategory.CONFIGURATION_INVALID
-    )
+    return categories.get(error.code, PreflightFailureCategory.CONFIGURATION_INVALID)
 
 
 def _structured_smoke_failure_category(
@@ -342,9 +302,7 @@ def _smoke_failure_message(smoke: SmokeResult) -> str:
 def _bounded_message(message: str, environment: Mapping[str, str]) -> str:
     redacted = message
     values = {
-        value
-        for name, value in environment.items()
-        if _SENSITIVE_ENVIRONMENT_NAME.search(name) and len(value) >= 4
+        value for name, value in environment.items() if _SENSITIVE_ENVIRONMENT_NAME.search(name) and len(value) >= 4
     }
     for value in sorted(values, key=len, reverse=True):
         redacted = redacted.replace(value, "[REDACTED]")

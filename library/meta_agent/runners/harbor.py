@@ -28,12 +28,12 @@ from evolve.meta_agent_budget import (
     uses_harbor_per_attempt_timeout,
 )
 from evolve.patching import SurfacePolicy, load_surface_policy, patch_parent_ref
+from evolve.runtime_config import load_resolved_runtime
 from evolve.runtime_environment import (
     RuntimeEnvironmentPlan,
     resolve_legacy_runtime_environment,
     resolve_runtime_environment,
 )
-from evolve.runtime_profiles import load_resolved_runtime_profile
 from evolve.surface import check_paths
 from library.meta_agent.support.artifacts import ensure_artifact_layout
 
@@ -625,22 +625,20 @@ def _append_agent_env(command: list[str], environment: Mapping[str, str]) -> Non
         command.extend(["--ae", f"{key}={value}"])
 
 
-def _runtime_environment_plan(
-    checkout: Path, config: Mapping[str, object]
-) -> RuntimeEnvironmentPlan:
-    profile_path = checkout / "evaluator" / "runtime-profile.json"
-    if not profile_path.is_file():
-        raise ValueError("strict runtime profile is missing from evaluator/runtime-profile.json")
+def _runtime_environment_plan(checkout: Path, config: Mapping[str, object]) -> RuntimeEnvironmentPlan:
+    runtime_path = checkout / "evaluator" / "runtime.json"
+    if not runtime_path.is_file():
+        raise ValueError("strict runtime is missing from evaluator/runtime.json")
     try:
-        profile = load_resolved_runtime_profile(json.loads(profile_path.read_text()))
+        runtime = load_resolved_runtime(json.loads(runtime_path.read_text()))
     except json.JSONDecodeError as error:
-        raise ValueError("evaluator/runtime-profile.json is invalid JSON") from error
+        raise ValueError("evaluator/runtime.json is invalid JSON") from error
     configured = config.get("agent_env")
     if configured is not None and not isinstance(configured, Mapping):
         raise ValueError("meta-agent agent_env must be a mapping")
     overrides = cast("Mapping[str, object] | None", configured)
     return resolve_runtime_environment(
-        profile,
+        runtime,
         os.environ,
         agent_kind=str(config.get("agent") or ""),
         meta_agent_kind=str(config.get("agent") or ""),
@@ -648,10 +646,8 @@ def _runtime_environment_plan(
     )
 
 
-def _runtime_inputs(
-    checkout: Path, config: Mapping[str, object]
-) -> tuple[dict[str, str], dict[str, str]]:
-    if (checkout / "evaluator" / "runtime-profile.json").is_file():
+def _runtime_inputs(checkout: Path, config: Mapping[str, object]) -> tuple[dict[str, str], dict[str, str]]:
+    if (checkout / "evaluator" / "runtime.json").is_file():
         plan = _runtime_environment_plan(checkout, config)
         return plan.meta_agent_env(), plan.process_env()
     configured = config.get("agent_env")

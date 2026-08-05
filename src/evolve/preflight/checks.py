@@ -10,42 +10,19 @@ from pathlib import Path
 
 from ..git import git
 from ..host_runtime import uv_executable
-from ..runtime_profiles import (
-    ResolvedRuntimeProfileV1,
-    RuntimeProfileErrorCode,
-    RuntimeProfileResolutionError,
-    load_resolved_runtime_profile,
-)
+from ..runtime_config import ResolvedRuntimeV1, RuntimeConfigError, load_resolved_runtime
 from .models import ArtifactReferenceV1
 
 
-def configured_profile_name(evaluator: Mapping[str, object]) -> str:
-    runtime = evaluator.get("runtime")
-    if not isinstance(runtime, Mapping):
-        raise ValueError("strict preflight requires evaluator.runtime.profile")
-    unknown = sorted(str(name) for name in runtime if name != "profile")
-    if unknown:
-        raise ValueError("unknown evaluator.runtime fields: " + ", ".join(unknown))
-    profile = runtime.get("profile")
-    if not isinstance(profile, str) or not profile:
-        raise ValueError("evaluator.runtime.profile must be a non-empty string")
-    return profile
-
-
-def trusted_profile(workspace: Path) -> ResolvedRuntimeProfileV1:
-    text = git_text(workspace, "gen/0:evaluator/runtime-profile.json")
+def trusted_runtime(workspace: Path) -> ResolvedRuntimeV1:
+    text = git_text(workspace, "gen/0:evaluator/runtime.json")
     if text is None:
-        raise RuntimeProfileResolutionError(
-            "gen/0 runtime-profile.json is unavailable",
-            code=RuntimeProfileErrorCode.PROFILE_NOT_FOUND,
-        )
+        raise RuntimeConfigError("gen/0 runtime.json is unavailable")
     try:
         payload = json.loads(text)
     except json.JSONDecodeError as error:
-        raise RuntimeProfileResolutionError(
-            "gen/0 runtime-profile.json is invalid JSON"
-        ) from error
-    return load_resolved_runtime_profile(payload)
+        raise RuntimeConfigError("gen/0 runtime.json is invalid JSON") from error
+    return load_resolved_runtime(payload)
 
 
 def git_text(workspace: Path, revision: str) -> str | None:
@@ -55,15 +32,6 @@ def git_text(workspace: Path, revision: str) -> str | None:
 
 def tool_available(name: str, environment: Mapping[str, str]) -> bool:
     return shutil.which(name, path=environment.get("PATH")) is not None
-
-
-def image_available(runtime_digest: str, environment: Mapping[str, str]) -> bool:
-    docker = shutil.which("docker", path=environment.get("PATH"))
-    if docker is None:
-        return False
-    return local_command_succeeds(
-        [docker, "image", "inspect", runtime_digest], environment
-    )
 
 
 def lock_valid(project: Path, environment: Mapping[str, str]) -> bool:
@@ -89,9 +57,7 @@ def lock_valid(project: Path, environment: Mapping[str, str]) -> bool:
     )
 
 
-def local_command_succeeds(
-    command: list[str], environment: Mapping[str, str]
-) -> bool:
+def local_command_succeeds(command: list[str], environment: Mapping[str, str]) -> bool:
     try:
         completed = subprocess.run(
             command,

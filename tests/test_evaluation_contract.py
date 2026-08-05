@@ -39,7 +39,7 @@ def _strict_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
             "tasks_per_round": 2,
             "n_concurrent": 3,
             "max_retries": 1,
-            "runtime": {"profile": "harbor-v1"},
+            "runtime": {"proxy": {"mode": "optional", "model_endpoint": "bypass"}},
             "agent_env": {"STEP_LIMIT": "100"},
         }
     )
@@ -84,21 +84,16 @@ def test_contract_resolver_derives_every_field_from_trusted_workspace_inputs(
     assert contract.repetitions == 2
     assert len(contract.seed_namespace) == 64
     assert [
-        (trial.task_id, trial.repetition, trial.seed_supported, trial.seed)
-        for trial in contract.trial_identities
-    ] == [
-        (task, repetition, False, None) for task in expected_tasks for repetition in range(2)
-    ]
+        (trial.task_id, trial.repetition, trial.seed_supported, trial.seed) for trial in contract.trial_identities
+    ] == [(task, repetition, False, None) for task in expected_tasks for repetition in range(2)]
     assert contract.concurrency == 3
-    profile = json.loads((workspace / "evaluator/runtime-profile.json").read_text())
-    assert contract.runtime_profile == "harbor-v1"
-    assert contract.runtime_profile_digest == profile["profile_digest"]
-    assert contract.runtime_digest == "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    runtime = json.loads((workspace / "evaluator/runtime.json").read_text())
+    assert contract.runtime_digest == runtime["digest"]
     assert contract.candidate_dependency_digest is None
     assert contract.model_identity == {
         "agent": "target.agent:HarborAgent",
         "model": "openai/test-model",
-        "endpoint_digest": profile["endpoint_digest"],
+        "endpoint_digest": runtime["endpoint_digest"],
     }
     assert contract.retry_policy == {"max_retries": 1}
     assert contract.framework_version == "0.1.0"
@@ -110,14 +105,36 @@ def test_contract_resolver_derives_every_field_from_trusted_workspace_inputs(
     assert "test-key-not-a-secret" not in serialized
 
 
-def test_contract_hashes_complete_resolved_runtime_profile(strict_workspace: Path) -> None:
-    contract = contract_for_gen0(strict_workspace)
-    profile = json.loads(git(strict_workspace, "show", "gen/0:evaluator/runtime-profile.json"))
+def test_full_task_scope_contract_honors_tasks_per_round(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    dataset = _dataset(tmp_path / "tasks")
+    workspace = tmp_path / "workspace"
+    config = fixture_recipe_config("hill_climb-smoke", workspace.name)
+    config["target"]["seed"] = str(FIXTURE_SEEDS / "dummy")
+    config["evaluator"].update(
+        {
+            "dataset": str(dataset),
+            "task_scope": "full",
+            "evaluation_split": "train",
+            "tasks_per_round": 3,
+            "runtime": {"proxy": {"mode": "optional", "model_endpoint": "bypass"}},
+        }
+    )
+    config["evaluator"].pop("split", None)
+    monkeypatch.setattr("evolve.workspace.default_config", lambda _recipe, _experiment: config)
+    init_workspace(InitOptions(workspace=workspace, recipe="fixture"))
 
-    assert contract.runtime_profile == profile["name"]
-    assert contract.runtime_profile_digest == profile["profile_digest"]
-    assert contract.runtime_digest == profile["runtime_digest"]
-    assert contract.model_identity["endpoint_digest"] == profile["endpoint_digest"]
+    contract = contract_for_gen0(workspace)
+
+    assert contract.task_members == ("task-0", "task-1", "task-2")
+    assert len(contract.trial_identities) == 3
+
+
+def test_contract_hashes_complete_resolved_runtime(strict_workspace: Path) -> None:
+    contract = contract_for_gen0(strict_workspace)
+    runtime = json.loads(git(strict_workspace, "show", "gen/0:evaluator/runtime.json"))
+
+    assert contract.runtime_digest == runtime["digest"]
+    assert contract.model_identity["endpoint_digest"] == runtime["endpoint_digest"]
 
 
 def test_contract_binds_endpoint_digest_without_persisting_url(
@@ -131,24 +148,27 @@ def test_contract_binds_endpoint_digest_without_persisting_url(
     assert "OPENAI_BASE_URL" not in serialized
 
 
-def test_contract_mode_is_legacy_without_resolved_profile(legacy_workspace: Path) -> None:
-    assert evaluation_package.evaluation_contract_mode(legacy_workspace) is evaluation_package.ContractMode.LEGACY_UNVERIFIED
+def test_contract_mode_is_legacy_without_resolved_runtime(legacy_workspace: Path) -> None:
+    assert (
+        evaluation_package.evaluation_contract_mode(legacy_workspace)
+        is evaluation_package.ContractMode.LEGACY_UNVERIFIED
+    )
 
 
-@pytest.mark.parametrize("field", ["profile_digest", "endpoint_digest"])
-def test_contract_rejects_tampered_resolved_profile(strict_workspace: Path, field: str) -> None:
-    path = strict_workspace / "evaluator/runtime-profile.json"
+@pytest.mark.parametrize("field", ["digest", "endpoint_digest"])
+def test_contract_rejects_tampered_resolved_runtime(strict_workspace: Path, field: str) -> None:
+    path = strict_workspace / "evaluator/runtime.json"
     payload = json.loads(path.read_text())
     payload[field] = "0" * 64
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
-    git(strict_workspace, "add", "evaluator/runtime-profile.json")
+    git(strict_workspace, "add", "evaluator/runtime.json")
     git(strict_workspace, "commit", "-m", f"tamper {field}")
     git(strict_workspace, "tag", "-f", "gen/0")
 
     with pytest.raises(evaluation_package.EvaluationContractResolutionError) as excinfo:
         contract_for_gen0(strict_workspace)
 
-    assert excinfo.value.field == "runtime_profile"
+    assert excinfo.value.field == "runtime_digest"
 
 
 def test_contract_rejects_runtime_pin_mismatch(strict_workspace: Path) -> None:
@@ -163,7 +183,7 @@ def test_contract_rejects_runtime_pin_mismatch(strict_workspace: Path) -> None:
     assert excinfo.value.field == "runtime_digest"
 
 
-def test_uv_candidate_dependency_identity_comes_from_profile(tmp_path: Path) -> None:
+def test_uv_candidate_dependency_identity_comes_from_inline_runtime(tmp_path: Path) -> None:
     workspace = init_recipe_with_local_inputs(tmp_path, "ahe")
     contract = contract_for_gen0(workspace)
 
@@ -182,9 +202,7 @@ def test_contract_id_changes_with_candidate_tree_but_not_repeated_resolution(
     git(workspace, "add", "target/README.md")
     git(workspace, "commit", "-m", "candidate change")
     second_commit = git(workspace, "rev-parse", "HEAD")
-    second = evaluation_package.resolve_evaluation_contract(
-        _context(workspace, second_commit, generation="1")
-    )
+    second = evaluation_package.resolve_evaluation_contract(_context(workspace, second_commit, generation="1"))
 
     assert repeated == first
     assert second.contract_id != first.contract_id
@@ -200,9 +218,7 @@ def test_contract_resolution_fails_closed_without_authoritative_dataset_identity
     dataset = _dataset(tmp_path / "tasks")
     config = fixture_recipe_config("hill_climb-smoke", workspace.name)
     monkeypatch.setattr("evolve.workspace.default_config", lambda _recipe, _experiment: config)
-    init_workspace(
-        InitOptions(workspace=workspace, recipe="fixture", dataset=str(dataset))
-    )
+    init_workspace(InitOptions(workspace=workspace, recipe="fixture", dataset=str(dataset)))
     manifest_path = workspace / "evaluator/splits.json"
     manifest = json.loads(manifest_path.read_text())
     manifest["version"] = 1
@@ -247,8 +263,7 @@ def test_candidate_runtime_receipt_must_match_contract_identity(
         "contract_id": contract.contract_id,
         "candidate_commit": contract.candidate_commit,
         "candidate_dependency_digest": "d" * 64,
-        "runtime_profile": contract.runtime_profile,
-        "runtime_profile_digest": contract.runtime_profile_digest,
+        "runtime_digest": contract.runtime_digest,
         "outcome": "ready",
     }
 
@@ -258,8 +273,7 @@ def test_candidate_runtime_receipt_must_match_contract_identity(
         ("candidate_commit", "f" * 40),
         ("candidate_dependency_digest", "0" * 64),
         ("variant", "unknown"),
-        ("runtime_profile", "other-profile"),
-        ("runtime_profile_digest", "1" * 64),
+        ("runtime_digest", "1" * 64),
     ):
         mismatch = evaluation_package.verify_candidate_runtime_receipt(contract, {**receipt, field: value})
         assert mismatch.certified is False

@@ -34,7 +34,7 @@ from .config import (
     seed_root,
 )
 from .host_runtime import uv_executable
-from .runtime_profiles import resolve_runtime_profile
+from .runtime_config import resolve_runtime
 from .splits import build_manifest
 
 _SEED_IGNORE_PATTERNS = (
@@ -61,6 +61,7 @@ class InitOptions:
     seed: str | None = None
     dataset: str | None = None
     recipe_path: Path | None = None
+    tasks_per_round: int | None = None
 
 
 @dataclass(frozen=True)
@@ -96,6 +97,12 @@ def init_workspace(options: InitOptions) -> None:
         evaluator = config["evaluator"]
         assert isinstance(evaluator, dict)
         evaluator["dataset"] = options.dataset
+    if options.tasks_per_round is not None:
+        if options.tasks_per_round < 1:
+            raise ValueError("--tasks must be at least 1")
+        evaluator = config["evaluator"]
+        assert isinstance(evaluator, dict)
+        evaluator["tasks_per_round"] = options.tasks_per_round
 
     evaluator = config["evaluator"]
     assert isinstance(evaluator, dict)
@@ -188,14 +195,15 @@ def _write_files(
     evaluator_agent = str(evaluator.get("agent") or "")
     if evaluator_engine == "harbor" and not evaluator_agent:
         raise ValueError("evaluator.agent is required for harbor recipes")
-    runtime_digest = os.environ.get("EVOLVE_RUNTIME_DIGEST", "").strip()
-    if evaluator_engine == "harbor" and not runtime_digest:
-        raise ValueError(
-            "EVOLVE_RUNTIME_DIGEST must identify the evaluator capsule (normally an immutable image digest)"
+    resolved_runtime = (
+        resolve_runtime(
+            evaluator["runtime"],
+            engine=evaluator_engine,
+            environment=os.environ,
         )
-    resolved_profile = resolve_runtime_profile(config, runtime_digest, os.environ)
-    if resolved_profile is not None and resolved_profile.runtime_digest != runtime_digest:
-        raise ValueError("resolved runtime profile does not match EVOLVE_RUNTIME_DIGEST")
+        if "runtime" in evaluator
+        else None
+    )
     evaluator_trials = evaluator_repetitions(evaluator)
     tasks_per_round = int(evaluator.get("tasks_per_round", evaluator_trials))
     evaluator_n = int(evaluator.get("n_concurrent", evaluator_trials))
@@ -265,15 +273,13 @@ def _write_files(
         "evaluator/environment.kwargs": _environment_kwargs(evaluator.get("environment_kwargs")),
         "evaluator/splits.json": json.dumps(split_manifest, indent=2, sort_keys=True) + "\n",
         "evaluator/dataset.pin": _dataset_pin(evaluator_dataset, split_manifest),
-        "evaluator/runtime.pin": f"{runtime_digest}\n",
+        "evaluator/runtime.pin": f"{resolved_runtime.digest if resolved_runtime else 'legacy-unverified'}\n",
         "evaluator/stub_eval.py": _workspace_scaffold("evaluator/stub_eval.py"),
         "evaluator/engines/local.sh": _shell_script("canonical local engine"),
         "archive.jsonl": "",
     }
-    if resolved_profile is not None:
-        files["evaluator/runtime-profile.json"] = (
-            json.dumps(resolved_profile.to_dict(), indent=2, sort_keys=True) + "\n"
-        )
+    if resolved_runtime is not None:
+        files["evaluator/runtime.json"] = json.dumps(resolved_runtime.to_dict(), indent=2, sort_keys=True) + "\n"
     if evaluator_engine == "harbor":
         files.update(
             {

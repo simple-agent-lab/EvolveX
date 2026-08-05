@@ -32,9 +32,7 @@ def snapshot(root: Path) -> tuple[tuple[str, int], ...]:
     if not root.exists():
         return ()
     return tuple(
-        (path.relative_to(root).as_posix(), path.stat().st_size)
-        for path in sorted(root.rglob("*"))
-        if path.is_file()
+        (path.relative_to(root).as_posix(), path.stat().st_size) for path in sorted(root.rglob("*")) if path.is_file()
     )
 
 
@@ -67,7 +65,7 @@ def test_ordinary_preflight_is_typed_atomic_and_non_mutating(
     assert result.mode is PreflightMode.ORDINARY
     assert result.receipt_path is not None
     payload = json.loads(result.receipt_path.read_text())
-    assert payload["profile_name"] == "harbor-v1"
+    assert payload["runtime_digest"]
     assert payload["status"] == "passed"
     assert "receipt_path" not in payload
     assert git(strict_workspace, "write-tree") == before_tree
@@ -189,9 +187,7 @@ def test_smoke_launch_error_is_a_typed_redacted_failure_receipt(
     assert result.receipt_path is not None and result.receipt_path.is_file()
 
 
-def test_configuration_failure_writes_typed_receipt(
-    strict_workspace: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_configuration_failure_writes_typed_receipt(strict_workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     (strict_workspace / "evolve.yaml").write_text("experiment: [invalid\n")
     retag_gen0(strict_workspace, "invalidate configuration")
     allow_local_runtime(monkeypatch)
@@ -205,34 +201,28 @@ def test_configuration_failure_writes_typed_receipt(
     assert result.receipt_path is not None and result.receipt_path.is_file()
 
 
-def test_invalid_profile_fails_before_contract(
-    strict_workspace: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    (strict_workspace / "evaluator/runtime-profile.json").write_text("{}\n")
-    retag_gen0(strict_workspace, "invalidate runtime profile")
+def test_invalid_runtime_fails_before_contract(strict_workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    (strict_workspace / "evaluator/runtime.json").write_text("{}\n")
+    retag_gen0(strict_workspace, "invalidate runtime")
     allow_local_runtime(monkeypatch)
 
     result = run_preflight(strict_workspace, environment=runtime_environment())
 
-    assert result.failure_category is PreflightFailureCategory.RUNTIME_PROFILE_INVALID
-    assert [check.name for check in result.checks] == ["configuration", "runtime_profile"]
+    assert result.failure_category is PreflightFailureCategory.RUNTIME_INVALID
+    assert [check.name for check in result.checks] == ["configuration", "runtime"]
 
 
-def test_missing_frozen_profile_has_a_typed_category(
-    strict_workspace: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    (strict_workspace / "evaluator/runtime-profile.json").unlink()
-    retag_gen0(strict_workspace, "remove runtime profile")
+def test_missing_frozen_runtime_has_a_typed_category(strict_workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    (strict_workspace / "evaluator/runtime.json").unlink()
+    retag_gen0(strict_workspace, "remove runtime")
     allow_local_runtime(monkeypatch)
 
     result = run_preflight(strict_workspace, environment=runtime_environment())
 
-    assert result.failure_category is PreflightFailureCategory.PROFILE_NOT_FOUND
+    assert result.failure_category is PreflightFailureCategory.RUNTIME_INVALID
 
 
-def test_runtime_pin_mismatch_is_runtime_unavailable(
-    strict_workspace: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_runtime_pin_mismatch_is_runtime_unavailable(strict_workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     (strict_workspace / "evaluator/runtime.pin").write_text("sha256:different\n")
     retag_gen0(strict_workspace, "invalidate runtime pin")
     allow_local_runtime(monkeypatch)
@@ -243,11 +233,8 @@ def test_runtime_pin_mismatch_is_runtime_unavailable(
     assert result.checks[-1].name == "runtime_digest"
 
 
-def test_missing_dependency_tool_is_classified(
-    strict_workspace: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_missing_dependency_tool_is_classified(strict_workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(preflight_checks, "tool_available", lambda name, env: name != "docker")
-    monkeypatch.setattr(preflight_checks, "image_available", lambda digest, env: True)
 
     result = run_preflight(strict_workspace, environment=runtime_environment())
 
@@ -255,16 +242,15 @@ def test_missing_dependency_tool_is_classified(
     assert "docker" in (result.failure_message or "")
 
 
-def test_unavailable_image_does_not_pull(
+def test_harbor_task_images_are_delegated_to_dataset_resolution(
     strict_workspace: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(preflight_checks, "tool_available", lambda name, env: True)
-    monkeypatch.setattr(preflight_checks, "image_available", lambda digest, env: False)
 
     result = run_preflight(strict_workspace, environment=runtime_environment())
 
-    assert result.failure_category is PreflightFailureCategory.RUNTIME_IMAGE_UNAVAILABLE
-    assert result.checks[-1].name == "runtime_image"
+    assert result.status is PreflightStatus.PASSED
+    assert "runtime_image" not in [check.name for check in result.checks]
 
 
 def test_invalid_uv_lock_is_classified(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -319,9 +305,7 @@ def test_preflight_validates_the_requested_candidate_checkout_and_scope(
     }
 
 
-def test_uv_lock_validation_is_explicitly_offline(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_uv_lock_validation_is_explicitly_offline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     project = tmp_path / "target"
     project.mkdir()
     (project / "pyproject.toml").write_text("[project]\nname = 'target'\nversion = '0'\n")
@@ -360,12 +344,10 @@ def test_local_capability_timeout_is_a_failed_check(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(
         preflight_checks.subprocess,
         "run",
-        lambda *args, **kwargs: (_ for _ in ()).throw(
-            subprocess.TimeoutExpired(cmd=args[0], timeout=30)
-        ),
+        lambda *args, **kwargs: (_ for _ in ()).throw(subprocess.TimeoutExpired(cmd=args[0], timeout=30)),
     )
 
-    assert not preflight_checks.image_available("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", runtime_environment())
+    assert not preflight_checks.local_command_succeeds(["/usr/bin/docker", "version"], runtime_environment())
 
 
 def test_local_probe_uses_exact_supplied_environment(
@@ -381,15 +363,11 @@ def test_local_probe_uses_exact_supplied_environment(
 
     monkeypatch.setattr(preflight_checks.subprocess, "run", fake_run)
 
-    assert preflight_checks.local_command_succeeds(
-        ["tool"], {"PATH": "/controlled/bin"}
-    )
+    assert preflight_checks.local_command_succeeds(["tool"], {"PATH": "/controlled/bin"})
     assert captured == {"PATH": "/controlled/bin"}
 
 
-def test_missing_api_key_is_classified(
-    strict_workspace: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_missing_api_key_is_classified(strict_workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     environment = runtime_environment()
     environment.pop("OPENAI_API_KEY")
     allow_local_runtime(monkeypatch)
@@ -418,9 +396,7 @@ def test_auth_json_is_rejected_for_non_codex_agent(
     strict_workspace: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     config_path = strict_workspace / "evolve.yaml"
-    config = config_path.read_text().replace(
-        "agent: target.agent:HarborAgent", "agent: custom.agent:Agent"
-    )
+    config = config_path.read_text().replace("agent: target.agent:HarborAgent", "agent: custom.agent:Agent")
     config_path.write_text(config)
     retag_gen0(strict_workspace, "select non-codex agent")
     auth = tmp_path / "auth.json"
@@ -495,9 +471,7 @@ def test_future_smoke_failure_categories_use_the_predefined_receipt(
     receipt = tmp_path / "preflight.json"
     result = PreflightResultV1.failed(
         mode=PreflightMode.SMOKE,
-        profile_name="harbor-v1",
-        profile_digest="a" * 64,
-        runtime_digest="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        runtime_digest="a" * 64,
         endpoint_digest="b" * 64,
         checks=(),
         category=category,

@@ -13,6 +13,7 @@ Compaction overrides are off by default so Codex uses model defaults. Set
 `compaction.override_defaults = true` to evaluate the candidate values.
 
 Authentication is runtime state, not part of the genome. New workspaces require
-`OPENAI_API_KEY` and `OPENAI_BASE_URL`; the shared runtime profile passes them
-through Harbor's supported API-key mode. Codex auth files are unsupported for
-new workspaces. Never commit credentials under `target/`.
+`OPENAI_API_KEY`; `OPENAI_BASE_URL` is optional. The shared runtime
+configuration passes them through Harbor's supported API-key mode. An explicit
+`CODEX_AUTH_JSON_PATH` is also supported, with no implicit home-directory
+fallback. Never commit credentials under `target/`.

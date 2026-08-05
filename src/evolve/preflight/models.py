@@ -23,11 +23,8 @@ class PreflightCheckStatus(StrEnum):
 
 class PreflightFailureCategory(StrEnum):
     CONFIGURATION_INVALID = "configuration_invalid"
-    RUNTIME_PROFILE_INVALID = "runtime_profile_invalid"
-    PROFILE_NOT_FOUND = "profile_not_found"
-    PROFILE_AMBIGUOUS = "profile_ambiguous"
+    RUNTIME_INVALID = "runtime_invalid"
     RUNTIME_UNAVAILABLE = "runtime_unavailable"
-    RUNTIME_IMAGE_UNAVAILABLE = "runtime_image_unavailable"
     DEPENDENCY_LOCK_INVALID = "dependency_lock_invalid"
     DEPENDENCY_TOOL_UNAVAILABLE = "dependency_tool_unavailable"
     CREDENTIAL_MISSING = "credential_missing"
@@ -73,8 +70,6 @@ class PreflightCheckV1:
 class PreflightResultV1:
     schema_version: int
     status: PreflightStatus
-    profile_name: str
-    profile_digest: str
     runtime_digest: str
     endpoint_digest: str
     mode: PreflightMode
@@ -87,8 +82,6 @@ class PreflightResultV1:
         payload: dict[str, object] = {
             "schema_version": self.schema_version,
             "status": self.status.value,
-            "profile_name": self.profile_name,
-            "profile_digest": self.profile_digest,
             "runtime_digest": self.runtime_digest,
             "endpoint_digest": self.endpoint_digest,
             "mode": self.mode.value,
@@ -114,8 +107,6 @@ class PreflightResultV1:
         cls,
         *,
         mode: PreflightMode,
-        profile_name: str,
-        profile_digest: str,
         runtime_digest: str,
         endpoint_digest: str,
         checks: tuple[PreflightCheckV1, ...],
@@ -126,8 +117,6 @@ class PreflightResultV1:
         return cls(
             schema_version=1,
             status=PreflightStatus.FAILED,
-            profile_name=profile_name,
-            profile_digest=profile_digest,
             runtime_digest=runtime_digest,
             endpoint_digest=endpoint_digest,
             mode=mode,

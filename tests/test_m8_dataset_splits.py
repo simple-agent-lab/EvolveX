@@ -80,9 +80,7 @@ def test_split_manifest_is_deterministic_disjoint_and_drift_checked(tmp_path: Pa
         select_dataset_tasks(manifest, dataset.as_posix(), "train")
 
 
-def test_build_manifest_hashes_each_local_task_once(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_build_manifest_hashes_each_local_task_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     dataset = _dataset(tmp_path / "tasks", count=2)
     calls: list[str] = []
     real = dataset_module.local_task_content_digest
@@ -116,9 +114,7 @@ class _RegistryClient:
                     git_commit_id="a" * 40,
                     path=Path("tasks/task-a"),
                 ),
-                PackageTaskId(
-                    org="bench", name="task-b", ref=f"sha256:{'b' * 64}"
-                ),
+                PackageTaskId(org="bench", name="task-b", ref=f"sha256:{'b' * 64}"),
             ],
         )
 
@@ -137,13 +133,9 @@ def test_build_manifest_certifies_registry_dataset(tmp_path: Path) -> None:
     assert manifest["resolved"] is False
     assert manifest["identity_status"] == "verified"
     assert manifest["dataset_identity"]["source"] == "registry"
-    assert manifest["dataset_identity"]["resolved_reference"] == (
-        "registry-benchmark@2026.08"
-    )
+    assert manifest["dataset_identity"]["resolved_reference"] == ("registry-benchmark@2026.08")
     assert set(manifest["task_digests"]) == {"bench/task-b", "task-a"}
-    assert sorted(
-        name for members in manifest["tasks"].values() for name in members
-    ) == ["bench/task-b", "task-a"]
+    assert sorted(name for members in manifest["tasks"].values() for name in members) == ["bench/task-b", "task-a"]
     assert parse_manifest(json.dumps(manifest)) == manifest
 
 
@@ -230,7 +222,6 @@ def test_init_dataset_option_freezes_local_harbor_tasks(tmp_path: Path) -> None:
 def test_init_full_task_scope_freezes_every_task_without_partition(tmp_path: Path, monkeypatch) -> None:
     dataset = _dataset(tmp_path / "tasks", count=4)
     workspace = tmp_path / "workspace"
-    monkeypatch.setenv("EVOLVE_RUNTIME_DIGEST", "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
     monkeypatch.setattr(
         "evolve.workspace.default_config",
         lambda _recipe, name: {

@@ -70,17 +70,11 @@ def fixture_recipe_config(name: str, experiment_id: str) -> dict[str, Any]:
     return config
 
 
-def init_fixture_workspace(
-    workspace: Path, name: str = "hill_climb-smoke", *, dataset_count: int = 10
-) -> Path:
+def init_fixture_workspace(workspace: Path, name: str = "hill_climb-smoke", *, dataset_count: int = 10) -> Path:
     config = fixture_recipe_config(name, workspace.name)
-    dataset = write_identity_dataset(
-        workspace.parent / f"{workspace.name}-tasks", count=dataset_count
-    )
+    dataset = write_identity_dataset(workspace.parent / f"{workspace.name}-tasks", count=dataset_count)
     with patch("evolve.workspace.default_config", return_value=config):
-        create_workspace(
-            InitOptions(workspace=workspace, recipe=name, dataset=str(dataset))
-        )
+        create_workspace(InitOptions(workspace=workspace, recipe=name, dataset=str(dataset)))
     return workspace
 
 
@@ -95,11 +89,7 @@ def write_identity_dataset(root: Path, count: int = 10) -> Path:
 
 def init_recipe_with_local_inputs(tmp_path: Path, recipe: str) -> Path:
     dataset = write_identity_dataset(tmp_path / f"{recipe}-tasks", count=100)
-    seed = (
-        write_locked_miniswe_seed(tmp_path / f"{recipe}-seed")
-        if recipe in UV_SOURCE_RECIPES
-        else None
-    )
+    seed = write_locked_miniswe_seed(tmp_path / f"{recipe}-seed") if recipe in UV_SOURCE_RECIPES else None
     workspace = tmp_path / f"workspace-{recipe}"
     create_workspace(
         InitOptions(
@@ -113,11 +103,10 @@ def init_recipe_with_local_inputs(tmp_path: Path, recipe: str) -> Path:
 
 
 @pytest.fixture(autouse=True)
-def evaluator_runtime_digest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def isolated_runtime_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("EVOLVE_HOME", str(tmp_path / "evolve-home"))
     if os.environ.get("EVOLVE_LIVE_RUNTIME_SMOKE") != "1":
         monkeypatch.setenv("HOME", str(tmp_path / "home"))
-        monkeypatch.setenv("EVOLVE_RUNTIME_DIGEST", "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
         monkeypatch.setenv("OPENAI_API_KEY", "test-key-not-a-secret")
         monkeypatch.setenv("OPENAI_BASE_URL", "https://model.example/v1")
     monkeypatch.delenv("CODEX_AUTH_JSON_PATH", raising=False)
@@ -239,7 +228,6 @@ def contract_for_gen0(workspace: Path) -> evaluation_package.EvaluationContractV
 def allow_local_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
     from evolve.preflight import checks as preflight_checks
 
-    monkeypatch.setattr(preflight_checks, "image_available", lambda digest, env: True)
     monkeypatch.setattr(preflight_checks, "tool_available", lambda name, env: True)
 
 

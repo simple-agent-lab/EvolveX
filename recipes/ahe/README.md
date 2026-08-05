@@ -42,7 +42,6 @@ Candidate execution uses Harbor's native task timeouts
 (`agent_timeout_multiplier: 1`).
 
 ```bash
-export EVOLVE_RUNTIME_DIGEST="sha256:replace-with-your-immutable-evaluator-image-digest"
 export HARBOR_TASKS="/absolute/path/to/terminal-bench-2-10-10-10"
 cd /path/to/simple-evolve-agent
 evolve init /path/to/ahe-run --recipe ahe --dataset "$HARBOR_TASKS"
@@ -50,8 +49,8 @@ cd /path/to/ahe-run
 ./evolve run . --max-generations 1
 ```
 
-Live runs need Docker, Harbor, model credentials, and an immutable evaluator
-runtime. Build the small workspace image once before running:
+Live runs need Docker, Harbor, and model credentials. Build the small
+meta-agent image once before running:
 
 ```bash
 docker build --build-arg MINISWE_VERSION=2.4.5 \

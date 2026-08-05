@@ -14,7 +14,7 @@ from typing import Any
 from .evaluation import Outcome
 from .host_runtime import clean_python_env, uv_executable
 from .runtime import run_owned
-from .runtime_profiles import load_resolved_runtime_profile
+from .runtime_config import load_resolved_runtime
 
 CONTAINER_UV_CACHE = "/opt/evolve/uv/cache"
 CONTAINER_UV_PYTHON = "/opt/evolve/uv/python"
@@ -28,8 +28,7 @@ class UvRuntimeConfig:
     project: Path
     project_relative: str
     python: str
-    runtime_profile: str | None = None
-    runtime_profile_digest: str | None = None
+    runtime_digest: str | None = None
 
 
 def _digest_project(project: Path) -> str:
@@ -109,18 +108,16 @@ class CandidateRuntimeResult:
 
 
 def candidate_runtime_config(checkout: Path, evaluator: dict[str, Any]) -> UvRuntimeConfig | None:
-    profile_path = checkout / "evaluator" / "runtime-profile.json"
-    resolved_profile = None
-    if profile_path.is_file():
+    runtime_path = checkout / "evaluator" / "runtime.json"
+    resolved_runtime = None
+    if runtime_path.is_file():
         if "candidate_runtime" in evaluator:
-            raise ValueError(
-                "cannot combine a resolved runtime profile with evaluator.candidate_runtime"
-            )
+            raise ValueError("cannot combine a resolved runtime with evaluator.candidate_runtime")
         try:
-            resolved_profile = load_resolved_runtime_profile(json.loads(profile_path.read_text()))
+            resolved_runtime = load_resolved_runtime(json.loads(runtime_path.read_text()))
         except json.JSONDecodeError as error:
-            raise ValueError("evaluator/runtime-profile.json is invalid JSON") from error
-        policy = resolved_profile.profile.candidate_runtime
+            raise ValueError("evaluator/runtime.json is invalid JSON") from error
+        policy = resolved_runtime.config.candidate
         if policy is None:
             return None
         value: object = {
@@ -156,8 +153,7 @@ def candidate_runtime_config(checkout: Path, evaluator: dict[str, Any]) -> UvRun
         project,
         project.relative_to(root).as_posix(),
         python,
-        resolved_profile.profile.name if resolved_profile is not None else None,
-        resolved_profile.profile_digest if resolved_profile is not None else None,
+        resolved_runtime.digest if resolved_runtime is not None else None,
     )
 
 
@@ -201,7 +197,7 @@ def _write_receipt(
 ) -> Path:
     receipt = run_dir / RECEIPT_NAME
     temporary = receipt.with_suffix(".json.tmp")
-    strict = config.runtime_profile is not None
+    strict = config.runtime_digest is not None
     values = {
         "schema_version": 3 if strict else 2 if contract_id is not None else 1,
         "contract_id": contract_id,
@@ -217,8 +213,7 @@ def _write_receipt(
         "reason": _redact(reason) if reason else None,
     }
     if strict:
-        values["runtime_profile"] = config.runtime_profile
-        values["runtime_profile_digest"] = config.runtime_profile_digest
+        values["runtime_digest"] = config.runtime_digest
     if contract_id is None:
         values.pop("contract_id")
     temporary.write_text(json.dumps(values, indent=2, sort_keys=True) + "\n")
@@ -325,7 +320,7 @@ def prepare_candidate_runtime(
 
     values = clean_python_env(env)
     if values.get("EVAL_STUB") == "1":
-        if config.runtime_profile is not None:
+        if config.runtime_digest is not None:
             started = time.monotonic()
             run_dir.mkdir(parents=True, exist_ok=True)
             return _finish_runtime(

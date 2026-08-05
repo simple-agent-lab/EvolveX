@@ -16,18 +16,18 @@ EXPECTED_OPERATOR_VARIANTS = {
 
 
 @pytest.mark.parametrize(
-    ("recipe", "profile", "expected_surface"),
+    ("recipe", "managed_candidate", "expected_surface"),
     [
-        ("aevolve", "harbor-v1", ["target/**"]),
-        ("ahe", "harbor-uv-v1", ["target/**"]),
-        ("gepa", "harbor-v1", ["target/**"]),
-        ("hyperagents", "harbor-uv-v1", ["target/**", "operators/**"]),
+        ("aevolve", False, ["target/**"]),
+        ("ahe", True, ["target/**"]),
+        ("gepa", False, ["target/**"]),
+        ("hyperagents", True, ["target/**", "operators/**"]),
     ],
 )
 def test_all_partner_recipes_resolve_the_same_automatic_contract_schema(
     tmp_path: Path,
     recipe: str,
-    profile: str,
+    managed_candidate: bool,
     expected_surface: list[str],
 ) -> None:
     workspace = init_recipe_with_local_inputs(tmp_path, recipe)
@@ -49,10 +49,15 @@ def test_all_partner_recipes_resolve_the_same_automatic_contract_schema(
     assert contract.repetitions == 1
     assert len(contract.trial_identities) == len(contract.task_members)
     assert all(trial.repetition == 0 for trial in contract.trial_identities)
-    assert evaluator["runtime"] == {"profile": profile}
+    assert evaluator["runtime"]["proxy"] == {
+        "mode": "optional",
+        "model_endpoint": "bypass",
+    }
+    assert ("candidate" in evaluator["runtime"]) is managed_candidate
     assert "candidate_runtime" not in evaluator
-    assert json.loads((workspace / "evaluator/runtime-profile.json").read_text())["name"] == profile
-    assert (contract.candidate_dependency_digest is not None) is profile.endswith("-uv-v1")
+    runtime = json.loads((workspace / "evaluator/runtime.json").read_text())
+    assert contract.runtime_digest == runtime["digest"]
+    assert (contract.candidate_dependency_digest is not None) is managed_candidate
     assert surface_lists(workspace)[0] == expected_surface
     assert json.loads((workspace / ".evolve-components.json").read_text())["recipe"] == recipe
     assert json.loads((workspace / "evaluator/dataset.pin").read_text())["digest"]

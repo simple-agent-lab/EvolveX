@@ -41,7 +41,7 @@ def _strict_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
             "repetitions": 2,
             "tasks_per_round": 2,
             "n_concurrent": 2,
-            "runtime": {"profile": "harbor-v1"},
+            "runtime": {"proxy": {"mode": "optional", "model_endpoint": "bypass"}},
         }
     )
     config["evaluator"].pop("k", None)
@@ -57,9 +57,7 @@ def failed_preflight(
 ) -> PreflightResultV1:
     result = PreflightResultV1.failed(
         mode=PreflightMode.ORDINARY,
-        profile_name="harbor-v1",
-        profile_digest="a" * 64,
-        runtime_digest="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        runtime_digest="a" * 64,
         endpoint_digest="b" * 64,
         checks=(),
         category=category,
@@ -80,9 +78,7 @@ def test_strict_evaluation_stops_before_runtime_and_trials_when_preflight_fails(
     def fail_preflight(*args, **kwargs):
         del args
         preflight_call.update(kwargs)
-        preflight_call["candidate_checkout_head"] = git(
-            Path(kwargs["candidate_checkout"]), "rev-parse", "HEAD"
-        )
+        preflight_call["candidate_checkout_head"] = git(Path(kwargs["candidate_checkout"]), "rev-parse", "HEAD")
         return failed_preflight(Path(kwargs["receipt_path"]))
 
     monkeypatch.setattr(
@@ -183,9 +179,7 @@ def test_invalid_candidate_runtime_is_actionable_candidate_owned_evidence(
     assert any(failure["actionable"] for failure in record.diagnostics["failures"])
 
 
-def test_evaluate_attaches_the_same_atomic_contract_to_retries(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_evaluate_attaches_the_same_atomic_contract_to_retries(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     workspace = _strict_workspace(tmp_path, monkeypatch)
     monkeypatch.setenv("EVAL_STUB", "1")
 
@@ -196,9 +190,10 @@ def test_evaluate_attaches_the_same_atomic_contract_to_retries(
     assert first.contract_certified is True
     assert second.contract_id == first.contract_id
     assert first.expected_trials == 4
-    assert first.task_set_hash == json.loads(
-        (workspace / first.evaluation_contract["path"]).read_text()
-    )["task_set_digest"]
+    assert (
+        first.task_set_hash
+        == json.loads((workspace / first.evaluation_contract["path"]).read_text())["task_set_digest"]
+    )
     assert first.evaluation_contract is not None
     contract_path = workspace / first.evaluation_contract["path"]
     assert contract_path.name == "evaluation-contract.json"
@@ -206,8 +201,7 @@ def test_evaluate_attaches_the_same_atomic_contract_to_retries(
     assert json.loads(contract_path.read_text())["contract_id"] == first.contract_id
     contract_payload = json.loads(contract_path.read_text())
     assert [(trial.task_id, trial.trial) for trial in first.trials] == [
-        (identity["task_id"], identity["repetition"])
-        for identity in contract_payload["trial_identities"]
+        (identity["task_id"], identity["repetition"]) for identity in contract_payload["trial_identities"]
     ]
     assert first.diagnostics is not None
     assert first.diagnostics["observed_trials"] == 4

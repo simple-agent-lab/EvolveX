@@ -49,6 +49,18 @@ def task_set_identity(
 def effective_task_set_identity(
     checkout: Path, evaluator: dict[str, Any], *, purpose: str = "candidate"
 ) -> TaskSetIdentity:
+    configured_names = evaluator.get("task_names")
+    if (
+        purpose != "anchor"
+        and isinstance(configured_names, list)
+        and all(isinstance(name, str) and name for name in configured_names)
+    ):
+        return task_set_identity(
+            evaluator.get("dataset", ""),
+            evaluator_repetitions(evaluator),
+            tuple(configured_names),
+            purpose=purpose,
+        )
     split_path = checkout / "evaluator" / "splits.json"
     if split_path.is_file():
         verified = _verified_task_set_identity(
@@ -56,12 +68,7 @@ def effective_task_set_identity(
         )
         if verified is not None:
             return verified
-    configured_names = evaluator.get("task_names")
-    if purpose != "anchor" and isinstance(configured_names, list) and all(
-        isinstance(name, str) and name for name in configured_names
-    ):
-        members = tuple(configured_names)
-    elif purpose != "anchor" and isinstance(evaluator.get("task_file"), str) and evaluator["task_file"]:
+    if purpose != "anchor" and isinstance(evaluator.get("task_file"), str) and evaluator["task_file"]:
         task_file = (checkout / evaluator["task_file"]).resolve()
         try:
             task_file.relative_to(checkout.resolve())
@@ -111,16 +118,17 @@ def fixed_evaluation_identity(workspace: Path) -> dict[str, str] | None:
     }
 
 
-def _fixed_task_set_identity(
-    workspace: Path, evaluator: dict[str, Any]
-) -> TaskSetIdentity:
-    split_text = _git_text(
-        workspace, "show", "gen/0:evaluator/splits.json", strip=False
-    )
-    if split_text is not None:
-        verified = _verified_task_set_identity(
-            split_text, evaluator, source="gen/0:evaluator/splits.json"
+def _fixed_task_set_identity(workspace: Path, evaluator: dict[str, Any]) -> TaskSetIdentity:
+    configured_names = evaluator.get("task_names")
+    if isinstance(configured_names, list) and all(isinstance(name, str) and name for name in configured_names):
+        return task_set_identity(
+            evaluator.get("dataset", ""),
+            evaluator_repetitions(evaluator),
+            tuple(configured_names),
         )
+    split_text = _git_text(workspace, "show", "gen/0:evaluator/splits.json", strip=False)
+    if split_text is not None:
+        verified = _verified_task_set_identity(split_text, evaluator, source="gen/0:evaluator/splits.json")
         if verified is not None:
             return verified
     return task_set_identity(
@@ -145,18 +153,14 @@ def _verified_task_set_identity(
 
     manifest = parse_manifest(text, source=source)
     split = evaluation_split_name(evaluator, purpose)
-    selected = selected_dataset_identity(
-        manifest, selected_task_names(manifest, split)
-    )
+    selected = selected_dataset_identity(manifest, selected_task_names(manifest, split))
     digest_payload = {
         "dataset_content_digest": selected.digest,
         "split": split,
         "task_members": list(selected.members),
         "repetitions": evaluator_repetitions(evaluator),
     }
-    digest = hashlib.sha256(
-        json.dumps(digest_payload, sort_keys=True, separators=(",", ":")).encode()
-    ).hexdigest()
+    digest = hashlib.sha256(json.dumps(digest_payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     return TaskSetIdentity(digest, selected.members)
 
 

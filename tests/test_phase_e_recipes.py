@@ -182,12 +182,13 @@ def test_terminal_bench_method_recipes_use_full_curated_dataset() -> None:
     assert ahe["operators"]["trace_analyzer"]["max_concurrent"] == 10
 
 
-def test_supported_recipes_select_runtime_profiles_and_task_retry() -> None:
+def test_supported_recipes_declare_inline_runtime_and_task_retry() -> None:
     for name in SUPPORTED_RECIPES:
         evaluator = _parsed_config(name)["evaluator"]
         assert isinstance(evaluator, dict)
-        expected = "harbor-uv-v1" if name in UV_SOURCE_RECIPES else "harbor-v1"
-        assert evaluator["runtime"] == {"profile": expected}
+        runtime = evaluator["runtime"]
+        assert runtime["proxy"] == {"mode": "optional", "model_endpoint": "bypass"}
+        assert ("candidate" in runtime) is (name in UV_SOURCE_RECIPES)
         assert "candidate_runtime" not in evaluator
         assert evaluator["max_retries"] == 1
         if name in UV_SOURCE_RECIPES:

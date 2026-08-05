@@ -196,10 +196,10 @@ model, concurrency, retry policy, and framework version.
 
 When a candidate uv runtime is configured under a strict contract,
 `candidate-runtime.json` uses schema version 3 and records the contract ID,
-candidate commit, candidate dependency digest, and runtime-profile identity. A
+candidate commit, candidate dependency digest, and resolved runtime digest. A
 mismatch is evaluator infrastructure failure and prevents benchmark launch.
 Legacy workspaces retain their version-1 receipts; legacy contract-aware
-runtimes use version 2, and neither gains a fabricated strict profile identity.
+runtimes use version 2, and neither gains a fabricated strict runtime identity.
 
 ## Evaluation Diagnostics
 

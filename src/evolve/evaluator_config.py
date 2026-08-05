@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from .runtime_config import normalize_runtime_config
+
 
 def evaluator_repetitions(evaluator: Mapping[str, Any]) -> int:
     has_repetitions = "repetitions" in evaluator
@@ -18,21 +20,12 @@ def normalize_evaluator_config(evaluator: Mapping[str, Any]) -> dict[str, Any]:
     normalized = dict(evaluator)
     normalized["repetitions"] = evaluator_repetitions(evaluator)
     normalized.pop("k", None)
+    if "candidate_runtime" in evaluator:
+        raise ValueError("evaluator.candidate_runtime has moved to evaluator.runtime.candidate")
     if "runtime" in evaluator:
-        runtime = evaluator["runtime"]
-        if not isinstance(runtime, Mapping):
-            raise ValueError("evaluator.runtime must be a mapping")
-        unknown = sorted(str(key) for key in runtime if key != "profile")
-        if unknown:
-            raise ValueError("unknown evaluator.runtime fields: " + ", ".join(unknown))
-        profile_name = runtime.get("profile")
-        if not isinstance(profile_name, str) or not profile_name.strip():
-            raise ValueError("evaluator.runtime.profile must be a non-empty string")
-        if "candidate_runtime" in evaluator:
-            raise ValueError(
-                "cannot combine evaluator.runtime.profile with evaluator.candidate_runtime"
-            )
-        normalized["runtime"] = {"profile": profile_name.strip()}
+        normalized_runtime = normalize_runtime_config(evaluator["runtime"])
+        assert normalized_runtime is not None
+        normalized["runtime"] = normalized_runtime
     return normalized
 
 

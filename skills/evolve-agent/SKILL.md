@@ -12,16 +12,17 @@ are the lineage and `archive.jsonl` is the ledger. Use the workspace's
 ## First actions
 
 1. Enter the workspace; it contains `evolve`, `target/`, and `evaluator/`.
-2. If no workspace exists, initialize a supported recipe. Harbor recipes need
-   an immutable runtime digest and an existing local Harbor task collection:
+2. If no workspace exists, initialize a supported recipe. Harbor can resolve a
+   published dataset automatically:
 
    ```bash
-   export EVOLVE_RUNTIME_DIGEST="sha256:replace-with-your-immutable-evaluator-image-digest"
-   export HARBOR_TASKS="/absolute/path/to/your/harbor-task-collection"
-   evolve init /tmp/evolve-aevolve --recipe aevolve --dataset "$HARBOR_TASKS"
+   evolve init /tmp/evolve-ahe \
+     --recipe ahe \
+     --dataset terminal-bench@2.0 \
+     --tasks 3
    ```
 
-   Replace the example digest and dataset path before running the commands.
+   Put model credentials in `/tmp/evolve-ahe/.env` before preflight or run.
 3. Read `skills/evolve-workspace/SKILL.md` in the generated workspace, then run
    `./evolve status`. Use `./evolve doctor` when state looks wrong.
 

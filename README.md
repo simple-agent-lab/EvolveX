@@ -75,7 +75,6 @@ uv run evolve --help
 Run a deterministic baseline smoke test without a model or Docker:
 
 ```bash
-export EVOLVE_RUNTIME_DIGEST="sha256:local-smoke-runtime"
 export EVOLVE_HOME="/tmp/evolve-home"
 
 uv run evolve init /tmp/evolve-demo \
@@ -89,16 +88,12 @@ EVAL_STUB=1 /tmp/evolve-demo/evolve run /tmp/evolve-demo --max-generations 0
 This checks workspace generation, baseline evaluation, and archive integrity; it
 does not run a mutation round or measure agent quality.
 
-For a real Harbor run, provide an immutable evaluator digest and a local task
-dataset:
+For a real Terminal-Bench run, provide model credentials and use the public
+demo script. Harbor resolves and downloads the selected dataset tasks:
 
 ```bash
-export EVOLVE_RUNTIME_DIGEST="sha256:replace-with-your-evaluator-digest"
-
-uv run evolve init /tmp/evolve-harbor \
-  --recipe aevolve \
-  --dataset /absolute/path/to/harbor/tasks
-/tmp/evolve-harbor/evolve run /tmp/evolve-harbor --max-generations 5
+export OPENAI_API_KEY="..."
+./scripts/run_terminal_bench_demo.sh
 ```
 
 Inspect a run with `evolve status`, `evolve report`, `git tag --list 'gen/*'`,
@@ -110,9 +105,8 @@ official OpenAI endpoint:
 
 ```bash
 export OPENAI_API_KEY="..."
-export EVOLVE_RUNTIME_DIGEST="sha256:..."
 
-evolve init WORKSPACE --recipe ahe --dataset DATASET
+evolve init WORKSPACE --recipe ahe --dataset DATASET --tasks 3
 umask 077
 printf 'OPENAI_API_KEY=%s\n' "$OPENAI_API_KEY" > WORKSPACE/.env
 WORKSPACE/evolve preflight WORKSPACE
@@ -120,8 +114,9 @@ WORKSPACE/evolve preflight WORKSPACE --smoke
 WORKSPACE/evolve run WORKSPACE
 ```
 
-Initialization generates the immutable runtime profile and all evaluation
-contract inputs automatically. Evaluator repetitions default to one. Ordinary
+Initialization resolves the recipe's small inline runtime block into
+`evaluator/runtime.json` and generates all evaluation contract inputs
+automatically. Evaluator repetitions default to one. Ordinary
 preflight performs offline, cacheless validation and writes a receipt without
 changing tracked source or preparing dependencies. `--smoke` adds one real
 model request against a detached candidate snapshot.
@@ -142,15 +137,15 @@ For Codex agents, an explicit `CODEX_AUTH_JSON_PATH=/absolute/path/auth.json`
 may be used instead of the API key and takes precedence when both are present.
 There is no automatic `~/.codex/auth.json` lookup, and non-Codex agents require
 API authentication. Secret values, endpoint URLs, auth paths, and proxy values
-are not persisted in runtime profiles or evaluation contracts.
+are not persisted in resolved runtime configuration or evaluation contracts.
 
-Recipes select provider-neutral profiles such as `harbor-v1` and
-`harbor-uv-v1`. Additional safe declarative profiles can live in private
-directories listed by `EVOLVE_RUNTIME_PROFILE_PATH` (using the platform path
-separator); the files must contain policy, never credentials or private
-endpoint literals. Local datasets are content-hashed task by task. Harbor
-registry datasets are accepted only when registry metadata resolves every task
-to an immutable Git commit or package digest.
+Recipes declare only executable runtime choices: the engine, an optional
+candidate dependency environment, and optional proxy routing. Proxy values
+remain private in `WORKSPACE/.env`; when routing is enabled, dependency traffic
+uses the proxy while the configured model endpoint is added to `NO_PROXY`.
+Users without a proxy need no proxy settings. Local datasets are content-hashed
+task by task. Harbor registry datasets are accepted only when registry metadata
+resolves every task to an immutable Git commit or package digest.
 
 ## Concepts
 

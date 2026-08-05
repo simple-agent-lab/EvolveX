@@ -1,28 +1,15 @@
 from pathlib import Path
 
 import pytest
-from conftest import (
-    allow_local_runtime,
-    contract_for_gen0,
-    init_recipe_with_local_inputs,
-)
+from conftest import allow_local_runtime, contract_for_gen0, init_recipe_with_local_inputs
 
 from evolve.preflight import PreflightStatus, run_preflight
 
 
-@pytest.mark.parametrize(
-    ("recipe", "profile"),
-    [
-        ("aevolve", "harbor-v1"),
-        ("ahe", "harbor-uv-v1"),
-        ("gepa", "harbor-v1"),
-        ("hyperagents", "harbor-uv-v1"),
-    ],
-)
-def test_partner_recipe_runtime_profile_conformance(
+@pytest.mark.parametrize("recipe", ["aevolve", "ahe", "gepa", "hyperagents"])
+def test_partner_recipe_runtime_conformance(
     tmp_path: Path,
     recipe: str,
-    profile: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     key = f"canary-key-{recipe}"
@@ -41,9 +28,7 @@ def test_partner_recipe_runtime_profile_conformance(
         result.failure_category,
         result.failure_message,
     )
-    assert result.profile_name == profile
-    assert contract.runtime_profile == profile
-    assert contract.runtime_profile_digest == result.profile_digest
+    assert contract.runtime_digest == result.runtime_digest
     assert result.receipt_path is not None
     receipt = result.receipt_path.read_text()
     assert all(literal not in receipt for literal in (key, endpoint, proxy, "proxy-password"))

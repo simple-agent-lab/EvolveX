@@ -53,9 +53,7 @@ def configure_outcome_evaluator(
         f"exit {exit_code}\n",
     )
     config = workspace / "evolve.yaml"
-    text = config.read_text().replace(
-        "tasks_per_round: 16", "tasks_per_round: 1\n  task_names: [case-a]"
-    )
+    text = config.read_text().replace("tasks_per_round: 16", "tasks_per_round: 1\n  task_names: [case-a]")
     if timeout_rule is not None:
         text = text.replace(
             "  tasks_per_round: 1\n", f"  tasks_per_round: 1\n  benchmark_timeout_is_zero: {timeout_rule}\n"
@@ -260,9 +258,7 @@ def test_eval_runner_writes_templates_and_keeps_literals_only_in_process_env(
     process_env = captured["env"]
     assert isinstance(process_env, dict)
     assert process_env["EVOLVE_RUNTIME_AGENT_OPENAI_API_KEY"] == "sensitive-key-value"
-    assert process_env["EVOLVE_RUNTIME_AGENT_NO_PROXY"] == (
-        "pypi.org,.internal.example"
-    )
+    assert process_env["EVOLVE_RUNTIME_AGENT_NO_PROXY"] == ("pypi.org,.internal.example,model.example")
 
 
 def test_eval_runner_generates_safe_legacy_environment_inputs(
@@ -296,7 +292,9 @@ def test_eval_runner_generates_safe_legacy_environment_inputs(
     evidence = json.loads((run_dir / "runtime-environment-evidence.json").read_text())
     assert "OPENAI_API_KEY=${EVOLVE_RUNTIME_AGENT_OPENAI_API_KEY}" in agent_text
     assert "legacy-key" not in agent_text
-    assert evidence["evidence"]["profile_name"] == "legacy-unverified"
+    assert evidence["evidence"]["mode"] == "legacy_unverified"
+    assert "profile_name" not in evidence["evidence"]
+    assert "proxy_policy" not in evidence["evidence"]
     process_env = captured["env"]
     assert isinstance(process_env, dict)
     assert process_env["EVOLVE_RUNTIME_AGENT_OPENAI_API_KEY"] == "legacy-key"
