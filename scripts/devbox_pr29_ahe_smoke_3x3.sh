@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+umask 077
+
+REPO_URL=${REPO_URL:-https://github.com/simple-agent-lab/simple-evolve-agent.git}
+PR_BRANCH=${PR_BRANCH:-codex/runtime-profiles-phase3}
+RUN_ROOT=${RUN_ROOT:-/data00/home/zimuwang/pr29-ahe-3x3-$(date -u +%Y%m%dT%H%M%SZ)}
+SOURCE_DATASET=${SOURCE_DATASET:-/data00/home/zimuwang/simple-evolve-agent-full89-20260724/datasets/tau3-banking-97-codex-safe-health-v033-1d244f5dca42944b67a379b44bfeb9f5748f189d}
+MODEL_ENV=${MODEL_ENV:-/data00/home/zimuwang/modelhub-codex-smokes-20260804/evolve.env}
+RUNTIME_ENV=${RUNTIME_ENV:-/data00/home/zimuwang/modelhub-codex-smokes-20260804/runtime.env}
+PROXY_ENV=${PROXY_ENV:-/data00/home/zimuwang/modelhub-codex-smokes-20260804/proxy.env}
+TASKS=3
+GENERATIONS=3
+
+REPO=$RUN_ROOT/repo
+DATASET=$RUN_ROOT/dataset
+WORKSPACE=$RUN_ROOT/workspace
+LOG=$RUN_ROOT/run.log
+
+fail() {
+  printf 'ERROR: %s\n' "$*" >&2
+  exit 1
+}
+
+finish() {
+  status=$?
+  if ((status != 0)); then
+    printf 'FAILED: artifacts preserved at %s\n' "$RUN_ROOT" >&2
+  fi
+}
+trap finish EXIT
+
+[[ ! -e "$RUN_ROOT" ]] || fail "run root already exists: $RUN_ROOT"
+for file in "$MODEL_ENV" "$RUNTIME_ENV" "$PROXY_ENV"; do
+  [[ -f "$file" ]] || fail "private environment file is missing: $file"
+done
+[[ -d "$SOURCE_DATASET" ]] || fail "source dataset is missing: $SOURCE_DATASET"
+
+set -a
+source "$MODEL_ENV"
+source "$RUNTIME_ENV"
+source "$PROXY_ENV"
+set +a
+
+for command in git uv docker harbor jq; do
+  command -v "$command" >/dev/null || fail "required command is unavailable: $command"
+done
+[[ -n ${OPENAI_API_KEY:-} ]] || fail "OPENAI_API_KEY is missing"
+[[ -n ${EVOLVE_RUNTIME_DIGEST:-} ]] || fail "EVOLVE_RUNTIME_DIGEST is missing"
+
+mkdir -p "$RUN_ROOT" "$DATASET"
+exec > >(tee -a "$LOG") 2>&1
+printf 'Run root: %s\n' "$RUN_ROOT"
+
+pr_head=$(git ls-remote "$REPO_URL" "refs/heads/$PR_BRANCH" | awk 'NR == 1 {print $1}')
+[[ -n "$pr_head" ]] || fail "cannot resolve remote branch: $PR_BRANCH"
+git clone --quiet --single-branch --branch "$PR_BRANCH" "$REPO_URL" "$REPO"
+[[ $(git -C "$REPO" rev-parse HEAD) == "$pr_head" ]] || fail "checkout does not match PR head"
+printf 'PR commit: %s\n' "$pr_head"
+
+mapfile -t task_dirs < <(
+  find "$SOURCE_DATASET" -mindepth 2 -maxdepth 2 -name task.toml -printf '%h\n' |
+    sort |
+    head -n "$TASKS"
+)
+((${#task_dirs[@]} == TASKS)) || fail "source dataset has fewer than $TASKS tasks"
+for task_dir in "${task_dirs[@]}"; do
+  cp -a "$task_dir" "$DATASET/"
+done
+[[ $(find "$DATASET" -mindepth 2 -maxdepth 2 -name task.toml | wc -l) -eq $TASKS ]] ||
+  fail "copied dataset does not contain exactly $TASKS tasks"
+
+uv --directory "$REPO" sync --dev --frozen
+uv --directory "$REPO" run evolve init "$WORKSPACE" --recipe ahe --dataset "$DATASET"
+cat "$MODEL_ENV" "$RUNTIME_ENV" "$PROXY_ENV" >"$WORKSPACE/.env"
+chmod 600 "$WORKSPACE/.env"
+
+"$WORKSPACE/evolve" preflight "$WORKSPACE"
+"$WORKSPACE/evolve" preflight "$WORKSPACE" --smoke
+"$WORKSPACE/evolve" run "$WORKSPACE" \
+  --max-generations "$GENERATIONS" \
+  --children-per-gen 1 \
+  --verbose
+"$WORKSPACE/evolve" status "$WORKSPACE"
+"$WORKSPACE/evolve" verify "$WORKSPACE"
+
+for generation in $(seq 0 "$GENERATIONS"); do
+  git -C "$WORKSPACE" rev-parse --verify --quiet "refs/tags/gen/$generation" >/dev/null ||
+    fail "missing generation tag: gen/$generation"
+done
+
+archive=$WORKSPACE/archive.jsonl
+[[ -f "$archive" ]] || fail "archive is missing"
+for generation in $(seq 0 "$GENERATIONS"); do
+  purpose=candidate
+  [[ $generation -eq 0 ]] && purpose=genesis
+  jq -e \
+    --arg genid "$generation" \
+    --arg purpose "$purpose" \
+    --argjson tasks "$TASKS" \
+    'select(
+      ._evolve_mechanism_eval == true and
+      .genid == $genid and
+      .purpose == $purpose and
+      .outcome == "benchmark_complete" and
+      .expected_trials == $tasks and
+      (.task_set_members | length) == $tasks and
+      .contract_certified == true
+    )' \
+    "$archive" >/dev/null || fail "generation $generation lacks certified three-task evidence"
+done
+
+printf 'PASS: AHE completed %s tasks across gen/1 through gen/%s at %s\n' \
+  "$TASKS" "$GENERATIONS" "$RUN_ROOT"
