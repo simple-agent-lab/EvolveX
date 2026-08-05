@@ -155,9 +155,8 @@ if [ -z "$UV" ] || [ ! -x "$UV" ]; then
   echo "evolve: uv is required; install uv or set EVOLVE_UV_BINARY" >&2
   exit 1
 fi
-PYTHON_ARGS=()
-[ -z "${EVOLVE_FRAMEWORK_PYTHON:-}" ] || PYTHON_ARGS=(--python "$EVOLVE_FRAMEWORK_PYTHON")
-exec "$UV" run --project "$HERE" --frozen "${PYTHON_ARGS[@]}" python "$HERE/.evolve/launch_evolve.py" "$@"
+if [ -n "${EVOLVE_FRAMEWORK_PYTHON:-}" ]; then exec "$UV" run --project "$HERE" --frozen --python "$EVOLVE_FRAMEWORK_PYTHON" python "$HERE/.evolve/launch_evolve.py" "$@"; fi
+exec "$UV" run --project "$HERE" --frozen python "$HERE/.evolve/launch_evolve.py" "$@"
 """
 
 
