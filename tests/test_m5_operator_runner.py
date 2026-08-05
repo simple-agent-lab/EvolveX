@@ -1,3 +1,4 @@
+import subprocess
 import textwrap
 import time
 from pathlib import Path
@@ -9,6 +10,20 @@ from evolve import runtime as runtime_module
 from evolve.archive import archive_path, eval_receipt_path, mirror_path
 from evolve.driver import _run_operator_guarded
 from evolve.operators import OperatorResult, _operator_deadline_s, run_operator
+
+
+def _ps_process_tree_available() -> bool:
+    try:
+        result = subprocess.run(
+            ["ps", "-axo", "pid=,ppid="],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return result.returncode == 0
 
 
 def _write_operator(root: Path, name: str, body: str) -> None:
@@ -143,10 +158,13 @@ def test_guarded_operator_restores_archive_in_child_checkout(tmp_path: Path) -> 
     checkout.mkdir()
     live_archive = '{"genid":"0","score":0.5}\n'
     live_receipt = "trusted-receipt\n"
+    live_best = '{"genid":"0","score":0.5}\n'
     (workspace / "archive.jsonl").write_text(live_archive)
     eval_receipt_path(archive_path(workspace)).write_text(live_receipt)
+    (workspace / "best_ever.json").write_text(live_best)
     (checkout / "archive.jsonl").write_text("")
     eval_receipt_path(archive_path(checkout)).write_text("checkout-original\n")
+    (checkout / "best_ever.json").write_text("")
     _write_operator(checkout, "probe", "pass\n")
 
     result = _run_operator_guarded(
@@ -164,8 +182,10 @@ def test_guarded_operator_restores_archive_in_child_checkout(tmp_path: Path) -> 
     assert result.returncode == 0
     assert (workspace / "archive.jsonl").read_text() == live_archive
     assert eval_receipt_path(archive_path(workspace)).read_text() == live_receipt
+    assert (workspace / "best_ever.json").read_text() == live_best
     assert (checkout / "archive.jsonl").read_text() == ""
     assert eval_receipt_path(archive_path(checkout)).read_text() == "checkout-original\n"
+    assert (checkout / "best_ever.json").read_text() == ""
 
 
 def test_guarded_operator_restores_archive_and_receipts_when_runner_raises(
@@ -208,6 +228,7 @@ def test_guarded_operator_restores_archive_and_receipts_when_runner_raises(
         assert path.read_text().splitlines() == lines
 
 
+@pytest.mark.skipif(not _ps_process_tree_available(), reason="requires permission to enumerate the process tree")
 def test_run_operator_timeout_kills_descendant_in_new_session(tmp_path, monkeypatch):
     checkout = tmp_path / "checkout"
     pid_file = tmp_path / "detached.pid"
@@ -234,7 +255,7 @@ def test_run_operator_timeout_kills_descendant_in_new_session(tmp_path, monkeypa
         parent="0",
         run_dir=tmp_path / "r3",
         config_block={},
-        timeout_s=0.2,
+        timeout_s=2.0,
     )
 
     assert result.returncode == -1

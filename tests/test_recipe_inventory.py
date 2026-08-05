@@ -8,6 +8,7 @@ SUPPORTED = {
     "ahe",
     "ahe_codex",
     "gepa",
+    "gepa_local",
     "hill_climb",
     "hill_climb_codex",
     "hyperagents",

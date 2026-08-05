@@ -1,0 +1,61 @@
+experiment:
+  id: gepa_local
+  max_generations: 8
+  target_score: null
+  budget_usd: 10
+  children_per_gen: 1
+  mode: driver
+  seed: 0
+target:
+  seed: builtin-local-smoke
+surface:
+  include:
+    - target/**
+  exclude: []
+operators:
+  select: {variant: pareto, seed: 0, timeout_s: 600}
+  rollout:
+    variant: harbor
+    budget_tasks: 8
+    environment: "evolve.harbor_local:LocalEnvironment"
+    n_concurrent: 2
+    max_retries: 1
+    timeout_s: 600
+  trace_analyzer:
+    variant: gepa
+    components:
+      knowledge: target/knowledge.md
+    max_cases: 8
+    field_limit: 2000
+    timeout_s: 600
+  meta_agent:
+    variant: gepa
+    runner: local
+    expose_gate_data: false
+    components:
+      knowledge: target/knowledge.md
+    timeout_s: 600
+  validate:
+    variant: minibatch_improvement
+    criterion: non_decreasing
+    environment: "evolve.harbor_local:LocalEnvironment"
+    n_concurrent: 2
+    max_retries: 1
+    timeout_s: 600
+  gate: {variant: parent_eligible, timeout_s: 600}
+  record: {variant: gepa, timeout_s: 600}
+execution_runtime:
+  backend: local
+evaluator:
+  engine: harbor
+  dataset: local-tasks
+  agent: target.agent:HarborAgent
+  environment: "evolve.harbor_local:LocalEnvironment"
+  split: {train: 0.5, gate: 0.4, sealed: 0.1, seed: 0}
+  sampling: static
+  tasks_per_round: 4
+  anchor: {final: true, every_rounds: 0}
+  k: 1
+  n_concurrent: 2
+  max_retries: 1
+  partial_floor: 0.8

@@ -217,10 +217,18 @@ may appear in recipe prose, but `variant:` values point to these files:
 
 1. YAML: choose a shipped `variant:` and tune its config.
 2. `script:` variant: point one operator kind at your own executable file.
-3. Own driver from evolve verbs: use `evolve init`, archive files, evaluator
+3. Agent orchestration: discover capabilities with `evolve operator list`, run
+   configured stages with `evolve operator run`, edit a child worktree, then
+   use `commit`, `eval`, and `finalize`.
+4. Own driver from evolve verbs: use `evolve init`, archive files, evaluator
    outputs, and surface checks while orchestrating the loop yourself. Stamping
    and canonical evaluation live in the verbs, so those invariants survive a
    user-written driver.
+
+Direct stage reruns retain the previous output under
+`runs/gen-<id>/operator-attempts/<kind>/attempt-<n>/`. A configured validate or
+novelty result includes a mechanism-owned candidate-tree receipt; the
+Agent-facing commit refuses missing, rejected, or stale admission results.
 
 ## Files Are Normative
 

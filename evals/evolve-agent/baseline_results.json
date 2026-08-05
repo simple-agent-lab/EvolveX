@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "date": "2026-08-04",
+  "protocol": {
+    "comparison": "paired control versus treatment",
+    "runner": "fresh Codex subagents with inherited identical settings",
+    "grader": "separate blind Codex subagent",
+    "rubric_visible_to_candidates": false,
+    "responses_retained_in_repository": false
+  },
+  "summary": {
+    "cases_run": 2,
+    "behavior_cases_available": 16,
+    "control_pass_rate": 0.5,
+    "treatment_pass_rate": 1.0,
+    "mean_control_score": 6.5,
+    "mean_treatment_score": 9.5,
+    "mean_paired_delta": 3.0,
+    "hard_failures": 0
+  },
+  "cases": [
+    {
+      "id": "outer-ahe-agent",
+      "control": {
+        "score": 4,
+        "criteria": [0, 0, 2, 1, 1],
+        "hard_failure": false
+      },
+      "treatment": {
+        "score": 10,
+        "criteria": [2, 2, 2, 2, 2],
+        "hard_failure": false
+      },
+      "paired_delta": 6,
+      "observation": "The skill added explicit AHE selection, a single Agent-orchestration path, mechanism-owned admission/finalize/verify transitions, and child-worktree completion criteria."
+    },
+    {
+      "id": "workspace-stage-discovery",
+      "control": {
+        "score": 9,
+        "criteria": [2, 2, 2, 2, 1],
+        "hard_failure": false
+      },
+      "treatment": {
+        "score": 9,
+        "criteria": [2, 2, 2, 2, 1],
+        "hard_failure": false
+      },
+      "paired_delta": 0,
+      "observation": "Both Agents correctly recovered activation and access rules; the skill produced no correctness gain on this repository-discoverable case."
+    }
+  ],
+  "limitations": [
+    "This baseline predates the merge of evolve-workspace into the unified evolve-agent skill and should not be treated as a score for the current revision.",
+    "This is a two-case smoke baseline, not the full behavior suite.",
+    "Invocation cases were not run through an installed-skill router.",
+    "No downstream candidate-quality or benchmark improvement was measured.",
+    "Tool-call count, latency, token use, and reference-loading cost were not captured."
+  ]
+}

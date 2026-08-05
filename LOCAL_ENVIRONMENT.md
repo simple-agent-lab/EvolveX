@@ -21,6 +21,9 @@ operators:
     runner: harbor
     environment: evolve.harbor_local:LocalEnvironment
     environment_kwargs: {workdir: /app}
+  validate:
+    variant: minibatch_improvement
+    environment: evolve.harbor_local:LocalEnvironment
 
 evaluator:
   engine: harbor
@@ -28,6 +31,23 @@ evaluator:
   environment_kwargs: {workdir: /app}
   n_concurrent: 1
 ```
+
+Every operator that launches Harbor trials needs its own `environment` entry:
+a `validate` stage without one silently falls back to Docker and reports every
+child trial as an infrastructure failure. The `gepa_local` recipe ships all of
+this preconfigured.
+
+Task directories must satisfy Harbor discovery — `task.toml`,
+`instruction.md`, an `environment/` directory (required even though this
+backend ignores its Dockerfile), and `tests/test.sh` writing
+`$HARBOR_LOGS_DIR/verifier/reward.txt`. `evolve preflight --dataset ...`
+checks every entry against the real discovery rule.
+
+Candidate agents must read candidate files through the
+`EVOLVE_CANDIDATE_SOURCE` environment variable (see
+`seeds/local-smoke/agent.py`), never relative to `__file__`: module import paths
+point at the parent candidate during admission minibatch runs, so
+`__file__`-relative reads evaluate the wrong candidate.
 
 The same backend can be passed directly to Harbor:
 

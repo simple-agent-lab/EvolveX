@@ -1,6 +1,7 @@
 runs/
 artifacts/
 archive.jsonl
+best_ever.json
 insights/
 .evolve-eval-receipts.jsonl
 .venv/

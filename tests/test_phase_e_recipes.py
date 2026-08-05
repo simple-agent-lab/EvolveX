@@ -9,6 +9,7 @@ SUPPORTED_RECIPES = {
     "ahe",
     "ahe_codex",
     "gepa",
+    "gepa_local",
     "hill_climb",
     "hill_climb_codex",
     "hyperagents",
@@ -93,6 +94,17 @@ def test_supported_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "editable_roots: [target]" in config
             assert "agent: target.agent:HarborAgent" in config
             assert "record: {variant: gepa" in config
+        elif name == "gepa_local":
+            assert "seed: builtin-local-smoke" in config
+            assert "select: {variant: pareto" in config
+            assert "variant: minibatch_improvement" in config
+            assert "criterion: non_decreasing" in config
+            assert "expose_gate_data: false" in config
+            assert "agent: target.agent:HarborAgent" in config
+            assert "record: {variant: gepa" in config
+            assert config.count('environment: "evolve.harbor_local:LocalEnvironment"') == 3
+            assert "environment: docker" not in config
+            assert "image:" not in config
         elif name == "ahe":
             assert "max_generations: 10" in config
             assert "dataset: terminal-bench-2-ahe-30-v1" in config
@@ -209,7 +221,7 @@ def test_supported_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "agent: codex" in config
             assert "variant: noop" not in config
         assert "mutate:" not in config
-        if name not in {"aevolve", "ahe_codex", "gepa", "hill_climb_codex", "hyperagents_codex"}:
+        if name not in {"aevolve", "ahe_codex", "gepa", "gepa_local", "hill_climb_codex", "hyperagents_codex"}:
             assert "agent: evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent" in config
             assert "harbor_agent:" not in config
         assert "variant: fixed" not in config

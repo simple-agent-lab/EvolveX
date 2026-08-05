@@ -50,6 +50,7 @@ from .frozen.interfaces import (
 from .git import (
     add_worktree,
     create_tag,
+    dirty_paths,
     git,
     git_common_dir,
     git_stdout,
@@ -57,9 +58,11 @@ from .git import (
     remove_worktree,
     tag_exists,
     working_tree_changed_paths,
+    worktree_paths,
 )
 from .operators import OperatorResult, operator_timeout, run_operator
 from .population import best_row, fixed_evaluation_identity, format_genid, generation_number, valid_genid
+from .report import materialize_best_ever
 from .surface import check_paths, surface_patterns
 
 PENDING_GATE_RECORD_NOTE = "mechanism evaluation recorded before gate/record"
@@ -132,6 +135,13 @@ def _run_locked(options: RunOptions, workspace: Path) -> None:
     exp_id = experiment_id(workspace)
     ensure_local_archive(workspace, exp_id)
     evaluator_sampling(workspace)
+    active_worktrees = _workspace_child_worktrees(workspace)
+    if active_worktrees:
+        names = ", ".join(path.name for path in active_worktrees)
+        raise RuntimeError(
+            f"active child worktree(s): {names}; finish the agent commit, "
+            "or run evolve repair after preserving any edits"
+        )
     _ensure_genesis_evaluated(workspace)
     operators_config = operator_blocks(workspace)
 
@@ -247,7 +257,7 @@ def _run_operator_or_fail(
 @contextmanager
 def _managed_child_worktree(workspace: Path, child: Path) -> Iterator[None]:
     if child.exists():
-        remove_worktree(workspace, child)
+        raise RuntimeError(f"refusing to replace existing child worktree: {child}")
     try:
         yield
     finally:
@@ -402,9 +412,9 @@ def _run_child(
     _run_gate_and_record(workspace, exp_id, genid, parent, operators_config, round_number=round_number)
 
     # Reflect (mechanism 2, DESIGN §7) — optional, off unless the recipe configures
-    # `operators.reflect`. Reads the ledger after the record operator annotates it
+    # `operators.reflect`. Reads the archive after the record operator annotates it
     # and appends playbook insights. Best-effort: a reflect failure never unwinds
-    # the recorded generation. Runs against the workspace (it needs the ledger,
+    # the recorded generation. Runs against the workspace (it needs the archive,
     # not the candidate worktree).
     if _operator_present(operators_config, "reflect"):
         _run_operator_guarded(
@@ -428,17 +438,7 @@ def repair(workspace: Path) -> list[str]:
     Returns the actions taken/observations (empty means nothing to do)."""
     workspace = workspace.resolve()
     with workspace_run_lock(workspace):
-        actions: list[str] = []
-        worktrees = workspace / "runs" / "worktrees"
-        if worktrees.exists():
-            for path in sorted(p for p in worktrees.iterdir() if p.is_dir()):
-                remove_worktree(workspace, path)
-                actions.append(f"removed stale worktree {path.name}")
-        git(workspace, "worktree", "prune", check=False)
-        pending = sorted(_evaluation_pending_gate_record_genids(workspace))
-        if pending:
-            actions.append(f"pending gate/record (run will resume): {', '.join(pending)}")
-        return actions
+        return _repair_locked(workspace)
 
 
 def doctor(workspace: Path) -> list[str]:
@@ -446,11 +446,39 @@ def doctor(workspace: Path) -> list[str]:
     return repair(workspace)
 
 
+def _repair_locked(workspace: Path) -> list[str]:
+    actions: list[str] = []
+    worktrees = workspace / "runs" / "worktrees"
+    if worktrees.exists():
+        for path in sorted(p for p in worktrees.iterdir() if p.is_dir()):
+            changed = dirty_paths(path)
+            if changed:
+                actions.append(f"preserved dirty worktree {path.name}: {', '.join(changed)}")
+                continue
+            remove_worktree(workspace, path)
+            actions.append(f"removed stale worktree {path.name}")
+    managed_root = worktrees.resolve()
+    for path in _workspace_child_worktrees(workspace):
+        if path.is_relative_to(managed_root):
+            continue
+        actions.append(f"preserved linked worktree outside runs/worktrees: {path}")
+    git(workspace, "worktree", "prune", check=False)
+    pending = sorted(_evaluation_pending_gate_record_genids(workspace))
+    if pending:
+        actions.append(f"pending gate/record (run will resume): {', '.join(pending)}")
+    return actions
+
+
+def _workspace_child_worktrees(workspace: Path) -> list[Path]:
+    root = workspace.resolve()
+    return sorted(path for path in worktree_paths(root) if path != root)
+
+
 def _maybe_quarantine(workspace: Path, genid: str) -> None:
     """Audit (DESIGN observability): quarantine a suspicious score jump past the
     champion by more than EVOLVE_AUDIT_JUMP (off by default). A `pending` audit
     flags the generation for human review — a huge unexplained gain is often an
-    exploit of the ruler, not real progress."""
+    exploit of the evaluator, not real progress."""
     margin = os.environ.get("EVOLVE_AUDIT_JUMP")
     if not margin:
         return
@@ -489,7 +517,7 @@ def _run_gate_and_record(
     operators_config: dict[str, Any],
     *,
     round_number: int | None = None,
-) -> None:
+) -> bool:
     with tempfile.TemporaryDirectory(prefix=f"evolve-gate-{genid}-") as tempdir:
         checkout = Path(tempdir) / "checkout"
         add_worktree(workspace, checkout, f"gen/{genid}")
@@ -527,7 +555,7 @@ def _run_gate_and_record(
                     round_number=round_number,
                     operator_ref=f"gen/{genid}",
                 )
-                return
+                return False
             gate_payload, gate_error = _load_gate_payload(run_dir)
             if gate_error is not None or gate_payload is None:
                 _append_operator_failed(
@@ -548,7 +576,7 @@ def _run_gate_and_record(
                     round_number=round_number,
                     operator_ref=f"gen/{genid}",
                 )
-                return
+                return False
 
             append_event(workspace, exp_id, {"genid": genid, "pending_gate_record": False, **gate_payload})
             _run_terminal_record(
@@ -562,8 +590,10 @@ def _run_gate_and_record(
                 operator_ref=f"gen/{genid}",
                 allowed_fields=RECORD_ANNOTATION_FIELDS,
             )
+            return True
         finally:
             remove_worktree(workspace, checkout)
+            materialize_best_ever(workspace)
 
 
 def _run_terminal_record(
@@ -908,6 +938,7 @@ def _append_lifecycle_evaluation(
         else {}
     )
     append_evaluation_record(workspace, record, metadata={**metadata, **gate_metadata})
+    materialize_best_ever(workspace)
 
 
 def _select_generation_parents(
@@ -1109,8 +1140,10 @@ def _matched_gate_parent(parent: dict[str, Any] | None, child: dict[str, Any]) -
 
 
 def _operator_output_error(name: str, run_dir: Path) -> OperatorOutputError | None:
-    checks: tuple[tuple[Path, str, Callable[[object], object]], ...]
-    if name == "rollout":
+    checks: tuple[tuple[Path, str, Callable[[Any], object]], ...]
+    if name == "select":
+        checks = ((Path("parents.json"), "parents", validate_select_payload),)
+    elif name == "rollout":
         checks = (
             (Path("rollout") / "summary.json", "summary", validate_rollout_summary_payload),
             (Path("rollout") / "artifacts.json", "artifacts", validate_rollout_artifacts_payload),
@@ -1317,13 +1350,16 @@ def _run_operator_guarded(
         if checkout.resolve() != workspace.resolve():
             checkout_archive = archive_path(checkout)
             checkout_receipts = eval_receipt_path(checkout_archive)
+            checkout_best = checkout / "best_ever.json"
             before[checkout_archive] = _archive_lines(checkout_archive)
             before[checkout_receipts] = _archive_lines(checkout_receipts)
+            before[checkout_best] = _archive_lines(checkout_best)
             _write_archive_lines(checkout_archive, before[archive_path(workspace)])
             _write_archive_lines(
                 checkout_receipts,
                 before[eval_receipt_path(archive_path(workspace))],
             )
+            _write_archive_lines(checkout_best, before[workspace / "best_ever.json"])
         return run_operator(
             name=name,
             checkout=checkout,
@@ -1342,7 +1378,7 @@ def _run_operator_guarded(
 
 def _archive_line_snapshots(workspace: Path, exp_id: str) -> dict[Path, list[str]]:
     archives = (archive_path(workspace), mirror_path(exp_id, workspace))
-    paths = (*archives, *(eval_receipt_path(path) for path in archives))
+    paths = (*archives, *(eval_receipt_path(path) for path in archives), workspace / "best_ever.json")
     return {path: _archive_lines(path) for path in paths}
 
 

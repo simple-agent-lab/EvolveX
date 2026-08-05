@@ -25,7 +25,7 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `candidate/__init__.py` | 10 | candidate-boundary package marker |
 | `candidate/smoke.py` | 150 | run evaluator smoke against an exact candidate snapshot and persist redacted diagnostics |
 | `candidate/snapshot.py` | 100 | exact candidate Git tree construction, temporary materialization, and reviewed-tree commit verification |
-| `cli.py` | 375 | argument parsing and verb dispatch only — no logic |
+| `cli.py` | 450 | argument parsing and verb dispatch only — no logic |
 | `config.py` | 200 | read/render `evolve.yaml`: recipes, experiment values, surface lists, operator blocks |
 | `driver.py` | 1800 | the generation sequencer: orchestrates baseline eval, verbs + operators (incl. novelty, self-modification admission gates, sealed anchors); validates operator outputs; computes verified_fixes; audit quarantine; doctor repair |
 | `doctor.py` | 250 | read-only local/experiment preflight profiles and persisted diagnostic receipts |
@@ -45,8 +45,11 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `experiment_smoke.py` | 200 | isolated one-task gen0-to-gen1 full-loop canary |
 | `feedback.py` | 250 | assemble current and historical rollout evidence plus ledger-derived feedback for the meta-agent |
 | `operators.py` | 200 | subprocess runner for workspace operator scripts (contract: env vars, --config, timeout) |
+| `operator_cli.py` | 150 | agent-facing operator discovery and one-stage invocation command group |
+| `orchestration.py` | 400 | safe outer-agent composition of driver verbs, stage handoffs, retries, and admission receipts |
 | `patching.py` | 150 | mutable-surface patch creation and parent-reference selection |
 | `population.py` | 100 | genid/lineage bookkeeping for fan-out generations |
+| `preflight.py` | 220 | pre-init checklist: mirrors every init refusal and Harbor task discovery (tools, recipe, digest, seed, dataset, workspace) without writing |
 | `report.py` | 200 | status/report rendering, best-ever recomputation, claim checklist |
 | `run_summary.py` | 200 | recipe-aware terminal-state assessment and machine-readable run assertion receipts |
 | `runtime.py` | 250 | generated-workspace runtime entrypoint helpers |
@@ -69,15 +72,15 @@ decision (and usually a demolition pass) instead of silent sprawl.
 The invariant-enforcers: the operator contract, the operator SDK, and the
 self-modification admission gate. Grouped so the ring is legible; vendored into
 each workspace, immutable there because it sits outside the mutable surface
-(the ruler itself is the experiment-side frozen — see `frozen/__init__.py`).
+(the evaluator itself is the experiment-side frozen — see `frozen/__init__.py`).
 
 | File | Budget (lines) | Responsibility (one line — keep it true) |
 | --- | --- | --- |
-| `frozen/__init__.py` | 50 | the frozen-ring definition (litmus + two homes: contract/gate vs the ruler) — the canonical anchor a contributor reads |
+| `frozen/__init__.py` | 50 | the frozen-ring definition (litmus + two homes: contract/gate vs the evaluator) — the canonical anchor a contributor reads |
 | `frozen/interfaces.py` | 350 | operator ABCs (incl. trace analyzer, novelty, and reflect), the registry, result schemas, payload validation |
 | `frozen/sdk.py` | 300 | Python operator entrypoint and file-contract IO; no library algorithm policy |
 
-Total `src/evolve/` budget: **11880 lines**. The budget admits the explicit evaluation-package
+Total `src/evolve/` budget: **12725 lines**. The budget admits the explicit evaluation-package
 boundaries, the opt-in in-place Harbor runtime, and the redacted trace-analysis
 boundary between rollout and feedback assembly; if the mechanism wants to
 grow past that, something belongs in a workspace operator instead —
