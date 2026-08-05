@@ -384,9 +384,9 @@ class MiniSweSourceAgent(MiniSweAgent):
             "set -euo pipefail; "
             'if [ -f "$HOME/.local/bin/env" ]; then . "$HOME/.local/bin/env"; '
             'else export PATH="$HOME/.local/bin:$PATH"; fi; '
-            f"uv sync --project {SOURCE_DIR} --frozen --offline",
+            f"UV_CACHE_DIR={LOCAL_BUILD_CACHE} uv sync --project {SOURCE_DIR} --frozen --offline",
             "local_project_sync_failed",
-            env={**install_env, "UV_CACHE_DIR": LOCAL_BUILD_CACHE},
+            env=install_env,
         )
         await self._candidate_phase(
             environment,

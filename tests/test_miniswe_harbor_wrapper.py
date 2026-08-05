@@ -441,13 +441,10 @@ def test_miniswe_wrapper_subclasses_harbor_miniswe_and_installs_candidate_source
         "no_proxy": ".internal.example,llm.example",
         "NO_PROXY": ".internal.example,llm.example",
     }
-    for sync_index, cache_dir in zip(
-        sync_indices,
-        ("/opt/evolve/uv/cache", "/tmp/evolve-candidate-build-cache"),
-        strict=True,
-    ):
+    assert "UV_CACHE_DIR=/tmp/evolve-candidate-build-cache uv sync" in environment.commands[sync_indices[1]]
+    for sync_index in sync_indices:
         assert environment.envs[sync_index] == {
-            "UV_CACHE_DIR": cache_dir,
+            "UV_CACHE_DIR": "/opt/evolve/uv/cache",
             "UV_LINK_MODE": "copy",
             "UV_OFFLINE": "1",
             "UV_PYTHON_INSTALL_DIR": "/opt/evolve/uv/python",
