@@ -16,7 +16,7 @@ GENERATIONS=3
 
 REPO=$RUN_ROOT/repo
 DATASET=$RUN_ROOT/dataset
-WORKSPACE=$RUN_ROOT/workspace
+WORKSPACE=$RUN_ROOT/$(basename "$RUN_ROOT")
 LOG=$RUN_ROOT/run.log
 
 fail() {

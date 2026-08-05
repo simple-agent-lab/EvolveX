@@ -81,7 +81,13 @@ def materialize_missing_trials(
     observed: tuple[TrialResult, ...],
 ) -> tuple[TrialResult, ...]:
     """Return contract-ordered evidence with explicit rows for absent trials."""
-    observed_by_identity = {(trial.task_id, trial.trial): trial for trial in observed}
+    expected_task_ids = {trial.task_id for trial in expected}
+    normalized_observed = tuple(
+        _normalize_harbor_task_id(trial, expected_task_ids) for trial in observed
+    )
+    observed_by_identity = {
+        (trial.task_id, trial.trial): trial for trial in normalized_observed
+    }
     expected_identities = {(trial.task_id, trial.repetition) for trial in expected}
     materialized = tuple(
         observed_by_identity.get(
@@ -98,9 +104,24 @@ def materialize_missing_trials(
         for identity in expected
     )
     unexpected = tuple(
-        trial for trial in observed if (trial.task_id, trial.trial) not in expected_identities
+        trial
+        for trial in normalized_observed
+        if (trial.task_id, trial.trial) not in expected_identities
     )
     return (*materialized, *unexpected)
+
+
+def _normalize_harbor_task_id(
+    trial: TrialResult, expected_task_ids: set[str]
+) -> TrialResult:
+    if trial.task_id in expected_task_ids:
+        return trial
+    matches = [
+        task_id
+        for task_id in expected_task_ids
+        if trial.task_id.endswith(f"__{task_id}")
+    ]
+    return replace(trial, task_id=matches[0]) if len(matches) == 1 else trial
 
 
 def materialize_setup_failure(
