@@ -38,6 +38,9 @@ def test_architecture_visual_is_current_and_uses_identity_palette() -> None:
     svg = (ROOT / "docs" / "architecture.svg").read_text()
     for color in ("#10372e", "#19785a", "#65ce9f", "#b5d3c7", "#f2fbf7"):
         assert color in svg
+    description = ET.parse(ROOT / "docs" / "architecture.svg").find("svg:desc", SVG_NS).text
+    assert "Recipes select permitted targets, operators, and stages." in description
+    assert "rewrite any stage" not in description
 
 
 def test_readme_visual_assets_have_accessible_svg_metadata() -> None:

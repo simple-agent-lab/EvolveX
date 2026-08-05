@@ -260,7 +260,7 @@ def render() -> str:
     description = (
         "Evolution methods such as Hill Climb, A-Evolve, AHE, GEPA and HyperAgents plug into one loop of "
         "select, rollout, analyze, mutate, gate and record. The loop and the agent it improves sit inside a "
-        "declared mutable surface, so the meta-agent can rewrite any stage. Only the substrate below stays "
+        "declared mutable surface. Recipes select permitted targets, operators, and stages. Only the substrate below stays "
         "frozen: the evaluator, the runtime, the surface check and the stamped evidence."
     )
     svg = [
