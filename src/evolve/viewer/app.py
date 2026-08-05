@@ -17,7 +17,7 @@ from harbor import viewer as harbor_viewer
 from harbor.viewer.server import create_app as create_harbor_app
 
 from .harbor_bridge import HarborBridge
-from .models import PaginatedTrials, SnapshotBundle, ViewerWarning, WorkspaceSources
+from .models import ArtifactPreviewMetadata, PaginatedTrials, SnapshotBundle, ViewerWarning, WorkspaceSources
 from .reader import WorkspaceReader
 from .snapshot import add_snapshot_warning, build_snapshot
 
@@ -121,7 +121,23 @@ def create_viewer_app(workspace: Path, *, bridge: HarborBridge | None = None) ->
                 content = handle.read(MAX_ARTIFACT_PREVIEW_BYTES)
         except OSError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
-        return Response(content=content, media_type=target.media_type)
+        return Response(
+            content=content,
+            media_type=target.media_type,
+            headers={"X-Evolve-Artifact-Truncated": str(target.size > MAX_ARTIFACT_PREVIEW_BYTES).lower()},
+        )
+
+    @app.get("/api/evolve/artifacts/{artifact_id}/metadata", response_model=ArtifactPreviewMetadata)
+    def artifact_metadata(artifact_id: str) -> ArtifactPreviewMetadata:
+        bundle = store.refresh()
+        reference = bundle.artifact_references.get(artifact_id)
+        if reference is None:
+            raise HTTPException(status_code=404, detail="artifact not found")
+        return ArtifactPreviewMetadata(
+            **reference.model_dump(),
+            truncated=reference.size > MAX_ARTIFACT_PREVIEW_BYTES,
+            content_url=f"/api/evolve/artifacts/{artifact_id}",
+        )
 
     evolve_static = Path(__file__).parent / "static"
     app.mount("/evolve-assets", StaticFiles(directory=evolve_static), name="evolve-assets")
@@ -130,8 +146,9 @@ def create_viewer_app(workspace: Path, *, bridge: HarborBridge | None = None) ->
     @app.get("/generations", include_in_schema=False)
     @app.get("/generations/{genid}", include_in_schema=False)
     @app.get("/trials", include_in_schema=False)
-    def evolve_shell(genid: str | None = None) -> FileResponse:
-        del genid
+    @app.get("/artifacts/{artifact_id}", include_in_schema=False)
+    def evolve_shell(genid: str | None = None, artifact_id: str | None = None) -> FileResponse:
+        del genid, artifact_id
         return FileResponse(evolve_static / "index.html")
 
     harbor_static = Path(next(iter(harbor_viewer.__path__))) / "static"

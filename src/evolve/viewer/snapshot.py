@@ -97,6 +97,7 @@ def build_snapshot(
         generation_details=details,
         trials=tuple(trials),
         artifact_targets=targets,
+        artifact_references={artifact.id: artifact for artifact in artifacts},
     )
 
 

@@ -88,6 +88,36 @@ def test_preview_is_bounded_and_registered(viewer_workspace: Path) -> None:
     assert missing.status_code == 404
 
 
+def test_artifact_metadata_and_bounded_headers(viewer_workspace: Path) -> None:
+    patch = viewer_workspace / "runs/gen-1/meta_agent/model_patch.diff"
+    patch.write_text("diff --git a/a.py b/a.py\n" + "+x\n" * 350_000)
+
+    with TestClient(create_viewer_app(viewer_workspace)) as client:
+        detail = client.get("/api/evolve/generations/1").json()
+        rationale = next(item for item in detail["artifacts"] if item["label"] == "rationale.md")
+        model_patch = next(item for item in detail["artifacts"] if item["label"] == "model_patch.diff")
+        metadata = client.get(f'/api/evolve/artifacts/{rationale["id"]}/metadata')
+        patch_metadata = client.get(f'/api/evolve/artifacts/{model_patch["id"]}/metadata')
+        content = client.get(f'/api/evolve/artifacts/{model_patch["id"]}')
+
+    assert metadata.json()["relative_path"] == "runs/gen-1/meta_agent/rationale.md"
+    assert metadata.json()["content_url"] == f'/api/evolve/artifacts/{rationale["id"]}'
+    assert metadata.json()["truncated"] is False
+    assert patch_metadata.json()["truncated"] is True
+    assert content.headers["x-evolve-artifact-truncated"] == "true"
+    assert len(content.content) == 1024 * 1024
+
+
+def test_artifact_shell_and_metadata_preserve_registered_id_boundary(viewer_workspace: Path) -> None:
+    with TestClient(create_viewer_app(viewer_workspace)) as client:
+        shell = client.get("/artifacts/example")
+        missing = client.get("/api/evolve/artifacts/missing/metadata")
+
+    assert shell.status_code == 200
+    assert 'id="evolve-viewer"' in shell.text
+    assert missing.status_code == 404
+
+
 def test_composed_app_blocks_mutating_and_get_shaped_actions(viewer_workspace: Path) -> None:
     with TestClient(create_viewer_app(viewer_workspace)) as client:
         assert client.post("/api/run", json={}).status_code == 405
@@ -100,7 +130,7 @@ def test_composed_app_blocks_mutating_and_get_shaped_actions(viewer_workspace: P
 
 def test_frontend_routes_serve_evolve_shell(viewer_workspace: Path) -> None:
     with TestClient(create_viewer_app(viewer_workspace)) as client:
-        for path in ("/", "/generations", "/generations/1", "/trials"):
+        for path in ("/", "/generations", "/generations/1", "/trials", "/artifacts/example"):
             response = client.get(path)
             assert response.status_code == 200
             assert 'id="evolve-viewer"' in response.text

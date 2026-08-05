@@ -26,6 +26,11 @@ class ArtifactReference(BaseModel):
     previewable: bool
 
 
+class ArtifactPreviewMetadata(ArtifactReference):
+    truncated: bool
+    content_url: str
+
+
 class StageSummary(BaseModel):
     name: str
     state: StageState
@@ -169,3 +174,4 @@ class SnapshotBundle:
     generation_details: dict[str, GenerationDetail]
     trials: tuple[TrialSummary, ...]
     artifact_targets: dict[str, ArtifactTarget]
+    artifact_references: dict[str, ArtifactReference]
