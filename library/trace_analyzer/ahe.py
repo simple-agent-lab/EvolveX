@@ -16,6 +16,7 @@ from evolve.archive import archive_path, merged_rows
 from evolve.config import operator_blocks
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import OperatorContext, TraceAnalyzerOperator, TraceAnalyzerResult
+from evolve.integrations.harbor._agent_roles import uses_miniswe_submission
 from library.meta_agent.runners import run_readonly_agent
 
 Case = dict[str, Any]
@@ -332,8 +333,7 @@ def _debugger_prompt(job: TaskAnalysisJob) -> str:
 
 def _debugger_runner_prompt(job: TaskAnalysisJob, config: dict[str, Any]) -> str:
     prompt = _debugger_prompt(job)
-    agent = str(config.get("agent") or "")
-    if agent != "mini-swe-agent" and not agent.endswith(":FileTaskMiniSweAgent"):
+    if not uses_miniswe_submission(config.get("agent")):
         return prompt
     return (
         prompt + "\n\n# MiniSWE submission protocol\n\n"
