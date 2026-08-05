@@ -64,6 +64,21 @@ and a recipe decides which of them the meta-agent may rewrite along with the
 target. The evaluator, runtime, surface check, and evidence stamps stay outside
 that surface.
 
+## Repository layout
+
+| Path | Role |
+| --- | --- |
+| `src/evolve/` | Framework implementation and CLI. |
+| `library/` | Composable evolution operators. |
+| `recipes/` | Runnable evolution configurations and method guides. |
+| `skills/` | Skill packages used by agents and workspaces. |
+| `evals/skills/` | Behavior and routing evaluations for those skills. |
+| `tests/` | Deterministic implementation and contract tests. |
+| `scaffolds/evaluators/` | Evaluator templates for generated workspaces. |
+| `runs/` | Local generated artifacts; ignored and not source documentation. |
+
+The current evaluation assets are documented in [`evals/README.md`](evals/README.md).
+
 ## Quick Start
 
 Requirements: Python 3.12+, [`uv`](https://docs.astral.sh/uv/), and Git.
@@ -197,6 +212,7 @@ See [DESIGN.md](DESIGN.md) for the complete model and invariants.
 | [Design](DESIGN.md) | System model, ownership boundaries, and invariants. |
 | [Architecture](ARCHITECTURE.md) | Enforced source-module map and line budgets. |
 | [Recipes](recipes/README.md) | Supported evolution strategies. |
+| [Evaluation assets](evals/README.md) | Skill behavior/routing evaluation cases and result snapshots. |
 | [Meta-agents](META_AGENTS.md) | Trusted-host and isolated meta-agent runners. |
 | [Trace analysis](TRACE_ANALYZER.md) | Trace retention and analyzer variants. |
 | [Local environment](LOCAL_ENVIRONMENT.md) | Docker-free trusted local execution. |

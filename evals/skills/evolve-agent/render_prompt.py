@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 EVAL_DIR = Path(__file__).resolve().parent
-ROOT = EVAL_DIR.parents[1]
+ROOT = EVAL_DIR.parents[2]
 
 
 def load_cases() -> dict[str, dict[str, str]]:
