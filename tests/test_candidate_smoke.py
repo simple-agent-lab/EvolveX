@@ -9,7 +9,7 @@ import pytest
 from conftest import fixture_recipe_config, git, init_fixture_workspace, run_evolve
 
 from evolve.candidate import smoke as candidate_smoke_module
-from evolve.candidate.smoke import run_candidate_smoke
+from evolve.candidate.smoke import SmokeMode, run_candidate_smoke
 from evolve.uv_runtime import CandidateRuntimeResult, RuntimeMount
 from evolve.workspace import InitOptions, init_workspace
 
@@ -89,6 +89,44 @@ def test_smoke_runs_through_owned_process_helper(tmp_path: Path, monkeypatch) ->
         checkout,
         result.attempt_dir,
     )
+    assert calls[0][1]["EVOLVE_CANDIDATE_SMOKE_MODE"] == "full"
+
+
+def test_model_smoke_uses_detached_snapshot_without_workspace_mutation(tmp_path: Path, monkeypatch) -> None:
+    checkout = smoke_checkout(tmp_path)
+    captured: dict[str, object] = {}
+
+    def fake_run_owned(command, *, cwd, env, timeout_s=None):
+        del command, timeout_s
+        captured["cwd"] = cwd
+        captured["env"] = env
+        return SimpleNamespace(returncode=0, stdout="", stderr="", wall_s=0.01, timed_out=False)
+
+    monkeypatch.setattr(candidate_smoke_module, "run_owned", fake_run_owned)
+    before = git(checkout, "write-tree")
+
+    result = run_candidate_smoke(
+        checkout,
+        workspace=checkout,
+        mode=SmokeMode.MODEL,
+    )
+
+    assert result.status == "passed"
+    assert git(checkout, "write-tree") == before
+    assert captured["cwd"] != checkout
+    assert captured["env"]["EVOLVE_CANDIDATE_SMOKE_MODE"] == "single"
+    assert captured["env"]["EVOLVE_EVAL_SPLIT"] == "gate"
+    payload = json.loads((result.attempt_dir / "result.json").read_text())
+    assert payload["mode"] == "single"
+    assert "stdout_path" not in payload
+    assert "stderr_path" not in payload
+    assert payload["artifacts"]["stdout"]["path"] == "stdout.log"
+    assert payload["artifacts"]["stderr"]["path"] == "stderr.log"
+    assert len(payload["artifacts"]["stdout"]["sha256"]) == 64
+    assert stat.S_IMODE(result.attempt_dir.stat().st_mode) == 0o700
+    assert stat.S_IMODE(result.stdout_path.stat().st_mode) == 0o600
+    assert stat.S_IMODE(result.stderr_path.stat().st_mode) == 0o600
+    assert stat.S_IMODE((result.attempt_dir / "result.json").stat().st_mode) == 0o600
 
 
 def test_smoke_prepares_and_injects_candidate_runtime(tmp_path: Path, monkeypatch) -> None:
@@ -105,7 +143,8 @@ def test_smoke_prepares_and_injects_candidate_runtime(tmp_path: Path, monkeypatc
     runtime_calls = []
     run_env = {}
 
-    def fake_prepare(materialized, attempt, runtime_root, candidate_commit, evaluator):
+    def fake_prepare(materialized, attempt, runtime_root, candidate_commit, evaluator, *, env=None):
+        del env
         runtime_calls.append((materialized, attempt, runtime_root, candidate_commit, evaluator))
         return CandidateRuntimeResult(
             "uv",
@@ -131,6 +170,9 @@ def test_smoke_prepares_and_injects_candidate_runtime(tmp_path: Path, monkeypatc
     assert runtime_calls[0][4]["candidate_runtime"]["variant"] == "uv"
     assert json.loads(run_env["EVOLVE_CANDIDATE_RUNTIME_ENV_JSON"]) == {"UV_OFFLINE": "1"}
     assert json.loads(run_env["EVOLVE_CANDIDATE_RUNTIME_MOUNTS_JSON"])[0]["target"] == "/opt/evolve/uv/cache"
+    assert (result.attempt_dir / "runtime-agent.env").is_file()
+    assert (result.attempt_dir / "runtime-verifier.env").is_file()
+    assert (result.attempt_dir / "runtime-environment-evidence.json").is_file()
 
 
 def test_smoke_redacts_proxy_credential_only(tmp_path: Path, monkeypatch) -> None:
@@ -141,6 +183,17 @@ def test_smoke_redacts_proxy_credential_only(tmp_path: Path, monkeypatch) -> Non
 
     assert "secret" not in text
     assert "fastapi" in text
+
+
+def test_smoke_redacts_model_endpoint_from_logs(tmp_path: Path, monkeypatch) -> None:
+    endpoint = "https://model-sensitive.example/v1"
+    monkeypatch.setenv("OPENAI_BASE_URL", endpoint)
+    checkout = smoke_checkout(tmp_path, stderr=f"request failed against {endpoint}\n", rc=2)
+
+    text = run_candidate_smoke(checkout, workspace=checkout).stderr_path.read_text()
+
+    assert endpoint not in text
+    assert "request failed against [REDACTED]" in text
 
 
 def test_smoke_without_evaluator_script_is_unsupported(tmp_path: Path) -> None:

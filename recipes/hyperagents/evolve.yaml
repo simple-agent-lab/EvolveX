@@ -23,19 +23,19 @@ operators:
   gate: {variant: parent_eligible}
   record: {variant: hyperagents}
   timeout_s: 600
-execution_runtime:
-  backend: docker
 evaluator:
   engine: harbor
   model: openai/gpt-5.4-2026-03-05
-  candidate_runtime: {variant: uv, project: target, python: "3.12"}
+  runtime:
+    candidate: {variant: uv, project: target, python: "3.12"}
+    proxy: {mode: optional, model_endpoint: bypass}
   dataset: terminal-bench-2-10-10-10
   agent: evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent
   task_scope: full
   evaluation_split: train
   sampling: static
   tasks_per_round: 30
-  k: 1
+  repetitions: 1
   n_concurrent: 10
   agent_timeout_multiplier: 1
   max_retries: 1

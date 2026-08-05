@@ -16,25 +16,24 @@ surface:
 operators:
   select: {variant: ahe_latest, timeout_s: 600}
   rollout: {variant: evaluation_replay, field_limit: 2000, timeout_s: 600}
-  trace_analyzer: {variant: ahe, max_tasks: 30, max_concurrent: 10, timeout_per_task: 600, debugger_max_retries: 2, debugger_agent_kwargs: {reasoning_effort: high, max_tokens: 64000}, field_limit: 2000, timeout_s: 3600}
+  trace_analyzer: {variant: ahe, max_tasks: 30, max_concurrent: 10, timeout_per_task: 600, retry_attempts: 1, debugger_agent_kwargs: {reasoning_effort: high, max_tokens: 64000}, field_limit: 2000, timeout_s: 3600}
   meta_agent: {variant: ahe, runner: harbor, expose_gate_data: false, agent: evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent, model: openai/gpt-5.4-2026-03-05, environment: docker, image: evolve-meta-agent-app:20260724-tools-mswe245, editable_roots: [target], prompt_path: target/src/minisweagent/config/mini.yaml, skills_dir: target/skills, memory_dir: target/memory, tools_dir: target/tools, agent_kwargs: {reasoning_effort: high, cost_limit: 0, max_tokens: 64000}, max_retries: 1, timeout_s: 3600}
   gate: {variant: ahe_artifact_valid, timeout_s: 600}
   record: {variant: jsonl, timeout_s: 600}
   timeout_s: 600
-execution_runtime:
-  backend: docker
-  minimum_free_gib: 80
 evaluator:
   engine: harbor
   model: openai/gpt-5.4-2026-03-05
-  candidate_runtime: {variant: uv, project: target, python: "3.12"}
-  dataset: terminal-bench-2-ahe-30-v1
+  runtime:
+    candidate: {variant: uv, project: target, python: "3.12"}
+    proxy: {mode: optional, model_endpoint: bypass}
+  dataset: terminal-bench-2-10-10-10
   agent: evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent
   task_scope: full
   evaluation_split: train
   sampling: static
   tasks_per_round: 30
-  k: 1
+  repetitions: 1
   n_concurrent: 10
   agent_setup_timeout_multiplier: 1
   agent_timeout_multiplier: 1

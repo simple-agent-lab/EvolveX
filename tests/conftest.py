@@ -9,6 +9,8 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
+from harbor.models.registry import DatasetMetadata
+from harbor.models.task.id import PackageTaskId
 
 from evolve.archive import merged_rows as mechanism_merged_rows
 from evolve.archive import mirror_path
@@ -19,6 +21,24 @@ from evolve.workspace import init_workspace as create_workspace
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE_RECIPES = ROOT / "tests" / "fixtures" / "recipes"
 FIXTURE_SEEDS = ROOT / "tests" / "fixtures" / "seeds"
+UV_SOURCE_RECIPES = {"ahe", "hill_climb", "hyperagents"}
+
+
+class _FixtureRegistryClient:
+    async def get_dataset_metadata(self, name: str) -> DatasetMetadata:
+        dataset_name, _, requested_version = name.partition("@")
+        return DatasetMetadata(
+            name=dataset_name,
+            version=requested_version or "test-v1",
+            task_ids=[
+                PackageTaskId(
+                    org="fixture",
+                    name=f"task-{index}",
+                    ref=f"sha256:{index:064x}",
+                )
+                for index in range(100)
+            ],
+        )
 
 
 def _uv_directory(*arguments: str) -> str:
@@ -57,11 +77,53 @@ def init_fixture_workspace(workspace: Path, name: str = "hill_climb-smoke") -> P
     return workspace
 
 
+def write_identity_dataset(root: Path, count: int = 10) -> Path:
+    root.mkdir()
+    for index in range(count):
+        task = root / f"task-{index}"
+        task.mkdir()
+        (task / "task.toml").write_text(f'version = "1.0"\nname = "task-{index}"\n')
+    return root
+
+
+def init_recipe_with_local_inputs(tmp_path: Path, recipe: str) -> Path:
+    dataset = write_identity_dataset(tmp_path / f"{recipe}-tasks", count=100)
+    seed = write_locked_miniswe_seed(tmp_path / f"{recipe}-seed") if recipe in UV_SOURCE_RECIPES else None
+    workspace = tmp_path / f"workspace-{recipe}"
+    create_workspace(
+        InitOptions(
+            workspace=workspace,
+            recipe=recipe,
+            seed=str(seed) if seed is not None else None,
+            dataset=str(dataset),
+        )
+    )
+    return workspace
+
+
 @pytest.fixture(autouse=True)
 def evaluator_runtime_digest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("EVOLVE_RUNTIME_DIGEST", "sha256:test-runtime")
     monkeypatch.setenv("EVOLVE_HOME", str(tmp_path / "evolve-home"))
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key-not-a-secret")
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://model.example/v1")
+    monkeypatch.delenv("CODEX_AUTH_JSON_PATH", raising=False)
+    monkeypatch.delenv("CODEX_FORCE_AUTH_JSON", raising=False)
+    monkeypatch.setattr(
+        "evolve.evaluation.datasets.RegistryClientFactory.create",
+        lambda: _FixtureRegistryClient(),
+    )
+
+
+@pytest.fixture
+def strict_workspace(tmp_path: Path) -> Path:
+    return init_recipe_with_local_inputs(tmp_path, "aevolve")
+
+
+@pytest.fixture
+def legacy_workspace(tmp_path: Path) -> Path:
+    return init_fixture_workspace(tmp_path / "legacy-workspace")
 
 
 def run_evolve(
@@ -129,6 +191,12 @@ def git(workspace: Path, *args: str) -> str:
     )
     assert result.returncode == 0, result.stderr
     return result.stdout.strip()
+
+
+def allow_local_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
+    from evolve.preflight import checks as preflight_checks
+
+    monkeypatch.setattr(preflight_checks, "tool_available", lambda name, env: True)
 
 
 def init_workspace(tmp_path: Path, experiment: str = "experiment") -> tuple[Path, Path]:

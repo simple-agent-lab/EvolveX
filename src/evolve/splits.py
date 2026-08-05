@@ -3,12 +3,16 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-import shutil
-import stat
 import sys
 from glob import escape
 from pathlib import Path
 from typing import Any
+
+from .evaluation.datasets import (
+    RegistryMetadataClient,
+    dataset_content_identity,
+    local_task_content_digest,
+)
 
 SPLIT_NAMES = ("train", "gate", "sealed")
 
@@ -20,45 +24,76 @@ def build_manifest(
     base_dir: Path,
     sampling: str,
     gate_limit: int,
+    registry_client: RegistryMetadataClient | None = None,
 ) -> dict[str, Any]:
     ratios = _ratios(split)
     seed = _integer(split.get("seed"), "evaluator.split.seed", minimum=0)
     resolved = _resolve_dataset(dataset, base_dir)
-    names = discover_task_names(resolved) if resolved is not None else []
-    if resolved is not None and not names:
-        raise ValueError(f"evaluator.dataset contains no Harbor task.toml directories: {resolved}")
-    task_digests = task_content_digests(resolved) if resolved is not None else {}
+    identity = dataset_content_identity(dataset, base_dir=base_dir, client=registry_client)
+    names = list(identity.members)
     assignments = _assign(names, ratios, seed)
     empty = [name for name in SPLIT_NAMES if names and ratios[name] > 0 and not assignments[name]]
     if empty:
         raise ValueError(f"evaluator.dataset is too small for non-empty splits: {', '.join(empty)}")
-    return {
+    manifest: dict[str, Any] = {
         "version": 2,
         "dataset": str(resolved) if resolved is not None else dataset,
         "resolved": resolved is not None,
-        "dataset_digest": _task_digest_map_digest(task_digests) if task_digests else None,
-        "task_digests": task_digests,
+        "identity_status": "verified",
         "seed": seed,
         "ratios": ratios,
         "sampling": sampling,
         "gate_tasks_per_round": max(gate_limit, 0),
         "tasks": assignments,
     }
+    manifest["dataset_identity"] = {
+        "source": identity.source,
+        "digest": identity.digest,
+        "resolved_reference": identity.resolved_reference,
+    }
+    manifest["task_digests"] = identity.task_digest_map()
+    return manifest
 
 
 def load_manifest(path: Path) -> dict[str, Any]:
-    payload = json.loads(path.read_text())
+    return parse_manifest(path.read_text(), source=str(path))
+
+
+def parse_manifest(text: str, *, source: str = "split manifest") -> dict[str, Any]:
+    payload = json.loads(text)
     if not isinstance(payload, dict) or payload.get("version") not in {1, 2}:
-        raise RuntimeError(f"unsupported split manifest: {path}")
+        raise RuntimeError(f"unsupported split manifest: {source}")
     tasks = payload.get("tasks")
     if not isinstance(tasks, dict) or any(not isinstance(tasks.get(name), list) for name in SPLIT_NAMES):
-        raise RuntimeError(f"invalid split task lists: {path}")
-    if payload.get("version") == 2:
-        task_digests = payload.get("task_digests")
-        if not isinstance(task_digests, dict) or any(
-            not isinstance(name, str) or not isinstance(digest, str) for name, digest in task_digests.items()
-        ):
-            raise RuntimeError(f"invalid task content digests: {path}")
+        raise RuntimeError(f"invalid split task lists: {source}")
+    if payload["version"] == 1:
+        payload.setdefault("identity_status", "legacy_unverified")
+        return payload
+    identity = payload.get("dataset_identity")
+    task_digests = payload.get("task_digests")
+    members = [member for split in SPLIT_NAMES for member in tasks[split]]
+    identity_source = identity.get("source") if isinstance(identity, dict) else None
+    if any(
+        not isinstance(member, str)
+        or not member
+        or member in {".", ".."}
+        or "\\" in member
+        or (identity_source == "local" and "/" in member)
+        or (identity_source == "registry" and any(part in {"", ".", ".."} for part in member.split("/")))
+        for member in members
+    ) or len(set(members)) != len(members):
+        raise RuntimeError(f"verified split manifest must contain disjoint non-empty task names: {source}")
+    if (
+        payload.get("identity_status") != "verified"
+        or not isinstance(identity, dict)
+        or identity.get("source") not in {"local", "registry"}
+        or not _sha256(identity.get("digest"))
+        or not isinstance(identity.get("resolved_reference"), str)
+        or not isinstance(task_digests, dict)
+        or set(task_digests) != set(members)
+        or any(not _sha256(task_digests.get(member)) for member in members)
+    ):
+        raise RuntimeError(f"invalid content identity in split manifest: {source}")
     return payload
 
 
@@ -80,15 +115,8 @@ def selected_task_names(
     return names
 
 
-def split_selection_digest(split_name: str, names: list[str], task_digests: dict[str, str] | None = None) -> str:
-    selected = sorted(names)
-    identity: dict[str, Any] = {"split": split_name, "tasks": selected}
-    if task_digests:
-        missing = [name for name in selected if name not in task_digests]
-        if missing:
-            raise RuntimeError(f"split manifest has no content digest for tasks: {', '.join(missing)}")
-        identity["task_digests"] = {name: task_digests[name] for name in selected}
-    payload = json.dumps(identity, separators=(",", ":"), sort_keys=True).encode()
+def split_selection_digest(split_name: str, names: list[str]) -> str:
+    payload = json.dumps({"split": split_name, "tasks": sorted(names)}, separators=(",", ":"), sort_keys=True).encode()
     return hashlib.sha256(payload).hexdigest()
 
 
@@ -101,7 +129,7 @@ def configured_split_selection_digest(
 ) -> str:
     manifest = load_manifest(workspace / "evaluator" / "splits.json")
     names = selected_task_names(manifest, split_name, round_number=round_number)
-    return split_selection_digest(split_name, names, _manifest_task_digests(manifest))
+    return split_selection_digest(split_name, names)
 
 
 def select_dataset_tasks(
@@ -113,14 +141,17 @@ def select_dataset_tasks(
     limit: int | None = None,
 ) -> tuple[list[str], str]:
     manifest = load_manifest(manifest_path)
+    identity = manifest.get("dataset_identity")
+    source = identity.get("source") if isinstance(identity, dict) else None
+    if source == "registry":
+        names = selected_task_names(manifest, split_name, round_number=round_number, limit=limit)
+        if not names:
+            raise RuntimeError(f"evaluator split {split_name!r} contains no tasks")
+        return names, split_selection_digest(split_name, names)
     if not manifest.get("resolved"):
         raise RuntimeError(
             "evaluator dataset was not a local task directory during init; "
             "configure evaluator.dataset before init so split membership can be frozen"
-        )
-    if manifest.get("version") != 2:
-        raise RuntimeError(
-            "legacy split manifest does not bind task contents; start a new experiment with a v2 split manifest"
         )
     dataset_path = _resolve_dataset(dataset, manifest_path.parent.parent)
     if dataset_path is None:
@@ -131,17 +162,15 @@ def select_dataset_tasks(
         raise RuntimeError(
             "evaluator dataset task names changed after init; start a new experiment with a new split manifest"
         )
-    frozen_digests = _manifest_task_digests(manifest)
-    if manifest.get("version") == 2:
-        observed_digests = task_content_digests(dataset_path)
-        if observed_digests != frozen_digests:
-            raise RuntimeError(
-                "evaluator dataset task contents changed after init; start a new experiment with a new split manifest"
-            )
     names = selected_task_names(manifest, split_name, round_number=round_number, limit=limit)
     if not names:
         raise RuntimeError(f"evaluator split {split_name!r} contains no tasks")
-    return names, split_selection_digest(split_name, names, frozen_digests)
+    if manifest.get("identity_status") == "verified":
+        expected_digests = manifest["task_digests"]
+        changed = [name for name in names if local_task_content_digest(dataset_path, name) != expected_digests[name]]
+        if changed:
+            raise RuntimeError("evaluator dataset task content changed after init: " + ", ".join(changed))
+    return names, split_selection_digest(split_name, names)
 
 
 def write_runtime_selection(
@@ -151,106 +180,20 @@ def write_runtime_selection(
     run_dir: Path,
     *,
     round_number: int | None = None,
-) -> Path:
+) -> None:
     names, digest = select_dataset_tasks(manifest_path, dataset, split_name, round_number=round_number)
     run_dir.mkdir(parents=True, exist_ok=True)
-    snapshot = _snapshot_selected_tasks(manifest_path, dataset, split_name, names, digest, run_dir)
-    try:
-        (run_dir / "task-names.txt").write_text("".join(f"{harbor_task_pattern(name)}\n" for name in names))
-        (run_dir / "task_set_hash").write_text(f"{digest}\n")
-        (run_dir / "task-split.json").write_text(
-            json.dumps({"split": split_name, "tasks": names}, indent=2, sort_keys=True) + "\n"
-        )
-    except BaseException:
-        shutil.rmtree(snapshot, ignore_errors=True)
-        raise
-    return snapshot
-
-
-def _snapshot_selected_tasks(
-    manifest_path: Path,
-    dataset: str,
-    split_name: str,
-    names: list[str],
-    selection_digest: str,
-    run_dir: Path,
-) -> Path:
-    manifest = load_manifest(manifest_path)
-    dataset_path = _resolve_dataset(dataset, manifest_path.parent.parent)
-    if dataset_path is None:
-        raise RuntimeError(f"evaluator dataset is not a local directory: {dataset}")
-    sources = (
-        {dataset_path.name: dataset_path}
-        if (dataset_path / "task.toml").is_file()
-        else {path.name: path for path in dataset_path.iterdir() if path.is_dir() and (path / "task.toml").is_file()}
+    (run_dir / "task-names.txt").write_text("".join(f"{harbor_task_pattern(name)}\n" for name in names))
+    (run_dir / "task_set_hash").write_text(f"{digest}\n")
+    (run_dir / "task-split.json").write_text(
+        json.dumps({"split": split_name, "tasks": names}, indent=2, sort_keys=True) + "\n"
     )
-    frozen = _manifest_task_digests(manifest) or {}
-    expected = {name: frozen[name] for name in names}
-    snapshot = run_dir / "task-dataset"
-    pending = run_dir / ".task-dataset.pending"
-    if snapshot.exists() or pending.exists():
-        raise RuntimeError(f"evaluator task snapshot already exists: {snapshot}")
-    pending.mkdir()
-    try:
-        for name in names:
-            shutil.copytree(sources[name], pending / name, symlinks=True)
-        observed = task_content_digests(pending)
-        observed_selection = split_selection_digest(split_name, names, observed)
-        if observed != expected or observed_selection != selection_digest:
-            raise RuntimeError("evaluator task snapshot does not match the frozen split content identity")
-        pending.replace(snapshot)
-    except BaseException:
-        shutil.rmtree(pending, ignore_errors=True)
-        raise
-    return snapshot
 
 
 def discover_task_names(dataset: Path) -> list[str]:
     if (dataset / "task.toml").is_file():
         return [dataset.name]
     return sorted(path.name for path in dataset.iterdir() if path.is_dir() and (path / "task.toml").is_file())
-
-
-def task_content_digests(dataset: Path) -> dict[str, str]:
-    """Return deterministic content identities for every Harbor task in a local dataset."""
-    if (dataset / "task.toml").is_file():
-        task_paths = {dataset.name: dataset}
-    else:
-        task_paths = {path.name: path for path in dataset.iterdir() if path.is_dir() and (path / "task.toml").is_file()}
-    return {name: _task_tree_digest(task_paths[name]) for name in sorted(task_paths)}
-
-
-def _task_tree_digest(task_dir: Path) -> str:
-    digest = hashlib.sha256()
-    for path in sorted(task_dir.rglob("*"), key=lambda item: item.relative_to(task_dir).as_posix()):
-        relative = path.relative_to(task_dir).as_posix()
-        if path.is_symlink():
-            raise ValueError(f"evaluator task content may not contain symlinks: {path}")
-        mode = stat.S_IMODE(path.stat().st_mode)
-        if path.is_dir():
-            digest.update(f"directory\0{relative}\0{mode:o}\0".encode())
-            continue
-        if not path.is_file():
-            raise ValueError(f"evaluator task content has unsupported file type: {path}")
-        data = path.read_bytes()
-        digest.update(f"file\0{relative}\0{mode:o}\0".encode())
-        digest.update(str(len(data)).encode())
-        digest.update(b"\0")
-        digest.update(data)
-        digest.update(b"\0")
-    return f"sha256:{digest.hexdigest()}"
-
-
-def _task_digest_map_digest(task_digests: dict[str, str]) -> str:
-    payload = json.dumps(task_digests, separators=(",", ":"), sort_keys=True).encode()
-    return f"sha256:{hashlib.sha256(payload).hexdigest()}"
-
-
-def _manifest_task_digests(manifest: dict[str, Any]) -> dict[str, str] | None:
-    task_digests = manifest.get("task_digests")
-    if not isinstance(task_digests, dict) or not task_digests:
-        return None
-    return {str(name): str(digest) for name, digest in task_digests.items()}
 
 
 def _resolve_dataset(dataset: str, base_dir: Path) -> Path | None:
@@ -287,6 +230,10 @@ def _assign(names: list[str], ratios: dict[str, float], seed: int) -> dict[str, 
 
 def _digest(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()
+
+
+def _sha256(value: object) -> bool:
+    return isinstance(value, str) and len(value) == 64 and all(character in "0123456789abcdef" for character in value)
 
 
 def _number(value: Any, label: str) -> float:
