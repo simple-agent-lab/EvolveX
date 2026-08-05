@@ -131,11 +131,11 @@ main { width: min(1280px, 100%); margin: 0 auto; padding: 34px clamp(22px, 4vw, 
 .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 10px; color: var(--muted); font-size: 11px; }
 .legend strong { color: var(--ink); }
 .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-th { padding: 10px 12px; color: var(--subtle); background: #f8faf9; font-size: 10px; font-weight: 700; letter-spacing: .05em; text-align: left; text-transform: uppercase; white-space: nowrap; }
-td { padding: 12px; border-top: 1px solid var(--line); vertical-align: middle; }
-tbody tr:hover { background: #fbfcfb; }
-td.numeric, th.numeric { text-align: right; font-variant-numeric: tabular-nums; }
+.table-wrap table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.table-wrap th { padding: 10px 12px; color: var(--subtle); background: #f8faf9; font-size: 10px; font-weight: 700; letter-spacing: .05em; text-align: left; text-transform: uppercase; white-space: nowrap; }
+.table-wrap td { padding: 12px; border-top: 1px solid var(--line); vertical-align: middle; }
+.table-wrap tbody tr:hover { background: #fbfcfb; }
+.table-wrap td.numeric, .table-wrap th.numeric { text-align: right; font-variant-numeric: tabular-nums; }
 .row-link { color: #24664c; font-weight: 700; text-decoration: none; }
 .row-link:hover { text-decoration: underline; }
 .muted { color: var(--muted); }.subtle { color: var(--subtle); }
