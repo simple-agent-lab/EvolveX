@@ -16,6 +16,12 @@ Put dated proposals in `docs/designs/` and implementation plans in
 `docs/plans/`. Update the maintained document that describes a behavior in the
 same change as that behavior.
 
+Current proposals:
+
+- [`designs/2026-08-05-harbor-evaluation-contracts-design.md`](designs/2026-08-05-harbor-evaluation-contracts-design.md)
+  defines deterministic task limiting and runtime-user-owned candidate source
+  transport for Harbor evaluations.
+
 Regenerate the README architecture diagram after changing its content or style:
 
 ```bash
