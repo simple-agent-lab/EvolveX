@@ -15,6 +15,26 @@ RELATIVE_LINK = re.compile(r"\[[^\]]+\]\((?!https?://|mailto:|#)([^)#]+)")
 SVG_NS = {"svg": "http://www.w3.org/2000/svg"}
 
 
+def _h2_headings(markdown: str) -> list[str]:
+    headings = []
+    in_fenced_block = False
+    for line in markdown.splitlines():
+        if line.startswith("```"):
+            in_fenced_block = not in_fenced_block
+        elif not in_fenced_block and (match := re.fullmatch(r"## (.+)", line)):
+            headings.append(match.group(1))
+    return headings
+
+
+def _fenced_shell_blocks(markdown: str) -> list[tuple[str, str]]:
+    return [
+        (match.group("language"), match.group("body"))
+        for match in re.finditer(
+            r"^```(?P<language>\w+)\n(?P<body>.*?)^```$", markdown, re.MULTILINE | re.DOTALL
+        )
+    ]
+
+
 def test_readme_visual_assets_are_current() -> None:
     result = subprocess.run(
         [sys.executable, str(ROOT / "tools" / "generate_readme_assets.py"), "--check"],
@@ -62,33 +82,108 @@ def test_readme_visual_assets_have_accessible_svg_metadata() -> None:
 
 def test_readme_uses_approved_identity_and_information_architecture() -> None:
     readme = (ROOT / "README.md").read_text()
-    assert "Build agents that improve — and keep the evidence." in readme
-    assert "docs/evolve-mark.svg" in readme
-    assert "docs/evolve-lineage.svg" in readme
-    headings = [
-        "## What Evolve Does",
-        "## How Evolve Works",
-        "## What Can Evolve",
-        "## Recipes",
-        "## Quick Start",
-        "## Trustworthy by Construction",
-        "## Project Status",
-        "## Documentation",
+    hero = """<p align="center">
+  <img src="docs/evolve-mark.svg" width="112" alt="Evolve selected lineage mark: explored candidate branches converge on a verified generation.">
+</p>
+
+<h1 align="center">Evolve Framework</h1>
+
+<p align="center">
+  <strong>Build agents that improve — and keep the evidence.</strong>
+</p>
+
+<p align="center">
+  A file-based framework for evaluator-driven evolution, reproducible candidate
+  lineage, and controlled self-modification.
+</p>
+"""
+    navigation = """<p align="center">
+  <a href="#what-evolve-does">What Evolve Does</a> ·
+  <a href="#how-evolve-works">How It Works</a> ·
+  <a href="#what-can-evolve">What Can Evolve</a> ·
+  <a href="#recipes">Recipes</a> ·
+  <a href="#quick-start">Quick Start</a> ·
+  <a href="#documentation">Documentation</a>
+</p>"""
+    assert readme.startswith(hero)
+    assert navigation in readme
+
+    headings = _h2_headings(readme)
+    assert headings == [
+        "What Evolve Does",
+        "How Evolve Works",
+        "What Can Evolve",
+        "Recipes",
+        "Quick Start",
+        "Trustworthy by Construction",
+        "Project Status",
+        "Roadmap",
+        "Documentation",
+        "License",
     ]
-    positions = [readme.index(heading) for heading in headings]
-    assert positions == sorted(positions)
-    assert "## Result" not in readme
-    assert "reproducible benchmark results" not in readme
+
+    navigation_targets = re.findall(r'<a href="#([^"]+)">([^<]+)</a>', navigation)
+    assert navigation_targets == [
+        ("what-evolve-does", "What Evolve Does"),
+        ("how-evolve-works", "How It Works"),
+        ("what-can-evolve", "What Can Evolve"),
+        ("recipes", "Recipes"),
+        ("quick-start", "Quick Start"),
+        ("documentation", "Documentation"),
+    ]
+    assert [target for target, _ in navigation_targets] == [
+        heading.lower().replace(" ", "-")
+        for heading in (
+            "What Evolve Does",
+            "How Evolve Works",
+            "What Can Evolve",
+            "Recipes",
+            "Quick Start",
+            "Documentation",
+        )
+    ]
 
 
 def test_readme_keeps_supported_recipes_and_honest_quick_start() -> None:
     readme = (ROOT / "README.md").read_text()
     for recipe in ("`hill_climb`", "`aevolve`", "`ahe`", "`gepa`", "`hyperagents`"):
         assert recipe in readme
-    assert 'EVOLVE_RUNTIME_DIGEST="sha256:local-smoke-runtime"' in readme
-    assert "--max-generations 0" in readme
+
+    quick_start = readme.split("## Quick Start\n", maxsplit=1)[1].split(
+        "\n## Trustworthy by Construction", maxsplit=1
+    )[0]
+    assert _fenced_shell_blocks(quick_start) == [
+        (
+            "bash",
+            """git clone https://github.com/simple-agent-lab/simple-evolve-agent.git
+cd simple-evolve-agent
+uv sync --dev --frozen
+uv run evolve --help
+""",
+        ),
+        (
+            "bash",
+            """export EVOLVE_RUNTIME_DIGEST="sha256:local-smoke-runtime"
+export EVOLVE_HOME="/tmp/evolve-home"
+
+uv run evolve init /tmp/evolve-demo --recipe hill_climb
+EVAL_STUB=1 /tmp/evolve-demo/evolve run /tmp/evolve-demo --max-generations 0
+/tmp/evolve-demo/evolve status /tmp/evolve-demo
+/tmp/evolve-demo/evolve verify /tmp/evolve-demo
+""",
+        ),
+        (
+            "bash",
+            """export EVOLVE_RUNTIME_DIGEST="sha256:replace-with-your-evaluator-digest"
+
+uv run evolve init /tmp/evolve-harbor \\
+  --recipe aevolve \\
+  --dataset /absolute/path/to/harbor/tasks
+/tmp/evolve-harbor/evolve run /tmp/evolve-harbor --max-generations 5
+""",
+        ),
+    ]
     assert "does not run a mutation round or measure agent quality" in readme
-    assert "--dataset /absolute/path/to/harbor/tasks" in readme
 
 
 def test_license_metadata_and_notice_are_consistent() -> None:
