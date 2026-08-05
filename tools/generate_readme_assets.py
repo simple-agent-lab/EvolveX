@@ -12,8 +12,10 @@ ROOT = Path(__file__).resolve().parents[1]
 PALETTE = {
     "core": "#10372e",
     "lineage": "#19785a",
+    "lineage_on_core": "#338e6b",
     "verified": "#65ce9f",
     "explored": "#b5d3c7",
+    "explored_on_surface": "#608675",
     "surface": "#f2fbf7",
     "ink": "#18362b",
     "sub": "#607169",
@@ -31,17 +33,19 @@ def render_mark() -> str:
         '<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" '
         'viewBox="0 0 128 128" role="img" aria-labelledby="mark-title mark-description">',
         '  <title id="mark-title">Evolve selected lineage mark</title>',
-        '  <desc id="mark-description">A selected candidate path rises through explored branches to a verified generation.</desc>',
+        '  <desc id="mark-description">A selected candidate path rises past explored side branches to a verified generation.</desc>',
         f'  <rect x="4" y="4" width="120" height="120" rx="28" fill="{p["core"]}"/>',
         f'  <path d="M 48 82 L 68 103 M 66 61 L 45 38 M 86 42 L 105 62" '
-        f'fill="none" stroke="{p["explored"]}" stroke-width="4" stroke-linecap="round"/>',
+        f'fill="none" stroke="{p["explored"]}" stroke-width="4" stroke-linecap="round" '
+        'data-state="explored"/>',
         f'  <path d="M 25 101 C 43 93 44 72 62 65 S 86 40 105 23" '
-        f'fill="none" stroke="{p["lineage"]}" stroke-width="7" stroke-linecap="round"/>',
+        f'fill="none" stroke="{p["lineage_on_core"]}" stroke-width="7" stroke-linecap="round" '
+        'data-state="selected"/>',
     ]
     for cx, cy in ((25, 101), (48, 82), (66, 61), (86, 42)):
         svg.append(
             f'  <circle cx="{cx}" cy="{cy}" r="7" fill="{p["core"]}" '
-            f'stroke="{p["verified"]}" stroke-width="4"/>'
+            f'stroke="{p["verified"]}" stroke-width="4" data-state="selected"/>'
         )
     svg.extend(
         [
@@ -65,19 +69,21 @@ def render_lineage() -> str:
         '  <desc id="lineage-description">A baseline branches into evaluated candidates. The selected lineage rises through successive generations to a verified improvement while unselected candidates remain visible as evidence.</desc>',
         f'  <rect width="960" height="360" rx="24" fill="{p["surface"]}"/>',
         f'  <path d="M 208 244 L 346 312 M 342 185 L 218 72 M 603 130 L 754 258" '
-        f'fill="none" stroke="{p["explored"]}" stroke-width="5" stroke-linecap="round"/>',
+        f'fill="none" stroke="{p["explored_on_surface"]}" stroke-width="5" '
+        'stroke-linecap="round" data-state="explored"/>',
         f'  <path d="M 80 286 C 188 270 188 199 303 197 S 460 142 576 139 S 760 79 866 58" '
-        f'fill="none" stroke="{p["lineage"]}" stroke-width="9" stroke-linecap="round"/>',
+        f'fill="none" stroke="{p["lineage"]}" stroke-width="9" stroke-linecap="round" '
+        'data-state="selected"/>',
     ]
     for cx, cy in ((80, 286), (208, 244), (342, 185), (603, 130)):
         svg.append(
             f'  <circle cx="{cx}" cy="{cy}" r="13" fill="{p["white"]}" '
-            f'stroke="{p["lineage"]}" stroke-width="5"/>'
+            f'stroke="{p["lineage"]}" stroke-width="5" data-state="selected"/>'
         )
     for cx, cy in ((346, 312), (218, 72), (754, 258)):
         svg.append(
             f'  <circle cx="{cx}" cy="{cy}" r="11" fill="{p["surface"]}" '
-            f'stroke="{p["explored"]}" stroke-width="4"/>'
+            f'stroke="{p["explored_on_surface"]}" stroke-width="4" data-state="explored"/>'
         )
     svg.extend(
         [

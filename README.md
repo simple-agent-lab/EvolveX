@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/evolve-mark.svg" width="112" alt="Evolve selected lineage mark: explored candidate branches converge on a verified generation.">
+  <img src="docs/evolve-mark.svg" width="112" alt="Evolve selected lineage mark: a selected lineage rises past explored side branches to a verified generation.">
 </p>
 
 <h1 align="center">Evolve Framework</h1>
@@ -35,7 +35,9 @@
 </p>
 
 <p align="center">
-  <img src="docs/evolve-lineage.svg" alt="A baseline branches into evaluated candidates. The selected lineage rises through successive generations to a verified improvement, while unselected candidates remain visible as evidence.">
+  <a href="docs/evolve-lineage.svg">
+    <img src="docs/evolve-lineage.svg" alt="A baseline branches into evaluated candidates. The selected lineage rises through successive generations to a verified improvement, while unselected candidates remain visible as evidence.">
+  </a>
 </p>
 
 ## What Evolve Does
@@ -56,7 +58,9 @@ Every recipe composes the same loop:
 **select → evaluate → analyze → mutate → gate → record**
 
 <p align="center">
-  <img src="docs/architecture.svg" alt="Evolve architecture: five built-in strategies and custom recipes compose a loop of select, rollout and evaluation, analyze, mutate, gate, and record. The target and selected operators occupy a declared mutable surface. The evaluator, runtime, surface check, and stamped evidence remain protected from candidate changes.">
+  <a href="docs/architecture.svg">
+    <img src="docs/architecture.svg" alt="Evolve architecture: five built-in strategies and custom recipes compose a loop of select, rollout and evaluation, analyze, mutate, gate, and record. The target and selected operators occupy a declared mutable surface. The evaluator, runtime, surface check, and stamped evidence remain protected from candidate changes.">
+  </a>
 </p>
 
 A recipe decides how parents are selected, how traces are analyzed, what may be

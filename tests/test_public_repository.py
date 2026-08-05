@@ -35,6 +35,24 @@ def _fenced_shell_blocks(markdown: str) -> list[tuple[str, str]]:
     ]
 
 
+def _relative_luminance(color: str) -> float:
+    channels = [int(color[index : index + 2], 16) / 255 for index in (1, 3, 5)]
+    linear = [
+        channel / 12.92
+        if channel <= 0.04045
+        else ((channel + 0.055) / 1.055) ** 2.4
+        for channel in channels
+    ]
+    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+
+def _contrast_ratio(first: str, second: str) -> float:
+    lighter, darker = sorted(
+        (_relative_luminance(first), _relative_luminance(second)), reverse=True
+    )
+    return (lighter + 0.05) / (darker + 0.05)
+
+
 def test_readme_visual_assets_are_current() -> None:
     result = subprocess.run(
         [sys.executable, str(ROOT / "tools" / "generate_readme_assets.py"), "--check"],
@@ -80,10 +98,42 @@ def test_readme_visual_assets_have_accessible_svg_metadata() -> None:
         assert root.find("svg:desc", SVG_NS).attrib["id"] == labelled_by[1]
 
 
+def test_selected_and_explored_graphics_have_three_to_one_contrast() -> None:
+    expected_state_counts = {
+        "docs/evolve-mark.svg": {"selected": 5, "explored": 1},
+        "docs/evolve-lineage.svg": {"selected": 5, "explored": 4},
+    }
+    for relative, expected_counts in expected_state_counts.items():
+        root = ET.parse(ROOT / relative).getroot()
+        background = root.find("svg:rect", SVG_NS).attrib["fill"]
+        states = root.findall(".//*[@data-state]")
+        assert {
+            state: sum(element.attrib["data-state"] == state for element in states)
+            for state in ("selected", "explored")
+        } == expected_counts
+        for element in states:
+            state = element.attrib["data-state"]
+            color = element.attrib["stroke"]
+            ratio = _contrast_ratio(color, background)
+            assert ratio >= 3, f"{relative} {state} {color} on {background}: {ratio:.2f}:1"
+
+
+def test_readme_labeled_figures_link_to_full_size_local_svgs() -> None:
+    readme = (ROOT / "README.md").read_text()
+    for relative in ("docs/evolve-lineage.svg", "docs/architecture.svg"):
+        linked_image = re.search(
+            rf'<a href="{re.escape(relative)}">\s*'
+            rf'<img src="{re.escape(relative)}" alt="([^"]+)">\s*</a>',
+            readme,
+        )
+        assert linked_image is not None
+        assert len(linked_image.group(1).split()) >= 12
+
+
 def test_readme_uses_approved_identity_and_information_architecture() -> None:
     readme = (ROOT / "README.md").read_text()
     hero = """<p align="center">
-  <img src="docs/evolve-mark.svg" width="112" alt="Evolve selected lineage mark: explored candidate branches converge on a verified generation.">
+  <img src="docs/evolve-mark.svg" width="112" alt="Evolve selected lineage mark: a selected lineage rises past explored side branches to a verified generation.">
 </p>
 
 <h1 align="center">Evolve Framework</h1>
