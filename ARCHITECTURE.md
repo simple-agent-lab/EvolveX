@@ -50,7 +50,7 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `integrations/__init__.py` | 10 | external runtime integration package boundary |
 | `integrations/harbor/__init__.py` | 10 | Harbor integration package boundary |
 | `integrations/harbor/_agent_roles.py` | 50 | exact identities and role predicates for Evolve-owned MiniSWE adapters |
-| `integrations/harbor/miniswe_candidate.py` | 550 | exact-candidate MiniSWE Harbor evaluator agent |
+| `integrations/harbor/miniswe_candidate.py` | 575 | exact-candidate MiniSWE Harbor evaluator agent |
 | `integrations/harbor/miniswe_task_file.py` | 130 | large-task MiniSWE meta-agent transport |
 | `meta_agent_budget.py` | 150 | shared Harbor meta-agent retry and timeout budget calculations |
 
@@ -67,7 +67,7 @@ each workspace, immutable there because it sits outside the mutable surface
 | `frozen/interfaces.py` | 350 | operator ABCs (incl. trace analyzer, novelty, and reflect), the registry, result schemas, payload validation |
 | `frozen/sdk.py` | 300 | Python operator entrypoint and file-contract IO; no library algorithm policy |
 
-Total `src/evolve/` budget: **9980 lines**. The budget admits the explicit evaluation-package
+Total `src/evolve/` budget: **10005 lines**. The budget admits the explicit evaluation-package
 boundaries, the opt-in in-place Harbor runtime, and the redacted trace-analysis
 boundary between rollout and feedback assembly; if the mechanism wants to
 grow past that, something belongs in a workspace operator instead —

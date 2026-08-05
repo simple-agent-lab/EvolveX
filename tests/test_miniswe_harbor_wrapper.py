@@ -2,6 +2,7 @@ import asyncio
 import importlib.util
 import json
 import os
+import stat
 import subprocess
 import sys
 import time
@@ -427,6 +428,9 @@ def test_miniswe_wrapper_subclasses_harbor_miniswe_and_installs_candidate_source
     (target / "pyproject.toml").write_text("[project]\nname = 'mini-swe-agent'\nversion = '0.test'\n")
     (target / "uv.lock").write_text("version = 1\nrevision = 1\nrequires-python = '>=3.11'\n")
     (target / "src" / "minisweagent").mkdir(parents=True)
+    target.chmod(0o700)
+    (target / "pyproject.toml").chmod(0o600)
+    (target / "uv.lock").chmod(0o600)
     module = _load(ADAPTER)
 
     class Environment:
@@ -434,9 +438,16 @@ def test_miniswe_wrapper_subclasses_harbor_miniswe_and_installs_candidate_source
             self.uploads = []
             self.commands = []
             self.envs = []
+            self.uploaded_source_modes = {}
 
         async def upload_dir(self, source_dir, target_dir):
-            self.uploads.append((Path(source_dir), target_dir))
+            source = Path(source_dir)
+            self.uploads.append((source, target_dir))
+            self.uploaded_source_modes = {
+                path.relative_to(source).as_posix() or ".": path.stat().st_mode
+                for path in (source, *source.rglob("*"))
+                if not path.is_symlink()
+            }
 
         async def upload_file(self, source_path, target_path):
             self.uploads.append((Path(source_path), target_path))
@@ -456,10 +467,23 @@ def test_miniswe_wrapper_subclasses_harbor_miniswe_and_installs_candidate_source
     asyncio.run(agent.install(environment))
 
     assert issubclass(module.MiniSweSourceAgent, base)
-    assert environment.uploads == [(target.resolve(), "/installed-agent/miniswe-source"), (host_uv, "/tmp/evolve-uv")]
+    uploaded_source, uploaded_destination = environment.uploads[0]
+    assert uploaded_source != target.resolve()
+    assert uploaded_destination == "/installed-agent/miniswe-source"
+    assert environment.uploads[1] == (host_uv, "/tmp/evolve-uv")
+    assert environment.uploaded_source_modes
+    assert all(mode & stat.S_IROTH for mode in environment.uploaded_source_modes.values())
+    assert all(
+        mode & stat.S_IXOTH
+        for name, mode in environment.uploaded_source_modes.items()
+        if name in {".", "src", "src/minisweagent"}
+    )
+    assert stat.S_IMODE(target.stat().st_mode) == 0o700
+    assert stat.S_IMODE((target / "pyproject.toml").stat().st_mode) == 0o600
+    assert stat.S_IMODE((target / "uv.lock").stat().st_mode) == 0o600
     joined = "\n".join(environment.commands)
-    assert environment.commands[0] == "chmod -R a+rX -- /installed-agent/miniswe-source"
-    bootstrap = environment.commands[1]
+    assert "chmod -R a+rX" not in joined
+    bootstrap = environment.commands[0]
     assert "apt-get" not in joined
     assert "apk add" not in joined
     assert 'cp /tmp/evolve-uv "$HOME/.local/bin/uv"' in joined
