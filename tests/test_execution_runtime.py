@@ -181,6 +181,7 @@ def test_default_compose_command_does_not_create_bridge(tmp_path: Path) -> None:
         {"PATH": "/usr/bin"},
         host_platform="linux",
         host_arch="x86_64",
+        socket_probe=lambda _path: False,
     )
 
     environment = prepare_execution_environment(
