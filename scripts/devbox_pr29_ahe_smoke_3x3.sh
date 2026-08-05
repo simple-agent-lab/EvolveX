@@ -41,13 +41,20 @@ done
 [[ -d "$SOURCE_DATASET" ]] || fail "source dataset is missing: $SOURCE_DATASET"
 
 source "$TAU3_ENV_LOADER" "$ENV_ROOT"
+SHARED_UV_CACHE=${EVOLVE_UV_CACHE_DIR:-}
+[[ -d "$SHARED_UV_CACHE" ]] || fail "shared uv cache is missing: $SHARED_UV_CACHE"
+PRIVATE_UV_CACHE=$RUN_ROOT/uv-cache
 
 for command in git uv docker harbor; do
   command -v "$command" >/dev/null || fail "required command is unavailable: $command"
 done
 [[ -n ${OPENAI_API_KEY:-} ]] || fail "OPENAI_API_KEY is missing"
 
-mkdir -p "$RUN_ROOT" "$DATASET"
+mkdir -p "$RUN_ROOT" "$DATASET" "$PRIVATE_UV_CACHE"
+cp -a --reflink=auto --no-preserve=ownership \
+  "$SHARED_UV_CACHE/." "$PRIVATE_UV_CACHE/"
+find "$PRIVATE_UV_CACHE" -type d -exec chmod a+rwx {} +
+export EVOLVE_UV_CACHE_DIR=$PRIVATE_UV_CACHE
 exec > >(tee -a "$LOG") 2>&1
 printf 'Run root: %s\n' "$RUN_ROOT"
 
@@ -99,6 +106,7 @@ uv --directory "$REPO" run evolve init "$WORKSPACE" --recipe ahe --dataset "$DAT
 cat "$MODEL_ENV" "$RUNTIME_ENV" "$PROXY_ENV" >"$WORKSPACE/.env"
 {
   printf '\nEVOLVE_RUNTIME_DIGEST=%s\n' "$EVOLVE_RUNTIME_DIGEST"
+  printf 'EVOLVE_UV_CACHE_DIR=%s\n' "$EVOLVE_UV_CACHE_DIR"
   printf 'TAU3_RUNTIME_API_KEY=%s\n' "$TAU3_RUNTIME_API_KEY"
   printf 'TAU3_RUNTIME_BASE_URL=%s\n' "$TAU3_RUNTIME_BASE_URL"
   printf 'TAU3_RUNTIME_API_KIND=%s\n' "$TAU3_RUNTIME_API_KIND"
