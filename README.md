@@ -91,21 +91,6 @@ vendored framework mechanism stay outside that surface.
 
 See [the recipe guide](recipes/README.md) for each strategy’s workflow and configuration.
 
-## Repository layout
-
-| Path | Role |
-| --- | --- |
-| `src/evolve/` | Framework implementation and CLI. |
-| `library/` | Composable evolution operators. |
-| `recipes/` | Runnable evolution configurations and method guides. |
-| `skills/` | Skill packages used by agents and workspaces. |
-| `evals/skills/` | Behavior and routing evaluations for those skills. |
-| `tests/` | Deterministic implementation and contract tests. |
-| `scaffolds/evaluators/` | Evaluator templates for generated workspaces. |
-| `runs/` | Local generated artifacts; ignored and not source documentation. |
-
-The current evaluation assets are documented in [`evals/README.md`](evals/README.md).
-
 ## Quick Start
 
 Requirements: Python 3.12+, [`uv`](https://docs.astral.sh/uv/), and Git.
@@ -113,8 +98,8 @@ Requirements: Python 3.12+, [`uv`](https://docs.astral.sh/uv/), and Git.
 ```bash
 git clone https://github.com/simple-agent-lab/simple-evolve-agent.git
 cd simple-evolve-agent
-uv sync --dev --locked
-uv run --frozen evolve --help
+uv sync --dev --frozen
+uv run evolve --help
 ```
 
 `evolve init` accepts an optional workspace path. When omitted, it creates the
@@ -127,7 +112,7 @@ Run a deterministic baseline smoke test without a model or Docker:
 export EVOLVE_RUNTIME_DIGEST="sha256:local-smoke-runtime"
 export EVOLVE_HOME="/tmp/evolve-home"
 
-uv run evolve init /tmp/evolve-demo  # default recipe gepa: built-in seed, no clone
+uv run evolve init /tmp/evolve-demo --recipe hill_climb
 EVAL_STUB=1 /tmp/evolve-demo/evolve run /tmp/evolve-demo --max-generations 0
 /tmp/evolve-demo/evolve status /tmp/evolve-demo
 /tmp/evolve-demo/evolve verify /tmp/evolve-demo
@@ -136,36 +121,15 @@ EVAL_STUB=1 /tmp/evolve-demo/evolve run /tmp/evolve-demo --max-generations 0
 This checks workspace generation, baseline evaluation, and archive integrity; it
 does not run a mutation round or measure agent quality.
 
-An outer coding agent can also orchestrate a generation while reusing the
-framework's operators:
-
-```bash
-/tmp/evolve-demo/evolve operator list /tmp/evolve-demo
-/tmp/evolve-demo/evolve operator run /tmp/evolve-demo select --genid 1
-```
-
-The agent reads the retained operator artifacts, forks and edits the selected
-parent, then uses `commit`, `eval`, and `finalize`. This keeps the agent in
-control of the harness change while the mechanism still owns evaluation,
-configured admission checks, gating, recording, and lineage. Validation and
-novelty results are tied to the exact candidate tree, so editing afterward
-requires rerunning them. See the generated workspace's `program.md` and
-`skills/evolve-agent/SKILL.md` for the complete sequence and method guidance.
-
 For a real Harbor run, provide an immutable evaluator digest and a local task
 dataset:
 
 ```bash
 export EVOLVE_RUNTIME_DIGEST="sha256:replace-with-your-evaluator-digest"
 
-uv run evolve preflight /tmp/evolve-harbor \
-  --recipe aevolve \
-  --dataset /absolute/path/to/harbor/tasks
 uv run evolve init /tmp/evolve-harbor \
   --recipe aevolve \
   --dataset /absolute/path/to/harbor/tasks
-evolve doctor /tmp/evolve-harbor --profile experiment
-evolve smoke /tmp/evolve-harbor --profile experiment
 /tmp/evolve-harbor/evolve run /tmp/evolve-harbor --max-generations 5
 ```
 
