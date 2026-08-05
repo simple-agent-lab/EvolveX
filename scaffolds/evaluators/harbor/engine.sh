@@ -211,14 +211,26 @@ if [ -f evaluator/environment.kwargs ]; then
     [ -n "$environment_kwarg" ] && set -- "$@" --environment-kwarg "$environment_kwarg"
   done < evaluator/environment.kwargs
 fi
+if [ -f evaluator/agent.kwargs ]; then
+  while IFS= read -r agent_kwarg || [ -n "$agent_kwarg" ]; do
+    [ -n "$agent_kwarg" ] && set -- "$@" --agent-kwarg "$agent_kwarg"
+  done < evaluator/agent.kwargs
+fi
 set -- "$@" --ae "EVOLVE_CANDIDATE_SOURCE=$PWD/target"
 set -- "$@" --mounts "$runtime_mounts"
-for credential_name in OPENAI_API_KEY OPENAI_BASE_URL OPENAI_API_BASE; do
-  eval "credential_value=\${$credential_name-}"
-  if [ -n "$credential_value" ]; then
-    set -- "$@" --ae "$credential_name=$credential_value"
-  fi
-done
+if [ "${EVOLVE_HARBOR_CODEX_SUBSCRIPTION:-0}" = "1" ]; then
+  set -- "$@" --ae "CODEX_FORCE_AUTH_JSON=${CODEX_FORCE_AUTH_JSON:-1}"
+  for credential_name in OPENAI_API_KEY OPENAI_BASE_URL OPENAI_API_BASE; do
+    set -- "$@" --ae "$credential_name="
+  done
+else
+  for credential_name in OPENAI_API_KEY OPENAI_BASE_URL OPENAI_API_BASE; do
+    eval "credential_value=\${$credential_name-}"
+    if [ -n "$credential_value" ]; then
+      set -- "$@" --ae "$credential_name=$credential_value"
+    fi
+  done
+fi
 agent_proxy_http=
 agent_proxy_https=
 agent_proxy_no=
