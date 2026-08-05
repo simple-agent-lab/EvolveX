@@ -34,15 +34,12 @@ def _enable_live_output(enabled: bool) -> None:
 
 @contextmanager
 def _workspace_environment(workspace: Path) -> Iterator[None]:
-    workspace_env = workspace.resolve() / ".env"
-    caller_env = Path.cwd().resolve() / ".env"
     added: list[str] = []
     try:
-        for path in dict.fromkeys((workspace_env, caller_env)):
-            for name, value in dotenv_values(path).items():
-                if value is not None and name not in os.environ:
-                    os.environ[name] = value
-                    added.append(name)
+        for name, value in dotenv_values(workspace.resolve() / ".env").items():
+            if value is not None and name not in os.environ:
+                os.environ[name] = value
+                added.append(name)
         yield
     finally:
         for name in reversed(added):

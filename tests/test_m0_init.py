@@ -461,6 +461,8 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
     assert "runs/" in gitignore
     assert "archive.jsonl" in gitignore
     assert ".venv/" in gitignore
+    assert ".env" in gitignore.splitlines()
+    assert ".env.*" in gitignore.splitlines()
 
     splits = json.loads((workspace / "evaluator" / "splits.json").read_text())
     assert splits["version"] == 1

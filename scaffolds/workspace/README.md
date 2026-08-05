@@ -13,6 +13,7 @@ Every workspace receives these files or directories:
 .evolve-components.json       derived recipe, seed, engine, and integration manifest
 .evolve-protocol-version      workspace protocol marker
 .gitignore                    ignores generated state
+.env                          optional local credentials and endpoint settings
 .python-version               pinned Python version
 AGENTS.md                     workspace agent entry point
 PROTOCOL.md                   human-readable operator contract
@@ -40,6 +41,10 @@ Recipes may add selected operator assets and evaluator assets.
 The vendored framework includes framework-owned integrations under
 `.evolve/evolve/integrations/harbor/`. No standalone Harbor adapter package is
 generated at the workspace root.
+
+Commands load local settings only from the project-root `.env`; explicitly
+exported environment variables take precedence. Caller and parent `.env` files
+are not loaded, and `.env` is ignored by Git.
 
 ## Rules
 
