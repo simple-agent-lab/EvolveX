@@ -191,6 +191,8 @@ def test_builtin_codex_seed_contains_valid_plugin_layout() -> None:
     assert hooks["hooks"]["SessionStart"][0]["hooks"][0]["type"] == "command"
     assert (plugin / "hooks" / "session_start.py").is_file()
     assert "EVOLVE_PLUGIN_SESSION_CONTEXT_V1" in (plugin / "context.md").read_text()
+
+
 def test_builtin_codex_wrapper_uses_candidate_source_from_extra_env(tmp_path: Path, monkeypatch) -> None:
     original_target = tmp_path / "original" / "target"
     original_target.mkdir(parents=True)

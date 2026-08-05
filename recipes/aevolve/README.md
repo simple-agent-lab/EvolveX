@@ -45,7 +45,6 @@ Initialize with a local Harbor dataset so the train/gate/sealed split can be
 frozen:
 
 ```bash
-export EVOLVE_RUNTIME_DIGEST="sha256:replace-with-your-immutable-evaluator-image-digest"
 export HARBOR_TASKS="/absolute/path/to/harbor/tasks"
 evolve init /tmp/evolve-aevolve \
   --recipe aevolve \

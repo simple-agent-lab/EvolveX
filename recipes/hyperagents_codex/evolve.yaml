@@ -27,13 +27,15 @@ execution_runtime:
 evaluator:
   engine: harbor
   model: gpt-5.4
+  runtime:
+    proxy: {mode: optional, model_endpoint: bypass}
   dataset: terminal-bench-2-10-10-10
   agent: target.agent:HarborAgent
   task_scope: full
   evaluation_split: train
   sampling: static
   tasks_per_round: 30
-  k: 1
+  repetitions: 1
   n_concurrent: 5
   agent_setup_timeout_multiplier: 1
   agent_timeout_multiplier: 1

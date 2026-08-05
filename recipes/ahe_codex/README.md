@@ -27,7 +27,6 @@ python recipes/ahe_codex/prepare_dataset.py \
 Then initialize and run:
 
 ```bash
-export EVOLVE_RUNTIME_DIGEST="sha256:replace-with-your-evaluator-runtime-digest"
 export HARBOR_TASKS="/absolute/path/to/terminal-bench-2-ahe-30-v1"
 evolve init /absolute/path/to/ahe-codex-run \
   --recipe ahe_codex \

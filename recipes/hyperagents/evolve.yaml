@@ -18,7 +18,7 @@ operators:
   select: {variant: score_child_prop, seed: 0}
   rollout: {variant: evaluation_replay, field_limit: 2000, timeout_s: 600}
   trace_analyzer: {variant: trace_browser, max_chars: 30000, timeout_s: 600}
-  meta_agent: {variant: hyperagents, runner: harbor, expose_gate_data: false, agent: evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent, model: openai/gpt-5.4-2026-03-05, environment: docker, image: evolve-meta-agent-app:20260724-tools-mswe245, editable_roots: [target, operators], prompt_path: target/src/minisweagent/config/mini.yaml, skills_dir: target/skills, memory_dir: target/memory, tools_dir: target/tools, agent_kwargs: {reasoning_effort: high, cost_limit: 0, max_tokens: 64000}, max_retries: 1, timeout_s: 21600}
+  meta_agent: {variant: hyperagents, runner: harbor, expose_gate_data: false, agent: evolve.integrations.harbor.miniswe_task_file:InstalledMiniSweAgent, model: openai/gpt-5.4-2026-03-05, environment: docker, image: evolve-meta-agent-app:20260724-tools-mswe245, editable_roots: [target, operators], prompt_path: target/src/minisweagent/config/mini.yaml, skills_dir: target/skills, memory_dir: target/memory, tools_dir: target/tools, agent_kwargs: {reasoning_effort: high, cost_limit: 0, max_tokens: 64000}, max_retries: 1, timeout_s: 21600}
   validate: {variant: hyperagents, timeout_s: 300}
   gate: {variant: parent_eligible}
   record: {variant: hyperagents}
@@ -30,7 +30,7 @@ evaluator:
     candidate: {variant: uv, project: target, python: "3.12"}
     proxy: {mode: optional, model_endpoint: bypass}
   dataset: terminal-bench-2-10-10-10
-  agent: evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent
+  agent: evolve.integrations.harbor.miniswe_candidate:CandidateMiniSweAgent
   task_scope: full
   evaluation_split: train
   sampling: static

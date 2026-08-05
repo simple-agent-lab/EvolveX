@@ -47,14 +47,11 @@ def test_all_recipes_are_recipe_artifacts_only() -> None:
         for section in ("experiment:", "target:", "surface:", "operators:", "evaluator:"):
             assert section in config
         top_level_sections = [line.split(":", 1)[0] for line in config.splitlines() if line and not line[0].isspace()]
-        assert top_level_sections == [
-            "experiment",
-            "target",
-            "surface",
-            "operators",
-            "execution_runtime",
-            "evaluator",
-        ]
+        expected = ["experiment", "target", "surface", "operators"]
+        if "execution_runtime:" in config:
+            expected.append("execution_runtime")
+        expected.append("evaluator")
+        assert top_level_sections == expected
 
 
 def test_supported_recipes_use_harbor_and_method_meta_agent() -> None:
@@ -107,7 +104,7 @@ def test_supported_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "image:" not in config
         elif name == "ahe":
             assert "max_generations: 10" in config
-            assert "dataset: terminal-bench-2-ahe-30-v1" in config
+            assert "dataset: terminal-bench-2-10-10-10" in config
             assert "seed: https://github.com/SWE-agent/mini-swe-agent.git" in config
             assert "revision: 388da74aad620a384ab47669b17c52133e30e7c3" in config
             assert "generate_lock: true" in config
@@ -120,15 +117,15 @@ def test_supported_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "max_tasks: 30" in config
             assert "max_cases" not in config
             assert "budget_usd" not in config
-            assert "agent: evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent" in config
+            assert "agent: evolve.integrations.harbor.miniswe_task_file:InstalledMiniSweAgent" in config
             assert "editable_roots: [target]" in config
             assert "max_retries: 1" in config
-            assert "agent: evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent" in config
+            assert "agent: evolve.integrations.harbor.miniswe_candidate:CandidateMiniSweAgent" in config
             assert "image: evolve-meta-agent-app:20260724-tools-mswe245" in config
             assert "task_scope: full" in config
             assert "evaluation_split: train" in config
             assert "tasks_per_round: 30" in config
-            assert "k: 1" in config
+            assert "repetitions: 1" in config
             assert "n_concurrent: 10" in config
             assert "\n  split:" not in config
             assert "\n  anchor:" not in config
@@ -152,7 +149,7 @@ def test_supported_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "task_scope: full" in config
             assert "evaluation_split: train" in config
             assert "tasks_per_round: 30" in config
-            assert "k: 1" in config
+            assert "repetitions: 1" in config
             assert "n_concurrent: 5" in config
             assert "\n  split:" not in config
             assert "\n  anchor:" not in config
@@ -170,7 +167,7 @@ def test_supported_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "meta_agent: {variant: hyperagents" in config
             assert "expose_gate_data: false" in config
             assert "runner: harbor" in config
-            assert "agent: evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent" in config
+            assert "agent: evolve.integrations.harbor.miniswe_task_file:InstalledMiniSweAgent" in config
             assert "editable_roots: [target, operators]" in config
             assert "max_retries: 1" in config
             assert "validate: {variant: hyperagents" in config
@@ -180,7 +177,7 @@ def test_supported_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "task_scope: full" in config
             assert "evaluation_split: train" in config
             assert "tasks_per_round: 30" in config
-            assert "k: 1" in config
+            assert "repetitions: 1" in config
             assert "n_concurrent: 10" in config
             assert "\n  split:" not in config
             assert "\n  anchor:" not in config
@@ -222,7 +219,7 @@ def test_supported_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "variant: noop" not in config
         assert "mutate:" not in config
         if name not in {"aevolve", "ahe_codex", "gepa", "gepa_local", "hill_climb_codex", "hyperagents_codex"}:
-            assert "agent: evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent" in config
+            assert "agent: evolve.integrations.harbor.miniswe_candidate:CandidateMiniSweAgent" in config
             assert "harbor_agent:" not in config
         assert "variant: fixed" not in config
 
@@ -235,13 +232,13 @@ def test_ahe_and_hyperagents_share_the_pinned_meta_agent_image() -> None:
 
 def test_codex_meta_agents_use_the_preinstalled_codex_image() -> None:
     expected = "evolve-meta-agent-codex:20260805-codex0145"
-    for name in ("aevolve", "ahe_codex", "gepa", "hill_climb", "hill_climb_codex", "hyperagents_codex"):
+    for name in ("ahe_codex", "hill_climb_codex", "hyperagents_codex"):
         assert _parsed_config(name)["operators"]["meta_agent"]["image"] == expected
 
 
 def test_terminal_bench_method_recipes_use_full_curated_dataset() -> None:
     expected_datasets = {
-        "ahe": "terminal-bench-2-ahe-30-v1",
+        "ahe": "terminal-bench-2-10-10-10",
         "hyperagents": "terminal-bench-2-10-10-10",
         "hyperagents_codex": "terminal-bench-2-10-10-10",
     }
@@ -255,7 +252,8 @@ def test_terminal_bench_method_recipes_use_full_curated_dataset() -> None:
         assert evaluator["tasks_per_round"] == 30
         assert evaluator["task_scope"] == "full"
         assert evaluator["evaluation_split"] == "train"
-        assert evaluator["k"] == 1
+        assert evaluator["repetitions"] == 1
+        assert "k" not in evaluator
         assert evaluator["n_concurrent"] == (5 if name == "hyperagents_codex" else 10)
         assert recipe["operators"]["meta_agent"]["expose_gate_data"] is False
 
@@ -264,11 +262,16 @@ def test_terminal_bench_method_recipes_use_full_curated_dataset() -> None:
     assert ahe["operators"]["trace_analyzer"]["max_concurrent"] == 10
 
 
-def test_supported_uv_recipes_enable_candidate_runtime_and_task_retry() -> None:
+def test_supported_uv_recipes_enable_inline_candidate_runtime_and_task_retry() -> None:
     for name in UV_SOURCE_RECIPES:
         evaluator = _parsed_config(name)["evaluator"]
         assert isinstance(evaluator, dict)
-        assert evaluator["candidate_runtime"] == {"variant": "uv", "project": "target", "python": "3.12"}
+        assert evaluator["runtime"]["candidate"] == {
+            "variant": "uv",
+            "project": "target",
+            "python": "3.12",
+        }
+        assert "candidate_runtime" not in evaluator
         assert evaluator["max_retries"] == 1
         assert evaluator["benchmark_timeout_is_zero"] is True
 

@@ -28,7 +28,6 @@ the current driver creates each child from one parent.
 Initialize and run it with:
 
 ```bash
-export EVOLVE_RUNTIME_DIGEST="sha256:replace-with-your-immutable-evaluator-image-digest"
 export HARBOR_TASKS="/absolute/path/to/harbor/tasks"
 evolve init ./my-gepa-run \
   --recipe gepa \

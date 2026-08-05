@@ -247,12 +247,7 @@ if [ -f evaluator/agent.kwargs ]; then
 fi
 set -- "$@" --ae "EVOLVE_CANDIDATE_SOURCE=$PWD/target"
 set -- "$@" --mounts "$runtime_mounts"
-if [ "${EVOLVE_HARBOR_CODEX_SUBSCRIPTION:-0}" = "1" ]; then
-  set -- "$@" --ae "CODEX_FORCE_AUTH_JSON=${CODEX_FORCE_AUTH_JSON:-1}"
-  for credential_name in OPENAI_API_KEY OPENAI_BASE_URL OPENAI_API_BASE; do
-    set -- "$@" --ae "$credential_name="
-  done
-else
+if [ "${EVOLVE_HARBOR_CODEX_SUBSCRIPTION:-0}" != "1" ]; then
   for credential_name in OPENAI_API_KEY OPENAI_BASE_URL OPENAI_API_BASE; do
     eval "credential_value=\${$credential_name-}"
     if [ -n "$credential_value" ]; then
@@ -281,6 +276,30 @@ if [ -f evaluator/verifier.env ]; then
   while IFS= read -r verifier_entry || [ -n "$verifier_entry" ]; do
     [ -n "$verifier_entry" ] && set -- "$@" --ve "$verifier_entry"
   done < evaluator/verifier.env
+fi
+if [ -f "$EVOLVE_RUN_DIR/runtime-agent.env" ]; then
+  while IFS= read -r agent_entry || [ -n "$agent_entry" ]; do
+    if [ -n "$agent_entry" ]; then
+      set -- "$@" --ae "$agent_entry"
+      case "$agent_entry" in
+        http_proxy=*|HTTP_PROXY=*) agent_proxy_http=${agent_entry#*=} ;;
+        https_proxy=*|HTTPS_PROXY=*) agent_proxy_https=${agent_entry#*=} ;;
+        no_proxy=*|NO_PROXY=*) agent_proxy_no=${agent_entry#*=} ;;
+        OPENAI_BASE_URL=*|OPENAI_API_BASE=*) agent_model_base=${agent_entry#*=} ;;
+      esac
+    fi
+  done < "$EVOLVE_RUN_DIR/runtime-agent.env"
+fi
+if [ -f "$EVOLVE_RUN_DIR/runtime-verifier.env" ]; then
+  while IFS= read -r verifier_entry || [ -n "$verifier_entry" ]; do
+    [ -n "$verifier_entry" ] && set -- "$@" --ve "$verifier_entry"
+  done < "$EVOLVE_RUN_DIR/runtime-verifier.env"
+fi
+if [ "${EVOLVE_HARBOR_CODEX_SUBSCRIPTION:-0}" = "1" ]; then
+  set -- "$@" --ae "CODEX_FORCE_AUTH_JSON=${CODEX_FORCE_AUTH_JSON:-1}"
+  for credential_name in OPENAI_API_KEY OPENAI_BASE_URL OPENAI_API_BASE; do
+    set -- "$@" --ae "$credential_name="
+  done
 fi
 while IFS= read -r runtime_entry || [ -n "$runtime_entry" ]; do
   if [ -n "$runtime_entry" ]; then

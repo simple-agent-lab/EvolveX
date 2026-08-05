@@ -36,6 +36,7 @@ from .config import (
     seed_root,
 )
 from .host_runtime import uv_executable
+from .integrations.harbor._agent_roles import is_candidate_miniswe_agent
 from .runtime_config import resolve_runtime
 from .splits import build_manifest
 
@@ -53,7 +54,25 @@ _SEED_IGNORE_PATTERNS = (
 )
 _ENV_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _GIT_COMMIT = re.compile(r"[0-9a-fA-F]{40}")
-_MINISWE_CANDIDATE_AGENT = "evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent"
+_GENERATED_EVALUATOR_PATHS = frozenset(
+    {
+        "evaluator/agent.env",
+        "evaluator/cleanup_harbor.py",
+        "evaluator/dataset.pin",
+        "evaluator/engines/local.sh",
+        "evaluator/environment.kwargs",
+        "evaluator/eval.env",
+        "evaluator/eval.sh",
+        "evaluator/harbor_artifacts.py",
+        "evaluator/parse_score.py",
+        "evaluator/runtime.json",
+        "evaluator/runtime.pin",
+        "evaluator/smoke.sh",
+        "evaluator/splits.json",
+        "evaluator/stub_eval.py",
+        "evaluator/verifier.env",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -198,6 +217,17 @@ def _write_files(
     evaluator_agent = str(evaluator.get("agent") or "")
     if evaluator_engine == "harbor" and not evaluator_agent:
         raise ValueError("evaluator.agent is required for harbor recipes")
+    recipe_evaluator_assets = _recipe_evaluator_assets(
+        recipe,
+        recipe_directory=recipe_directory,
+    )
+    evaluator_collisions = sorted(
+        relative_path
+        for relative_path in recipe_evaluator_assets
+        if relative_path.casefold() in _GENERATED_EVALUATOR_PATHS
+    )
+    if evaluator_collisions:
+        raise ValueError("recipe evaluator asset collides with generated file: " + ", ".join(evaluator_collisions))
     resolved_runtime = (
         resolve_runtime(
             evaluator["runtime"],
@@ -305,10 +335,6 @@ def _write_files(
         files[f"operators/{binding.kind}.py"] = _with_provenance(binding.kind, binding.source, binding.text)
         if binding.companion_text is not None:
             files[f"operators/{binding.kind}.md"] = binding.companion_text
-    recipe_evaluator_assets = _recipe_evaluator_assets(
-        recipe,
-        recipe_directory=recipe_directory,
-    )
     generated_output_paths = {relative_path.casefold() for relative_path in files}
     evaluator_collisions = sorted(
         relative_path for relative_path in recipe_evaluator_assets if relative_path.casefold() in generated_output_paths
@@ -638,7 +664,7 @@ def _validate_target_config(target: dict[str, Any]) -> None:
 
 
 def _validate_candidate_target_contract(prepared_target: Path, evaluator: dict[str, Any]) -> None:
-    if evaluator.get("agent") != _MINISWE_CANDIDATE_AGENT:
+    if not is_candidate_miniswe_agent(evaluator.get("agent")):
         return
     missing = [relative for relative in ("pyproject.toml", "uv.lock") if not (prepared_target / relative).is_file()]
     if missing:

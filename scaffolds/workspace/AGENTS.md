@@ -48,7 +48,8 @@ Python runtime is an infrastructure/provisioning failure, not evidence about a
 candidate; preserve the stderr and runtime receipt and repair the runner before
 continuing the generation.
 
-Workspace-local `.env` values are loaded automatically for run, eval, and
-candidate smoke commands and supply live meta-agent/evaluator keys and
-endpoints. The caller repository's `.env` is used as a fallback for a separate
-workspace. Exported environment variables take precedence; never commit secrets.
+Project-root `.env` values are loaded automatically for run, eval, preflight,
+and candidate-smoke commands. Exported variables take precedence; caller and
+parent `.env` files are not loaded. Use API credentials by default, or an
+explicit `CODEX_AUTH_JSON_PATH` for Codex. Never commit secrets or invoke the
+internal `evaluator/eval.sh` directly.

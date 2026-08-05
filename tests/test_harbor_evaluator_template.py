@@ -259,6 +259,17 @@ def test_harbor_evaluator_forwards_workspace_openai_environment() -> None:
     assert 'set -- "$@" --ae "$credential_name=$credential_value"' in text
 
 
+def test_harbor_evaluator_consumes_certified_runtime_environment_files() -> None:
+    text = _eval_sh("harbor", "fixture")
+
+    assert 'done < "$EVOLVE_RUN_DIR/runtime-agent.env"' in text
+    assert 'done < "$EVOLVE_RUN_DIR/runtime-verifier.env"' in text
+    # Subscription isolation is the final authority even if a runtime input is hostile.
+    assert text.index('done < "$EVOLVE_RUN_DIR/runtime-agent.env"') < text.index(
+        'if [ "${EVOLVE_HARBOR_CODEX_SUBSCRIPTION:-0}" = "1" ]; then'
+    )
+
+
 def test_harbor_evaluator_forwards_protected_agent_kwargs() -> None:
     text = _eval_sh("harbor", "fixture")
 

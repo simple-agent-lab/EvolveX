@@ -12,7 +12,6 @@ artifact once the loop is familiar. The local environment executes with the
 current user and no isolation — use it only with tasks you trust.
 
 ```bash
-export EVOLVE_RUNTIME_DIGEST="sha256:local-run"
 evolve preflight ws --recipe gepa_local --dataset /path/to/tasks
 evolve init ws --recipe gepa_local --dataset /path/to/tasks
 cd ws && ./evolve run . --max-generations 0
