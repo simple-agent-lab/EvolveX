@@ -331,6 +331,7 @@ class CandidateMiniSweAgent(MiniSweAgent):
         if not ((source_dir / "src" / "minisweagent").is_dir() or (source_dir / "minisweagent").is_dir()):
             raise EvolveCandidateInvalidError("EVOLVE_CANDIDATE_INVALID: source_missing")
         await environment.upload_dir(source_dir, SOURCE_DIR)
+        await self.exec_as_root(environment, command=f"chmod -R a+rX -- {shlex.quote(SOURCE_DIR)}")
         host_uv = self._host_uv_binary()
         if host_uv is not None:
             await environment.upload_file(host_uv, HOST_UV_PATH)
