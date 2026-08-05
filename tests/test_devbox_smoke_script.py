@@ -23,6 +23,8 @@ def test_devbox_ahe_smoke_script_is_safe_and_self_verifying() -> None:
     assert "preflight" in text
     assert "--smoke" in text
     assert "--max-generations" in text
-    assert "expected_trials == $tasks" in text
-    assert "contract_certified == true" in text
+    assert 'record.get("expected_trials") == tasks' in text
+    assert 'record.get("contract_certified") is True' in text
+    assert "import json" in text
+    assert " jq" not in text
     assert "rm -rf" not in text

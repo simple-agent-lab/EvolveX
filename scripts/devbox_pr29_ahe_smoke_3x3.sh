@@ -43,7 +43,7 @@ source "$RUNTIME_ENV"
 source "$PROXY_ENV"
 set +a
 
-for command in git uv docker harbor jq; do
+for command in git uv docker harbor; do
   command -v "$command" >/dev/null || fail "required command is unavailable: $command"
 done
 [[ -n ${OPENAI_API_KEY:-} ]] || fail "OPENAI_API_KEY is missing"
@@ -92,24 +92,33 @@ done
 
 archive=$WORKSPACE/archive.jsonl
 [[ -f "$archive" ]] || fail "archive is missing"
-for generation in $(seq 0 "$GENERATIONS"); do
-  purpose=candidate
-  [[ $generation -eq 0 ]] && purpose=genesis
-  jq -e \
-    --arg genid "$generation" \
-    --arg purpose "$purpose" \
-    --argjson tasks "$TASKS" \
-    'select(
-      ._evolve_mechanism_eval == true and
-      .genid == $genid and
-      .purpose == $purpose and
-      .outcome == "benchmark_complete" and
-      .expected_trials == $tasks and
-      (.task_set_members | length) == $tasks and
-      .contract_certified == true
-    )' \
-    "$archive" >/dev/null || fail "generation $generation lacks certified three-task evidence"
-done
+uv --directory "$REPO" run python - "$archive" "$TASKS" "$GENERATIONS" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+archive = Path(sys.argv[1])
+tasks = int(sys.argv[2])
+generations = int(sys.argv[3])
+records = [json.loads(line) for line in archive.read_text().splitlines()]
+
+for generation in range(generations + 1):
+    purpose = "genesis" if generation == 0 else "candidate"
+    certified = any(
+        record.get("_evolve_mechanism_eval") is True
+        and record.get("genid") == str(generation)
+        and record.get("purpose") == purpose
+        and record.get("outcome") == "benchmark_complete"
+        and record.get("expected_trials") == tasks
+        and len(record.get("task_set_members", [])) == tasks
+        and record.get("contract_certified") is True
+        for record in records
+    )
+    if not certified:
+        raise SystemExit(
+            f"generation {generation} lacks certified three-task evidence"
+        )
+PY
 
 printf 'PASS: AHE completed %s tasks across gen/1 through gen/%s at %s\n' \
   "$TASKS" "$GENERATIONS" "$RUN_ROOT"
