@@ -7,6 +7,7 @@ from pathlib import Path
 from evolve.archive import RECEIPT_CERTIFIED_FIELD, archive_path, merged_rows, read_events
 from evolve.git import dirty_paths, git
 from evolve.population import tag_matches_candidate
+from evolve.run_summary import assert_run_success
 
 
 def assert_self_driving_smoke(workspace: Path, through: int) -> None:
@@ -62,6 +63,8 @@ def assert_self_driving_smoke(workspace: Path, through: int) -> None:
     stale_paths = sorted(worktree_root.iterdir()) if worktree_root.is_dir() else []
     if stale_paths:
         raise AssertionError(f"stale worktree paths: {', '.join(map(str, stale_paths))}")
+
+    assert_run_success(workspace, through=through)
 
 
 def _registered_worktrees(workspace: Path) -> list[Path]:

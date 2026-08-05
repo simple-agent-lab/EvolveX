@@ -33,6 +33,8 @@ evolve init /absolute/path/to/ahe-codex-run \
   --recipe ahe_codex \
   --dataset "$HARBOR_TASKS"
 cd /absolute/path/to/ahe-codex-run
+./evolve doctor . --profile experiment --probe-model
+./evolve smoke . --profile experiment --task cancel-async-tasks
 EVOLVE_HARBOR_N_CONCURRENT_OVERRIDE=5 ./evolve run . --max-generations 1
 ```
 

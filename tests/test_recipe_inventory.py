@@ -9,7 +9,9 @@ SUPPORTED = {
     "ahe_codex",
     "gepa",
     "hill_climb",
+    "hill_climb_codex",
     "hyperagents",
+    "hyperagents_codex",
 }
 
 

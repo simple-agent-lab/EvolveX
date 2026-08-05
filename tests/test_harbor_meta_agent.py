@@ -172,8 +172,15 @@ def test_harbor_meta_agent_child_creates_private_files(tmp_path: Path) -> None:
     assert stat.S_IMODE(log.stat().st_mode) == 0o600
 
 
-def test_codex_harbor_process_cannot_fall_back_to_host_openai_environment(tmp_path: Path) -> None:
+def test_codex_harbor_process_cannot_fall_back_to_host_openai_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     module = _harbor_runner_module()
+    monkeypatch.setattr(
+        module,
+        "resolve_execution_runtime",
+        lambda *_args, **_kwargs: SimpleNamespace(process_environment=lambda values: dict(values)),
+    )
     host = {
         "HOME": str(tmp_path),
         "PATH": "/usr/bin",
@@ -192,7 +199,18 @@ def test_codex_harbor_process_cannot_fall_back_to_host_openai_environment(tmp_pa
 def test_harbor_process_discovers_colima_socket(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     module = _harbor_runner_module()
     socket_path = tmp_path / ".colima" / "default" / "docker.sock"
-    monkeypatch.setattr(Path, "is_socket", lambda path: path == socket_path)
+    resolve = module.resolve_execution_runtime
+    monkeypatch.setattr(
+        module,
+        "resolve_execution_runtime",
+        lambda config, environment: resolve(
+            config,
+            environment,
+            host_platform="darwin",
+            home=tmp_path,
+            socket_probe=lambda path: path == socket_path,
+        ),
+    )
 
     assert module._harbor_process_env({}, {"HOME": str(tmp_path)}) == {
         "HOME": str(tmp_path),
@@ -204,6 +222,29 @@ def test_harbor_process_discovers_colima_socket(tmp_path: Path, monkeypatch: pyt
         ]
         == "unix:///custom/docker.sock"
     )
+
+
+def test_harbor_process_discovers_linux_system_socket(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _harbor_runner_module()
+    socket_path = Path("/var/run/docker.sock")
+    resolve = module.resolve_execution_runtime
+    monkeypatch.setattr(
+        module,
+        "resolve_execution_runtime",
+        lambda config, environment: resolve(
+            config,
+            environment,
+            host_platform="linux",
+            home=tmp_path,
+            uid=1234,
+            socket_probe=lambda path: path == socket_path,
+        ),
+    )
+
+    assert module._harbor_process_env({}, {"HOME": str(tmp_path)}) == {
+        "HOME": str(tmp_path),
+        "DOCKER_HOST": "unix:///var/run/docker.sock",
+    }
 
 
 def test_harbor_rejects_oversized_instruction_with_unsafe_agent(tmp_path: Path) -> None:

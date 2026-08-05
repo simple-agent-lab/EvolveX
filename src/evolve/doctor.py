@@ -191,7 +191,7 @@ def run_doctor(
         raise ValueError("experiment doctor requires an initialized evolve workspace")
 
     backend = "local" if profile == "local" else _backend(config)
-    runtime_values = config.get("execution_runtime") if profile == "experiment" else None
+    runtime_values = config.get("execution_runtime") if profile == "experiment" else {"minimum_free_gib": 1}
     runtime_config = execution_runtime_config(runtime_values, default_backend=backend)
     runtime = resolve_execution_runtime(runtime_config)
     runtime_report: ExecutionRuntimeProbeReport = probe_execution_runtime(runtime, workspace=root)

@@ -53,6 +53,8 @@ export HARBOR_TASKS="/absolute/path/to/terminal-bench-2-ahe-30-v1"
 cd /path/to/simple-evolve-agent
 evolve init /path/to/ahe-run --recipe ahe --dataset "$HARBOR_TASKS"
 cd /path/to/ahe-run
+./evolve doctor . --profile experiment
+./evolve smoke . --profile experiment --task cancel-async-tasks
 ./evolve run . --max-generations 1
 ```
 

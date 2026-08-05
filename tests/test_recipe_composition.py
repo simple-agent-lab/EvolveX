@@ -21,6 +21,8 @@ CASES = {
     "ahe_codex": ("codex", "target.agent:HarborAgent", "codex"),
     "gepa": ("codex", "target.agent:HarborAgent", "codex"),
     "hyperagents": ("external", CANDIDATE, FILE_TASK),
+    "hill_climb_codex": ("codex", "target.agent:HarborAgent", "codex"),
+    "hyperagents_codex": ("codex", "target.agent:HarborAgent", "codex"),
 }
 MINISWE_REVISION = "388da74aad620a384ab47669b17c52133e30e7c3"
 

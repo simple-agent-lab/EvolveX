@@ -11,6 +11,11 @@ from pathlib import Path
 from typing import Literal
 
 from ..config import load_config
+from ..execution_runtime import (
+    execution_runtime_config,
+    prepare_execution_environment,
+    resolve_execution_runtime,
+)
 from ..runtime import owned_attempt_id, run_owned
 from ..surface import surface_patterns
 from ..uv_runtime import prepare_candidate_runtime
@@ -64,8 +69,13 @@ def run_candidate_smoke(checkout: Path, *, workspace: Path) -> SmokeResult:
                 _redact(runtime.reason or "candidate runtime preparation failed", os.environ),
                 time.monotonic() - started,
             )
+        execution_runtime = resolve_execution_runtime(execution_runtime_config(config["execution_runtime"]))
         env = {
-            **os.environ,
+            **prepare_execution_environment(
+                execution_runtime,
+                os.environ,
+                runtime_root=workspace / "runs" / "runtime" / "execution",
+            ),
             "EVOLVE_RUN_DIR": str(attempt),
             "EVOLVE_ATTEMPT_ID": owned_attempt_id(workspace, attempt),
         }

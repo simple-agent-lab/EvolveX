@@ -10,7 +10,11 @@ from pathlib import Path
 from typing import Any
 
 from ..config import evaluator_boolean, evaluator_sampling, experiment_id, load_config
-from ..execution_runtime import execution_runtime_config, resolve_execution_runtime
+from ..execution_runtime import (
+    execution_runtime_config,
+    prepare_execution_environment,
+    resolve_execution_runtime,
+)
 from ..git import evaluator_tree, git, git_stdout
 from ..host_runtime import clean_python_env
 from ..runtime import OwnedResult, attempt_dir, next_attempt, owned_attempt_id, run_owned
@@ -131,7 +135,11 @@ def evaluate(
                             evaluation_split_name(evaluator, purpose),
                             runtime,
                             run_plan_path,
-                            execution_runtime.process_environment(clean_python_env()),
+                            prepare_execution_environment(
+                                execution_runtime,
+                                clean_python_env(),
+                                runtime_root=workspace / "runs" / "runtime" / "execution",
+                            ),
                         )
                         setup_outcome, setup_reason = _setup_evidence(run_dir)
                         try:

@@ -247,6 +247,19 @@ def _tool_arguments(value: object) -> dict[str, Any]:
     return parsed if isinstance(parsed, dict) else {}
 
 
+def _message_text(value: object) -> str:
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, dict):
+        for key in ("text", "content", "message"):
+            text = _message_text(value.get(key))
+            if text:
+                return text
+    if isinstance(value, list):
+        return "\n".join(filter(None, (_message_text(item) for item in value))).strip()
+    return ""
+
+
 def _ordered_behavior_events(case: Case) -> list[Case]:
     """Normalize Harbor's two ordered-event shapes without using labels."""
     normalized: list[Case] = []
@@ -257,7 +270,13 @@ def _ordered_behavior_events(case: Case) -> list[Case]:
         source = str(event.get("source") or "")
         if event_type == "message":
             if source == "agent":
-                normalized.append({"type": "turn"})
+                normalized.append(
+                    {
+                        "type": "turn",
+                        "message": _message_text(event.get("message")),
+                        "has_tool_calls": bool(event.get("tool_calls")),
+                    }
+                )
             continue
         if event_type == "tool_call":
             normalized.append(
@@ -279,7 +298,13 @@ def _ordered_behavior_events(case: Case) -> list[Case]:
 
         # Harbor trajectory.json steps keep calls and results together.
         if source == "agent":
-            normalized.append({"type": "turn"})
+            normalized.append(
+                {
+                    "type": "turn",
+                    "message": _message_text(event.get("message")),
+                    "has_tool_calls": bool(event.get("tool_calls")),
+                }
+            )
         for call in event.get("tool_calls") or []:
             if isinstance(call, dict):
                 normalized.append(
@@ -294,6 +319,25 @@ def _ordered_behavior_events(case: Case) -> list[Case]:
     return normalized
 
 
+def _final_agent_response(case: Case, events: list[Case]) -> str:
+    last_action = max(
+        (index for index, event in enumerate(events) if event["type"] in {"tool_call", "tool_result"}),
+        default=-1,
+    )
+    for index in range(len(events) - 1, last_action, -1):
+        event = events[index]
+        message = str(event.get("message") or "").strip()
+        if event["type"] == "turn" and not event.get("has_tool_calls") and message:
+            return message
+    messages = case.get("agent_messages")
+    if isinstance(messages, list):
+        for message in reversed(messages):
+            text = _message_text(message)
+            if text:
+                return text
+    return ""
+
+
 def _trajectory_signals(case: Case) -> dict[str, Any]:
     n_turns = 0
     n_tool_calls = 0
@@ -305,7 +349,8 @@ def _trajectory_signals(case: Case) -> dict[str, Any]:
     submit_value = ""
     error_messages: list[str] = []
 
-    for event in _ordered_behavior_events(case):
+    events = _ordered_behavior_events(case)
+    for event in events:
         if event["type"] == "turn":
             n_turns += 1
         elif event["type"] == "tool_call":
@@ -329,6 +374,8 @@ def _trajectory_signals(case: Case) -> dict[str, Any]:
                 n_timeouts += 1
 
     command_counts = Counter(commands_run)
+    final_response = _final_agent_response(case, events)
+    completion_signal = "explicit_submit" if submitted else "final_response" if final_response else "none"
     return {
         "n_turns": n_turns,
         "n_tool_calls": n_tool_calls,
@@ -337,6 +384,9 @@ def _trajectory_signals(case: Case) -> dict[str, Any]:
         "tools_used": tools_used,
         "submitted": submitted,
         "submit_value": submit_value,
+        "completed": completion_signal != "none",
+        "completion_signal": completion_signal,
+        "final_response": _clip(final_response, 500),
         "repeated_commands": [command for command, count in command_counts.items() if count >= 3],
         "error_snippets": error_messages[:5],
     }
@@ -346,7 +396,8 @@ def _compress_trajectory(case: Case) -> str:
     """Mirror A-Evolve's failure-focused trajectory-only compression."""
     events: list[Case] = []
     previous_command = ""
-    for event in _ordered_behavior_events(case):
+    ordered_events = _ordered_behavior_events(case)
+    for event in ordered_events:
         if event["type"] == "tool_call":
             name = str(event.get("name") or "")
             arguments = _tool_arguments(event.get("arguments"))
@@ -386,7 +437,9 @@ def _compress_trajectory(case: Case) -> str:
     commands = [event for event in events if event["type"] == "cmd"]
     errors = [event for event in events if event["type"] == "error"]
     submissions = [event for event in events if event["type"] == "submit"]
-    parts = [f"Commands: {len(commands)}, Errors: {len(errors)}, Submitted: {bool(submissions)}"]
+    final_response = _final_agent_response(case, ordered_events)
+    completion_signal = "explicit_submit" if submissions else "final_response" if final_response else "none"
+    parts = [f"Commands: {len(commands)}, Errors: {len(errors)}, Completion: {completion_signal}"]
     for event in commands[:3]:
         parts.append(f"[start] {event['name']}({event['command']})")
     if errors:
@@ -407,6 +460,8 @@ def _compress_trajectory(case: Case) -> str:
             parts.append(f"  {event['name']}({event['command']})")
     if submissions:
         parts.append(f"\n[submitted] {submissions[-1].get('value') or ''}")
+    elif final_response:
+        parts.append(f"\n[final response] {_clip(final_response, 500)}")
     if case.get("outcome") in {"infra_error", "incomplete"}:
         exception = case.get("exception")
         if not isinstance(exception, dict):

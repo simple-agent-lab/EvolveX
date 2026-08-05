@@ -161,8 +161,9 @@ def test_run_loads_workspace_dotenv_without_overriding_explicit_environment(
         captured["api_key"] = os.environ.get("OPENAI_API_KEY")
 
     monkeypatch.setattr(cli, "driver_run", fake_run)
+    monkeypatch.setattr(cli, "write_run_summary", lambda *_args, **_kwargs: ({"completed_through": None}, workspace))
 
-    cli.run(workspace, max_generations=0)
+    cli.run(workspace, max_generations=0, assert_success=False)
 
     assert captured == {
         "base_url": "https://dotenv.example/v1",
@@ -188,7 +189,8 @@ def test_run_uses_caller_dotenv_as_fallback_for_separate_workspace(
         captured["base_url"] = os.environ.get("OPENAI_BASE_URL")
 
     monkeypatch.setattr(cli, "driver_run", fake_run)
+    monkeypatch.setattr(cli, "write_run_summary", lambda *_args, **_kwargs: ({"completed_through": None}, workspace))
 
-    cli.run(workspace, max_generations=0)
+    cli.run(workspace, max_generations=0, assert_success=False)
 
     assert captured["base_url"] == "https://caller.example/v1"

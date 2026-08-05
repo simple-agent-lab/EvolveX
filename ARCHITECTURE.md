@@ -25,7 +25,7 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `candidate/__init__.py` | 10 | candidate-boundary package marker |
 | `candidate/smoke.py` | 150 | run evaluator smoke against an exact candidate snapshot and persist redacted diagnostics |
 | `candidate/snapshot.py` | 100 | exact candidate Git tree construction, temporary materialization, and reviewed-tree commit verification |
-| `cli.py` | 350 | argument parsing and verb dispatch only — no logic |
+| `cli.py` | 375 | argument parsing and verb dispatch only — no logic |
 | `config.py` | 200 | read/render `evolve.yaml`: recipes, experiment values, surface lists, operator blocks |
 | `driver.py` | 1800 | the generation sequencer: orchestrates baseline eval, verbs + operators (incl. novelty, self-modification admission gates, sealed anchors); validates operator outputs; computes verified_fixes; audit quarantine; doctor repair |
 | `doctor.py` | 250 | read-only local/experiment preflight profiles and persisted diagnostic receipts |
@@ -38,6 +38,7 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `execution_runtime/__init__.py` | 25 | execution-runtime package facade |
 | `execution_runtime/command.py` | 50 | shell-facing runtime endpoint resolver |
 | `execution_runtime/config.py` | 75 | validation for the portable execution_runtime config section |
+| `execution_runtime/environment.py` | 100 | host environment bridge for configured Docker Compose commands |
 | `execution_runtime/models.py` | 125 | host execution configuration, resolved context, and redacted receipt types |
 | `execution_runtime/probes.py` | 275 | daemon, Compose, disk, and bind-mount preflight probes |
 | `execution_runtime/resolve.py` | 175 | explicit/env/Linux/macOS Docker endpoint resolution |
@@ -47,10 +48,11 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `patching.py` | 150 | mutable-surface patch creation and parent-reference selection |
 | `population.py` | 100 | genid/lineage bookkeeping for fan-out generations |
 | `report.py` | 200 | status/report rendering, best-ever recomputation, claim checklist |
+| `run_summary.py` | 200 | recipe-aware terminal-state assessment and machine-readable run assertion receipts |
 | `runtime.py` | 250 | generated-workspace runtime entrypoint helpers |
 | `splits.py` | 350 | freeze deterministic train/gate/sealed Harbor task membership and task-tree content; materialize exact runtime selections |
 | `surface.py` | 150 | mutable-surface pattern matching and violation checks |
-| `trace_analysis.py` | 750 | deterministic shared transforms used by the independent trace-analyzer operator variants |
+| `trace_analysis.py` | 775 | deterministic shared transforms used by the independent trace-analyzer operator variants |
 | `uv_runtime.py` | 550 | locked uv runtime construction and command execution |
 | `workspace.py` | 1000 | `evolve init` scaffolding: file copies, operator binding, deterministic dataset and Harbor runtime config, generated operator palette, protocol stamping, safe seed + mechanism vendoring, inner-skill copy |
 | `git.py` | 150 | thin git subprocess helpers — nothing evolve-specific |
@@ -75,7 +77,7 @@ each workspace, immutable there because it sits outside the mutable surface
 | `frozen/interfaces.py` | 350 | operator ABCs (incl. trace analyzer, novelty, and reflect), the registry, result schemas, payload validation |
 | `frozen/sdk.py` | 300 | Python operator entrypoint and file-contract IO; no library algorithm policy |
 
-Total `src/evolve/` budget: **11530 lines**. The budget admits the explicit evaluation-package
+Total `src/evolve/` budget: **11880 lines**. The budget admits the explicit evaluation-package
 boundaries, the opt-in in-place Harbor runtime, and the redacted trace-analysis
 boundary between rollout and feedback assembly; if the mechanism wants to
 grow past that, something belongs in a workspace operator instead —

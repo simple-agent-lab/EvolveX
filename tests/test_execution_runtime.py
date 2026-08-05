@@ -8,6 +8,7 @@ import pytest
 from evolve.execution_runtime import (
     ExecutionRuntimeConfig,
     execution_runtime_config,
+    prepare_execution_environment,
     probe_execution_runtime,
     resolve_execution_runtime,
 )
@@ -144,6 +145,52 @@ def test_execution_runtime_config_validates_portable_section() -> None:
 
     assert config.docker_host == "ssh://builder.example"
     assert config.minimum_free_gib == 80
+
+
+def test_standalone_compose_command_is_bridged_for_harbor(tmp_path: Path) -> None:
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    docker = tools / "docker"
+    compose = tools / "docker-compose"
+    docker.write_text("#!/bin/sh\nprintf 'docker:%s\\n' \"$*\"\n")
+    compose.write_text("#!/bin/sh\nprintf 'compose:%s\\n' \"$*\"\n")
+    docker.chmod(0o755)
+    compose.chmod(0o755)
+    runtime = resolve_execution_runtime(
+        ExecutionRuntimeConfig(compose_command=("docker-compose",)),
+        {"PATH": str(tools)},
+        host_platform="linux",
+        host_arch="x86_64",
+    )
+
+    environment = prepare_execution_environment(
+        runtime,
+        {"PATH": str(tools)},
+        runtime_root=tmp_path / "runtime",
+    )
+    bridge = Path(environment["PATH"].split(":", 1)[0]) / "docker"
+
+    assert bridge.is_file()
+    assert "exec " + str(compose) in bridge.read_text()
+    assert "exec " + str(docker) in bridge.read_text()
+
+
+def test_default_compose_command_does_not_create_bridge(tmp_path: Path) -> None:
+    runtime = resolve_execution_runtime(
+        ExecutionRuntimeConfig(),
+        {"PATH": "/usr/bin"},
+        host_platform="linux",
+        host_arch="x86_64",
+    )
+
+    environment = prepare_execution_environment(
+        runtime,
+        {"PATH": "/usr/bin"},
+        runtime_root=tmp_path / "runtime",
+    )
+
+    assert environment == {"PATH": "/usr/bin"}
+    assert not (tmp_path / "runtime").exists()
 
 
 def test_docker_probe_checks_daemon_compose_disk_and_bind_mount(tmp_path: Path) -> None:

@@ -99,6 +99,8 @@ export EVOLVE_RUNTIME_DIGEST="sha256:replace-with-your-evaluator-digest"
 uv run evolve init /tmp/evolve-harbor \
   --recipe aevolve \
   --dataset /absolute/path/to/harbor/tasks
+evolve doctor /tmp/evolve-harbor --profile experiment
+evolve smoke /tmp/evolve-harbor --profile experiment
 /tmp/evolve-harbor/evolve run /tmp/evolve-harbor --max-generations 5
 ```
 
@@ -125,10 +127,13 @@ framework process.
 | Recipe | Search shape | Mutable surface |
 | --- | --- | --- |
 | `hill_climb` | single-parent improvement | target |
+| `hill_climb_codex` | single-parent Codex prompt/skill improvement | target |
 | `aevolve` | prompt and skill evolution | prompt and target skills |
 | `ahe` | harness engineering | target |
+| `ahe_codex` | Codex harness engineering | target |
 | `gepa` | Pareto selection with minibatch validation | prompt and task skill |
 | `hyperagents` | target and meta-agent co-evolution | target and selected operators |
+| `hyperagents_codex` | Codex and operator co-evolution | target and selected operators |
 
 See [the recipe guide](recipes/README.md) for the workflow and configuration of
 each recipe.
@@ -169,6 +174,7 @@ See [DESIGN.md](DESIGN.md) for the complete model and invariants.
 | [Meta-agents](META_AGENTS.md) | Trusted-host and isolated meta-agent runners. |
 | [Trace analysis](TRACE_ANALYZER.md) | Trace retention and analyzer variants. |
 | [Local environment](LOCAL_ENVIRONMENT.md) | Docker-free trusted local execution. |
+| [Operations](docs/operations.md) | Doctor profiles, runtime setup, full-loop smoke, and recovery. |
 | [Contributing](CONTRIBUTING.md) | Development setup and repository conventions. |
 | [Releasing](RELEASING.md) | Source, artifact, and publication checklist. |
 

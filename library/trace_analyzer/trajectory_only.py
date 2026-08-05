@@ -29,7 +29,9 @@ Case = dict[str, Any]
 
 JUDGE_SYSTEM_PROMPT = """You are evaluating whether an AI agent successfully completed a command-line task.
 You can ONLY see the agent's actions (commands run and their outputs). You do NOT have access to actual test
-results. Based on the trajectory, estimate whether the task was completed successfully."""
+results. Based on the trajectory, estimate whether the task was completed successfully. Agents such as Codex
+normally finish with a final response instead of calling a submit tool; `Completion: final_response` is a normal
+completion signal and must not be treated as a missing submission."""
 
 JUDGE_USER_TEMPLATE = """Task: {task_id}
 

@@ -33,6 +33,7 @@ from .experiment_smoke import run_experiment_smoke
 from .git import head_tag, working_tree_changed_paths
 from .population import best_row, fixed_evaluation_identity
 from .report import format_report, format_status
+from .run_summary import assert_run_success, write_run_summary
 from .surface import check_paths, surface_patterns
 from .workspace import InitOptions, init_workspace
 
@@ -127,6 +128,11 @@ def run(
     children_per_gen: int | None = typer.Option(None, "--children-per-gen"),
     resume: bool = typer.Option(False, "--resume", help="accepted no-op; resume is the default"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="stream evaluator and operator output"),
+    assert_success: bool = typer.Option(
+        True,
+        "--assert-success/--no-assert-success",
+        help="fail unless every requested generation reached a recipe-valid terminal state",
+    ),
 ) -> None:
     """Start or resume the built-in evolution loop."""
     gens = max_generations if max_generations is not None else experiment_int(workspace, "max_generations", 40)
@@ -134,7 +140,22 @@ def run(
     _enable_live_output(verbose)
     with _workspace_environment(workspace):
         driver_run(RunOptions(workspace=workspace, max_generations=gens, children_per_gen=children))
-    print(f"Ran evolve loop through generation {gens}")
+    summary, summary_path = write_run_summary(workspace, through=gens)
+    print(f"Evolution loop stopped at generation {summary['completed_through']}; summary: {summary_path}")
+    if assert_success and summary["status"] != "passed":
+        details = "; ".join(str(finding) for finding in summary["findings"][:5])
+        raise RuntimeError(f"run assertion failed: {details}")
+
+
+@app.command("assert-run")
+@_guard
+def assert_run_cmd(
+    workspace: Path = typer.Argument(Path(".")),
+    through: int = typer.Option(..., "--through", min=0),
+) -> None:
+    """Assert recipe-aware completion and write runs/run-summary.json."""
+    summary = assert_run_success(workspace, through=through)
+    print(f"run assertion passed through generation {summary['completed_through']}")
 
 
 @app.command()

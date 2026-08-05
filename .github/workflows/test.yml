@@ -95,6 +95,7 @@ jobs:
             --recipe-path tests/fixtures/recipes/hill_climb-smoke \
             --seed tests/fixtures/seeds/dummy
           EVAL_STUB=1 EVOLVE_HOME="$RUNNER_TEMP/ci-smoke-home" "$RUNNER_TEMP/ci-smoke/evolve" run "$RUNNER_TEMP/ci-smoke" --max-generations 3
+          EVOLVE_HOME="$RUNNER_TEMP/ci-smoke-home" "$RUNNER_TEMP/ci-smoke/evolve" assert-run "$RUNNER_TEMP/ci-smoke" --through 3
           EVOLVE_HOME="$RUNNER_TEMP/ci-smoke-home" "$RUNNER_TEMP/ci-smoke/evolve" verify "$RUNNER_TEMP/ci-smoke"
           uv run --frozen python tests/assert_self_driving_smoke.py "$RUNNER_TEMP/ci-smoke" 3
 
