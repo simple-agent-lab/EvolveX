@@ -43,11 +43,10 @@ source "$RUNTIME_ENV"
 source "$PROXY_ENV"
 set +a
 
-for command in git uv docker harbor; do
+for command in git uv docker harbor python3; do
   command -v "$command" >/dev/null || fail "required command is unavailable: $command"
 done
 [[ -n ${OPENAI_API_KEY:-} ]] || fail "OPENAI_API_KEY is missing"
-[[ -n ${EVOLVE_RUNTIME_DIGEST:-} ]] || fail "EVOLVE_RUNTIME_DIGEST is missing"
 
 mkdir -p "$RUN_ROOT" "$DATASET"
 exec > >(tee -a "$LOG") 2>&1
@@ -71,9 +70,35 @@ done
 [[ $(find "$DATASET" -mindepth 2 -maxdepth 2 -name task.toml | wc -l) -eq $TASKS ]] ||
   fail "copied dataset does not contain exactly $TASKS tasks"
 
+runtime_digest=$(python3 - "$DATASET" <<'PY'
+from pathlib import Path
+import re
+import sys
+import tomllib
+
+dataset = Path(sys.argv[1])
+task_files = sorted(dataset.glob("*/task.toml"))
+images = set()
+for path in task_files:
+    with path.open("rb") as stream:
+        task = tomllib.load(stream)
+    images.add(task["environment"]["docker_image"])
+
+if len(images) != 1:
+    raise SystemExit("selected tasks do not share one evaluator image")
+image = images.pop()
+if re.fullmatch(r"sha256:[0-9a-f]{64}", image) is None:
+    raise SystemExit("selected task image is not an immutable SHA-256 reference")
+print(image)
+PY
+)
+docker image inspect "$runtime_digest" >/dev/null || fail "runtime image is unavailable: $runtime_digest"
+export EVOLVE_RUNTIME_DIGEST=$runtime_digest
+
 uv --directory "$REPO" sync --dev --frozen
 uv --directory "$REPO" run evolve init "$WORKSPACE" --recipe ahe --dataset "$DATASET"
 cat "$MODEL_ENV" "$RUNTIME_ENV" "$PROXY_ENV" >"$WORKSPACE/.env"
+printf '\nEVOLVE_RUNTIME_DIGEST=%s\n' "$EVOLVE_RUNTIME_DIGEST" >>"$WORKSPACE/.env"
 chmod 600 "$WORKSPACE/.env"
 
 "$WORKSPACE/evolve" preflight "$WORKSPACE"
