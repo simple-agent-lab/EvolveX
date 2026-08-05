@@ -1,3 +1,5 @@
+"""Resolve a secret-free evaluation identity from trusted ``gen/0`` Git inputs."""
+
 from __future__ import annotations
 
 import hashlib
@@ -216,8 +218,7 @@ def resolve_evaluation_contract(context: ContractResolutionContext) -> Evaluatio
         model_identity={
             "agent": _optional_string(evaluator.get("agent")),
             "model": _optional_string(evaluator.get("model")),
-            "route": resolved_profile.profile.model_route,
-            "route_digest": resolved_profile.model_route_digest,
+            "endpoint_digest": resolved_profile.endpoint_digest,
         },
         retry_policy=retry_policy,
         framework_version=__version__,

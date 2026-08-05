@@ -60,7 +60,7 @@ def failed_preflight(
         profile_name="harbor-v1",
         profile_digest="a" * 64,
         runtime_digest="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        model_route_digest="b" * 64,
+        endpoint_digest="b" * 64,
         checks=(),
         category=category,
         message="required credential is missing",

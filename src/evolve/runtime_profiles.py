@@ -48,31 +48,6 @@ class RuntimeProfileV1:
     preflight_capabilities: tuple[str, ...]
     smoke_capabilities: tuple[str, ...]
 
-    # Transitional accessors keep the environment refactor independently
-    # reviewable. They are not part of the persisted profile schema.
-    @property
-    def model_route(self) -> str:
-        return "openai-compatible"
-
-    @property
-    def required_credentials_by_role(self) -> tuple[tuple[str, tuple[str, ...]], ...]:
-        # Authentication is selected at runtime: API key by default, or an
-        # explicit Codex auth.json path. No single credential name is
-        # universally required by the profile itself.
-        return ()
-
-    @property
-    def forbidden_credentials(self) -> tuple[str, ...]:
-        return ("CODEX_AUTH_JSON_PATH", "CODEX_FORCE_AUTH_JSON")
-
-    @property
-    def proxy_policy(self) -> str:
-        return "standard-passthrough"
-
-    @property
-    def model_bypass_policy(self) -> str:
-        return "none"
-
 
 @dataclass(frozen=True)
 class ResolvedRuntimeProfileV1:
@@ -80,10 +55,6 @@ class ResolvedRuntimeProfileV1:
     runtime_digest: str
     endpoint_digest: str
     profile_digest: str
-
-    @property
-    def model_route_digest(self) -> str:
-        return self.endpoint_digest
 
     def to_dict(self) -> dict[str, object]:
         return resolved_runtime_profile_payload(self)
@@ -196,10 +167,6 @@ def model_endpoint_digest(url: str | None) -> str:
 
 def normalize_model_route(url: str) -> str:
     return normalize_model_endpoint(url)
-
-
-def model_route_digest(url: str) -> str:
-    return model_endpoint_digest(url)
 
 
 def is_protected_runtime_environment_name(name: str) -> bool:

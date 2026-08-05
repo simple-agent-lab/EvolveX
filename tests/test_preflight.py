@@ -7,7 +7,6 @@ from pathlib import Path
 import pytest
 from conftest import allow_local_runtime, git, init_recipe_with_local_inputs
 
-from evolve import preflight as preflight_module
 from evolve.candidate.smoke import SmokeResult
 from evolve.preflight import (
     PreflightCheckStatus,
@@ -17,6 +16,8 @@ from evolve.preflight import (
     PreflightStatus,
     run_preflight,
 )
+from evolve.preflight import checks as preflight_checks
+from evolve.preflight import runner as preflight_runner
 
 
 def runtime_environment() -> dict[str, str]:
@@ -91,8 +92,8 @@ def test_default_receipts_use_monotonic_attempt_directories(
 def test_default_receipt_paths_are_reserved_before_checks(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
 
-    first = preflight_module._next_receipt_path(workspace)
-    second = preflight_module._next_receipt_path(workspace)
+    first = preflight_runner.next_receipt_path(workspace)
+    second = preflight_runner.next_receipt_path(workspace)
 
     assert first.parent.name == "attempt-1"
     assert second.parent.name == "attempt-2"
@@ -110,7 +111,7 @@ def test_smoke_runs_ordinary_checks_then_one_model_agent_request(
         calls.append((kwargs["mode"].value, dict(kwargs["environment"])))
         return smoke
 
-    monkeypatch.setattr(preflight_module, "run_candidate_smoke", fake_smoke, raising=False)
+    monkeypatch.setattr(preflight_runner, "run_candidate_smoke", fake_smoke)
 
     result = run_preflight(
         strict_workspace,
@@ -149,7 +150,7 @@ def test_smoke_preserves_structured_network_failure_category(
         smoke.stdout_path,
         smoke.stderr_path,
     )
-    monkeypatch.setattr(preflight_module, "run_candidate_smoke", lambda *args, **kwargs: failed)
+    monkeypatch.setattr(preflight_runner, "run_candidate_smoke", lambda *args, **kwargs: failed)
 
     result = run_preflight(
         strict_workspace,
@@ -173,7 +174,7 @@ def test_smoke_launch_error_is_a_typed_redacted_failure_receipt(
         del args, kwargs
         raise OSError(f"model launcher failed with {secret}")
 
-    monkeypatch.setattr(preflight_module, "run_candidate_smoke", fail_smoke)
+    monkeypatch.setattr(preflight_runner, "run_candidate_smoke", fail_smoke)
 
     result = run_preflight(
         strict_workspace,
@@ -217,6 +218,18 @@ def test_invalid_profile_fails_before_contract(
     assert [check.name for check in result.checks] == ["configuration", "runtime_profile"]
 
 
+def test_missing_frozen_profile_has_a_typed_category(
+    strict_workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (strict_workspace / "evaluator/runtime-profile.json").unlink()
+    retag_gen0(strict_workspace, "remove runtime profile")
+    allow_local_runtime(monkeypatch)
+
+    result = run_preflight(strict_workspace, environment=runtime_environment())
+
+    assert result.failure_category is PreflightFailureCategory.PROFILE_NOT_FOUND
+
+
 def test_runtime_pin_mismatch_is_runtime_unavailable(
     strict_workspace: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -233,8 +246,8 @@ def test_runtime_pin_mismatch_is_runtime_unavailable(
 def test_missing_dependency_tool_is_classified(
     strict_workspace: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(preflight_module, "_tool_available", lambda name, env: name != "docker")
-    monkeypatch.setattr(preflight_module, "_image_available", lambda digest, env: True)
+    monkeypatch.setattr(preflight_checks, "tool_available", lambda name, env: name != "docker")
+    monkeypatch.setattr(preflight_checks, "image_available", lambda digest, env: True)
 
     result = run_preflight(strict_workspace, environment=runtime_environment())
 
@@ -245,13 +258,13 @@ def test_missing_dependency_tool_is_classified(
 def test_unavailable_image_does_not_pull(
     strict_workspace: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(preflight_module, "_tool_available", lambda name, env: True)
-    monkeypatch.setattr(preflight_module, "_image_available", lambda digest, env: False)
+    monkeypatch.setattr(preflight_checks, "tool_available", lambda name, env: True)
+    monkeypatch.setattr(preflight_checks, "image_available", lambda digest, env: False)
 
     result = run_preflight(strict_workspace, environment=runtime_environment())
 
-    assert result.failure_category is PreflightFailureCategory.CONTAINER_IMAGE_UNAVAILABLE
-    assert result.checks[-1].name == "container_image"
+    assert result.failure_category is PreflightFailureCategory.RUNTIME_IMAGE_UNAVAILABLE
+    assert result.checks[-1].name == "runtime_image"
 
 
 def test_invalid_uv_lock_is_classified(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -273,7 +286,7 @@ def test_preflight_validates_the_requested_candidate_checkout_and_scope(
     candidate_checkout = tmp_path / "detached-candidate"
     (candidate_checkout / "target").mkdir(parents=True)
     observed: dict[str, object] = {}
-    resolve_contract = preflight_module.resolve_evaluation_contract
+    resolve_contract = preflight_runner.resolve_evaluation_contract
 
     def capture_contract(context):
         observed["purpose"] = context.purpose
@@ -285,8 +298,8 @@ def test_preflight_validates_the_requested_candidate_checkout_and_scope(
         observed["project"] = project
         return True
 
-    monkeypatch.setattr(preflight_module, "resolve_evaluation_contract", capture_contract)
-    monkeypatch.setattr(preflight_module, "_lock_valid", capture_lock)
+    monkeypatch.setattr(preflight_runner, "resolve_evaluation_contract", capture_contract)
+    monkeypatch.setattr(preflight_checks, "lock_valid", capture_lock)
     allow_local_runtime(monkeypatch)
 
     result = run_preflight(
@@ -316,16 +329,16 @@ def test_uv_lock_validation_is_explicitly_offline(
     commands: list[list[str]] = []
     timeouts: list[object] = []
 
-    monkeypatch.setattr(preflight_module, "uv_executable", lambda environment: "uv")
+    monkeypatch.setattr(preflight_checks, "uv_executable", lambda environment: "uv")
 
     def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         commands.append(command)
         timeouts.append(kwargs.get("timeout"))
         return subprocess.CompletedProcess(command, 0)
 
-    monkeypatch.setattr(preflight_module.subprocess, "run", run)
+    monkeypatch.setattr(preflight_checks.subprocess, "run", run)
 
-    assert preflight_module._lock_valid(project, runtime_environment())
+    assert preflight_checks.lock_valid(project, runtime_environment())
     assert commands == [
         [
             "uv",
@@ -343,16 +356,35 @@ def test_uv_lock_validation_is_explicitly_offline(
 
 
 def test_local_capability_timeout_is_a_failed_check(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(preflight_module.shutil, "which", lambda name, path: "/usr/bin/docker")
+    monkeypatch.setattr(preflight_checks.shutil, "which", lambda name, path: "/usr/bin/docker")
     monkeypatch.setattr(
-        preflight_module.subprocess,
+        preflight_checks.subprocess,
         "run",
         lambda *args, **kwargs: (_ for _ in ()).throw(
             subprocess.TimeoutExpired(cmd=args[0], timeout=30)
         ),
     )
 
-    assert not preflight_module._image_available("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", runtime_environment())
+    assert not preflight_checks.image_available("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", runtime_environment())
+
+
+def test_local_probe_uses_exact_supplied_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from evolve.preflight import checks as preflight_checks
+
+    captured: dict[str, str] = {}
+
+    def fake_run(command, **kwargs):
+        captured.update(kwargs["env"])
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(preflight_checks.subprocess, "run", fake_run)
+
+    assert preflight_checks.local_command_succeeds(
+        ["tool"], {"PATH": "/controlled/bin"}
+    )
+    assert captured == {"PATH": "/controlled/bin"}
 
 
 def test_missing_api_key_is_classified(
@@ -366,6 +398,41 @@ def test_missing_api_key_is_classified(
 
     assert result.failure_category is PreflightFailureCategory.CREDENTIAL_MISSING
     assert "OPENAI_API_KEY" in (result.failure_message or "")
+
+
+def test_missing_explicit_auth_json_is_classified(
+    strict_workspace: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    environment = runtime_environment()
+    environment.pop("OPENAI_API_KEY")
+    environment["CODEX_AUTH_JSON_PATH"] = str(tmp_path / "missing-auth.json")
+    allow_local_runtime(monkeypatch)
+
+    result = run_preflight(strict_workspace, environment=environment)
+
+    assert result.failure_category is PreflightFailureCategory.AUTH_JSON_MISSING
+    assert str(tmp_path) not in json.dumps(result.to_dict())
+
+
+def test_auth_json_is_rejected_for_non_codex_agent(
+    strict_workspace: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    config_path = strict_workspace / "evolve.yaml"
+    config = config_path.read_text().replace(
+        "agent: target.agent:HarborAgent", "agent: custom.agent:Agent"
+    )
+    config_path.write_text(config)
+    retag_gen0(strict_workspace, "select non-codex agent")
+    auth = tmp_path / "auth.json"
+    auth.write_text("{}\n")
+    environment = runtime_environment()
+    environment.pop("OPENAI_API_KEY")
+    environment["CODEX_AUTH_JSON_PATH"] = str(auth)
+    allow_local_runtime(monkeypatch)
+
+    result = run_preflight(strict_workspace, environment=environment)
+
+    assert result.failure_category is PreflightFailureCategory.AUTH_JSON_UNSUPPORTED
 
 
 def test_openai_base_url_is_optional_for_official_openai(
@@ -431,7 +498,7 @@ def test_future_smoke_failure_categories_use_the_predefined_receipt(
         profile_name="harbor-v1",
         profile_digest="a" * 64,
         runtime_digest="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        model_route_digest="b" * 64,
+        endpoint_digest="b" * 64,
         checks=(),
         category=category,
         message="bounded failure",

@@ -97,8 +97,7 @@ def test_contract_resolver_derives_every_field_from_trusted_workspace_inputs(
     assert contract.model_identity == {
         "agent": "target.agent:HarborAgent",
         "model": "openai/test-model",
-        "route": "openai-compatible",
-        "route_digest": profile["endpoint_digest"],
+        "endpoint_digest": profile["endpoint_digest"],
     }
     assert contract.retry_policy == {"max_retries": 1}
     assert contract.framework_version == "0.1.0"
@@ -116,8 +115,18 @@ def test_contract_hashes_complete_resolved_runtime_profile(strict_workspace: Pat
     assert contract.runtime_profile == profile["name"]
     assert contract.runtime_profile_digest == profile["profile_digest"]
     assert contract.runtime_digest == profile["runtime_digest"]
-    assert contract.model_identity["route"] == "openai-compatible"
-    assert contract.model_identity["route_digest"] == profile["endpoint_digest"]
+    assert contract.model_identity["endpoint_digest"] == profile["endpoint_digest"]
+
+
+def test_contract_binds_endpoint_digest_without_persisting_url(
+    strict_workspace: Path,
+) -> None:
+    contract = contract_for_gen0(strict_workspace)
+
+    assert contract.model_identity["endpoint_digest"]
+    serialized = json.dumps(contract.to_dict())
+    assert "model.example" not in serialized
+    assert "OPENAI_BASE_URL" not in serialized
 
 
 def test_contract_mode_is_legacy_without_resolved_profile(legacy_workspace: Path) -> None:
@@ -186,9 +195,22 @@ def test_contract_resolution_fails_closed_without_authoritative_dataset_identity
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     workspace = tmp_path / "workspace"
+    dataset = _dataset(tmp_path / "tasks")
     config = fixture_recipe_config("hill_climb-smoke", workspace.name)
     monkeypatch.setattr("evolve.workspace.default_config", lambda _recipe, _experiment: config)
-    init_workspace(InitOptions(workspace=workspace, recipe="fixture"))
+    init_workspace(
+        InitOptions(workspace=workspace, recipe="fixture", dataset=str(dataset))
+    )
+    manifest_path = workspace / "evaluator/splits.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["version"] = 1
+    manifest["identity_status"] = "legacy_unverified"
+    manifest.pop("dataset_identity")
+    manifest.pop("task_digests")
+    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+    git(workspace, "add", "evaluator/splits.json")
+    git(workspace, "commit", "-m", "downgrade split identity")
+    git(workspace, "tag", "-f", "gen/0")
     commit = git(workspace, "rev-parse", "gen/0^{commit}")
 
     with pytest.raises(evaluation_package.EvaluationContractResolutionError) as excinfo:

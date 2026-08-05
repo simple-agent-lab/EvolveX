@@ -24,6 +24,8 @@ from .runtime_profiles import (
 
 class RuntimeEnvironmentErrorCode(StrEnum):
     AUTHENTICATION_INVALID = "authentication_invalid"
+    AUTH_JSON_MISSING = "auth_json_missing"
+    AUTH_JSON_UNSUPPORTED = "auth_json_unsupported"
     CREDENTIAL_FORBIDDEN = "credential_forbidden"
     CREDENTIAL_MISSING = "credential_missing"
     ENDPOINT_INVALID = "endpoint_invalid"
@@ -245,15 +247,11 @@ def _authentication(agent_kind: str, source: Mapping[str, str]) -> dict[str, str
     try:
         return resolve_authentication(agent_kind, source).environment()
     except RuntimeAuthenticationError as error:
-        code = (
-            RuntimeEnvironmentErrorCode.CREDENTIAL_MISSING
-            if error.code
-            in {
-                AuthenticationErrorCode.CREDENTIAL_MISSING,
-                AuthenticationErrorCode.AUTH_JSON_MISSING,
-            }
-            else RuntimeEnvironmentErrorCode.CREDENTIAL_FORBIDDEN
-        )
+        code = {
+            AuthenticationErrorCode.CREDENTIAL_MISSING: RuntimeEnvironmentErrorCode.CREDENTIAL_MISSING,
+            AuthenticationErrorCode.AUTH_JSON_MISSING: RuntimeEnvironmentErrorCode.AUTH_JSON_MISSING,
+            AuthenticationErrorCode.AUTH_JSON_UNSUPPORTED: RuntimeEnvironmentErrorCode.AUTH_JSON_UNSUPPORTED,
+        }[error.code]
         raise RuntimeEnvironmentResolutionError(
             str(error), code=code
         ) from error
