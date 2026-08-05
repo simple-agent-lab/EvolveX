@@ -41,6 +41,12 @@ def test_architecture_visual_is_current_and_uses_identity_palette() -> None:
     description = ET.parse(ROOT / "docs" / "architecture.svg").find("svg:desc", SVG_NS).text
     assert "Recipes select permitted targets, operators, and stages." in description
     assert "rewrite any stage" not in description
+    readme = (ROOT / "README.md").read_text()
+    architecture_image = re.search(r'<img src="docs/architecture\.svg" alt="([^"]+)">', readme)
+    assert architecture_image is not None
+    assert "Recipes select permitted targets, operators, and stages." in architecture_image.group(1)
+    assert "may rewrite any stage" not in readme
+    assert "can rewrite any stage" not in readme
 
 
 def test_readme_visual_assets_have_accessible_svg_metadata() -> None:
