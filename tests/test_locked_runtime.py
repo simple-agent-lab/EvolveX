@@ -8,10 +8,10 @@ from pathlib import Path
 import pytest
 from conftest import init_recipe_with_local_inputs, write_locked_miniswe_seed
 
-from evolve import uv_runtime as uv_runtime_module
 from evolve.config import load_config
 from evolve.evaluation import Outcome
-from evolve.uv_runtime import candidate_runtime_config, prepare_candidate_runtime
+from evolve.runtime import uv as uv_runtime_module
+from evolve.runtime.uv import candidate_runtime_config, prepare_candidate_runtime
 
 
 def _fake_uv(tmp_path: Path) -> tuple[Path, Path]:

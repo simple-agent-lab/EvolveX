@@ -26,8 +26,8 @@ from ..runtime.environment import (
     resolve_evaluator_runtime_environment,
     write_harbor_environment_inputs,
 )
+from ..runtime.uv import prepare_candidate_runtime
 from ..surface import surface_patterns
-from ..uv_runtime import prepare_candidate_runtime
 from .snapshot import build_candidate_snapshot, materialize_snapshot
 
 SmokeStatus = Literal["passed", "failed", "unsupported"]

@@ -22,7 +22,7 @@ from evolve.evaluation.execution import (
 from evolve.evaluation.identity import effective_task_set_identity
 from evolve.frozen.interfaces import ArchiveView
 from evolve.runtime import OwnedResult
-from evolve.uv_runtime import CandidateRuntimeResult, RuntimeMount
+from evolve.runtime.uv import CandidateRuntimeResult, RuntimeMount
 
 
 def make_eval_script(path: Path, body: str) -> None:
@@ -261,15 +261,12 @@ def test_runtime_preparation_failure_short_circuits_evaluator(
     configure_outcome_evaluator(workspace)
     called = False
 
-    def fake_prepare(checkout, run_dir, runtime_root, candidate_commit, evaluator):
-        receipt = run_dir / "candidate-runtime.json"
-        receipt.write_text('{"outcome":"failed"}\n')
+    def fake_prepare(checkout, run_dir, runtime_root, candidate_commit, evaluator, **kwargs):
         return CandidateRuntimeResult(
             "uv",
             "target",
             outcome=outcome,
             reason="runtime preparation failed",
-            receipt_path=receipt,
         )
 
     def fake_eval(*args, **kwargs):
@@ -285,8 +282,7 @@ def test_runtime_preparation_failure_short_circuits_evaluator(
     assert record.outcome is outcome
     assert record.score is None
     assert not called
-    assert record.candidate_runtime is not None
-    assert record.candidate_runtime["path"].endswith("candidate-runtime.json")
+    assert record.candidate_runtime is None
 
 
 def test_runtime_receipt_reference_is_compact_and_hashed(tmp_path: Path) -> None:

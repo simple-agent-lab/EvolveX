@@ -4,7 +4,7 @@ import evolve.runtime as runtime
 
 
 def test_runtime_package_exposes_focused_modules_and_public_process_api() -> None:
-    for name in ("auth", "config", "environment", "process"):
+    for name in ("auth", "config", "environment", "process", "uv"):
         assert import_module(f"evolve.runtime.{name}")
     assert runtime.OwnedResult.__module__ == "evolve.runtime.process"
     assert callable(runtime.run_owned)
@@ -12,5 +12,5 @@ def test_runtime_package_exposes_focused_modules_and_public_process_api() -> Non
 
 
 def test_former_internal_runtime_import_paths_are_not_available() -> None:
-    for name in ("runtime_auth", "runtime_config", "runtime_environment"):
+    for name in ("runtime_auth", "runtime_config", "runtime_environment", "uv_runtime"):
         assert util.find_spec(f"evolve.{name}") is None

@@ -11,10 +11,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .evaluation import Outcome
-from .host_runtime import clean_python_env, uv_executable
-from .runtime import run_owned
-from .runtime.config import load_resolved_runtime
+from ..evaluation import Outcome
+from ..host_runtime import clean_python_env, uv_executable
+from .config import load_resolved_runtime
+from .process import run_owned
 
 CONTAINER_UV_CACHE = "/opt/evolve/uv/cache"
 CONTAINER_UV_PYTHON = "/opt/evolve/uv/python"

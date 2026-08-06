@@ -8,7 +8,6 @@ from conftest import (
     allow_local_runtime,
     fixture_recipe_config,
     git,
-    init_fixture_workspace,
     init_recipe_with_local_inputs,
 )
 
@@ -21,7 +20,7 @@ from evolve.preflight import (
     PreflightMode,
     PreflightResultV1,
 )
-from evolve.uv_runtime import CandidateRuntimeResult
+from evolve.runtime.uv import CandidateRuntimeResult
 from evolve.workspace import InitOptions, init_workspace
 
 
@@ -245,14 +244,13 @@ def test_strict_evaluation_materializes_absent_stub_task_evidence(
 
 
 def test_evaluate_keeps_legacy_unverified_workspace_on_explicit_compatibility_path(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    legacy_workspace: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    workspace = init_fixture_workspace(tmp_path / "legacy-workspace")
     monkeypatch.setenv("EVAL_STUB", "1")
 
-    record = evaluate(workspace, "gen/0", "0", purpose="genesis")
+    record = evaluate(legacy_workspace, "gen/0", "0", purpose="genesis")
 
     assert record.contract_id is None
     assert record.evaluation_contract is None
     assert record.contract_certified is False
-    assert not list((workspace / "runs/evaluations/genesis/gen-0").glob("*/attempt-*/evaluation-contract.json"))
+    assert not list((legacy_workspace / "runs/evaluations/genesis/gen-0").glob("*/attempt-*/evaluation-contract.json"))

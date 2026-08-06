@@ -19,7 +19,7 @@ from ..host_runtime import clean_python_env
 from ..preflight import PreflightFailureCategory, PreflightStatus, run_preflight
 from ..runtime import OwnedResult, attempt_dir, next_attempt, owned_attempt_id, run_owned
 from ..runtime.environment import resolve_evaluator_runtime_environment, write_harbor_environment_inputs
-from ..uv_runtime import CandidateRuntimeResult, prepare_candidate_runtime
+from ..runtime.uv import CandidateRuntimeResult, prepare_candidate_runtime
 from .contract import (
     ContractMode,
     ContractResolutionContext,

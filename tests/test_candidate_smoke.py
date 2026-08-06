@@ -10,7 +10,7 @@ from conftest import fixture_recipe_config, git, init_fixture_workspace, run_evo
 
 from evolve.candidate import smoke as candidate_smoke_module
 from evolve.candidate.smoke import SmokeMode, run_candidate_smoke
-from evolve.uv_runtime import CandidateRuntimeResult, RuntimeMount
+from evolve.runtime.uv import CandidateRuntimeResult, RuntimeMount
 from evolve.workspace import InitOptions, init_workspace
 
 ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
