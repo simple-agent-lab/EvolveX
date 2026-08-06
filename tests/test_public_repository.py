@@ -206,36 +206,28 @@ def test_readme_keeps_supported_recipes_and_honest_quick_start() -> None:
             "bash",
             """git clone https://github.com/simple-agent-lab/simple-evolve-agent.git
 cd simple-evolve-agent
-uv sync --dev --locked
-uv run --frozen evolve --help
-""",
-        ),
-        (
-            "bash",
-            """export EVOLVE_HOME="/tmp/evolve-home"
 
-uv run evolve init /tmp/evolve-demo \\
-  --recipe-path tests/fixtures/recipes/hill_climb-smoke \\
-  --seed tests/fixtures/seeds/dummy
-EVAL_STUB=1 /tmp/evolve-demo/evolve run /tmp/evolve-demo --max-generations 0
-/tmp/evolve-demo/evolve status /tmp/evolve-demo
-/tmp/evolve-demo/evolve verify /tmp/evolve-demo
+# API authentication is the default. Keep credentials out of recipe YAML.
+cat > .env <<'EOF'
+OPENAI_API_KEY=replace-me
+# OPENAI_BASE_URL=https://your-openai-compatible-endpoint/v1
+EOF
+
+docker info
 """,
         ),
         (
             "bash",
-            """/tmp/evolve-demo/evolve operator list /tmp/evolve-demo
-/tmp/evolve-demo/evolve operator run /tmp/evolve-demo select --genid 1
-""",
-        ),
-        (
-            "bash",
-            """./scripts/setup_terminal_bench.sh ahe
-./scripts/run_recipe_demo.sh ahe
+            """RECIPE=ahe
+./scripts/setup_terminal_bench.sh "$RECIPE"
+./scripts/run_recipe_demo.sh "$RECIPE"
 """,
         ),
     ]
-    assert "does not run a mutation round or measure agent quality" in readme
+    assert "deterministic baseline smoke test" not in quick_start
+    assert "operator run" not in quick_start
+    assert "Terminal-Bench 2.0" in quick_start
+    assert "CODEX_AUTH_JSON_PATH" in quick_start
 
 
 def test_license_metadata_and_notice_are_consistent() -> None:

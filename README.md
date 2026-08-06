@@ -93,83 +93,40 @@ See [the recipe guide](recipes/README.md) for each strategy’s workflow and con
 
 ## Quick Start
 
-Requirements: Python 3.12+, [`uv`](https://docs.astral.sh/uv/), and Git.
+Run one of the supported recipes against the shared, content-pinned
+Terminal-Bench 2.0 subset. The launcher requires Bash, Python 3.12+,
+[`uv`](https://docs.astral.sh/uv/), Git 2.25+, and a running Docker daemon.
 
 ```bash
 git clone https://github.com/simple-agent-lab/simple-evolve-agent.git
 cd simple-evolve-agent
-uv sync --dev --locked
-uv run --frozen evolve --help
+
+# API authentication is the default. Keep credentials out of recipe YAML.
+cat > .env <<'EOF'
+OPENAI_API_KEY=replace-me
+# OPENAI_BASE_URL=https://your-openai-compatible-endpoint/v1
+EOF
+
+docker info
 ```
 
-`evolve init` accepts an optional workspace path. When omitted, it creates the
-workspace at `~/.evolve-workspace`; pass an explicit path for named or parallel
-experiments.
-
-Run a deterministic baseline smoke test without a model or Docker:
+Choose a recipe, download and verify the pinned dataset, build that recipe's
+pinned meta-agent image, and launch one generation:
 
 ```bash
-export EVOLVE_HOME="/tmp/evolve-home"
-
-uv run evolve init /tmp/evolve-demo \
-  --recipe-path tests/fixtures/recipes/hill_climb-smoke \
-  --seed tests/fixtures/seeds/dummy
-EVAL_STUB=1 /tmp/evolve-demo/evolve run /tmp/evolve-demo --max-generations 0
-/tmp/evolve-demo/evolve status /tmp/evolve-demo
-/tmp/evolve-demo/evolve verify /tmp/evolve-demo
+RECIPE=ahe
+./scripts/setup_terminal_bench.sh "$RECIPE"
+./scripts/run_recipe_demo.sh "$RECIPE"
 ```
 
-This checks workspace generation, baseline evaluation, and archive integrity; it
-does not run a mutation round or measure agent quality.
-
-An outer coding agent can also orchestrate a generation while reusing the
-framework's operators:
-
-```bash
-/tmp/evolve-demo/evolve operator list /tmp/evolve-demo
-/tmp/evolve-demo/evolve operator run /tmp/evolve-demo select --genid 1
-```
-
-The agent reads the retained operator artifacts, forks and edits the selected
-parent, then uses `commit`, `eval`, and `finalize`. This keeps the agent in
-control of the harness change while the mechanism still owns evaluation,
-configured admission checks, gating, recording, and lineage. Validation and
-novelty results are tied to the exact candidate tree, so editing afterward
-requires rerunning them. See the generated workspace's `program.md` and
-`skills/evolve-agent/SKILL.md` for the complete sequence and method guidance.
-
-For a reproducible Terminal-Bench 2.0 run, prepare the shared pinned dataset and
-the selected recipe's image once, then use the short execution script:
-
-```bash
-./scripts/setup_terminal_bench.sh ahe
-./scripts/run_recipe_demo.sh ahe
-```
-
-The scripts support A-Evolve, AHE, GEPA, Hill Climb, and HyperAgents, including
-their Codex profiles. Common execution overrides are `WORKSPACE`, `TASKS`,
-`GENERATIONS`, `ENV_FILE`, and `EVOLVE_ASSET_DIR`. Preflight validates the
-selected runtime's authentication before any experiment generation runs.
-
-Initialization resolves each recipe's inline runtime block into
-`evaluator/runtime.json` and generates the certified evaluation inputs.
-Evaluator repetitions default to one. Workspace preflight performs offline,
-cacheless validation and writes a redacted receipt; `--smoke` additionally makes
-one real model request against a detached candidate snapshot.
-
-Workspace commands load only `WORKSPACE/.env`; explicitly exported variables
-override it, and caller or parent `.env` files are ignored. API-key
-authentication is the default. Codex agents may instead use an explicit
-`CODEX_AUTH_JSON_PATH`, with no automatic home-directory lookup. Explicitly
-supplied standard proxy variables are inherited as optional host transport for
-dependency downloads; the configured model endpoint is added to `NO_PROXY`,
-and users without a proxy need no proxy setup. Recipes may still declare a
-required proxy policy for environments that must fail closed.
-Secrets, endpoint URLs, auth paths, and proxy values are excluded from resolved
-runtime configuration and evaluation contracts.
-
-Inspect a run with `evolve status`, `evolve report`, `git tag --list 'gen/*'`,
-and the generated `archive.jsonl`. Run `evolve --help` for the complete CLI.
+Supported values are `aevolve`, `ahe`, `ahe_codex`, `gepa`, `hill_climb`,
+`hill_climb_codex`, `hyperagents`, and `hyperagents_codex`. Codex-capable
+profiles may use `CODEX_AUTH_JSON_PATH=/absolute/path/to/auth.json` instead of
+an API key. Use `WORKSPACE`, `TASKS`, `GENERATIONS`, `ENV_FILE`, or
+`EVOLVE_ASSET_DIR` to override launcher defaults. See the
+[recipe guide](recipes/README.md) and
+[operations guide](docs/guides/operations.md) for the full configuration and
+recovery workflow.
 
 ## Trustworthy by Construction
 
