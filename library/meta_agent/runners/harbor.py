@@ -262,7 +262,14 @@ def _copy_visible_generation_inputs(source: Path, destination: Path) -> None:
         subtree = source / name
         if subtree.exists():
             copied = destination / name
-            _copy_tree(subtree, copied)
+            # trajectory_only uses isolated Harbor jobs to produce the
+            # published evidence bundle. Those jobs are implementation
+            # artifacts, not meta-agent evidence, and may contain the judge
+            # model's unrelated context (including names that overlap private
+            # task partitions). Only the analyzer's published outputs belong
+            # in the editing bundle.
+            ignore = shutil.ignore_patterns("judge") if name == "trace_analyzer" else None
+            _copy_tree(subtree, copied, ignore=ignore)
             # Certified replay snapshots are intentionally frozen in the
             # experiment workspace. Docker Compose's artifact copier preserves
             # those directory modes, then cannot create their descendants in

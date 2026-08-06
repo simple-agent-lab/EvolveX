@@ -1250,6 +1250,37 @@ def test_harbor_bundle_rejects_private_task_identifiers(tmp_path: Path, leak_sou
         )
 
 
+def test_harbor_bundle_omits_trajectory_judge_workdirs(tmp_path: Path) -> None:
+    checkout, run_dir = _checkout(tmp_path)
+    evaluator = checkout / "evaluator"
+    evaluator.mkdir()
+    (evaluator / "splits.json").write_text(
+        json.dumps({"tasks": {"train": ["train-task"], "gate": ["gate-secret-task"], "sealed": []}})
+    )
+    evidence = run_dir / "trace_analyzer" / "evidence"
+    evidence.mkdir(parents=True, exist_ok=True)
+    (evidence / "trajectory_only.json").write_text('[{"task_id":"train-task"}]\n')
+    judge = run_dir / "trace_analyzer" / "judge" / "0000-task" / "attempt-1"
+    judge.mkdir(parents=True)
+    (judge / "agent-context.jsonl").write_text('{"unrelated_context":"gate-secret-task"}\n')
+    runner = _harbor_runner_module()
+    surface = runner.load_surface_policy(checkout)
+
+    bundle = runner._prepare_bundle(
+        checkout,
+        _ctx(checkout, run_dir),
+        ["target"],
+        surface,
+        prompt="analyze train-task",
+    )
+    try:
+        copied = bundle.workspace / "runs" / "gen-1" / "trace_analyzer"
+        assert (copied / "evidence" / "trajectory_only.json").is_file()
+        assert not (copied / "judge").exists()
+    finally:
+        shutil.rmtree(bundle.staging, ignore_errors=True)
+
+
 def test_harbor_bundle_allows_private_name_prefix_in_training_identifier(tmp_path: Path) -> None:
     checkout, run_dir = _checkout(tmp_path)
     evaluator = checkout / "evaluator"
