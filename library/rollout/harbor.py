@@ -365,7 +365,162 @@ def _artifact_inventory(trial_dir: Path) -> dict[str, list[str]]:
     return inventory
 
 
-def collect_cases(jobs_dir: Path, field_limit: int = 2000, pass_threshold: float = 1.0) -> list[dict[str, Any]]:
+def _artifact_refs(trial_dir: Path) -> list[dict[str, str]]:
+    refs: list[dict[str, str]] = []
+    for area in ("agent", "verifier"):
+        root = trial_dir / area
+        if not root.exists():
+            continue
+        for path in sorted(root.rglob("*")):
+            if not path.is_file() or path.name in {"reward.txt", "reward.json"}:
+                continue
+            relative = path.relative_to(root).as_posix()
+            suffix = path.suffix.lower().lstrip(".")
+            refs.append({"kind": suffix or "file", "path": f"{area}/{relative}"})
+    return refs
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _workspace_relative(path: Path, workspace: Path | None) -> str | None:
+    if workspace is None:
+        return None
+    try:
+        return path.resolve().relative_to(workspace.resolve()).as_posix()
+    except ValueError:
+        return None
+
+
+def _trajectory_archive_name(trial_name: str, digest: str) -> str:
+    stem = re.sub(r"[^A-Za-z0-9_.-]+", "_", trial_name).strip("._-") or "trial"
+    return f"{stem[:96]}-{digest[:16]}.json"
+
+
+def _trajectory_reference(
+    trial_dir: Path,
+    *,
+    trial_name: str,
+    workspace: Path | None,
+    trajectory_archive_dir: Path | None,
+) -> dict[str, Any]:
+    source = trial_dir / "agent" / "trajectory.json"
+    if not source.is_file():
+        return {"format": "atif", "status": "missing"}
+    try:
+        digest = _file_sha256(source)
+    except OSError:
+        return {"format": "atif", "status": "unreadable"}
+
+    retained = source
+    relative = _workspace_relative(source, workspace)
+    if workspace is not None and relative is None:
+        if trajectory_archive_dir is None:
+            return {"format": "atif", "status": "external"}
+        trajectory_archive_dir.mkdir(parents=True, exist_ok=True)
+        retained = trajectory_archive_dir / _trajectory_archive_name(trial_name, digest)
+        if not retained.exists():
+            shutil.copyfile(source, retained)
+            retained.chmod(0o600)
+        if _file_sha256(retained) != digest:
+            raise SystemExit(f"retained trajectory digest mismatch: {retained}")
+        relative = _workspace_relative(retained, workspace)
+        if relative is None:
+            raise SystemExit("trajectory archive directory must stay inside the workspace")
+
+    payload = _read_json(retained)
+    steps = payload.get("steps")
+    reference: dict[str, Any] = {
+        "format": "atif",
+        "status": "available" if isinstance(steps, list) else "invalid",
+        "path": relative if relative is not None else str(retained),
+        "sha256": digest,
+    }
+    if isinstance(steps, list):
+        reference["steps"] = len(steps)
+    return reference
+
+
+def _task_instruction(tasks_dir: Path | None, task_name: str, field_limit: int) -> str:
+    if tasks_dir is None:
+        return ""
+    leaf = task_name.rsplit("/", 1)[-1]
+    for candidate in (tasks_dir / task_name / "instruction.md", tasks_dir / leaf / "instruction.md"):
+        if candidate.is_file():
+            return _read_text(candidate, field_limit)
+    return ""
+
+
+def _artifact_evidence(
+    trial_dir: Path,
+    *,
+    instruction: str,
+    reward: float | None,
+    trajectory: dict[str, Any],
+) -> dict[str, Any]:
+    evaluation = _read_json(trial_dir / "verifier" / "evaluation.json")
+    refs = _artifact_refs(trial_dir)
+    criteria = evaluation.get("criteria")
+    criteria = criteria if isinstance(criteria, dict) else {}
+    judgments = [
+        {"rubric_id": str(name), "score": float(score), "hard_failure": False}
+        for name, score in sorted(criteria.items())
+        if isinstance(score, (int, float)) and not isinstance(score, bool)
+    ]
+    hard_failures = evaluation.get("hard_failures")
+    hard_failures = hard_failures if isinstance(hard_failures, list) else []
+    for failure in hard_failures:
+        message = str(failure)
+        judgments.append(
+            {
+                "rubric_id": message.split(":", 1)[0].strip() or "hard_failure",
+                "score": 0.0,
+                "hard_failure": True,
+                "feedback": message,
+            }
+        )
+    metrics: dict[str, float | None] = {"reward": reward}
+    for name in ("score", "raw_weighted_score"):
+        value = evaluation.get(name)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            metrics[name] = float(value)
+    primary = next((ref["path"] for ref in refs if ref["kind"] == "svg"), None)
+    feedback_message = evaluation.get("feedback")
+    if isinstance(feedback_message, str) and feedback_message.strip():
+        feedback = {"message": feedback_message.strip()}
+    else:
+        feedback = {
+            "summary": str(evaluation.get("summary") or ""),
+            "improvement": str(evaluation.get("improvement_feedback") or ""),
+        }
+    return {
+        "evidence_schema_version": 1,
+        "inputs": {"instruction": instruction},
+        "outputs": {"primary_artifact": primary},
+        "artifacts": refs,
+        "judgments": judgments,
+        "metrics": metrics,
+        "feedback": feedback,
+        "execution": {
+            "trajectory_available": trajectory.get("status") == "available",
+            "trajectory": trajectory,
+        },
+    }
+
+
+def collect_cases(
+    jobs_dir: Path,
+    field_limit: int = 2000,
+    pass_threshold: float = 1.0,
+    tasks_dir: Path | None = None,
+    workspace: Path | None = None,
+    trajectory_archive_dir: Path | None = None,
+) -> list[dict[str, Any]]:
     cases: list[dict[str, Any]] = []
     if not jobs_dir.exists():
         return cases
@@ -385,13 +540,27 @@ def collect_cases(jobs_dir: Path, field_limit: int = 2000, pass_threshold: float
         verifier_rewards = verifier_result.get("rewards")
         verifier_rewards = verifier_rewards if isinstance(verifier_rewards, dict) else {}
         details = _trajectory_details(trial_dir, field_limit)
+        instruction = details["instruction"] or _task_instruction(tasks_dir, str(payload.get("task_name")), field_limit)
+        trajectory = _trajectory_reference(
+            trial_dir,
+            trial_name=str(payload.get("trial_name")),
+            workspace=workspace,
+            trajectory_archive_dir=trajectory_archive_dir,
+        )
+        evidence = _artifact_evidence(
+            trial_dir,
+            instruction=instruction,
+            reward=reward,
+            trajectory=trajectory,
+        )
         cases.append(
             {
                 "trial_name": str(payload.get("trial_name")),
                 "task_name": str(payload.get("task_name")),
                 "reward": reward,
                 "outcome": _outcome(reward, exception_type, pass_threshold),
-                "instruction": details["instruction"],
+                "instruction": instruction,
+                **evidence,
                 "agent_messages": details["agent_messages"],
                 "tool_calls": details["tool_calls"],
                 "observations": details["observations"],
@@ -501,6 +670,10 @@ def _with_missing_result_placeholders(cases: list[dict[str, Any]], selected_task
                     "type": "MissingRolloutResult",
                     "message": "Harbor produced no result.json for the selected task",
                 },
+                "execution": {
+                    "trajectory_available": False,
+                    "trajectory": {"format": "atif", "status": "missing"},
+                },
                 "result_path": "",
             }
         )
@@ -521,6 +694,10 @@ def _batch_failure_case(harbor_log: Path, returncode: int, field_limit: int) -> 
         "observations": [],
         "events": [],
         "trajectory_events": [],
+        "execution": {
+            "trajectory_available": False,
+            "trajectory": {"format": "atif", "status": "missing"},
+        },
         "raw_agent_output": message,
         "verifier_output": "",
         "verifier_rewards": {},
@@ -836,7 +1013,14 @@ class HarborRollout(RolloutOperator):
         )
         returncode = _run_harbor(initial_command, checkout, rollout_dir / "harbor.log", harbor_env)
         cases = _with_missing_result_placeholders(
-            collect_cases(jobs_dir, field_limit=field_limit, pass_threshold=pass_threshold),
+            collect_cases(
+                jobs_dir,
+                field_limit=field_limit,
+                pass_threshold=pass_threshold,
+                tasks_dir=Path(tasks) if Path(tasks).is_dir() else None,
+                workspace=ctx.workspace,
+                trajectory_archive_dir=rollout_dir / "trajectories",
+            ),
             split_task_names,
         )
         if not cases:

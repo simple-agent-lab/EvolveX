@@ -15,6 +15,12 @@ SAFE_ARTIFACTS = (
     "trial.log",
     "verifier/reward.txt",
     "verifier/test-stdout.txt",
+    # Structured, verifier-owned evidence for artifact-producing evaluations.
+    # Keep this explicit allowlist: arbitrary verifier files may contain secrets.
+    "verifier/evaluation.json",
+    "verifier/judge.json",
+    "verifier/poster.svg",
+    "verifier/poster.png",
     "result.json",
     "exception.txt",
 )

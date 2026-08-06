@@ -136,6 +136,8 @@ def test_aevolve_reproduces_recent_summary_draft_and_workspace_mutation_cycle(
         assert "DockerError: daemon unavailable" in prompt
         assert "A draft about verifying generated artifacts" in prompt
         assert "Current Skills (1)" in prompt and "- existing" in prompt
+        assert "Reusable skill directories: `target/skills/*/`" in prompt
+        assert "references/`, `scripts/`, `assets/`" in prompt
         assert "You CAN modify any file under `target/`" in prompt
         assert "Runtime prompt/config: `target/prompt.md`" in prompt
         assert "Skills evolution: enabled" in prompt

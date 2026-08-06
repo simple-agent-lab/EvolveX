@@ -1,5 +1,15 @@
 # harbor evaluator template
 . evaluator/eval.env
+if [ "${EVOLVE_EXECUTION_BACKEND:-}" = "local" ]; then
+  case "${EVOLVE_HARBOR_ENVIRONMENT:-}" in
+    *:LocalEnvironment) ;;
+    *)
+      printf 'local execution runtime requires Harbor LocalEnvironment; refusing Docker fallback\n' >&2
+      printf 'infra_failed\n' > "$EVOLVE_RUN_DIR/status"
+      exit 3
+      ;;
+  esac
+fi
 if [ -n "${EVOLVE_HARBOR_N_CONCURRENT_OVERRIDE:-}" ]; then
   case "$EVOLVE_HARBOR_N_CONCURRENT_OVERRIDE" in
     *[!0-9]*|""|0)
@@ -95,6 +105,22 @@ fi
 : "${EVOLVE_UV_CACHE_DIR:=$HOME/.evolve/uv-cache}"
 runtime_mounts=${EVOLVE_CANDIDATE_RUNTIME_MOUNTS_JSON:-}
 runtime_env=${EVOLVE_CANDIDATE_RUNTIME_ENV_JSON:-}
+evaluator_runtime_env=
+if [ -f evaluator/prepare-runtime.sh ]; then
+  evaluator_runtime_env="$EVOLVE_RUN_DIR/evaluator-runtime.env"
+  if ! EVOLVE_HARBOR_ENVIRONMENT="${EVOLVE_HARBOR_ENVIRONMENT:-}" \
+    EVOLVE_WORKSPACE="$EVOLVE_WORKSPACE" \
+    sh evaluator/prepare-runtime.sh "$EVOLVE_RUN_DIR" "$evaluator_runtime_env"; then
+    printf 'evaluator runtime preparation failed\n' >&2
+    printf 'infra_failed\n' > "$EVOLVE_RUN_DIR/status"
+    exit 3
+  fi
+  if [ ! -f "$evaluator_runtime_env" ]; then
+    printf 'evaluator runtime preparation did not write %s\n' "$evaluator_runtime_env" >&2
+    printf 'infra_failed\n' > "$EVOLVE_RUN_DIR/status"
+    exit 3
+  fi
+fi
 if [ -z "$runtime_mounts" ]; then
   mkdir -p "$EVOLVE_UV_CACHE_DIR"
   runtime_mounts=$(python3 -c 'import json,sys; print(json.dumps([{"type":"bind","source":sys.argv[1],"target":"/opt/evolve/uv/cache"}]))' "$EVOLVE_UV_CACHE_DIR")
@@ -241,6 +267,19 @@ if [ -f evaluator/verifier.env ]; then
     [ -n "$verifier_entry" ] && set -- "$@" --ve "$verifier_entry"
   done < evaluator/verifier.env
 fi
+if [ -n "$evaluator_runtime_env" ]; then
+  while IFS= read -r evaluator_runtime_entry || [ -n "$evaluator_runtime_entry" ]; do
+    case "$evaluator_runtime_entry" in
+      ""|\#*) continue ;;
+      *=*) set -- "$@" --ae "$evaluator_runtime_entry" --ve "$evaluator_runtime_entry" ;;
+      *)
+        printf 'invalid evaluator runtime environment entry: %s\n' "$evaluator_runtime_entry" >&2
+        printf 'infra_failed\n' > "$EVOLVE_RUN_DIR/status"
+        exit 3
+        ;;
+    esac
+  done < "$evaluator_runtime_env"
+fi
 while IFS= read -r runtime_entry || [ -n "$runtime_entry" ]; do
   if [ -n "$runtime_entry" ]; then
     case "$runtime_entry" in
@@ -254,8 +293,10 @@ if [ -n "${EVOLVE_CANDIDATE_SMOKE_MODE:-}" ]; then
 fi
 if [ -n "${EVOLVE_HARBOR_MODEL:-}" ]; then
   set -- "$@" --model "$EVOLVE_HARBOR_MODEL"
+  set -- "$@" --ve "EVOLVE_HARBOR_MODEL=$EVOLVE_HARBOR_MODEL"
 elif [ -n "${OPENAI_MODEL:-}" ]; then
   set -- "$@" --model "openai/$OPENAI_MODEL"
+  set -- "$@" --ve "EVOLVE_HARBOR_MODEL=openai/$OPENAI_MODEL"
 fi
 if [ -n "${EVOLVE_HARBOR_AGENT_SETUP_TIMEOUT_MULTIPLIER:-}" ]; then
   set -- "$@" --agent-setup-timeout-multiplier "$EVOLVE_HARBOR_AGENT_SETUP_TIMEOUT_MULTIPLIER"

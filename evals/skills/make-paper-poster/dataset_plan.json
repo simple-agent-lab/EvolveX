@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "case_file": "paper_cases.jsonl",
+  "task_count": 9,
+  "split": {
+    "ratios": {
+      "train": 0.2222222222222222,
+      "gate": 0.5555555555555556,
+      "sealed": 0.2222222222222222
+    },
+    "seed": 80,
+    "expected_membership": {
+      "train": [
+        "denoising-diffusion",
+        "sparsely-gated-moe"
+      ],
+      "gate": [
+        "alphafold2",
+        "attention-is-all-you-need",
+        "clip",
+        "retrieval-augmented-generation",
+        "switch-transformers"
+      ],
+      "sealed": [
+        "lora",
+        "segment-anything"
+      ]
+    }
+  },
+  "design": {
+    "train_coverage": [
+      "sparse expert routing",
+      "forward and reverse diffusion process"
+    ],
+    "gate_coverage": [
+      "encoder-decoder architecture",
+      "retrieval plus generation",
+      "cross-modal contrastive learning",
+      "sparse routing transfer",
+      "structural biology domain transfer"
+    ],
+    "sealed_coverage": [
+      "low-rank matrix adaptation",
+      "promptable vision pipeline and dataset scale"
+    ]
+  },
+  "isolation": {
+    "rubric_visibility": "Never expose rubric.json or grader feedback to the candidate Agent.",
+    "task_visibility": "Expose only the selected task's paper.pdf and prompt during an execution.",
+    "sealed_status": "This file records the intended held-out membership for development. A formal sealed claim requires materializing the sealed tasks outside the candidate- and mutator-visible workspace."
+  }
+}

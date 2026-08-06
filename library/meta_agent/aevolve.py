@@ -30,7 +30,12 @@ workspace edits that should improve future task performance.
 
 Guidelines:
 - Quality over quantity. Only create skills that genuinely help future tasks.
-- Skills use SKILL.md format with YAML frontmatter (`name`, `description`).
+- Treat each skill as one self-contained directory. Keep `SKILL.md` as its
+  required entrypoint and evolve `references/`, `scripts/`, `assets/`, or
+  `agents/openai.yaml` when those resources make the behavior more reliable.
+- Keep detailed knowledge in references, repeatable deterministic work in
+  scripts, and output material in assets. Ensure `SKILL.md` tells the agent
+  when to read or invoke each bundled resource.
 - Keep memory concise and actionable when memory evolution is enabled.
 - Preserve unrelated behavior and do not encode benchmark-specific answers.
 - Inspect existing files before editing and verify the final diff.
@@ -311,7 +316,7 @@ def build_prompt(
         f"## Evolution Cycle #{ctx.genid}\n\n"
         f"### Workspace Layout\n"
         f"- Runtime prompt/config: `{prompt_relative}`\n"
-        f"- Reusable skills: `{skills_relative}/*/SKILL.md`\n"
+        f"- Reusable skill directories: `{skills_relative}/*/` (required entrypoint: `SKILL.md`)\n"
         f"- Draft skills: `{skills_relative}/_drafts/*.md`\n"
         f"- Memory: `{memory_relative}/`\n"
         f"- Tools: `{tools_relative}/`\n\n"

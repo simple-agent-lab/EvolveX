@@ -75,6 +75,7 @@ def test_method_cards_route_to_shipped_capabilities() -> None:
         "a-evolve.md": (
             "operator list . --json",
             "library/trace_analyzer/trajectory_only.py",
+            "library/trace_analyzer/artifact_rubric.py",
             "library/meta_agent/aevolve.py",
         ),
         "gepa.md": (

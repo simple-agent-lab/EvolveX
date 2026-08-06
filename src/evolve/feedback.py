@@ -84,6 +84,10 @@ def _copy_trace_evidence(run_dir: Path, destination: Path) -> list[str]:
         "metrics.json",
         "failure_patterns.json",
         "passing_behaviors.json",
+        "diagnosis.json",
+        "reflective_dataset.json",
+        "artifact_manifest.json",
+        "rubric_failures.json",
     ):
         path = source / name
         if not path.is_file():

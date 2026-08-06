@@ -1,0 +1,68 @@
+experiment:
+  id: paper-poster-aevolve-local-fast-v1
+  max_generations: 2
+  target_score: null
+  budget_usd: 40
+  children_per_gen: 1
+  mode: driver
+  seed: 80
+target:
+  seed: builtin-codex
+surface:
+  include:
+    - target/skills/make-paper-poster/**
+  exclude: []
+operators:
+  select: {variant: greedy, timeout_s: 120}
+  rollout: {variant: evaluation_replay, field_limit: 6000, timeout_s: 120}
+  trace_analyzer:
+    variant: artifact_rubric
+    components:
+      paper_poster_skill: target/skills/make-paper-poster
+    weak_score: 2
+    timeout_s: 120
+  meta_agent:
+    # Optional backend only. The evolve-agent Skill's outer agent owns mutation
+    # and does not invoke this stage in the normal poster evolution loop.
+    variant: aevolve
+    expose_gate_data: false
+    runner: harbor
+    agent: evolve.integrations.harbor.local_auto_agent:LocalAutoAgent
+    environment: "evolve.harbor_local:LocalEnvironment"
+    editable_roots: [target]
+    evolve_prompts: false
+    evolve_skills: true
+    evolve_memory: false
+    evolve_tools: false
+    prompt_path: target/prompt.md
+    skills_dir: target/skills
+    history_cycles: 2
+    max_observations: 8
+    feedback_chars: 600
+    max_retries: 0
+    timeout_s: 600
+  gate: {variant: hillclimb, strict: true, timeout_s: 120}
+  record: {variant: jsonl, timeout_s: 120}
+  timeout_s: 120
+execution_runtime:
+  backend: local
+evaluator:
+  engine: harbor
+  dataset: paper-poster-v1
+  agent: target.agent:HarborAgent
+  # Omit model to inherit the Codex CLI default. Set evaluator.model to pin the
+  # Skill rollout and visual judge; PAPER_POSTER_JUDGE_MODEL overrides only the judge.
+  environment: "evolve.harbor_local:LocalEnvironment"
+  # The frozen evaluator assets prepare one pinned host renderer and inject it
+  # into both the local Skill rollout and the local verifier. evaluator/doctor.json
+  # verifies this Docker-free contract before the first expensive rollout.
+  split: {train: 0.2222222222222222, gate: 0.5555555555555556, sealed: 0.2222222222222222, seed: 80}
+  evaluation_split: train
+  sampling: static
+  tasks_per_round: 2
+  anchor: {final: false, every_rounds: 0}
+  k: 1
+  n_concurrent: 2
+  agent_setup_timeout_multiplier: 1
+  max_retries: 0
+  partial_floor: 0.8

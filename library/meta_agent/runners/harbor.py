@@ -841,7 +841,8 @@ def _base_command(
     kwargs = config.get("agent_kwargs")
     if isinstance(kwargs, dict):
         for key, value in kwargs.items():
-            command.extend(["--ak", f"{key}={value}"])
+            encoded = value if isinstance(value, str) else json.dumps(value, separators=(",", ":"))
+            command.extend(["--ak", f"{key}={encoded}"])
     _append_agent_env(command, config)
     if os.environ.get("EVOLVE_LIVE_OUTPUT") != "1":
         command.append("--quiet")

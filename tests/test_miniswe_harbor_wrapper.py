@@ -343,6 +343,7 @@ def test_miniswe_wrapper_loads_evolved_skills_and_memory_into_system_prompt(
     assert stats == {"skills_loaded": 1, "memories_loaded": 2}
     assert applied_stats == stats
     assert "## Available Skills" in context
+    assert "bundled references, scripts, and assets" in context
     assert "**artifact-verification**: Verify generated artifacts before submitting" in context
     assert str(skill) in context
     assert "ignored-draft" not in context

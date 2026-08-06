@@ -13,7 +13,10 @@ Harbor evaluator:
 6. evaluate an improving child on the canonical gate set and add every eligible
    result to the population.
 
-The default components are `target/prompt.md` and the task-execution skill. The
+The default components are `target/prompt.md` and the complete
+`target/skills/task-execution/` skill directory. `SKILL.md` is the required
+entrypoint, while references, scripts, assets, and agent metadata remain part
+of the same evolvable component. The
 component strategy is round-robin, so one component's evidence and paths guide
 each generation. Set `component_strategy: all` to expose all configured
 components to one proposal. Components are proposal focus areas, not narrower

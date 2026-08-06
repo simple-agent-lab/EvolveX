@@ -1,0 +1,59 @@
+{
+  "version": 2,
+  "subject": "make-paper-poster SVG output",
+  "visibility": "frozen_evaluator_only",
+  "evaluation_inputs": [
+    "source paper",
+    "generated SVG source",
+    "SVG rendered to a 1600px-wide PNG",
+    "programmatic check results"
+  ],
+  "purpose": "Produce one high-signal prose critique of the poster's aesthetic quality and visual communication. The evaluator must not assign numeric quality scores.",
+  "review_focus": [
+    "authored visual language: deliberate palette, effects, and paper-specific visual identity rather than generic AI-template styling",
+    "readability and hierarchy: legible typography, contrast, focal point, and a clear path from problem to method to evidence to takeaway",
+    "layout and geometry: spacing, alignment, balance, density, clipping, occlusion, and canvas use",
+    "paper-specific visualization: whether the method, mechanism, comparison, or result is communicated visually rather than merely decorated",
+    "paper fidelity: whether the visual story preserves the source paper's meaning without invented claims or evidence"
+  ],
+  "response_requirements": [
+    "Return one plain-text feedback message, not separate criterion fields.",
+    "Name the strongest successful choices before prioritizing the biggest weaknesses.",
+    "Give concrete, high-leverage revision directions grounded in the rendered poster and the source paper.",
+    "Do not emit numeric scores, rankings, or a pass/fail verdict."
+  ],
+  "programmatic_evidence": {
+    "svg_geometry_check": {
+      "command": "python3 /tests/svg_check.py --input poster.svg --format json",
+      "reads": [
+        "data.check.summary.textOverflow",
+        "data.check.summary.nodeOverlap",
+        "data.check.summary.textOcclusion",
+        "data.check.issues[].severity"
+      ],
+      "interpretation": "The bundled stdlib-only checker reports text and node overflow as errors, while overlap and occlusion are review cues because intentional foreground/background overlaps can be valid."
+    },
+    "contrast_check": {
+      "status": "recommended evaluator check; implementation may be added later",
+      "requirements": [
+        "Body text contrast ratio is at least 4.5:1.",
+        "Large title text contrast ratio is at least 3:1.",
+        "Report the text, foreground, background, and measured ratio."
+      ]
+    }
+  },
+  "hard_gates": [
+    {
+      "id": "renderable_self_contained_svg",
+      "description": "The deliverable is valid SVG, renders successfully, and does not depend on external URLs, scripts, fonts, or raster assets that can disappear."
+    },
+    {
+      "id": "geometry_integrity",
+      "description": "No text is clipped, truncated, outside the viewBox, or materially occluded. No unintended overlap hides content or makes two content regions ambiguous. Checker warnings alone do not fail this gate; confirm them against the rendered PNG."
+    },
+    {
+      "id": "paper_fidelity",
+      "description": "The poster does not invent a material claim, result, number, comparison, dataset, or causal conclusion, and it does not reverse the paper's meaning."
+    }
+  ]
+}

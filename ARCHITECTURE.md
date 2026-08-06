@@ -29,6 +29,7 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `config.py` | 200 | read/render `evolve.yaml`: recipes, experiment values, surface lists, operator blocks |
 | `driver.py` | 1800 | the generation sequencer: orchestrates baseline eval, verbs + operators (incl. novelty, self-modification admission gates, sealed anchors); validates operator outputs; computes verified_fixes; audit quarantine; doctor repair |
 | `doctor.py` | 250 | read-only local/experiment preflight profiles and persisted diagnostic receipts |
+| `evaluator_doctor.py` | 275 | frozen evaluator contract checks for local runtime preparation, task assets, and model-free smoke probes |
 | `evaluation/__init__.py` | 50 | pure evaluation-result facade |
 | `evaluation/evidence.py` | 150 | evaluator-output validation and conversion into canonical trial results |
 | `evaluation/execution.py` | 350 | clean-checkout canonical evaluation: tree assertion, targeted task execution, lifecycle, artifacts, and score parsing |
@@ -57,12 +58,13 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `surface.py` | 150 | mutable-surface pattern matching and violation checks |
 | `trace_analysis.py` | 775 | deterministic shared transforms used by the independent trace-analyzer operator variants |
 | `uv_runtime.py` | 550 | locked uv runtime construction and command execution |
-| `workspace.py` | 1000 | `evolve init` scaffolding: file copies, operator binding, deterministic dataset and Harbor runtime config, generated operator palette, protocol stamping, safe seed + mechanism vendoring, inner-skill copy |
+| `workspace.py` | 1025 | `evolve init` scaffolding: file copies, operator binding, deterministic dataset and Harbor runtime config, generated operator palette, protocol stamping, safe seed + mechanism vendoring, inner-skill copy |
 | `git.py` | 150 | thin git subprocess helpers — nothing evolve-specific |
 | `harbor_local.py` | 250 | minimal in-place Harbor environment for fast trials against a pre-configured local agent runtime |
 | `host_runtime.py` | 100 | host-side locked runtime process helpers |
 | `integrations/__init__.py` | 10 | external runtime integration package boundary |
 | `integrations/harbor/__init__.py` | 10 | Harbor integration package boundary |
+| `integrations/harbor/local_auto_agent.py` | 275 | local CLI discovery and delegation to Harbor installed-agent adapters with required ATIF output |
 | `integrations/harbor/miniswe_candidate.py` | 550 | exact-candidate MiniSWE Harbor evaluator agent |
 | `integrations/harbor/miniswe_task_file.py` | 130 | large-task MiniSWE meta-agent transport |
 | `meta_agent_budget.py` | 150 | shared Harbor meta-agent retry and timeout budget calculations |
@@ -80,7 +82,7 @@ each workspace, immutable there because it sits outside the mutable surface
 | `frozen/interfaces.py` | 350 | operator ABCs (incl. trace analyzer, novelty, and reflect), the registry, result schemas, payload validation |
 | `frozen/sdk.py` | 300 | Python operator entrypoint and file-contract IO; no library algorithm policy |
 
-Total `src/evolve/` budget: **12725 lines**. The budget admits the explicit evaluation-package
+Total `src/evolve/` budget: **13300 lines**. The budget admits the explicit evaluation-package
 boundaries, the opt-in in-place Harbor runtime, and the redacted trace-analysis
 boundary between rollout and feedback assembly; if the mechanism wants to
 grow past that, something belongs in a workspace operator instead —

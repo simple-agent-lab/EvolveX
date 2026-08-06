@@ -170,3 +170,38 @@ def test_builtin_codex_seed_contains_valid_plugin_layout() -> None:
     assert hooks["hooks"]["SessionStart"][0]["hooks"][0]["type"] == "command"
     assert (plugin / "hooks" / "session_start.py").is_file()
     assert "EVOLVE_PLUGIN_SESSION_CONTEXT_V1" in (plugin / "context.md").read_text()
+
+
+def test_paper_poster_codex_seed_uses_cli_default_unless_model_is_explicit(tmp_path: Path, monkeypatch) -> None:
+    _install_fake_harbor(monkeypatch)
+    module = _load_target_agent(
+        Path(__file__).parents[1] / "evals" / "skills" / "make-paper-poster" / "seed" / "agent.py"
+    )
+
+    default_agent = module.HarborAgent(logs_dir=tmp_path / "default")
+    assert default_agent.model_name is None
+    command = asyncio.run(
+        default_agent.exec_as_agent(
+            RecordingEnvironment(),
+            f"codex exec --model {module.DEFAULT_MODEL_SENTINEL} --json -- task",
+        )
+    )
+    assert "--model" not in command
+
+    pinned_agent = module.HarborAgent(logs_dir=tmp_path / "pinned", model_name="gpt-pinned")
+    assert pinned_agent.model_name == "gpt-pinned"
+
+
+def test_builtin_codex_wrapper_uploads_skills_from_exact_candidate_source(tmp_path: Path, monkeypatch) -> None:
+    _install_fake_harbor(monkeypatch)
+    module = _load_target_agent(Path(__file__).parents[1] / "seeds" / "codex" / "agent.py")
+    candidate = tmp_path / "candidate"
+    (candidate / "skills" / "example").mkdir(parents=True)
+    (candidate / "skills" / "example" / "SKILL.md").write_text("candidate\n")
+    agent = module.HarborAgent(logs_dir=tmp_path / "logs")
+    agent._get_env = lambda name: str(candidate) if name == "EVOLVE_CANDIDATE_SOURCE" else None
+    environment = RecordingEnvironment()
+
+    asyncio.run(agent.setup(environment))
+
+    assert environment.uploads == [(candidate / "skills", "/tmp/evolve-target-skills")]

@@ -39,6 +39,24 @@ def test_eval_env_freezes_configured_model() -> None:
     assert "EVOLVE_HARBOR_MODEL=openai/gpt-5.4-2026-03-05\n" in env
 
 
+def test_harbor_engine_exposes_rollout_model_to_verifier() -> None:
+    engine = (Path(__file__).resolve().parents[1] / "scaffolds" / "evaluators" / "harbor" / "engine.sh").read_text()
+
+    assert '--ve "EVOLVE_HARBOR_MODEL=$EVOLVE_HARBOR_MODEL"' in engine
+    assert '--ve "EVOLVE_HARBOR_MODEL=openai/$OPENAI_MODEL"' in engine
+
+
+def test_harbor_engine_supports_optional_frozen_evaluator_runtime_without_changing_defaults() -> None:
+    engine = (Path(__file__).resolve().parents[1] / "scaffolds" / "evaluators" / "harbor" / "engine.sh").read_text()
+
+    assert "if [ -f evaluator/prepare-runtime.sh ]; then" in engine
+    assert 'EVOLVE_HARBOR_ENVIRONMENT="${EVOLVE_HARBOR_ENVIRONMENT:-}"' in engine
+    assert 'EVOLVE_WORKSPACE="$EVOLVE_WORKSPACE"' in engine
+    assert 'sh evaluator/prepare-runtime.sh "$EVOLVE_RUN_DIR" "$evaluator_runtime_env"' in engine
+    assert '--ae "$evaluator_runtime_entry" --ve "$evaluator_runtime_entry"' in engine
+    assert "local execution runtime requires Harbor LocalEnvironment; refusing Docker fallback" in engine
+
+
 def test_eval_env_freezes_agent_timeout_multiplier() -> None:
     env = _eval_env(
         "exp",
@@ -100,9 +118,11 @@ def test_eval_env_and_environment_kwargs_render_local_backend() -> None:
         partial_floor=0.8,
         agent="custom:Agent",
         environment="evolve.harbor_local:LocalEnvironment",
+        execution_backend="local",
     )
 
     assert "EVOLVE_HARBOR_ENVIRONMENT=evolve.harbor_local:LocalEnvironment\n" in env
+    assert "EVOLVE_EXECUTION_BACKEND=local\n" in env
     assert workspace_module._environment_kwargs({"workdir": "/workspace", "options": {"clean": True}}) == (
         'options={"clean":true}\nworkdir="/workspace"\n'
     )

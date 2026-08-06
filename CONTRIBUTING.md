@@ -17,9 +17,19 @@ uv run --frozen ruff format --check .
 uv run --frozen ty check
 ```
 
-Run all six commands before opening a pull request. Tests enforce the module
-inventory, recipe inventory, resource layout, and behavior contracts; do not
-keep stale tests green with compatibility shims.
+During development, run the smallest relevant test file or node instead of the
+whole suite. The default pytest command skips tests marked `slow`; run a related
+slow test explicitly with:
+
+```bash
+uv run --frozen pytest -q --run-slow path/to/test.py::test_name
+```
+
+Run the default checks before opening a pull request. Run slow tests only when
+the change touches the workflow they exercise, or when a release gate requires
+them. See `AGENTS.md` for the test tiers and change-to-test mapping. Tests
+enforce the module inventory, recipe inventory, resource layout, and behavior
+contracts; do not keep stale tests green with compatibility shims.
 
 ## Source ownership
 

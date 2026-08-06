@@ -1,22 +1,39 @@
 # GEPA, fully local
 
 GEPA over `evolve.harbor_local:LocalEnvironment`: real Harbor trials as local
-processes — no Docker daemon, no model key, no network. The default seed is
-`builtin-local-smoke`, a deterministic test agent that answers tasks from
-`target/knowledge.md`; evolving that document is the optimization problem, which
-makes this recipe the fastest way to exercise the full evolution loop
-(baseline → rollout → mutation → validate → gate) end to end on one machine.
+processes, with no Docker daemon. The default seed is `builtin-local-smoke`, a
+deterministic test agent that answers tasks from `target/knowledge.md`; evolving
+that document is the optimization problem. Baseline, rollout, validation, and
+gate evaluation require neither a model nor network access. A driver-owned
+mutation uses an installed local CLI agent and therefore uses that agent's
+existing login and network connection.
 
 Swap the seed (`--seed`) and dataset (`--dataset`) to optimize your own
 artifact once the loop is familiar. The local environment executes with the
 current user and no isolation — use it only with tasks you trust.
+
+The meta-agent uses
+`evolve.integrations.harbor.local_auto_agent:LocalAutoAgent`. It discovers the
+first installed CLI in this order: Codex, Claude Code, Gemini CLI, OpenCode.
+Set `EVOLVE_LOCAL_AGENT=claude-code` (or another supported name) to override the
+choice. Each CLI is executed through Harbor's own installed-agent adapter, so
+the trial retains a validated ATIF `agent/trajectory.json` instead of an
+Evolve-specific trace format. Codex reuses `~/.codex/auth.json` when present;
+credentials are copied into the per-trial local root rather than written into
+the workspace or run artifacts.
 
 ```bash
 export EVOLVE_RUNTIME_DIGEST="sha256:local-run"
 evolve preflight ws --recipe gepa_local --dataset /path/to/tasks
 evolve init ws --recipe gepa_local --dataset /path/to/tasks
 cd ws && ./evolve run . --max-generations 0
+# With Codex, Claude Code, Gemini CLI, or OpenCode installed:
+./evolve run . --max-generations 1
 ```
+
+Codex defaults to `gpt-5.4` in this recipe. For another CLI that requires an
+explicit model, set `operators.meta_agent.model` in `evolve.yaml`, or provide a
+per-agent entry under `operators.meta_agent.agent_kwargs.model_by_agent`.
 
 ## Task directory checklist
 

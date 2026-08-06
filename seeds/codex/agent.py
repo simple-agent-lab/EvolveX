@@ -92,6 +92,10 @@ class HarborAgent(Codex):
             raise ValueError(f"Codex auth.json does not exist: {auth_path}")
         return auth_path
 
+    def _candidate_root(self) -> Path:
+        source = self._get_env("EVOLVE_CANDIDATE_SOURCE") or os.environ.get("EVOLVE_CANDIDATE_SOURCE")
+        return Path(source).expanduser().resolve() if source else TARGET_ROOT
+
     def _build_register_skills_command(self) -> str | None:
         commands: list[str] = []
         base = super()._build_register_skills_command()
@@ -131,10 +135,11 @@ class HarborAgent(Codex):
 
     async def setup(self, environment: BaseEnvironment) -> None:
         await super().setup(environment)
-        skills = TARGET_ROOT / "skills"
-        marketplace_root = TARGET_ROOT / ".agents"
+        candidate_root = self._candidate_root()
+        skills = candidate_root / "skills"
+        marketplace_root = candidate_root / ".agents"
         marketplace = marketplace_root / "plugins" / "marketplace.json"
-        plugins = TARGET_ROOT / "plugins"
+        plugins = candidate_root / "plugins"
         remote_directories: list[str] = []
         if self._skills_enabled and skills.is_dir():
             remote_directories.append(REMOTE_SKILLS_DIR)

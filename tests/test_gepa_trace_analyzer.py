@@ -36,13 +36,14 @@ def test_gepa_trace_analyzer_builds_component_reflective_dataset(tmp_path: Path)
             ],
             "tool_calls": [{"name": "exec", "arguments": "pytest"}],
             "observations": ["failed"],
+            "feedback": {"message": "The visual hierarchy is clear; reduce template-like decoration."},
             "verifier_output": "assertion failed",
             "exception": {},
         },
         {"task_name": "task-b", "reward": None, "outcome": "infra_error"},
     ]
     (rollout / "cases.json").write_text(json.dumps(cases))
-    components = {"prompt": "target/prompt.md", "skill": "target/skills/task/SKILL.md"}
+    components = {"prompt": "target/prompt.md", "skill": "target/skills/task"}
     ctx = OperatorContext(
         workspace=tmp_path,
         checkout=tmp_path,
@@ -67,6 +68,9 @@ def test_gepa_trace_analyzer_builds_component_reflective_dataset(tmp_path: Path)
         {"name": "exec", "type": "tool_call"},
     ]
     assert record["Feedback"]["verifier_output"] == "assertion failed"
+    assert record["Feedback"]["natural_language_feedback"] == {
+        "message": "The visual hierarchy is clear; reduce template-like decoration."
+    }
     assert record["Scores (Higher is Better)"] == {"reward": 0.0}
     infra_record = dataset["prompt"][1]
     assert infra_record["Inputs"]["task_id"] == "task-b"
@@ -74,9 +78,11 @@ def test_gepa_trace_analyzer_builds_component_reflective_dataset(tmp_path: Path)
     manifest = json.loads((run_dir / "trace_analyzer/evidence/manifest.json").read_text())
     assert manifest["component_evidence"] == {
         "prompt": {"file": "reflection/00-prompt.json", "paths": ["target/prompt.md"], "records": 2},
-        "skill": {"file": "reflection/01-skill.json", "paths": ["target/skills/task/SKILL.md"], "records": 2},
+        "skill": {"file": "reflection/01-skill.json", "paths": ["target/skills/task"], "records": 2},
     }
     prompt_records = json.loads((run_dir / "trace_analyzer/evidence/reflection/00-prompt.json").read_text())
     assert prompt_records == dataset["prompt"]
     assert "trace_analyzer/evidence/reflection/00-prompt.json" in result.artifacts
     assert result.summary["usable_cases"] == 2
+    selected = (run_dir / "trace_analyzer/evidence/selected.md").read_text()
+    assert "The visual hierarchy is clear; reduce template-like decoration." in selected

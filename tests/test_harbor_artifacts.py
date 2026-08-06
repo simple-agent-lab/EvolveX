@@ -343,6 +343,16 @@ def test_write_harbor_artifacts_indexes_only_retained_safe_files(tmp_path: Path)
     (trial / "trial.log").write_text("retained trace\n")
     (trial / ".env").write_text("EVOLVE_FAKE_SECRET=secret\n")
     (trial / "config.json").write_text('{"proxy": "secret"}\n')
+    verifier = trial / "verifier"
+    verifier.mkdir()
+    retained = {
+        "evaluation.json": b'{"feedback":"make the figure larger"}\n',
+        "judge.json": b'{"score":0.8}\n',
+        "poster.svg": b'<svg xmlns="http://www.w3.org/2000/svg"/>\n',
+        "poster.png": b"safe-png-fixture",
+    }
+    for name, payload in retained.items():
+        (verifier / name).write_bytes(payload)
     run_dir = tmp_path / "run"
 
     assert write_harbor_artifacts(jobs, run_dir) == [1.0]
@@ -355,6 +365,14 @@ def test_write_harbor_artifacts_indexes_only_retained_safe_files(tmp_path: Path)
             "path": "case-a__one/trial.log",
             "sha256": hashlib.sha256(b"retained trace\n").hexdigest(),
         },
+        *[
+            {
+                "bytes": len(payload),
+                "path": f"case-a__one/verifier/{name}",
+                "sha256": hashlib.sha256(payload).hexdigest(),
+            }
+            for name, payload in retained.items()
+        ],
         {
             "bytes": len((trial / "result.json").read_bytes()),
             "path": "case-a__one/result.json",

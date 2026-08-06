@@ -7,6 +7,11 @@ invoke configured select, rollout, and trace-analyzer capabilities with
 edit the child worktree directly. `meta_agent` is optional when the outer agent
 owns the mutation.
 
+When an evaluator returns natural-language feedback, read
+`trace_analyzer/feedback.md` and the `Feedback.natural_language_feedback` fields
+in the reflective evidence before forming the hypothesis. Treat the protocol's
+binary completion reward as execution bookkeeping, not as the quality judgment.
+
 All state transitions still go through the mechanism: fork the selected parent,
 surface-check the child, run every configured `validate` and `novelty` operator,
 commit it, evaluate the exact tag, then call `finalize` to apply gate and

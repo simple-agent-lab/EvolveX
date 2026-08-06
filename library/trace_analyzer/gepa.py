@@ -52,6 +52,7 @@ def reflective_record(case: dict[str, Any], field_limit: int) -> dict[str, Any]:
         },
         "Feedback": {
             "outcome": case.get("outcome"),
+            "natural_language_feedback": _clip(case.get("feedback") or {}, field_limit),
             "verifier_output": _clip(case.get("verifier_output") or "", field_limit),
             "verifier_rewards": _clip(case.get("verifier_rewards") or {}, field_limit),
             "exception": _clip(case.get("exception") or {}, field_limit),
@@ -114,7 +115,9 @@ class GepaTraceAnalyzer(TraceAnalyzerOperator):
             "# GEPA Reflective Dataset\n\n"
             f"Built {len(records)} usable examples from {len(cases)} Harbor trials.\n\n"
             "Each component receives the task input, generated messages and ordered tool trajectory, "
-            "verifier feedback, exception details, and reward.\n\n"
+            "natural-language verifier feedback, exception details, and execution reward. "
+            "When present, `Feedback.natural_language_feedback` is the primary mutation signal; "
+            "the reward is only a completion signal, not a quality score.\n\n"
             "## Components\n\n"
             + "\n".join(
                 f"- `{name}` ({len(records)} examples): {', '.join(paths)}" for name, paths in components.items()
@@ -123,6 +126,17 @@ class GepaTraceAnalyzer(TraceAnalyzerOperator):
             + json.dumps(metrics["outcomes"], indent=2, sort_keys=True)
             + "\n```\n"
         )
+        feedback_messages = []
+        for case in cases:
+            feedback = case.get("feedback")
+            if not isinstance(feedback, dict):
+                continue
+            message = str(feedback.get("message") or "").strip()
+            if message:
+                task_name = str(case.get("task_name") or case.get("trial_name") or "unknown-task")
+                feedback_messages.append(f"### {task_name}\n\n{_clip(message, field_limit)}")
+        if feedback_messages:
+            selected += "\n## Natural-language verifier feedback\n\n" + "\n\n".join(feedback_messages) + "\n"
         (root / "selected.md").write_text(selected)
         (ctx.run_dir / "trace_analyzer" / "feedback.md").write_text(selected)
         artifacts = [

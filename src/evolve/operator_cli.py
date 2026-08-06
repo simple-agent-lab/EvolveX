@@ -10,6 +10,14 @@ from .frozen.interfaces import OPERATORS
 from .orchestration import finalize_child, invoke_operator
 
 
+def _public_operator_name(name: str) -> str:
+    return "analyze" if name == "trace_analyzer" else name
+
+
+def _internal_operator_name(name: str) -> str:
+    return "trace_analyzer" if name == "analyze" else name
+
+
 def _operator_variant(script: Path, block: dict[str, object]) -> str | None:
     configured = block.get("variant")
     if configured:
@@ -47,22 +55,19 @@ def build_operator_app(guard, workspace_environment, enable_live_output) -> type
             block = configured.get(spec.kind)
             enabled = isinstance(block, dict)
             script = workspace / "operators" / f"{spec.kind}.py"
-            entries.append(
-                {
-                    "name": spec.kind,
-                    "configured": enabled,
-                    "required": spec.required,
-                    "access": (
-                        "finalize"
-                        if spec.kind in {"gate", "record"}
-                        else "driver"
-                        if spec.kind == "reflect"
-                        else "direct"
-                    ),
-                    "variant": _operator_variant(script, block) if enabled else None,
-                    "script": str(script.resolve()),
-                }
-            )
+            entry = {
+                "name": _public_operator_name(spec.kind),
+                "configured": enabled,
+                "required": spec.required,
+                "access": (
+                    "finalize" if spec.kind in {"gate", "record"} else "driver" if spec.kind == "reflect" else "direct"
+                ),
+                "variant": _operator_variant(script, block) if enabled else None,
+                "script": str(script.resolve()),
+            }
+            if spec.kind == "trace_analyzer":
+                entry["implementation"] = spec.kind
+            entries.append(entry)
         if json_output:
             print(json.dumps(entries, indent=2, sort_keys=True))
             return
@@ -93,10 +98,11 @@ def build_operator_app(guard, workspace_environment, enable_live_output) -> type
         if not isinstance(override, dict):
             raise typer.BadParameter("--config must be a JSON object", param_hint="--config")
         enable_live_output(verbose)
+        internal_name = _internal_operator_name(name)
         with workspace_environment(workspace):
             invocation = invoke_operator(
                 workspace,
-                name,
+                internal_name,
                 genid,
                 parent=parent,
                 checkout=checkout,
