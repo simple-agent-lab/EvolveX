@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from evolve.runtime_auth import (
+from evolve.runtime.auth import (
     AuthenticationErrorCode,
     AuthenticationKind,
     RuntimeAuthenticationError,

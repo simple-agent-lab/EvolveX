@@ -10,7 +10,7 @@ from pathlib import Path
 
 from ..git import git
 from ..host_runtime import uv_executable
-from ..runtime_config import ResolvedRuntimeV1, RuntimeConfigError, load_resolved_runtime
+from ..runtime.config import ResolvedRuntimeV1, RuntimeConfigError, load_resolved_runtime
 from .models import ArtifactReferenceV1
 
 

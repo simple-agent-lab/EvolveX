@@ -8,12 +8,12 @@ from enum import StrEnum
 from pathlib import Path
 from typing import cast
 
-from .runtime_auth import (
+from .auth import (
     AuthenticationErrorCode,
     RuntimeAuthenticationError,
     resolve_authentication,
 )
-from .runtime_config import (
+from .config import (
     ProxyMode,
     ResolvedRuntimeV1,
     RuntimeConfigError,

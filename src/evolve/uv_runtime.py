@@ -14,7 +14,7 @@ from typing import Any
 from .evaluation import Outcome
 from .host_runtime import clean_python_env, uv_executable
 from .runtime import run_owned
-from .runtime_config import load_resolved_runtime
+from .runtime.config import load_resolved_runtime
 
 CONTAINER_UV_CACHE = "/opt/evolve/uv/cache"
 CONTAINER_UV_PYTHON = "/opt/evolve/uv/python"

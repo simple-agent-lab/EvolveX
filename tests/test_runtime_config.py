@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from evolve.runtime_config import (
+from evolve.runtime.config import (
     CandidateRuntimeConfig,
     ModelEndpointRoute,
     ProxyMode,

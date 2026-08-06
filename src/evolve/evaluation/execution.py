@@ -18,7 +18,7 @@ from ..git import evaluator_tree, git, git_stdout
 from ..host_runtime import clean_python_env
 from ..preflight import PreflightFailureCategory, PreflightStatus, run_preflight
 from ..runtime import OwnedResult, attempt_dir, next_attempt, owned_attempt_id, run_owned
-from ..runtime_environment import resolve_evaluator_runtime_environment, write_harbor_environment_inputs
+from ..runtime.environment import resolve_evaluator_runtime_environment, write_harbor_environment_inputs
 from ..uv_runtime import CandidateRuntimeResult, prepare_candidate_runtime
 from .contract import (
     ContractMode,

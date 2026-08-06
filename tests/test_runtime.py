@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 from conftest import fixture_recipe_config, init_fixture_workspace
 
-from evolve import runtime as runtime_module
+import evolve.runtime.process as runtime_module
 from evolve import workspace as workspace_module
 from evolve.config import scaffold_root
 from evolve.evaluation import Outcome

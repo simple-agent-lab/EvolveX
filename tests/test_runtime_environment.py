@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from evolve.runtime_config import ResolvedRuntimeV1, resolve_runtime
-from evolve.runtime_environment import (
+from evolve.runtime.config import ResolvedRuntimeV1, resolve_runtime
+from evolve.runtime.environment import (
     RuntimeEnvironmentPlan,
     RuntimeEnvironmentResolutionError,
     resolve_legacy_runtime_environment,

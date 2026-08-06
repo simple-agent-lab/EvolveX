@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from .runtime_config import normalize_runtime_config
+from .runtime.config import normalize_runtime_config
 
 
 def evaluator_repetitions(evaluator: Mapping[str, Any]) -> int:

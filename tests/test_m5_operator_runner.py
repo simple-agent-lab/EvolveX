@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
+import evolve.runtime.process as runtime_module
 from evolve import driver as driver_module
-from evolve import runtime as runtime_module
 from evolve.archive import archive_path, eval_receipt_path, mirror_path
 from evolve.driver import _run_operator_guarded
 from evolve.operators import OperatorResult, _operator_deadline_s, run_operator

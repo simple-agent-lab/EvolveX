@@ -14,8 +14,8 @@ from ..evaluation.contract import (
     trusted_evaluator_config,
 )
 from ..runtime import reserve_attempt_directory
-from ..runtime_config import ResolvedRuntimeV1, RuntimeConfigError
-from ..runtime_environment import (
+from ..runtime.config import ResolvedRuntimeV1, RuntimeConfigError
+from ..runtime.environment import (
     RuntimeEnvironmentErrorCode,
     RuntimeEnvironmentResolutionError,
     resolve_runtime_environment,

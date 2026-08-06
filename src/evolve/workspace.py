@@ -37,7 +37,7 @@ from .config import (
 )
 from .host_runtime import uv_executable
 from .integrations.harbor._agent_roles import is_candidate_miniswe_agent
-from .runtime_config import resolve_runtime
+from .runtime.config import resolve_runtime
 from .splits import build_manifest
 
 _SEED_IGNORE_PATTERNS = (

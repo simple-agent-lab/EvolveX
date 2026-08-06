@@ -16,7 +16,7 @@ import yaml
 from .. import __version__
 from ..evaluator_config import evaluator_repetitions
 from ..git import git
-from ..runtime_config import (
+from ..runtime.config import (
     ResolvedRuntimeV1,
     RuntimeConfigError,
     load_resolved_runtime,
