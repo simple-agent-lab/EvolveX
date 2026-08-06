@@ -149,8 +149,7 @@ def test_readme_uses_approved_identity_and_information_architecture() -> None:
     assert readme.startswith(hero)
     assert navigation in readme
     assert "docs/evolve-lineage.svg" in readme
-    assert "docs/assets/terminal-bench-full-results.svg" in readme
-    assert "docs/assets/tau3-banking-full-results.svg" in readme
+    assert "docs/assets/benchmark-results.svg" in readme
 
     headings = _h2_headings(readme)
     assert headings == [
