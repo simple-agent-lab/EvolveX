@@ -16,6 +16,10 @@ SUPPORTED_RECIPES = {
     "hyperagents_codex",
 }
 UV_SOURCE_RECIPES = {"ahe", "hill_climb", "hyperagents"}
+MAIN_RECIPES = SUPPORTED_RECIPES - {"gepa_local"}
+TERMINAL_BENCH_DATASET = "terminal-bench-2-30-v1"
+CODEX_IMAGE = "evolve-meta-agent-codex:20260805-codex0145"
+MINISWE_IMAGE = "evolve-meta-agent-app:20260724-tools-mswe245"
 
 
 def _config(name: str) -> str:
@@ -24,6 +28,14 @@ def _config(name: str) -> str:
 
 def _parsed_config(name: str) -> dict[str, object]:
     return load_config(RECIPES / name / "evolve.yaml")
+
+
+def test_main_recipes_share_terminal_bench_and_explicit_meta_agent_images() -> None:
+    for name in MAIN_RECIPES:
+        config = _parsed_config(name)
+        assert config["evaluator"]["dataset"] == TERMINAL_BENCH_DATASET
+        expected_image = MINISWE_IMAGE if name in {"ahe", "hyperagents"} else CODEX_IMAGE
+        assert config["operators"]["meta_agent"]["image"] == expected_image
 
 
 def test_all_recipes_are_recipe_artifacts_only() -> None:
@@ -61,7 +73,7 @@ def test_supported_recipes_use_harbor_and_method_meta_agent() -> None:
         assert "target/**" in config
         assert "target/agent.py" not in config
         if name == "aevolve":
-            assert "dataset: swe-bench-lite" in config
+            assert f"dataset: {TERMINAL_BENCH_DATASET}" in config
             assert "seed: builtin-codex" in config
             assert "rollout: {variant: harbor" in config
             assert "trace_analyzer: {variant: trajectory_only" in config
@@ -77,7 +89,7 @@ def test_supported_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "evolve_tools: false" in config
             assert "agent: target.agent:HarborAgent" in config
         elif name == "gepa":
-            assert "dataset: swe-bench-lite" in config
+            assert f"dataset: {TERMINAL_BENCH_DATASET}" in config
             assert "seed: builtin-codex" in config
             assert "select: {variant: pareto" in config
             assert "rollout: {variant: harbor" in config
@@ -104,7 +116,7 @@ def test_supported_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "image:" not in config
         elif name == "ahe":
             assert "max_generations: 10" in config
-            assert "dataset: terminal-bench-2-10-10-10" in config
+            assert f"dataset: {TERMINAL_BENCH_DATASET}" in config
             assert "seed: https://github.com/SWE-agent/mini-swe-agent.git" in config
             assert "revision: 388da74aad620a384ab47669b17c52133e30e7c3" in config
             assert "generate_lock: true" in config
@@ -131,7 +143,7 @@ def test_supported_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "\n  anchor:" not in config
         elif name == "ahe_codex":
             assert "max_generations: 10" in config
-            assert "dataset: terminal-bench-2-ahe-30-v1" in config
+            assert f"dataset: {TERMINAL_BENCH_DATASET}" in config
             assert "seed: builtin-codex" in config
             assert "rollout: {variant: parent_evaluation" in config
             assert "trace_analyzer: {variant: ahe" in config
@@ -155,7 +167,7 @@ def test_supported_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "\n  anchor:" not in config
         elif name == "hyperagents":
             assert "max_generations: 10" in config
-            assert "dataset: terminal-bench-2-10-10-10" in config
+            assert f"dataset: {TERMINAL_BENCH_DATASET}" in config
             assert "seed: https://github.com/SWE-agent/mini-swe-agent.git" in config
             assert "revision: 388da74aad620a384ab47669b17c52133e30e7c3" in config
             assert "generate_lock: true" in config
@@ -184,7 +196,7 @@ def test_supported_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "budget_usd" not in config
         elif name == "hyperagents_codex":
             assert "max_generations: 10" in config
-            assert "dataset: terminal-bench-2-10-10-10" in config
+            assert f"dataset: {TERMINAL_BENCH_DATASET}" in config
             assert "seed: builtin-codex" in config
             assert "    - operators/**" in config
             assert "select: {variant: score_child_prop" in config
@@ -199,7 +211,7 @@ def test_supported_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "agent: target.agent:HarborAgent" in config
             assert "image: evolve-meta-agent-codex:20260805-codex0145" in config
         elif name == "hill_climb_codex":
-            assert "dataset: swe-bench-lite" in config
+            assert f"dataset: {TERMINAL_BENCH_DATASET}" in config
             assert "seed: builtin-codex" in config
             assert "rollout: {variant: harbor" in config
             assert "trace_analyzer: {variant: failure_patterns" in config
@@ -209,7 +221,7 @@ def test_supported_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "editable_roots: [target]" in config
             assert "image: evolve-meta-agent-codex:20260805-codex0145" in config
         else:
-            assert "dataset: swe-bench-lite" in config
+            assert f"dataset: {TERMINAL_BENCH_DATASET}" in config
             assert "seed: https://github.com/SWE-agent/mini-swe-agent.git" in config
             assert "rollout: {variant: harbor" in config
             assert "trace_analyzer: {variant: failure_patterns" in config
@@ -232,15 +244,15 @@ def test_ahe_and_hyperagents_share_the_pinned_meta_agent_image() -> None:
 
 def test_codex_meta_agents_use_the_preinstalled_codex_image() -> None:
     expected = "evolve-meta-agent-codex:20260805-codex0145"
-    for name in ("ahe_codex", "hill_climb_codex", "hyperagents_codex"):
+    for name in ("aevolve", "ahe_codex", "gepa", "hill_climb", "hill_climb_codex", "hyperagents_codex"):
         assert _parsed_config(name)["operators"]["meta_agent"]["image"] == expected
 
 
 def test_terminal_bench_method_recipes_use_full_curated_dataset() -> None:
     expected_datasets = {
-        "ahe": "terminal-bench-2-10-10-10",
-        "hyperagents": "terminal-bench-2-10-10-10",
-        "hyperagents_codex": "terminal-bench-2-10-10-10",
+        "ahe": TERMINAL_BENCH_DATASET,
+        "hyperagents": TERMINAL_BENCH_DATASET,
+        "hyperagents_codex": TERMINAL_BENCH_DATASET,
     }
     for name, expected_dataset in expected_datasets.items():
         recipe = _parsed_config(name)

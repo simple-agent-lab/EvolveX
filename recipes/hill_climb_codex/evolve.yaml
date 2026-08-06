@@ -25,7 +25,7 @@ execution_runtime:
 evaluator:
   engine: harbor
   model: gpt-5.4
-  dataset: swe-bench-lite
+  dataset: terminal-bench-2-30-v1
   agent: target.agent:HarborAgent
   split: {train: 0.5, gate: 0.4, sealed: 0.1, seed: 0}
   sampling: static

@@ -26,7 +26,7 @@ evaluator:
   model: openai/gpt-5.4-2026-03-05
   runtime:
     candidate: {variant: uv, project: target, python: "3.12"}
-  dataset: terminal-bench-2-10-10-10
+  dataset: terminal-bench-2-30-v1
   agent: evolve.integrations.harbor.miniswe_candidate:CandidateMiniSweAgent
   task_scope: full
   evaluation_split: train

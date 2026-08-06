@@ -24,6 +24,7 @@ operators:
     agent: codex
     model: gpt-5.4
     environment: docker
+    image: evolve-meta-agent-codex:20260805-codex0145
     editable_roots: [target]
     evolve_prompts: true
     evolve_skills: true
@@ -43,7 +44,7 @@ operators:
   timeout_s: 600
 evaluator:
   engine: harbor
-  dataset: swe-bench-lite
+  dataset: terminal-bench-2-30-v1
   agent: target.agent:HarborAgent
   split: {train: 0.5, gate: 0.4, sealed: 0.1, seed: 0}
   sampling: static
