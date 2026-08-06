@@ -234,6 +234,65 @@ docker info
     assert "CODEX_AUTH_JSON_PATH" in quick_start
 
 
+def test_mkdocs_covers_custom_recipe_operator_and_experiment_workflows() -> None:
+    mkdocs = (ROOT / "mkdocs.yml").read_text()
+    expected_pages = (
+        "docs/guides/custom-recipes.md",
+        "docs/guides/recipe-to-experiment.md",
+        "docs/reference/environment-variables.md",
+        "docs/reference/operators.md",
+    )
+    for page in expected_pages:
+        assert (ROOT / page).is_file()
+        assert page.removeprefix("docs/") in mkdocs
+
+    custom_recipe = (ROOT / expected_pages[0]).read_text()
+    assert "--recipe-path" in custom_recipe
+    assert "surface:" in custom_recipe
+    assert "editable_roots" in custom_recipe
+    assert "evolve preflight" in custom_recipe
+
+    experiment = (ROOT / expected_pages[1]).read_text()
+    for command in ("evolve init", "./evolve doctor", "./evolve smoke", "./evolve run", "./evolve verify"):
+        assert command in experiment
+
+    environment = (ROOT / expected_pages[2]).read_text()
+    for variable in (
+        "OPENAI_API_KEY",
+        "OPENAI_BASE_URL",
+        "CODEX_AUTH_JSON_PATH",
+        "EVOLVE_RUNTIME_DIGEST",
+        "EVOLVE_HOME",
+        "EVOLVE_UV_CACHE_DIR",
+        "HTTP_PROXY",
+        "NO_PROXY",
+    ):
+        assert variable in environment
+    assert "Environment Variables" in experiment
+    assert "environment-checklist" in experiment
+
+    operators = (ROOT / expected_pages[3]).read_text()
+    stages = {
+        "select": "Select",
+        "rollout": "Rollout",
+        "trace_analyzer": "Trace Analyzer",
+        "meta_agent": "Meta Agent",
+        "validate": "Validate",
+        "novelty": "Novelty",
+        "gate": "Gate",
+        "record": "Record",
+        "reflect": "Reflect",
+    }
+    for stage, title in stages.items():
+        assert stage in operators
+        page = ROOT / "docs" / "reference" / "operators" / f"{stage}.md"
+        assert page.is_file()
+        assert page.read_text().startswith(f"# {title}\n")
+        assert f"- {title}: reference/operators/{stage}.md" in mkdocs
+
+    assert not (ROOT / "docs/reference/trace-analyzers.md").exists()
+
+
 def test_license_metadata_and_notice_are_consistent() -> None:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]
     assert project["version"] == __version__

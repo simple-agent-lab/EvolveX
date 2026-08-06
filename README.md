@@ -335,7 +335,7 @@ composable strategies for different agent-evolution scenarios.
 | [Recipes](recipes/README.md) | Supported evolution strategies. |
 | [Evaluation assets](evals/README.md) | Skill behavior/routing evaluation cases and result snapshots. |
 | [Meta-agents](docs/guides/meta-agents.md) | Trusted-host and isolated meta-agent runners. |
-| [Trace analysis](docs/reference/trace-analyzers.md) | Trace retention and analyzer variants. |
+| [`trace_analyzer`](docs/reference/operators/trace_analyzer.md) | Trace retention and analyzer variants. |
 | [Local environment](docs/guides/local-environment.md) | Docker-free trusted local execution. |
 | [Operations](docs/guides/operations.md) | Doctor profiles, runtime setup, full-loop smoke, and recovery. |
 | [Contributing](CONTRIBUTING.md) | Development setup and repository conventions. |

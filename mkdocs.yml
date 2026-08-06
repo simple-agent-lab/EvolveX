@@ -37,12 +37,25 @@ nav:
   - Concepts:
       - Framework design: concepts/design.md
   - Guides:
+      - Creating a custom recipe: guides/custom-recipes.md
+      - From recipe to experiment: guides/recipe-to-experiment.md
       - Running Evolve reliably: guides/operations.md
       - Meta-agent execution: guides/meta-agents.md
       - Local Harbor environment: guides/local-environment.md
   - Reference:
+      - Environment Variables: reference/environment-variables.md
+      - Operator overview: reference/operators.md
+      - Operators:
+          - Select: reference/operators/select.md
+          - Rollout: reference/operators/rollout.md
+          - Trace Analyzer: reference/operators/trace_analyzer.md
+          - Meta Agent: reference/operators/meta_agent.md
+          - Validate: reference/operators/validate.md
+          - Novelty: reference/operators/novelty.md
+          - Gate: reference/operators/gate.md
+          - Record: reference/operators/record.md
+          - Reflect: reference/operators/reflect.md
       - Terminology: reference/terminology.md
-      - Trace analyzer: reference/trace-analyzers.md
   - Development:
       - Documentation ownership: development/documentation.md
       - Coding style: development/coding-style.md
