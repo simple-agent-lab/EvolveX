@@ -149,6 +149,8 @@ def test_readme_uses_approved_identity_and_information_architecture() -> None:
     assert readme.startswith(hero)
     assert navigation in readme
     assert "docs/evolve-lineage.svg" in readme
+    assert "docs/assets/terminal-bench-full-results.svg" in readme
+    assert "docs/assets/tau3-banking-full-results.svg" in readme
 
     headings = _h2_headings(readme)
     assert headings == [
@@ -187,10 +189,10 @@ def test_readme_uses_approved_identity_and_information_architecture() -> None:
     unsupported_benchmark_placeholder = """> **TODO:** Add reproducible benchmark results and supporting artifacts once
 > the evaluation setup and reporting protocol are finalized."""
     assert unsupported_benchmark_placeholder not in readme
-    assert "reproducible benchmark results" not in readme
-    assert (
-        "Benchmark results will be added only with a reproducible evaluation setup and\nsupporting artifacts."
-    ) in readme
+    assert "### Benchmark results" in readme
+    assert '<td rowspan="8">Terminal Bench 2 (50/19/20)</td>' in readme
+    assert '<td rowspan="8">Tau^3 Banking (50/20/27)</td>' in readme
+    assert '<td rowspan="16">Codex</td>' in readme
 
 
 def test_readme_keeps_supported_recipes_and_honest_quick_start() -> None:

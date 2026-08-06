@@ -40,6 +40,18 @@
   </a>
 </p>
 
+<p align="center">
+  <a href="docs/assets/terminal-bench-full-results.svg">
+    <img src="docs/assets/terminal-bench-full-results.svg" alt="Terminal Bench 2 full-benchmark results for AHE, Hyperagents, A Evolve, and GEPA with MiniSWE and Codex target agents. Each stacked bar shows the seed score in a dark target-agent color and the improvement to the best score in a lighter shade.">
+  </a>
+</p>
+
+<p align="center">
+  <a href="docs/assets/tau3-banking-full-results.svg">
+    <img src="docs/assets/tau3-banking-full-results.svg" alt="Tau cubed Banking full-benchmark results for AHE, Hyperagents, A Evolve, and GEPA with MiniSWE and Codex target agents. Each stacked bar shows the seed score in a dark target-agent color and the improvement to the best score in a lighter shade.">
+  </a>
+</p>
+
 ## What EvolveX Does
 
 EvolveX gives an agent a controlled way to improve itself. It runs candidates
@@ -55,7 +67,9 @@ that score it.
 
 Every recipe composes the same loop:
 
-**select → evaluate → analyze → mutate → gate → record**
+<p align="center">
+  <strong>select → evaluate → analyze → mutate → gate → record</strong>
+</p>
 
 <p align="center">
   <a href="docs/assets/architecture.svg">
@@ -128,6 +142,144 @@ an API key. Use `WORKSPACE`, `TASKS`, `GENERATIONS`, `ENV_FILE`, or
 [operations guide](docs/guides/operations.md) for the full configuration and
 recovery workflow.
 
+### Benchmark results
+
+<table>
+  <thead>
+    <tr>
+      <th>Benchmark (train/gate/sealed)</th>
+      <th>Method</th>
+      <th>Target Agent (GPT-5.4-high)</th>
+      <th>Meta Agent (GPT-5.4-xhigh)</th>
+      <th>Seed Train Score → Best Train Score</th>
+      <th>Seed Gate Score → Best Gate Score</th>
+      <th>Seed Sealed Score → Best Sealed Score</th>
+      <th>Seed Full Bench Score → Best Full Bench Score</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td rowspan="8">Terminal Bench 2 (50/19/20)</td>
+      <td>AHE</td>
+      <td rowspan="4">Miniswe Agent</td>
+      <td rowspan="16">Codex</td>
+      <td>58.0% → 74.0% (<strong>+16.0%</strong>)</td>
+      <td>57.9% → 68.4% (<strong>+10.5%</strong>)</td>
+      <td>70.0% → 70.0% (<strong>+0.0%</strong>)</td>
+      <td>60.7% → 71.9% (<strong>+11.2%</strong>)</td>
+    </tr>
+    <tr>
+      <td>Hyperagents</td>
+      <td>58.0% → 68.0% (<strong>+10.0%</strong>)</td>
+      <td>57.9% → 73.7% (<strong>+15.8%</strong>)</td>
+      <td>70.0% → 70.0% (<strong>+0.0%</strong>)</td>
+      <td>60.7% → 69.7% (<strong>+9.0%</strong>)</td>
+    </tr>
+    <tr>
+      <td>A Evolve</td>
+      <td>58.0% → 68.0% (<strong>+10.0%</strong>)</td>
+      <td>57.9% → 78.9% (<strong>+21.0%</strong>)</td>
+      <td>70.0% → 65.0% (<strong>−5.0%</strong>)</td>
+      <td>60.7% → 69.7% (<strong>+9.0%</strong>)</td>
+    </tr>
+    <tr>
+      <td>GEPA</td>
+      <td>58.0% → 68.0% (<strong>+10.0%</strong>)</td>
+      <td>57.9% → 68.4% (<strong>+10.5%</strong>)</td>
+      <td>70.0% → 75.0% (<strong>+5.0%</strong>)</td>
+      <td>60.7% → 69.7% (<strong>+9.0%</strong>)</td>
+    </tr>
+    <tr>
+      <td>AHE</td>
+      <td rowspan="4">Codex</td>
+      <td>58.0% → 74.0% (<strong>+16.0%</strong>)</td>
+      <td>52.6% → 47.4% (<strong>−5.2%</strong>)</td>
+      <td>65.0% → 70.0% (<strong>+5.0%</strong>)</td>
+      <td>58.4% → 67.4% (<strong>+9.0%</strong>)</td>
+    </tr>
+    <tr>
+      <td>Hyperagents</td>
+      <td>58.0% → 72.0% (<strong>+14.0%</strong>)</td>
+      <td>52.6% → 57.9% (<strong>+5.3%</strong>)</td>
+      <td>65.0% → 75.0% (<strong>+10.0%</strong>)</td>
+      <td>58.4% → 69.7% (<strong>+11.3%</strong>)</td>
+    </tr>
+    <tr>
+      <td>A Evolve</td>
+      <td>58.0% → 58.0% (<strong>+0.0%</strong>)</td>
+      <td>52.6% → 52.6% (<strong>+0.0%</strong>)</td>
+      <td>65.0% → 65.0% (<strong>+0.0%</strong>)</td>
+      <td>58.4% → 58.4% (<strong>+0.0%</strong>)</td>
+    </tr>
+    <tr>
+      <td>GEPA</td>
+      <td>58.0% → 58.0% (<strong>+0.0%</strong>)</td>
+      <td>52.6% → 52.6% (<strong>+0.0%</strong>)</td>
+      <td>65.0% → 65.0% (<strong>+0.0%</strong>)</td>
+      <td>58.4% → 58.4% (<strong>+0.0%</strong>)</td>
+    </tr>
+    <tr>
+      <td rowspan="8">Tau^3 Banking (50/20/27)</td>
+      <td>AHE</td>
+      <td rowspan="4">Miniswe Agent</td>
+      <td>30.0% → 36.0% (<strong>+6.0%</strong>)</td>
+      <td>35.0% → 35.0% (<strong>+0.0%</strong>)</td>
+      <td>18.5% → 25.9% (<strong>+7.4%</strong>)</td>
+      <td>27.8% → 33.0% (<strong>+5.2%</strong>)</td>
+    </tr>
+    <tr>
+      <td>Hyperagents</td>
+      <td>30.0% → 38.0% (<strong>+8.0%</strong>)</td>
+      <td>35.0% → 45.0% (<strong>+10.0%</strong>)</td>
+      <td>18.5% → 37.0% (<strong>+18.5%</strong>)</td>
+      <td>27.8% → 39.2% (<strong>+11.4%</strong>)</td>
+    </tr>
+    <tr>
+      <td>A Evolve</td>
+      <td>30.0% → 34.0% (<strong>+4.0%</strong>)</td>
+      <td>35.0% → 45.0% (<strong>+10.0%</strong>)</td>
+      <td>18.5% → 29.6% (<strong>+11.1%</strong>)</td>
+      <td>27.8% → 35.1% (<strong>+7.3%</strong>)</td>
+    </tr>
+    <tr>
+      <td>GEPA</td>
+      <td>30.0% → 32.0% (<strong>+2.0%</strong>)</td>
+      <td>35.0% → 45.0% (<strong>+10.0%</strong>)</td>
+      <td>18.5% → 25.9% (<strong>+7.4%</strong>)</td>
+      <td>27.8% → 33.0% (<strong>+5.2%</strong>)</td>
+    </tr>
+    <tr>
+      <td>AHE</td>
+      <td rowspan="4">Codex</td>
+      <td>30.0% → 36.0% (<strong>+6.0%</strong>)</td>
+      <td>30.0% → 45.0% (<strong>+15.0%</strong>)</td>
+      <td>7.4% → 14.8% (<strong>+7.4%</strong>)</td>
+      <td>23.7% → 32.0% (<strong>+8.3%</strong>)</td>
+    </tr>
+    <tr>
+      <td>Hyperagents</td>
+      <td>30.0% → 36.0% (<strong>+6.0%</strong>)</td>
+      <td>30.0% → 50.0% (<strong>+20.0%</strong>)</td>
+      <td>7.4% → 48.1% (<strong>+40.7%</strong>)</td>
+      <td>23.7% → 42.3% (<strong>+18.6%</strong>)</td>
+    </tr>
+    <tr>
+      <td>A Evolve</td>
+      <td>30.0% → 38.0% (<strong>+8.0%</strong>)</td>
+      <td>30.0% → 45.0% (<strong>+15.0%</strong>)</td>
+      <td>7.4% → 18.5% (<strong>+11.1%</strong>)</td>
+      <td>23.7% → 34.0% (<strong>+10.3%</strong>)</td>
+    </tr>
+    <tr>
+      <td>GEPA</td>
+      <td>30.0% → 36.0% (<strong>+6.0%</strong>)</td>
+      <td>30.0% → 35.0% (<strong>+5.0%</strong>)</td>
+      <td>7.4% → 14.8% (<strong>+7.4%</strong>)</td>
+      <td>23.7% → 29.9% (<strong>+6.2%</strong>)</td>
+    </tr>
+  </tbody>
+</table>
+
 ## Trustworthy by Construction
 
 EvolveX separates evolvable policy from the mechanism that judges it:
@@ -145,9 +297,6 @@ process. See [the design guide](docs/concepts/design.md) for the complete owners
 EvolveX is an active prototype for research and controlled experimentation. The
 current focus is reliable experiment mechanics, local-first workflows, and
 composable strategies for different agent-evolution scenarios.
-
-Benchmark results will be added only with a reproducible evaluation setup and
-supporting artifacts.
 
 ## Roadmap
 
