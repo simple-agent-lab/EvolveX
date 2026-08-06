@@ -63,7 +63,8 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `host_runtime.py` | 100 | host-side locked runtime process helpers |
 | `integrations/__init__.py` | 10 | external runtime integration package boundary |
 | `integrations/harbor/__init__.py` | 10 | Harbor integration package boundary |
-| `integrations/harbor/miniswe_candidate.py` | 550 | exact-candidate MiniSWE Harbor evaluator agent |
+| `integrations/harbor/codex_candidate.py` | 75 | Codex adapter for OpenAI-compatible Responses endpoints |
+| `integrations/harbor/miniswe_candidate.py` | 500 | exact-candidate MiniSWE Harbor evaluator agent |
 | `integrations/harbor/miniswe_task_file.py` | 130 | large-task MiniSWE meta-agent transport |
 | `meta_agent_budget.py` | 150 | shared Harbor meta-agent retry and timeout budget calculations |
 

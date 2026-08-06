@@ -41,6 +41,8 @@ def test_release_wheel_has_one_resource_owner_and_complete_metadata() -> None:
             "evolve/seeds/codex/agent.py",
             "evolve/seeds/codex/plugins/evolve-target/.codex-plugin/plugin.json",
             "evolve/seeds/codex/plugins/evolve-target/hooks/hooks.json",
+            "evolve/integrations/harbor/codex_candidate.py",
+            "evolve/integrations/harbor/miniswe_candidate.py",
             "evolve/skills/evolve-agent/SKILL.md",
             "evolve/skills/evolve-agent/references/workspace-contract.md",
             "evolve/containers/meta-agent/Dockerfile",

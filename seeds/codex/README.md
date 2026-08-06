@@ -15,9 +15,14 @@ surface under `target/**` so Evolve can mutate it.
 Compaction overrides are off by default so Codex uses model defaults. Set
 `compaction.override_defaults = true` to evaluate the candidate values.
 
-Authentication is runtime state, not part of the genome. Run `codex login` on
-the host so `~/.codex/auth.json` exists; set `CODEX_AUTH_JSON_PATH` only when
-using another auth file location. Never commit credentials under `target/`.
+Authentication is runtime state, not part of the genome. The default `auto`
+mode uses `CODEX_AUTH_JSON_PATH` or `CODEX_FORCE_AUTH_JSON` when either is set,
+switches to API mode when `OPENAI_BASE_URL` or `OPENAI_API_BASE` is set, and
+otherwise requires `~/.codex/auth.json`. Set `EVOLVE_CODEX_AUTH_MODE` to
+`auth_json` or `api` to choose explicitly. API mode requires
+`OPENAI_API_KEY`, configures an OpenAI-compatible Responses provider, disables
+WebSockets, and supplies the key through both the normal provider auth and the
+`api-key` header. Never commit credentials under `target/`.
 
 The Harbor wrapper installs the candidate plugin into its temporary
 `CODEX_HOME` for each isolated task. It bypasses interactive hook review only
