@@ -4,7 +4,14 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from conftest import git, init_fixture_workspace, run_evolve, write_locked_miniswe_seed
+from conftest import (
+    git,
+    init_fixture_workspace,
+    init_recipe_with_local_inputs,
+    run_evolve,
+    write_identity_dataset,
+    write_locked_miniswe_seed,
+)
 from typer.testing import CliRunner
 
 from evolve.config import load_config, surface_lists
@@ -13,8 +20,55 @@ from evolve.workspace import InitOptions, _write_target, init_workspace
 MINISWE_REVISION = "388da74aad620a384ab47669b17c52133e30e7c3"
 
 
+@pytest.mark.parametrize(
+    ("recipe", "managed_candidate"),
+    [
+        ("aevolve", False),
+        ("ahe", True),
+        ("gepa", False),
+        ("hill_climb", True),
+        ("hyperagents", True),
+    ],
+)
+def test_init_generates_canonical_resolved_runtime(tmp_path: Path, recipe: str, managed_candidate: bool) -> None:
+    workspace = init_recipe_with_local_inputs(tmp_path, recipe)
+
+    payload = json.loads((workspace / "evaluator/runtime.json").read_text())
+    assert payload["engine"] == "harbor"
+    assert ("candidate" in payload) is managed_candidate
+    assert payload["digest"] == (workspace / "evaluator/runtime.pin").read_text().strip()
+    assert "model.example" not in json.dumps(payload)
+    assert git(workspace, "show", "gen/0:evaluator/runtime.json")
+
+
+def test_init_certifies_default_runtime_when_recipe_omits_runtime(tmp_path: Path) -> None:
+    workspace = init_fixture_workspace(tmp_path / "workspace")
+
+    payload = json.loads((workspace / "evaluator/runtime.json").read_text())
+    assert payload["engine"] == "harbor"
+    assert "candidate" not in payload
+    assert "proxy" not in payload
+    assert (workspace / "evaluator/runtime.pin").read_text().strip() == payload["digest"]
+
+
+def test_generated_preflight_wrapper_only_delegates_to_framework(tmp_path: Path) -> None:
+    workspace = init_recipe_with_local_inputs(tmp_path, "aevolve")
+
+    assert (workspace / "operators/preflight.sh").read_text() == (
+        "#!/bin/sh\n"
+        "set -eu\n"
+        'HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)\n'
+        'ROOT=$(CDPATH= cd -- "$HERE/.." && pwd)\n'
+        'exec "$ROOT/evolve" preflight "$ROOT" "$@"\n'
+    )
+
+
 def _miniswe_seed(root: Path) -> Path:
     return write_locked_miniswe_seed(root / "miniswe")
+
+
+def _identity_dataset(root: Path) -> Path:
+    return write_identity_dataset(root / "tasks")
 
 
 def _versioned_candidate_seed(path: Path, *, locked: bool) -> Path:
@@ -64,6 +118,7 @@ def test_init_help_advertises_only_supported_seed_options() -> None:
     result = run_evolve("init", "--help")
 
     assert result.returncode == 0, result.stderr
+    assert "--tasks" in result.stdout
     assert "builtin-codex" in result.stdout
     assert "local target dir" in result.stdout
     assert "git URL to vendor" in result.stdout
@@ -216,7 +271,14 @@ def test_init_accepts_explicit_locked_candidate_target(tmp_path: Path, source_ki
     seed_reference = seed.as_uri() if source_kind == "git" else str(seed)
     workspace = tmp_path / "workspace"
 
-    init_workspace(InitOptions(workspace=workspace, recipe="hill_climb", seed=seed_reference))
+    init_workspace(
+        InitOptions(
+            workspace=workspace,
+            recipe="hill_climb",
+            seed=seed_reference,
+            dataset=str(_identity_dataset(tmp_path)),
+        )
+    )
 
     assert (workspace / "target" / "uv.lock").is_file()
     assert load_config(workspace / "evolve.yaml")["target"] == {"seed": seed_reference}
@@ -281,7 +343,13 @@ def test_init_accepts_generated_lock_for_local_candidate_project(tmp_path: Path,
     )
     workspace = tmp_path / "workspace"
 
-    init_workspace(InitOptions(workspace=workspace, recipe="hill_climb"))
+    init_workspace(
+        InitOptions(
+            workspace=workspace,
+            recipe="hill_climb",
+            dataset=str(_identity_dataset(tmp_path)),
+        )
+    )
 
     assert (workspace / "target" / "uv.lock").is_file()
     git(workspace, "cat-file", "-e", "gen/0:target/uv.lock")
@@ -307,7 +375,13 @@ def test_init_removes_egg_info_created_during_lock_generation(tmp_path: Path, mo
     monkeypatch.setattr(workspace_module, "_generate_target_lock", generate_lock_with_metadata)
     workspace = tmp_path / "workspace"
 
-    init_workspace(InitOptions(workspace=workspace, recipe="hill_climb"))
+    init_workspace(
+        InitOptions(
+            workspace=workspace,
+            recipe="hill_climb",
+            dataset=str(_identity_dataset(tmp_path)),
+        )
+    )
 
     assert not (workspace / "target" / "src" / "mini_swe_agent.egg-info").exists()
     assert git(workspace, "ls-files", "target/src/mini_swe_agent.egg-info") == ""
@@ -404,7 +478,13 @@ def test_default_hill_climb_pins_seed_and_generates_candidate_lock(tmp_path: Pat
 
     monkeypatch.setattr(workspace_module, "_git_clone", clone_reviewed_miniswe)
     workspace = tmp_path / "workspace"
-    init_workspace(InitOptions(workspace=workspace, recipe="hill_climb"))
+    init_workspace(
+        InitOptions(
+            workspace=workspace,
+            recipe="hill_climb",
+            dataset=str(_identity_dataset(tmp_path)),
+        )
+    )
 
     assert (workspace / "target" / "uv.lock").is_file()
     assert load_config(workspace / "evolve.yaml")["target"] == {
@@ -512,12 +592,14 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
     assert "best_ever.json" in gitignore
     assert json.loads((workspace / "best_ever.json").read_text()) is None
     assert ".venv/" in gitignore
+    assert ".env" in gitignore.splitlines()
+    assert ".env.*" in gitignore.splitlines()
 
     splits = json.loads((workspace / "evaluator" / "splits.json").read_text())
     assert splits["version"] == 2
     assert splits["resolved"] is False
     assert splits["ratios"] == {"train": 0.5, "gate": 0.4, "sealed": 0.1}
-    assert splits["tasks"] == {"train": [], "gate": [], "sealed": []}
+    assert sum(len(members) for members in splits["tasks"].values()) == 100
 
 
 def test_init_creates_generation_zero_git_snapshot_and_archive_event(tmp_path: Path) -> None:
@@ -561,12 +643,14 @@ def test_init_binds_real_hyperagents_method_surface_and_operators(tmp_path: Path
         "hyperagents",
         "--seed",
         str(seed),
+        "--dataset",
+        str(_identity_dataset(tmp_path)),
         env={"EVAL_STUB": "1", "EVOLVE_HOME": str(tmp_path / "evolve-home")},
     )
 
     assert result.returncode == 0, result.stderr
     assert "score_child_prop" in (workspace / "operators/select.py").read_text()
-    assert "EvaluationReplayRollout" in (workspace / "operators/rollout.py").read_text()
+    assert "ParentEvaluationRollout" in (workspace / "operators/rollout.py").read_text()
     assert (workspace / "library/rollout/harbor.py").is_file()
     assert "class TraceBrowser" in (workspace / "operators/trace_analyzer.py").read_text()
     assert "variant: hyperagents" in (workspace / "operators/meta_agent.py").read_text()
@@ -588,6 +672,8 @@ def test_init_tracks_vendored_files_ignored_by_seed_repository(tmp_path: Path) -
         "hyperagents",
         "--seed",
         str(seed),
+        "--dataset",
+        str(_identity_dataset(tmp_path)),
         env={"EVAL_STUB": "1", "EVOLVE_HOME": str(tmp_path / "evolve-home")},
     )
 

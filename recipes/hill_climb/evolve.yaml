@@ -22,18 +22,17 @@ operators:
   gate: {variant: hillclimb}
   record: {variant: jsonl}
   timeout_s: 600
-execution_runtime:
-  backend: docker
 evaluator:
   engine: harbor
-  candidate_runtime: {variant: uv, project: target, python: "3.12"}
-  dataset: swe-bench-lite
-  agent: evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent
+  runtime:
+    candidate: {variant: uv, project: target, python: "3.12"}
+  dataset: terminal-bench-2-30-v1
+  agent: evolve.integrations.harbor.miniswe_candidate:CandidateMiniSweAgent
   split: {train: 0.5, gate: 0.4, sealed: 0.1, seed: 0}
   sampling: static
   tasks_per_round: 16
   anchor: {final: true, every_rounds: 0}
-  k: 1
+  repetitions: 1
   n_concurrent: 16
   max_retries: 1
   benchmark_timeout_is_zero: true

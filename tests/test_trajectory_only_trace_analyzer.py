@@ -30,6 +30,19 @@ def test_trajectory_judge_rejects_non_finite_scores() -> None:
             raise AssertionError(f"non-finite score was accepted: {score}")
 
 
+def test_trajectory_judge_submission_prompt_uses_exact_installed_agent_identity() -> None:
+    module = _module()
+    record = {"task_id": "task-a", "compressed_trajectory": "ran tests"}
+
+    installed = module._runner_prompt(
+        record, {"agent": "evolve.integrations.harbor.miniswe_task_file:InstalledMiniSweAgent"}
+    )
+    generic = module._runner_prompt(record, {"agent": "custom:FileTaskMiniSweAgent"})
+
+    assert "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT" in installed
+    assert "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT" not in generic
+
+
 def test_trajectory_only_runs_separate_behavior_judge_and_exposes_one_selected_view(
     tmp_path: Path, monkeypatch
 ) -> None:

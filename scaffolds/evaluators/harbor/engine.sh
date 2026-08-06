@@ -10,6 +10,17 @@ if [ -n "${EVOLVE_HARBOR_N_CONCURRENT_OVERRIDE:-}" ]; then
   esac
   EVOLVE_HARBOR_N_CONCURRENT=$EVOLVE_HARBOR_N_CONCURRENT_OVERRIDE
 fi
+if [ "${EVOLVE_CANDIDATE_SMOKE_MODE:-}" = "single" ]; then
+  EVOLVE_TASK_LIMIT=1
+fi
+if [ -n "${EVOLVE_TASK_LIMIT:-}" ]; then
+  case "$EVOLVE_TASK_LIMIT" in
+    *[!0-9]*|""|0)
+      printf 'invalid EVOLVE_TASK_LIMIT=%s\n' "$EVOLVE_TASK_LIMIT" >&2
+      exit 3
+      ;;
+  esac
+fi
 : "${EVOLVE_WORKSPACE:=$PWD}"
 : "${EVOLVE_FRAMEWORK_PYTHON:=$(command -v python3)}"
 if [ -n "${EVOLVE_UV_BINARY:-}" ]; then UV=$EVOLVE_UV_BINARY; else UV=$(command -v uv || true); fi
@@ -53,9 +64,11 @@ trap cleanup_dataset_snapshot EXIT
 split_name=${EVOLVE_EVAL_SPLIT:-gate}
 if python3 -c 'import json,sys; raise SystemExit(0 if json.load(open(sys.argv[1])).get("resolved") else 1)' evaluator/splits.json; then
   dataset_snapshot="$EVOLVE_RUN_DIR/task-dataset"
+  set -- select evaluator/splits.json "$EVOLVE_HARBOR_TASKS" "$split_name" "$EVOLVE_RUN_DIR"
+  if [ -n "${EVOLVE_TASK_LIMIT:-}" ]; then set -- "$@" --limit "$EVOLVE_TASK_LIMIT"; fi
   if ! "$UV" run --project "$EVOLVE_WORKSPACE" --frozen \
     --python "$EVOLVE_FRAMEWORK_PYTHON" python "$PWD/.evolve/launch_splits.py" \
-    select evaluator/splits.json "$EVOLVE_HARBOR_TASKS" "$split_name" "$EVOLVE_RUN_DIR"; then
+    "$@"; then
     printf 'infra_failed\n' > "$EVOLVE_RUN_DIR/status"
     exit 3
   fi
@@ -190,6 +203,17 @@ esac
 if [ "${EVOLVE_EVAL_KIND:-research}" = "anchor" ] && [ -n "${EVOLVE_HARBOR_ANCHOR_TASK_FILE:-}" ]; then
   EVOLVE_HARBOR_TASK_FILE=$EVOLVE_HARBOR_ANCHOR_TASK_FILE
 fi
+if [ -n "${EVOLVE_TASK_LIMIT:-}" ] && [ -n "${EVOLVE_HARBOR_TASK_FILE:-}" ] \
+  && [ "$EVOLVE_HARBOR_TASK_FILE" != "$EVOLVE_RUN_DIR/task-names.txt" ]; then
+  if ! "$UV" run --project "$EVOLVE_WORKSPACE" --frozen \
+    --python "$EVOLVE_FRAMEWORK_PYTHON" python "$PWD/.evolve/launch_splits.py" \
+    limit-file "$EVOLVE_HARBOR_TASK_FILE" "$EVOLVE_RUN_DIR" --limit "$EVOLVE_TASK_LIMIT"; then
+    printf 'infra_failed\n' > "$EVOLVE_RUN_DIR/status"
+    exit 3
+  fi
+  EVOLVE_HARBOR_TASK_FILE="$EVOLVE_RUN_DIR/task-names.txt"
+  export EVOLVE_HARBOR_TASK_FILE
+fi
 if [ -n "${EVOLVE_HARBOR_TASK_FILE:-}" ]; then
   while IFS= read -r task_name || [ -n "$task_name" ]; do
     case "$task_name" in
@@ -199,8 +223,13 @@ if [ -n "${EVOLVE_HARBOR_TASK_FILE:-}" ]; then
   done < "$EVOLVE_HARBOR_TASK_FILE"
 fi
 if [ -n "${EVOLVE_TASK_LIMIT:-}" ]; then
-  set -- "$@" --n-tasks "$EVOLVE_TASK_LIMIT"
-  export EVOLVE_HARBOR_EXPECTED_TRIALS=$((EVOLVE_TASK_LIMIT * EVOLVE_HARBOR_ATTEMPTS))
+  effective_task_limit=$EVOLVE_TASK_LIMIT
+  if [ -f "$EVOLVE_RUN_DIR/task-split.json" ]; then
+    effective_task_limit=$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["tasks"]))' \
+      "$EVOLVE_RUN_DIR/task-split.json")
+  fi
+  set -- "$@" --n-tasks "$effective_task_limit"
+  export EVOLVE_HARBOR_EXPECTED_TRIALS=$((effective_task_limit * EVOLVE_HARBOR_ATTEMPTS))
 fi
 set -- "$@" --agent "$EVOLVE_HARBOR_AGENT"
 if [ -n "${EVOLVE_HARBOR_ENVIRONMENT:-}" ]; then
@@ -211,14 +240,21 @@ if [ -f evaluator/environment.kwargs ]; then
     [ -n "$environment_kwarg" ] && set -- "$@" --environment-kwarg "$environment_kwarg"
   done < evaluator/environment.kwargs
 fi
+if [ -f evaluator/agent.kwargs ]; then
+  while IFS= read -r agent_kwarg || [ -n "$agent_kwarg" ]; do
+    [ -n "$agent_kwarg" ] && set -- "$@" --agent-kwarg "$agent_kwarg"
+  done < evaluator/agent.kwargs
+fi
 set -- "$@" --ae "EVOLVE_CANDIDATE_SOURCE=$PWD/target"
 set -- "$@" --mounts "$runtime_mounts"
-for credential_name in OPENAI_API_KEY OPENAI_BASE_URL OPENAI_API_BASE; do
-  eval "credential_value=\${$credential_name-}"
-  if [ -n "$credential_value" ]; then
-    set -- "$@" --ae "$credential_name=$credential_value"
-  fi
-done
+if [ "${EVOLVE_HARBOR_CODEX_SUBSCRIPTION:-0}" != "1" ]; then
+  for credential_name in OPENAI_API_KEY OPENAI_BASE_URL OPENAI_API_BASE; do
+    eval "credential_value=\${$credential_name-}"
+    if [ -n "$credential_value" ]; then
+      set -- "$@" --ae "$credential_name=$credential_value"
+    fi
+  done
+fi
 agent_proxy_http=
 agent_proxy_https=
 agent_proxy_no=
@@ -240,6 +276,22 @@ if [ -f evaluator/verifier.env ]; then
   while IFS= read -r verifier_entry || [ -n "$verifier_entry" ]; do
     [ -n "$verifier_entry" ] && set -- "$@" --ve "$verifier_entry"
   done < evaluator/verifier.env
+fi
+if [ -f "$EVOLVE_RUN_DIR/runtime-agent.env" ]; then
+  while IFS= read -r agent_entry || [ -n "$agent_entry" ]; do
+    [ -n "$agent_entry" ] && set -- "$@" --ae "$agent_entry"
+  done < "$EVOLVE_RUN_DIR/runtime-agent.env"
+fi
+if [ -f "$EVOLVE_RUN_DIR/runtime-verifier.env" ]; then
+  while IFS= read -r verifier_entry || [ -n "$verifier_entry" ]; do
+    [ -n "$verifier_entry" ] && set -- "$@" --ve "$verifier_entry"
+  done < "$EVOLVE_RUN_DIR/runtime-verifier.env"
+fi
+if [ "${EVOLVE_HARBOR_CODEX_SUBSCRIPTION:-0}" = "1" ]; then
+  set -- "$@" --ae "CODEX_FORCE_AUTH_JSON=${CODEX_FORCE_AUTH_JSON:-1}"
+  for credential_name in OPENAI_API_KEY OPENAI_BASE_URL OPENAI_API_BASE; do
+    set -- "$@" --ae "$credential_name="
+  done
 fi
 while IFS= read -r runtime_entry || [ -n "$runtime_entry" ]; do
   if [ -n "$runtime_entry" ]; then

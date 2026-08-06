@@ -51,6 +51,9 @@ research and controlled experimentation.
 - **Content-bound evaluation:** Local task trees, generation commits, candidate
   runtimes, and replayed artifact bytes are bound into the evidence used for
   parent selection.
+- **Certified evaluation:** Immutable contracts bind task identities,
+  repetitions, runtime, retry policy, and candidate commits to redacted receipts
+  and bounded diagnostics.
 
 ## Structure
 
@@ -97,10 +100,11 @@ experiments.
 Run a deterministic baseline smoke test without a model or Docker:
 
 ```bash
-export EVOLVE_RUNTIME_DIGEST="sha256:local-smoke-runtime"
 export EVOLVE_HOME="/tmp/evolve-home"
 
-uv run evolve init /tmp/evolve-demo  # default recipe gepa: built-in seed, no clone
+uv run evolve init /tmp/evolve-demo \
+  --recipe-path tests/fixtures/recipes/hill_climb-smoke \
+  --seed tests/fixtures/seeds/dummy
 EVAL_STUB=1 /tmp/evolve-demo/evolve run /tmp/evolve-demo --max-generations 0
 /tmp/evolve-demo/evolve status /tmp/evolve-demo
 /tmp/evolve-demo/evolve verify /tmp/evolve-demo
@@ -125,26 +129,37 @@ novelty results are tied to the exact candidate tree, so editing afterward
 requires rerunning them. See the generated workspace's `program.md` and
 `skills/evolve-agent/SKILL.md` for the complete sequence and method guidance.
 
-For a real Harbor run, provide an immutable evaluator digest and a local task
-dataset:
+For a reproducible Terminal-Bench 2.0 run, prepare the shared pinned dataset and
+the selected recipe's image once, then use the short execution script:
 
 ```bash
-export EVOLVE_RUNTIME_DIGEST="sha256:replace-with-your-evaluator-digest"
-
-uv run evolve preflight /tmp/evolve-harbor \
-  --recipe aevolve \
-  --dataset /absolute/path/to/harbor/tasks
-uv run evolve init /tmp/evolve-harbor \
-  --recipe aevolve \
-  --dataset /absolute/path/to/harbor/tasks
-evolve doctor /tmp/evolve-harbor --profile experiment
-evolve smoke /tmp/evolve-harbor --profile experiment
-/tmp/evolve-harbor/evolve run /tmp/evolve-harbor --max-generations 5
+./scripts/setup_terminal_bench.sh ahe
+./scripts/run_recipe_demo.sh ahe
 ```
 
-`evolve preflight` takes the same arguments as `init`, writes nothing, and
-reports every unmet precondition as one checklist. Inspect a run with
-`evolve status`, `evolve report`, `git tag --list 'gen/*'`,
+The scripts support A-Evolve, AHE, GEPA, Hill Climb, and HyperAgents, including
+their Codex profiles. Common execution overrides are `WORKSPACE`, `TASKS`,
+`GENERATIONS`, `ENV_FILE`, and `EVOLVE_ASSET_DIR`. Preflight validates the
+selected runtime's authentication before any experiment generation runs.
+
+Initialization resolves each recipe's inline runtime block into
+`evaluator/runtime.json` and generates the certified evaluation inputs.
+Evaluator repetitions default to one. Workspace preflight performs offline,
+cacheless validation and writes a redacted receipt; `--smoke` additionally makes
+one real model request against a detached candidate snapshot.
+
+Workspace commands load only `WORKSPACE/.env`; explicitly exported variables
+override it, and caller or parent `.env` files are ignored. API-key
+authentication is the default. Codex agents may instead use an explicit
+`CODEX_AUTH_JSON_PATH`, with no automatic home-directory lookup. Explicitly
+supplied standard proxy variables are inherited as optional host transport for
+dependency downloads; the configured model endpoint is added to `NO_PROXY`,
+and users without a proxy need no proxy setup. Recipes may still declare a
+required proxy policy for environments that must fail closed.
+Secrets, endpoint URLs, auth paths, and proxy values are excluded from resolved
+runtime configuration and evaluation contracts.
+
+Inspect a run with `evolve status`, `evolve report`, `git tag --list 'gen/*'`,
 and the generated `archive.jsonl`. Run `evolve --help` for the complete CLI.
 
 ## Concepts

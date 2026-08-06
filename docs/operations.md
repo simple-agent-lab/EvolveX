@@ -63,14 +63,12 @@ volume capacity directly and reports the manual check instead.
 
 ## Dataset preparation
 
-Never substitute a similarly named local directory for a recipe dataset. For
-the AHE Terminal-Bench recipe, materialize the checked-in content-bound subset:
+Never substitute a similarly named local directory for a recipe dataset. Set up
+the shared content-bound Terminal-Bench subset and selected recipe image with:
 
 ```bash
-harbor download terminal-bench@2.0 --export -o /absolute/path/to/raw
-python recipes/ahe/prepare_dataset.py \
-  /absolute/path/to/raw/terminal-bench \
-  /absolute/path/to/terminal-bench-2-ahe-30-v1
+./scripts/setup_terminal_bench.sh ahe
+./scripts/run_recipe_demo.sh ahe
 ```
 
 `evolve init --dataset ...` writes the selected task names and content digests

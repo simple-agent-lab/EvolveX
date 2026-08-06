@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 from dataclasses import asdict, dataclass
 from enum import StrEnum
+from pathlib import Path
 from typing import Any
 
 
@@ -12,6 +13,7 @@ class Outcome(StrEnum):
     INFRASTRUCTURE_FAILED = "infrastructure_failed"
     TIMEOUT = "timeout"
     CANCELLED = "cancelled"
+    MISSING = "missing"
 
 
 CANONICAL_OUTCOMES = frozenset(outcome.value for outcome in Outcome)
@@ -37,6 +39,7 @@ class TrialResult:
     source_attempt: int | None = None
     repaired_from_attempt: int | None = None
     repair_reason: str | None = None
+    failure_category: str | None = None
 
     def __post_init__(self) -> None:
         if self.reward is not None and (
@@ -78,11 +81,17 @@ class EvaluationRecord:
     score: float | None
     cost_usd: float
     wall_s: float
+    scoreable_trials: int = 0
     retry_of: int | None = None
     artifacts: dict[str, str] | None = None
     source_attempts: tuple[int, ...] = ()
     repaired_tasks: tuple[str, ...] = ()
     candidate_runtime: dict[str, str] | None = None
+    contract_id: str | None = None
+    evaluation_contract: dict[str, str] | None = None
+    preflight_receipt: dict[str, str] | None = None
+    contract_certified: bool = False
+    diagnostics: dict[str, object] | None = None
 
     def __post_init__(self) -> None:
         if self.score is not None and (
@@ -118,12 +127,31 @@ class EvaluationRecord:
             payload.pop("source_attempts")
         if not self.repaired_tasks:
             payload.pop("repaired_tasks")
+        if self.contract_id is None:
+            payload.pop("contract_id")
+        if self.evaluation_contract is None:
+            payload.pop("evaluation_contract")
+        if self.preflight_receipt is None:
+            payload.pop("preflight_receipt")
+        if not self.contract_certified:
+            payload.pop("contract_certified")
+        if self.diagnostics is None:
+            payload.pop("diagnostics")
         return payload
+
+
+def write_attempt_summary(run_dir: Path, record: EvaluationRecord) -> None:
+    (run_dir / "status").write_text(record.status + "\n")
+    score_path = run_dir / "score"
+    if record.score is None:
+        score_path.unlink(missing_ok=True)
+    else:
+        score_path.write_text(f"{record.score}\n")
 
 
 def _trial_payload(trial: TrialResult) -> dict[str, object]:
     payload = {**asdict(trial), "outcome": trial.outcome.value}
-    for field in ("source_attempt", "repaired_from_attempt", "repair_reason"):
+    for field in ("source_attempt", "repaired_from_attempt", "repair_reason", "failure_category"):
         if payload[field] is None:
             payload.pop(field)
     return payload
@@ -186,7 +214,12 @@ def classify_evaluation(
             if len(scoreable) == expected_trials and len(trials) == expected_trials
             else f"partial evidence accepted: {len(scoreable)}/{expected_trials} scoreable trials"
         )
-    elif Outcome.INFRASTRUCTURE_FAILED in outcomes or not trials or len(trials) != expected_trials:
+    elif (
+        Outcome.INFRASTRUCTURE_FAILED in outcomes
+        or Outcome.MISSING in outcomes
+        or not trials
+        or len(trials) != expected_trials
+    ):
         outcome, reason = Outcome.INFRASTRUCTURE_FAILED, "insufficient scoreable trial evidence"
     else:
         outcome, reason = Outcome.TIMEOUT, "non-scoreable timeout"
@@ -196,5 +229,11 @@ def classify_evaluation(
         else None
     )
     return EvaluationRecord(
-        **values, expected_trials=expected_trials, trials=trials, outcome=outcome, reason=reason, score=score
+        **values,
+        expected_trials=expected_trials,
+        trials=trials,
+        outcome=outcome,
+        reason=reason,
+        score=score,
+        scoreable_trials=len(scoreable),
     )

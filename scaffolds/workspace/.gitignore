@@ -5,5 +5,7 @@ best_ever.json
 insights/
 .evolve-eval-receipts.jsonl
 .venv/
+.env
+.env.*
 __pycache__/
 *.pyc

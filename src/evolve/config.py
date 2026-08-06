@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+from collections.abc import Mapping
 from importlib import resources
 from importlib.resources.abc import Traversable
 from pathlib import Path
@@ -10,6 +11,7 @@ import yaml
 
 from .frozen.interfaces import OPTIONAL_OPERATOR_KINDS as _OPTIONAL_OPERATOR_KINDS
 from .frozen.interfaces import REQUIRED_OPERATOR_KINDS
+from .runtime.config import normalize_runtime_config
 
 
 def hill_climb_config(experiment_id: str) -> dict[str, Any]:
@@ -24,6 +26,37 @@ OPERATOR_KINDS = REQUIRED_OPERATOR_KINDS
 OPTIONAL_OPERATOR_KINDS = _OPTIONAL_OPERATOR_KINDS
 Resource = Path | Traversable
 SOURCE_ROOT = Path(__file__).resolve().parents[2]
+
+
+def evaluator_repetitions(evaluator: Mapping[str, Any]) -> int:
+    has_repetitions = "repetitions" in evaluator
+    has_legacy_k = "k" in evaluator
+    repetitions = _evaluator_integer(evaluator.get("repetitions", 1), "repetitions")
+    legacy_k = _evaluator_integer(evaluator["k"], "k") if has_legacy_k else repetitions
+    if has_repetitions and has_legacy_k and repetitions != legacy_k:
+        raise ValueError("evaluator.repetitions and evaluator.k must be equal")
+    return repetitions if has_repetitions else legacy_k
+
+
+def normalize_evaluator_config(evaluator: Mapping[str, Any]) -> dict[str, Any]:
+    normalized = dict(evaluator)
+    normalized["repetitions"] = evaluator_repetitions(evaluator)
+    normalized.pop("k", None)
+    if "candidate_runtime" in evaluator:
+        raise ValueError("evaluator.candidate_runtime has moved to evaluator.runtime.candidate")
+    if "runtime" in evaluator:
+        normalized_runtime = normalize_runtime_config(evaluator["runtime"])
+        assert normalized_runtime is not None
+        normalized["runtime"] = normalized_runtime
+    return normalized
+
+
+def _evaluator_integer(value: Any, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"evaluator.{field} must be an integer")
+    if not 1 <= value <= 100:
+        raise ValueError(f"evaluator.{field} must be between 1 and 100")
+    return value
 
 
 def resource_root(name: str) -> Resource:

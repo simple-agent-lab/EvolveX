@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
+import evolve.runtime.process as runtime_module
 from evolve import driver as driver_module
-from evolve import runtime as runtime_module
 from evolve.archive import archive_path, eval_receipt_path, mirror_path
 from evolve.driver import _run_operator_guarded
 from evolve.operators import OperatorResult, _operator_deadline_s, run_operator
@@ -112,11 +112,11 @@ def test_run_operator_nonzero_and_timeout(tmp_path):
 @pytest.mark.parametrize(
     "agent",
     [
+        "evolve.integrations.harbor.miniswe_task_file:InstalledMiniSweAgent",
         "evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent",
-        "evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent",
     ],
 )
-def test_miniswe_source_harbor_meta_agent_outer_timeout_budgets_every_retry(
+def test_installed_miniswe_meta_agent_outer_timeout_budgets_every_retry(
     agent: str,
 ) -> None:
     assert (
@@ -131,6 +131,26 @@ def test_miniswe_source_harbor_meta_agent_outer_timeout_budgets_every_retry(
             3600,
         )
         == 14640.0
+    )
+
+
+@pytest.mark.parametrize(
+    "agent",
+    [
+        "evolve.integrations.harbor.miniswe_candidate:CandidateMiniSweAgent",
+        "evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent",
+        "custom:FileTaskMiniSweAgent",
+        "custom:MiniSweSourceAgent",
+    ],
+)
+def test_non_installed_agents_keep_whole_process_timeout(agent: str) -> None:
+    assert (
+        _operator_deadline_s(
+            "meta_agent",
+            {"runner": "harbor", "agent": agent, "max_retries": 1, "timeout_s": 3600},
+            3600,
+        )
+        == 3600
     )
 
 

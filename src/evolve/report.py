@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .archive import RECEIPT_CERTIFIED_FIELD
+from .evaluation.diagnostics import DiagnosticsValidationError, validate_evaluation_diagnostics_payload
 from .frozen.interfaces import ArchiveView
 from .population import fixed_evaluation_identity, is_parent_record, looks_mechanism_written, tag_matches_candidate
 
@@ -84,7 +85,47 @@ def format_report(workspace: Path) -> str:
     if anchor is not None:
         lines.append(f"anchor.best_genid: {anchor['genid']}")
         lines.append(f"anchor.best_score: {_value(anchor['score'])}")
+    evidence = _latest_diagnostics(rows)
+    if evidence is not None:
+        row, diagnostics = evidence
+        receipt_certified = row.get(RECEIPT_CERTIFIED_FIELD) is True
+        contract_certified = diagnostics["contract_certified"] is True
+        complete = (
+            diagnostics["observed_trials"] == diagnostics["expected_trials"]
+            and diagnostics["missing_trials"] == 0
+            and contract_certified
+            and receipt_certified
+        )
+        outcome_counts = diagnostics["outcome_counts"]
+        lines.extend(
+            [
+                f"evidence_genid: {row.get('genid')}",
+                f"expected_trials: {diagnostics['expected_trials']}",
+                f"observed_trials: {diagnostics['observed_trials']}",
+                f"scoreable_trials: {diagnostics['scoreable_trials']}",
+                f"infrastructure_failed: {outcome_counts.get('infrastructure_failed', 0)}",
+                f"candidate_invalid: {outcome_counts.get('candidate_invalid', 0)}",
+                "timeouts_by_owner: "
+                + json.dumps(diagnostics["timeouts_by_owner"], sort_keys=True, separators=(",", ":")),
+                f"missing_trials: {diagnostics['missing_trials']}",
+                f"contract_id: {_value(diagnostics['contract_id'])}",
+                f"contract_certified: {str(contract_certified).lower()}",
+                f"receipt_certified: {str(receipt_certified).lower()}",
+                f"evaluation_complete: {str(complete).lower()}",
+            ]
+        )
     return "\n".join(lines) + "\n"
+
+
+def _latest_diagnostics(rows: list[dict[str, Any]]) -> tuple[dict[str, Any], dict[str, Any]] | None:
+    for row in reversed(rows):
+        if row.get("diagnostics") is None:
+            continue
+        try:
+            return row, validate_evaluation_diagnostics_payload(row["diagnostics"])
+        except DiagnosticsValidationError:
+            continue
+    return None
 
 
 def _task_set_hash_status(claims: list[dict[str, Any]]) -> str:

@@ -6,36 +6,23 @@ under `plugins/evolve-target/**`. Its initial `SessionStart` hook injects
 candidate-owned context, and every canonical evaluation installs the candidate
 plugin into an isolated temporary `CODEX_HOME` before invoking Codex CLI.
 
-Authentication uses the host Codex login. Run `codex login` once; a ChatGPT
-subscription login is sufficient and no `OPENAI_API_KEY` is required. The
-credential remains runtime state and is not copied into the candidate genome.
+Authentication may use an API key or an explicit Codex login file. After
+`codex login`, export `CODEX_AUTH_JSON_PATH=/absolute/path/to/auth.json` (or put
+that entry in the selected `ENV_FILE`); no home-directory credential lookup is
+performed. The credential remains runtime state and is not copied into the
+candidate genome.
 
 The recipe uses a versioned 30-task subset derived from the official
-`terminal-bench@2.0` dataset. Task names and content digests are checked into
-`dataset-manifest.json`; this prevents a missing local directory from silently
-turning into a different experiment.
+`terminal-bench@2.0` dataset. Task names and content digests are checked into the
+[quick-start manifest](../../scripts/examples/terminal_bench_smoke/dataset-manifest.json);
+this prevents a missing local directory from silently turning into a different
+experiment.
 
-Prepare the dataset:
-
-```bash
-harbor download terminal-bench@2.0 --export -o /absolute/path/to/raw
-python recipes/ahe_codex/prepare_dataset.py \
-  /absolute/path/to/raw/terminal-bench \
-  /absolute/path/to/terminal-bench-2-ahe-30-v1
-```
-
-Then initialize and run:
+Prepare the dataset and pinned image, then run:
 
 ```bash
-export EVOLVE_RUNTIME_DIGEST="sha256:replace-with-your-evaluator-runtime-digest"
-export HARBOR_TASKS="/absolute/path/to/terminal-bench-2-ahe-30-v1"
-evolve init /absolute/path/to/ahe-codex-run \
-  --recipe ahe_codex \
-  --dataset "$HARBOR_TASKS"
-cd /absolute/path/to/ahe-codex-run
-./evolve doctor . --profile experiment --probe-model
-./evolve smoke . --profile experiment --task cancel-async-tasks
-EVOLVE_HARBOR_N_CONCURRENT_OVERRIDE=5 ./evolve run . --max-generations 1
+./scripts/setup_terminal_bench.sh ahe_codex
+./scripts/run_recipe_demo.sh ahe_codex
 ```
 
 Generation 0 and subsequent generations use the same frozen 30 tasks. This is

@@ -7,14 +7,15 @@ from evolve.config import load_config
 
 ROOT = Path(__file__).resolve().parents[1]
 RECIPE = ROOT / "recipes" / "ahe_codex"
+MANIFEST = ROOT / "scripts" / "examples" / "terminal_bench_smoke" / "dataset-manifest.json"
 
 
 def test_ahe_codex_dataset_manifest_is_versioned_and_content_bound() -> None:
-    manifest = json.loads((RECIPE / "dataset-manifest.json").read_text())
+    manifest = json.loads(MANIFEST.read_text())
 
     assert manifest["version"] == 1
     assert manifest["dataset"] == "terminal-bench@2.0"
-    assert manifest["name"] == "terminal-bench-2-ahe-30-v1"
+    assert manifest["name"] == "terminal-bench-2-30-v1"
     assert manifest["selection"] == {
         "count": 30,
         "scheme": "sha256-order-v1",
@@ -27,7 +28,7 @@ def test_ahe_codex_dataset_manifest_is_versioned_and_content_bound() -> None:
 
 
 def test_ahe_codex_recipe_uses_the_pinned_manifest_identity() -> None:
-    manifest = json.loads((RECIPE / "dataset-manifest.json").read_text())
+    manifest = json.loads(MANIFEST.read_text())
     recipe = load_config(RECIPE / "evolve.yaml")
 
     assert recipe["target"]["seed"] == "builtin-codex"

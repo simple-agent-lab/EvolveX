@@ -41,13 +41,9 @@ recipe does not claim to reproduce:
   `memory/*.jsonl` or custom `tools/`, so this recipe disables memory and tool
   evolution. A target adapter that loads those layers can enable both flags.
 
-Initialize with a local Harbor dataset so the train/gate/sealed split can be
-frozen:
+Prepare and run the shared pinned Terminal-Bench 2.0 dataset:
 
 ```bash
-export EVOLVE_RUNTIME_DIGEST="sha256:replace-with-your-immutable-evaluator-image-digest"
-export HARBOR_TASKS="/absolute/path/to/harbor/tasks"
-evolve init /tmp/evolve-aevolve \
-  --recipe aevolve \
-  --dataset "$HARBOR_TASKS"
+./scripts/setup_terminal_bench.sh aevolve
+./scripts/run_recipe_demo.sh aevolve
 ```

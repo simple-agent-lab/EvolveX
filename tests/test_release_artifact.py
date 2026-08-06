@@ -32,10 +32,10 @@ def test_release_wheel_has_one_resource_owner_and_complete_metadata() -> None:
     with ZipFile(_release_wheel()) as archive:
         names = set(archive.namelist())
         assert not [name for name in names if name.startswith("library/")]
+        assert not [name for name in names if name.startswith("evolve/datasets/")]
         assert {
             "evolve/library/PROTOCOL.md",
             "evolve/recipes/aevolve/evolve.yaml",
-            "evolve/recipes/ahe_codex/dataset-manifest.json",
             "evolve/recipes/ahe_codex/evolve.yaml",
             "evolve/scaffolds/workspace/README.md",
             "evolve/seeds/codex/agent.py",

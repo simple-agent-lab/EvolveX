@@ -11,9 +11,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .evaluation import Outcome
-from .host_runtime import clean_python_env, uv_executable
-from .runtime import run_owned
+from ..evaluation import Outcome
+from ..host_runtime import clean_python_env, uv_executable
+from .config import load_resolved_runtime
+from .process import run_owned
 
 CONTAINER_UV_CACHE = "/opt/evolve/uv/cache"
 CONTAINER_UV_PYTHON = "/opt/evolve/uv/python"
@@ -27,6 +28,7 @@ class UvRuntimeConfig:
     project: Path
     project_relative: str
     python: str
+    runtime_digest: str | None = None
 
 
 def _digest_project(project: Path) -> str:
@@ -39,6 +41,11 @@ def _digest_project(project: Path) -> str:
             digest.update(path.read_bytes())
             digest.update(b"\0")
     return digest.hexdigest()
+
+
+def candidate_dependency_digest(checkout: Path, evaluator: dict[str, Any]) -> str | None:
+    config = candidate_runtime_config(checkout, evaluator)
+    return _digest_project(config.project) if config is not None else None
 
 
 _SECRET_ENV_NAME = re.compile(r"(?i)(?:secret|token|password|passwd|api[_-]?key|credential|authorization|proxy)")
@@ -101,7 +108,25 @@ class CandidateRuntimeResult:
 
 
 def candidate_runtime_config(checkout: Path, evaluator: dict[str, Any]) -> UvRuntimeConfig | None:
-    value = evaluator.get("candidate_runtime")
+    runtime_path = checkout / "evaluator" / "runtime.json"
+    resolved_runtime = None
+    if runtime_path.is_file():
+        if "candidate_runtime" in evaluator:
+            raise ValueError("cannot combine a resolved runtime with evaluator.candidate_runtime")
+        try:
+            resolved_runtime = load_resolved_runtime(json.loads(runtime_path.read_text()))
+        except json.JSONDecodeError as error:
+            raise ValueError("evaluator/runtime.json is invalid JSON") from error
+        policy = resolved_runtime.config.candidate
+        if policy is None:
+            return None
+        value: object = {
+            "variant": policy.variant,
+            "project": policy.project,
+            "python": policy.python,
+        }
+    else:
+        value = evaluator.get("candidate_runtime")
     if value is None:
         return None
     if not isinstance(value, dict):
@@ -123,7 +148,13 @@ def candidate_runtime_config(checkout: Path, evaluator: dict[str, Any]) -> UvRun
     python = value.get("python", FRAMEWORK_PYTHON)
     if not isinstance(python, str) or not re.fullmatch(r"\d+\.\d+", python):
         raise ValueError("evaluator.candidate_runtime.python must be a Python major.minor version")
-    return UvRuntimeConfig("uv", project, project.relative_to(root).as_posix(), python)
+    return UvRuntimeConfig(
+        "uv",
+        project,
+        project.relative_to(root).as_posix(),
+        python,
+        resolved_runtime.digest if resolved_runtime is not None else None,
+    )
 
 
 def _uv_version(uv: str, checkout: Path, env: dict[str, str]) -> str | None:
@@ -155,6 +186,7 @@ def _write_receipt(
     config: UvRuntimeConfig,
     *,
     candidate_commit: str,
+    contract_id: str | None,
     dependency_digest: str,
     uv_version: str | None,
     cache_warm: bool,
@@ -165,8 +197,10 @@ def _write_receipt(
 ) -> Path:
     receipt = run_dir / RECEIPT_NAME
     temporary = receipt.with_suffix(".json.tmp")
+    strict = config.runtime_digest is not None
     values = {
-        "schema_version": 1,
+        "schema_version": 3 if strict else 2 if contract_id is not None else 1,
+        "contract_id": contract_id,
         "variant": config.variant,
         "project": config.project_relative,
         "candidate_commit": candidate_commit,
@@ -178,6 +212,10 @@ def _write_receipt(
         "duration_s": round(duration_s, 6),
         "reason": _redact(reason) if reason else None,
     }
+    if strict:
+        values["runtime_digest"] = config.runtime_digest
+    if contract_id is None:
+        values.pop("contract_id")
     temporary.write_text(json.dumps(values, indent=2, sort_keys=True) + "\n")
     temporary.replace(receipt)
     return receipt
@@ -188,6 +226,7 @@ def _finish_runtime(
     config: UvRuntimeConfig,
     *,
     candidate_commit: str,
+    contract_id: str | None,
     dependency_digest: str,
     started: float,
     outcome: Outcome,
@@ -202,6 +241,7 @@ def _finish_runtime(
         run_dir,
         config,
         candidate_commit=candidate_commit,
+        contract_id=contract_id,
         dependency_digest=dependency_digest,
         uv_version=uv_version,
         cache_warm=cache_warm,
@@ -226,6 +266,7 @@ def _finish_ready_runtime(
     python_dir: Path,
     *,
     candidate_commit: str,
+    contract_id: str | None,
     dependency_digest: str,
     started: float,
     attempts: int,
@@ -236,6 +277,7 @@ def _finish_ready_runtime(
         run_dir,
         config,
         candidate_commit=candidate_commit,
+        contract_id=contract_id,
         dependency_digest=dependency_digest,
         uv_version=uv_version,
         cache_warm=cache_warm,
@@ -256,7 +298,7 @@ def _finish_ready_runtime(
         ),
         mounts=(
             RuntimeMount(cache, CONTAINER_UV_CACHE),
-            RuntimeMount(python_dir, CONTAINER_UV_PYTHON),
+            RuntimeMount(python_dir, CONTAINER_UV_PYTHON, read_only=True),
         ),
         receipt_path=receipt,
     )
@@ -270,6 +312,7 @@ def prepare_candidate_runtime(
     evaluator: dict[str, Any],
     *,
     env: Mapping[str, str] | None = None,
+    contract_id: str | None = None,
 ) -> CandidateRuntimeResult:
     config = candidate_runtime_config(checkout, evaluator)
     if config is None:
@@ -277,18 +320,35 @@ def prepare_candidate_runtime(
 
     values = clean_python_env(env)
     if values.get("EVAL_STUB") == "1":
+        if config.runtime_digest is not None:
+            started = time.monotonic()
+            run_dir.mkdir(parents=True, exist_ok=True)
+            return _finish_runtime(
+                run_dir,
+                config,
+                candidate_commit=candidate_commit,
+                contract_id=contract_id,
+                dependency_digest=_digest_project(config.project),
+                started=started,
+                outcome=Outcome.INFRASTRUCTURE_FAILED,
+                reason="strict runtime preparation cannot be certified with EVAL_STUB",
+                attempts=0,
+                cache_warm=False,
+                uv_version=None,
+            )
         return CandidateRuntimeResult(None, None)
 
     started = time.monotonic()
     run_dir.mkdir(parents=True, exist_ok=True)
     project = config.project
-    dependency_digest = _digest_project(project)
+    dependency_digest = _digest_project(config.project)
     missing = [name for name in ("pyproject.toml", "uv.lock") if not (project / name).is_file()]
     if missing:
         return _finish_runtime(
             run_dir,
             config,
             candidate_commit=candidate_commit,
+            contract_id=contract_id,
             dependency_digest=dependency_digest,
             started=started,
             outcome=Outcome.CANDIDATE_INVALID,
@@ -322,6 +382,7 @@ def prepare_candidate_runtime(
                 run_dir,
                 config,
                 candidate_commit=candidate_commit,
+                contract_id=contract_id,
                 dependency_digest=dependency_digest,
                 started=started,
                 outcome=Outcome.INFRASTRUCTURE_FAILED,
@@ -343,6 +404,7 @@ def prepare_candidate_runtime(
                 run_dir,
                 config,
                 candidate_commit=candidate_commit,
+                contract_id=contract_id,
                 dependency_digest=dependency_digest,
                 started=started,
                 outcome=Outcome.CANDIDATE_INVALID,
@@ -376,6 +438,7 @@ def prepare_candidate_runtime(
                     run_dir,
                     config,
                     candidate_commit=candidate_commit,
+                    contract_id=contract_id,
                     dependency_digest=dependency_digest,
                     started=started,
                     outcome=Outcome.INFRASTRUCTURE_FAILED,
@@ -403,6 +466,7 @@ def prepare_candidate_runtime(
                 run_dir,
                 config,
                 candidate_commit=candidate_commit,
+                contract_id=contract_id,
                 dependency_digest=dependency_digest,
                 started=started,
                 outcome=Outcome.CANDIDATE_INVALID,
@@ -419,6 +483,7 @@ def prepare_candidate_runtime(
             cache,
             python_dir,
             candidate_commit=candidate_commit,
+            contract_id=contract_id,
             dependency_digest=dependency_digest,
             started=started,
             attempts=attempts,
@@ -430,6 +495,7 @@ def prepare_candidate_runtime(
             run_dir,
             config,
             candidate_commit=candidate_commit,
+            contract_id=contract_id,
             dependency_digest=dependency_digest,
             started=started,
             outcome=Outcome.INFRASTRUCTURE_FAILED,

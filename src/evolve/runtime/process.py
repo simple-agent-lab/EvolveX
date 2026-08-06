@@ -212,3 +212,28 @@ def next_attempt(workspace: Path, *, purpose: str, generation: str, candidate_co
         [int(path.name[8:]) for path in parent.glob("attempt-*") if path.name[8:].isdigit()] if parent.exists() else []
     )
     return max(attempts, default=0) + 1
+
+
+def reserve_attempt_directory(root: Path) -> Path:
+    root.mkdir(parents=True, exist_ok=True)
+    number = 1
+    while True:
+        attempt = root / f"attempt-{number}"
+        try:
+            attempt.mkdir(mode=0o700)
+        except FileExistsError:
+            number += 1
+            continue
+        return attempt
+
+
+def write_private_text(path: Path, text: str) -> None:
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        with os.fdopen(descriptor, "w") as handle:
+            handle.write(text)
+        temporary.replace(path)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise

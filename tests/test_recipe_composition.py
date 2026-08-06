@@ -11,8 +11,8 @@ from conftest import fixture_recipe_config, generated_workspace_uv_env, run_evol
 from evolve.config import RECIPE_NAMES, default_config, load_config, recipe_root, scaffold_root, seed_root
 from evolve.workspace import InitOptions, _write_target, init_workspace
 
-CANDIDATE = "evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent"
-FILE_TASK = "evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent"
+CANDIDATE = "evolve.integrations.harbor.miniswe_candidate:CandidateMiniSweAgent"
+FILE_TASK = "evolve.integrations.harbor.miniswe_task_file:InstalledMiniSweAgent"
 ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 CASES = {
     "hill_climb": ("external", CANDIDATE, "codex"),
@@ -111,6 +111,8 @@ def test_recipe_path_preserves_recipe_local_operators_and_assets(tmp_path: Path)
         str(recipe / "evolve.yaml"),
         "--seed",
         str(seed),
+        "--dataset",
+        str(_local_dataset(tmp_path / "custom-tasks")),
     )
 
     assert result.returncode == 0, result.stderr
@@ -248,7 +250,7 @@ def test_every_production_resource_has_a_supported_consumer() -> None:
     integration_modules = {
         f"evolve.integrations.harbor.{path.name[:-3]}"
         for path in (Path(__file__).resolve().parents[1] / "src" / "evolve" / "integrations" / "harbor").glob("*.py")
-        if path.name != "__init__.py"
+        if path.name != "__init__.py" and not path.name.startswith("_")
     }
 
     assert evaluator_scaffolds == engines
@@ -263,6 +265,7 @@ COMMON_OUTPUTS = {
     "README.md": "README.md",
     "launch_evolve.py": ".evolve/launch_evolve.py",
     "launch_splits.py": ".evolve/launch_splits.py",
+    "operators/preflight.sh": "operators/preflight.sh",
     "operators/gate.md": "operators/gate.md",
     "operators/record.md": "operators/record.md",
     "operators/rollout.md": "operators/rollout.md",

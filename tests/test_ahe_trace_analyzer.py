@@ -32,7 +32,7 @@ def _ctx(tmp_path: Path, *, genid: str = "1", parent: str = "0") -> OperatorCont
         "  meta_agent:\n"
         "    variant: ahe\n"
         "    runner: harbor\n"
-        "    agent: evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent\n"
+        "    agent: evolve.integrations.harbor.miniswe_task_file:InstalledMiniSweAgent\n"
         "    model: gpt-test\n"
         "    environment: docker\n"
         "    editable_roots: [target]\n"
@@ -170,7 +170,7 @@ def test_ahe_debugger_reuses_only_allowlisted_meta_agent_config(tmp_path: Path) 
 
     assert config == {
         "runner": "harbor",
-        "agent": "evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent",
+        "agent": "evolve.integrations.harbor.miniswe_task_file:InstalledMiniSweAgent",
         "model": "gpt-test",
         "environment": "docker",
         "agent_kwargs": {"reasoning_effort": "high", "max_tokens": 64000},
@@ -217,11 +217,13 @@ def test_ahe_miniswe_debugger_prompt_includes_submission_protocol() -> None:
     assert "Every response must include a Bash tool call" in prompt
     assert "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT" in prompt
     assert "first write the complete requested report as reasoning text" not in prompt
-    file_agent_prompt = module._debugger_runner_prompt(
-        job, {"agent": "evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent"}
-    )
-    assert "/logs/artifacts/ahe-debugger-response.md" in file_agent_prompt
+    for agent in (
+        "evolve.integrations.harbor.miniswe_task_file:InstalledMiniSweAgent",
+        "evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent",
+    ):
+        assert "/logs/artifacts/ahe-debugger-response.md" in module._debugger_runner_prompt(job, {"agent": agent})
     assert module._debugger_runner_prompt(job, {"agent": "codex"}) == module._debugger_prompt(job)
+    assert module._debugger_runner_prompt(job, {"agent": "custom:FileTaskMiniSweAgent"}) == module._debugger_prompt(job)
 
 
 def test_ahe_debugger_keeps_trace_evidence_out_of_prompt() -> None:
@@ -658,6 +660,59 @@ def test_ahe_analyzer_attributes_prior_manifest(tmp_path: Path, monkeypatch: pyt
             "verdict": "MIXED",
         }
     ]
+    assert change["unattributed_regressions"] == []
+
+
+def test_ahe_analyzer_resolves_unique_short_manifest_task_names_to_canonical_ids(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _module()
+    ctx = _ctx(tmp_path, genid="2", parent="1")
+    fixed_task = "sierra-research/tau3-bench__tau3-banking_knowledge-task-001"
+    regressed_task = "sierra-research/tau3-bench__tau3-banking_knowledge-task-002"
+    prior = ctx.workspace / "runs" / "gen-1"
+    _write_cases(
+        prior,
+        [
+            _case("old-a", "failed", 0, task=fixed_task),
+            _case("old-b", "passed", 1, task=regressed_task),
+        ],
+    )
+    manifest_dir = prior / "meta_agent"
+    manifest_dir.mkdir()
+    (manifest_dir / "change_manifest.json").write_text(
+        json.dumps(
+            {
+                "changes": [
+                    {
+                        "id": "chg-1",
+                        "description": "improve runtime handling",
+                        "files": ["target/environment.py"],
+                        "predicted_fixes": ["tau3-banking_knowledge-task-001"],
+                        "risk_tasks": ["tau3-banking_knowledge-task-002"],
+                    }
+                ]
+            }
+        )
+    )
+    _write_cases(
+        ctx.run_dir,
+        [
+            _case("new-a", "passed", 1, task=fixed_task),
+            _case("new-b", "failed", 0, task=regressed_task),
+        ],
+    )
+    monkeypatch.setattr(module, "run_readonly_agent", _fake_debugger)
+
+    module.AheTraceAnalyzer().analyze(ctx.checkout, ctx)
+
+    change = json.loads((ctx.run_dir / "trace_analyzer/analysis/change_evaluation.json").read_text())
+    assert change["prediction_results"] == {fixed_task: "confirmed"}
+    assert change["risk_results"] == {regressed_task: "realized"}
+    assert change["change_evaluations"][0]["predicted_fixes"] == [fixed_task]
+    assert change["change_evaluations"][0]["actually_fixed"] == [fixed_task]
+    assert change["change_evaluations"][0]["predicted_risks"] == [regressed_task]
+    assert change["change_evaluations"][0]["risk_realized"] == [regressed_task]
     assert change["unattributed_regressions"] == []
 
 
