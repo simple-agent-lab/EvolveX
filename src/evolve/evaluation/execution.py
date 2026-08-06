@@ -24,6 +24,7 @@ from .contract import (
     ContractMode,
     ContractResolutionContext,
     evaluation_contract_mode,
+    evaluation_split_name,
     resolve_evaluation_contract,
     trusted_evaluator_config,
     verify_candidate_runtime_receipt,
@@ -31,7 +32,7 @@ from .contract import (
 )
 from .diagnostics import contract_trials, freeze_diagnostics, materialize_setup_failure
 from .evidence import read_cost, read_setup_evidence, read_task_vector, trial_results
-from .identity import TaskSetIdentity, effective_task_set_identity, evaluation_split_name
+from .legacy import TaskSetIdentity, effective_task_set_identity
 from .results import EvaluationRecord, Outcome, classify_evaluation, write_attempt_summary
 from .run_plan import EvaluationRunPlan
 

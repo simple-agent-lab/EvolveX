@@ -9,11 +9,8 @@ from pathlib import Path
 from typing import Any
 
 from .archive import RECEIPT_CERTIFIED_FIELD
-from .frozen.interfaces import (
-    ArchiveView,
-    PayloadValidationError,
-    validate_evaluation_diagnostics_payload,
-)
+from .evaluation.diagnostics import DiagnosticsValidationError, validate_evaluation_diagnostics_payload
+from .frozen.interfaces import ArchiveView
 from .population import fixed_evaluation_identity, is_parent_record, looks_mechanism_written, tag_matches_candidate
 
 
@@ -126,7 +123,7 @@ def _latest_diagnostics(rows: list[dict[str, Any]]) -> tuple[dict[str, Any], dic
             continue
         try:
             return row, validate_evaluation_diagnostics_payload(row["diagnostics"])
-        except PayloadValidationError:
+        except DiagnosticsValidationError:
             continue
     return None
 

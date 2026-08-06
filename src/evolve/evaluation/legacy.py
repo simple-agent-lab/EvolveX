@@ -1,3 +1,5 @@
+"""Read-only evaluation identity adapter for pre-contract workspaces."""
+
 from __future__ import annotations
 
 import hashlib
@@ -23,7 +25,7 @@ def _evaluator_repetitions(evaluator: dict[str, Any]) -> int:
     return evaluator_repetitions(evaluator)
 
 
-def evaluation_split_name(evaluator: dict[str, Any], purpose: str = "candidate") -> str:
+def _evaluation_split_name(evaluator: dict[str, Any], purpose: str = "candidate") -> str:
     if purpose == "anchor":
         return "sealed"
     value = evaluator.get("evaluation_split", "gate")
@@ -174,11 +176,10 @@ def _verified_task_set_identity(
     payload = json.loads(text)
     if not isinstance(payload, dict) or payload.get("version") != 2:
         return None
-    from ..splits import parse_manifest, selected_task_names
-    from .datasets import selected_dataset_identity
+    from ..splits import parse_manifest, selected_dataset_identity, selected_task_names
 
     manifest = parse_manifest(text, source=source)
-    split = evaluation_split_name(evaluator, purpose)
+    split = _evaluation_split_name(evaluator, purpose)
     selected = selected_dataset_identity(
         manifest,
         selected_task_names(manifest, split, limit=task_limit),
@@ -234,12 +235,12 @@ def _selected_split_members(
         return tuple(
             selected_task_names(
                 manifest,
-                evaluation_split_name(evaluator, purpose),
+                _evaluation_split_name(evaluator, purpose),
                 limit=task_limit,
             )
         )
     tasks = payload.get("tasks") if isinstance(payload, dict) else None
-    members = tasks.get(evaluation_split_name(evaluator, purpose)) if isinstance(tasks, dict) else None
+    members = tasks.get(_evaluation_split_name(evaluator, purpose)) if isinstance(tasks, dict) else None
     selected = tuple(members) if isinstance(members, list) and all(isinstance(name, str) for name in members) else ()
     return _limited_members(selected, task_limit)
 

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from evolve.evaluation.identity import effective_task_set_identity
+from evolve.evaluation.legacy import effective_task_set_identity
 from evolve.evaluation.run_plan import EvaluationRunPlan
 
 

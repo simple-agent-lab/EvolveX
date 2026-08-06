@@ -5,7 +5,7 @@ from harbor.models.registry import DatasetFileInfo, DatasetMetadata
 from harbor.models.task.id import GitTaskId, PackageTaskId
 
 from evolve import evaluation as evaluation_package
-from evolve.evaluation import datasets as dataset_module
+from evolve import splits as dataset_module
 
 
 def _task(root: Path, name: str, *, instruction: str = "solve it") -> None:

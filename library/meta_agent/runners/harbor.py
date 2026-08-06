@@ -747,10 +747,7 @@ def _installed_miniswe_config_command(
         "environments": [compile_environment],
         "verifiers": ([{"auto_verifier": {"required_artifacts": [artifact]}}] if artifact else []),
     }
-    environment: dict[str, Any] = {
-        "type": str(config.get("environment") or "docker"),
-        "mounts": [],
-    }
+    environment: dict[str, Any] = {"type": str(config.get("environment") or "docker")}
     environment_kwargs = config.get("environment_kwargs")
     if isinstance(environment_kwargs, dict):
         environment["kwargs"] = environment_kwargs

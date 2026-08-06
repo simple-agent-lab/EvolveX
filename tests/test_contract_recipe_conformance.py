@@ -9,9 +9,9 @@ from evolve.evaluation import ContractResolutionContext, resolve_evaluation_cont
 
 EXPECTED_OPERATOR_VARIANTS = {
     "aevolve": ("greedy", "harbor", "aevolve", "hillclimb"),
-    "ahe": ("ahe_latest", "evaluation_replay", "ahe", "ahe_artifact_valid"),
+    "ahe": ("ahe_latest", "parent_evaluation", "ahe", "ahe_artifact_valid"),
     "gepa": ("pareto", "harbor", "gepa", "parent_eligible"),
-    "hyperagents": ("score_child_prop", "evaluation_replay", "hyperagents", "parent_eligible"),
+    "hyperagents": ("score_child_prop", "parent_evaluation", "hyperagents", "parent_eligible"),
 }
 
 
@@ -49,8 +49,9 @@ def test_all_partner_recipes_resolve_the_same_automatic_contract_schema(
     assert contract.repetitions == 1
     assert len(contract.trial_identities) == len(contract.task_members)
     assert all(trial.repetition == 0 for trial in contract.trial_identities)
-    assert "proxy" not in evaluator["runtime"]
-    assert ("candidate" in evaluator["runtime"]) is managed_candidate
+    runtime_config = evaluator.get("runtime", {})
+    assert "proxy" not in runtime_config
+    assert ("candidate" in runtime_config) is managed_candidate
     assert "candidate_runtime" not in evaluator
     runtime = json.loads((workspace / "evaluator/runtime.json").read_text())
     assert contract.runtime_digest == runtime["digest"]

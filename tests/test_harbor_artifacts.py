@@ -1,4 +1,3 @@
-import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -349,18 +348,11 @@ def test_write_harbor_artifacts_indexes_only_retained_safe_files(tmp_path: Path)
 
     artifacts = json.loads((run_dir / "evaluation_artifacts.json").read_text())
     indexed = artifacts["trials"][0]["files"]
-    assert indexed == [
-        {
-            "bytes": len("retained trace\n"),
-            "path": "case-a__one/trial.log",
-            "sha256": hashlib.sha256(b"retained trace\n").hexdigest(),
-        },
-        {
-            "bytes": len((trial / "result.json").read_bytes()),
-            "path": "case-a__one/result.json",
-            "sha256": hashlib.sha256((trial / "result.json").read_bytes()).hexdigest(),
-        },
-    ]
+    indexed_paths = {entry["path"] for entry in indexed}
+    assert indexed_paths == {"case-a__one/evolve-replay.json"}
+    assert "case-a__one/trial.log" not in indexed_paths
+    assert "case-a__one/result.json" not in indexed_paths
+    assert all("verifier/test-stdout.txt" not in path for path in indexed_paths)
     serialized = json.dumps(artifacts).lower()
     assert ".env" not in serialized
     assert "config" not in serialized
@@ -370,6 +362,9 @@ def test_write_harbor_artifacts_derives_safe_verifier_diagnostics(tmp_path: Path
     jobs = tmp_path / "jobs"
     trial = jobs / "case-a__one"
     write_trial(trial, task="case-a", trial="one", reward=0.0)
+    raw_trial_result = json.loads((trial / "result.json").read_text())
+    raw_trial_result["verifier_result"]["private_expected_action"] = "ground-truth-secret"
+    (trial / "result.json").write_text(json.dumps(raw_trial_result))
     verifier = trial / "verifier"
     verifier.mkdir()
     (verifier / "result.json").write_text(
@@ -423,5 +418,8 @@ def test_write_harbor_artifacts_derives_safe_verifier_diagnostics(tmp_path: Path
 
     artifacts = json.loads((run_dir / "evaluation_artifacts.json").read_text())
     indexed_paths = {entry["path"] for entry in artifacts["trials"][0]["files"]}
+    replay_envelope = json.loads((trial / "evolve-replay.json").read_text())
     assert "case-a__one/verifier/diagnostics.json" in indexed_paths
     assert "case-a__one/verifier/result.json" not in indexed_paths
+    assert "case-a__one/result.json" not in indexed_paths
+    assert "ground-truth-secret" not in json.dumps(replay_envelope)

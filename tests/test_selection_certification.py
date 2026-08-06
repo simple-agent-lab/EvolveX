@@ -1,11 +1,10 @@
-import hashlib
 import importlib.util
 import json
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
-from conftest import git, init_workspace, run_evolve
+from conftest import contract_for_gen0, git, init_workspace, run_evolve
 
 from evolve.archive import (
     MECHANISM_EVAL_FIELD,
@@ -15,9 +14,7 @@ from evolve.archive import (
     read_events,
     rows_by_genid,
 )
-from evolve.config import load_config
 from evolve.evaluation import Outcome, TrialResult, classify_evaluation
-from evolve.evaluation.identity import effective_task_set_identity
 from evolve.frozen.interfaces import ArchiveView
 from evolve.git import head_commit, remove_worktree
 from evolve.population import fixed_evaluation_identity, looks_mechanism_written
@@ -48,12 +45,8 @@ def _record(outcome: Outcome):
 def _archive_workspace(tmp_path: Path) -> tuple[Path, dict[str, str]]:
     workspace, _evolve_home = init_workspace(tmp_path)
     git(workspace, "tag", "gen/1", "gen/0")
-    evaluator = load_config(workspace / "evolve.yaml")["evaluator"]
-    expected = {
-        "evaluator_fingerprint": git(workspace, "rev-parse", "gen/0:evaluator"),
-        "task_set_hash": effective_task_set_identity(workspace, evaluator).digest,
-        "runtime_fingerprint": hashlib.sha256((workspace / "evaluator/runtime.pin").read_bytes()).hexdigest(),
-    }
+    expected = fixed_evaluation_identity(workspace)
+    assert expected is not None
     return workspace, expected
 
 
@@ -84,15 +77,26 @@ def test_fixed_identity_uses_resolved_split_tasks(tmp_path: Path) -> None:
         "tasks": {"train": [], "gate": ["task-b", "task-a"], "sealed": []},
     }
     (workspace / "evaluator" / "splits.json").write_text(json.dumps(manifest) + "\n")
-    git(workspace, "add", "evaluator/splits.json")
+    (workspace / "evaluator" / "dataset.pin").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "source": "local",
+                "digest": "c" * 64,
+                "resolved_reference": "sha256:" + "c" * 64,
+                "members": ["task-a", "task-b"],
+            }
+        )
+        + "\n"
+    )
+    git(workspace, "add", "evaluator/splits.json", "evaluator/dataset.pin")
     git(workspace, "commit", "-m", "configure resolved split")
     git(workspace, "tag", "-f", "gen/0")
 
-    evaluator = load_config(workspace / "evolve.yaml")["evaluator"]
     fixed = fixed_evaluation_identity(workspace)
 
     assert fixed is not None
-    assert fixed["task_set_hash"] == effective_task_set_identity(workspace, evaluator).digest
+    assert fixed == contract_for_gen0(workspace).fixed_identity()
 
 
 def test_legacy_local_split_identity_is_not_certifiable(tmp_path: Path) -> None:

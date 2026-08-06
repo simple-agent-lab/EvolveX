@@ -112,7 +112,7 @@ def evaluator_runtime_digest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.delenv("CODEX_AUTH_JSON_PATH", raising=False)
     monkeypatch.delenv("CODEX_FORCE_AUTH_JSON", raising=False)
     monkeypatch.setattr(
-        "evolve.evaluation.datasets.RegistryClientFactory.create",
+        "evolve.splits.RegistryClientFactory.create",
         lambda: _FixtureRegistryClient(),
     )
 

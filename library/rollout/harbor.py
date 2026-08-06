@@ -369,7 +369,9 @@ def collect_cases(jobs_dir: Path, field_limit: int = 2000, pass_threshold: float
     cases: list[dict[str, Any]] = []
     if not jobs_dir.exists():
         return cases
-    for result_path in sorted(jobs_dir.rglob("result.json")):
+    replay_results = sorted(jobs_dir.rglob("evolve-replay.json"))
+    result_paths = replay_results or sorted(jobs_dir.rglob("result.json"))
+    for result_path in result_paths:
         payload = _read_json(result_path)
         if not payload.get("trial_name") or not payload.get("task_name"):
             continue

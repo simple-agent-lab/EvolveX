@@ -19,7 +19,7 @@ from evolve.evaluation.execution import (
     _runtime_receipt_reference,
     evaluate,
 )
-from evolve.evaluation.identity import effective_task_set_identity
+from evolve.evaluation.legacy import effective_task_set_identity
 from evolve.frozen.interfaces import ArchiveView
 from evolve.runtime import OwnedResult
 from evolve.runtime.uv import CandidateRuntimeResult, RuntimeMount

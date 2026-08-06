@@ -17,7 +17,7 @@ from evolve.config import scaffold_root
 from evolve.evaluation import Outcome
 from evolve.evaluation import execution as execution_module
 from evolve.evaluation.execution import _expected_trials, evaluate
-from evolve.evaluation.identity import effective_task_set_identity, task_set_identity
+from evolve.evaluation.legacy import effective_task_set_identity, task_set_identity
 from evolve.feedback import write_feedback_bundle
 from evolve.runtime import attempt_dir
 
@@ -382,7 +382,8 @@ def test_init_commits_evaluator_owned_runtime_pin(tmp_path: Path) -> None:
 
     init_fixture_workspace(workspace)
 
-    assert (workspace / "evaluator/runtime.pin").read_text() == "legacy-unverified\n"
+    runtime = json.loads((workspace / "evaluator/runtime.json").read_text())
+    assert (workspace / "evaluator/runtime.pin").read_text() == f"{runtime['digest']}\n"
     assert not (workspace / "target/runtime.pin").exists()
 
 

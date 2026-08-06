@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Literal
 
 from ..config import load_config
-from ..evaluation.identity import evaluation_split_name
+from ..evaluation.contract import evaluation_split_name
 from ..host_runtime import clean_python_env
 from ..runtime import owned_attempt_id, reserve_attempt_directory, run_owned, write_private_text
 from ..runtime.environment import (

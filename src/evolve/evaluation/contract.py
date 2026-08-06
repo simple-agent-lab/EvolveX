@@ -20,8 +20,7 @@ from ..runtime.config import (
     RuntimeConfigError,
     load_resolved_runtime,
 )
-from .datasets import selected_dataset_identity
-from .identity import evaluation_split_name
+from ..splits import selected_dataset_identity
 
 _SENSITIVE_FIELD = re.compile(r"(?i)(?:secret|token|password|passwd|api[_-]?key|credential|authorization|proxy)")
 
@@ -123,6 +122,44 @@ class EvaluationContractV1:
 
     def to_dict(self) -> dict[str, object]:
         return {**self.payload(), "contract_id": self.contract_id}
+
+    def fixed_identity(self) -> dict[str, str]:
+        """Project the contract onto the archive's cross-generation identity."""
+        return {
+            "evaluator_fingerprint": self.evaluator_tree,
+            "task_set_hash": self.task_set_digest,
+            "runtime_fingerprint": hashlib.sha256(f"{self.runtime_digest}\n".encode()).hexdigest(),
+        }
+
+
+def evaluation_split_name(evaluator: Mapping[str, object], purpose: str = "candidate") -> str:
+    if purpose == "anchor":
+        return "sealed"
+    value = evaluator.get("evaluation_split", "gate")
+    if value not in {"train", "gate", "sealed"}:
+        raise ValueError(f"unknown evaluator.evaluation_split: {value}")
+    return str(value)
+
+
+def fixed_evaluation_identity(workspace: Path) -> dict[str, str] | None:
+    """Return the strict contract identity, falling back only for legacy workspaces."""
+    resolved = workspace.resolve()
+    try:
+        if evaluation_contract_mode(resolved) is ContractMode.STRICT:
+            candidate = _resolve_git_object(resolved, "gen/0^{commit}", "candidate_commit")
+            return resolve_evaluation_contract(
+                ContractResolutionContext(
+                    workspace=resolved,
+                    candidate_commit=candidate,
+                    purpose="candidate",
+                    generation="0",
+                )
+            ).fixed_identity()
+        from .legacy import fixed_evaluation_identity as legacy_fixed_evaluation_identity
+
+        return legacy_fixed_evaluation_identity(resolved)
+    except (EvaluationContractResolutionError, OSError, RuntimeError, TypeError, ValueError):
+        return None
 
 
 def resolve_evaluation_contract(context: ContractResolutionContext) -> EvaluationContractV1:

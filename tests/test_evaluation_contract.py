@@ -127,6 +127,7 @@ def test_full_task_scope_contract_honors_tasks_per_round(tmp_path: Path, monkeyp
 
     assert contract.task_members == ("task-0", "task-1", "task-2")
     assert len(contract.trial_identities) == 3
+    assert fixed_evaluation_identity(workspace) == contract.fixed_identity()
 
 
 def test_contract_hashes_complete_resolved_runtime(strict_workspace: Path) -> None:

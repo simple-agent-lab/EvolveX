@@ -34,7 +34,7 @@ def test_ahe_recipe_initializes_harbor_miniswe_composition(tmp_path: Path) -> No
     assert (workspace / "target/pyproject.toml").is_file()
     assert (workspace / "target/uv.lock").is_file()
     assert surface_lists(workspace) == (["target/**"], [])
-    assert "source=library/rollout/evaluation_replay.py" in (workspace / "operators/rollout.py").read_text()
+    assert "source=library/rollout/parent_evaluation.py" in (workspace / "operators/rollout.py").read_text()
     assert (workspace / "library/rollout/harbor.py").is_file()
     assert "source=library/trace_analyzer/ahe.py" in (workspace / "operators/trace_analyzer.py").read_text()
     assert "source=library/meta_agent/ahe.py" in (workspace / "operators/meta_agent.py").read_text()

@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from ..archive import MECHANISM_EVAL_FIELD, RECEIPT_CERTIFIED_FIELD, STAMPED_FIELDS
+from ..evaluation.diagnostics import validate_evaluation_diagnostics_payload
 from ..git import head_tag, working_tree_changed_paths
 from ..surface import check_paths, surface_patterns
 from .interfaces import (
@@ -31,7 +32,6 @@ from .interfaces import (
     SelectOperator,
     TraceAnalyzerOperator,
     ValidateOperator,
-    validate_evaluation_diagnostics_payload,
     validate_gate_payload,
     validate_meta_agent_payload,
     validate_novelty_payload,

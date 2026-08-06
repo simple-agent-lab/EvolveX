@@ -1,4 +1,4 @@
-"""Replay a selected parent's certified Harbor evaluation as rollout evidence."""
+"""Expose a selected parent's sanitized, certified evaluation evidence."""
 
 from __future__ import annotations
 
@@ -19,12 +19,8 @@ _CERTIFIED_REPLAY_ARTIFACTS = (
     "agent/mini-swe-agent.trajectory.json",
     "agent/mini-swe-agent.txt",
     "agent/trajectory.json",
-    "trial.log",
     "verifier/diagnostics.json",
-    "verifier/reward.txt",
-    "verifier/test-stdout.txt",
-    "result.json",
-    "exception.txt",
+    "evolve-replay.json",
 )
 
 
@@ -53,7 +49,7 @@ def _load_collect_cases(checkout: Path) -> Callable[..., list[dict[str, Any]]]:
     path = checkout / "library" / "rollout" / "harbor.py"
     if not path.is_file():
         raise SystemExit(f"vendored Harbor rollout is missing: {path}")
-    spec = importlib.util.spec_from_file_location("evolve_evaluation_replay_harbor", path)
+    spec = importlib.util.spec_from_file_location("evolve_parent_evaluation_harbor", path)
     if spec is None or spec.loader is None:
         raise SystemExit(f"cannot load vendored Harbor rollout: {path}")
     module = importlib.util.module_from_spec(spec)
@@ -201,15 +197,15 @@ def _verified_indexed_files(artifact: _ArtifactSnapshot) -> tuple[Path, dict[str
             if hashlib.sha256(payload).hexdigest() != expected_sha256:
                 raise SystemExit(f"evaluation artifact file digest mismatch: {relative}")
             certified[relative] = payload
-            if PurePosixPath(relative).name == "result.json":
+            if PurePosixPath(relative).name == "evolve-replay.json":
                 result_paths.append(relative)
         if len(result_paths) != 1:
-            raise SystemExit("evaluation artifact trial must certify exactly one result.json")
+            raise SystemExit("evaluation artifact trial must certify exactly one evolve-replay.json")
 
-    indexed_results = {relative for relative in certified if PurePosixPath(relative).name == "result.json"}
+    indexed_results = {relative for relative in certified if PurePosixPath(relative).name == "evolve-replay.json"}
     actual_results = {
         path.relative_to(jobs_dir).as_posix()
-        for path in jobs_dir.rglob("result.json")
+        for path in jobs_dir.rglob("evolve-replay.json")
         if path.is_file() and _is_replay_result(path)
     }
     extra_results = sorted(actual_results - indexed_results)
@@ -281,12 +277,12 @@ def _certify_result_paths(
         except ValueError as error:
             raise SystemExit("evaluation replay collector returned a path outside the certified view") from error
         relative_string = relative.as_posix()
-        if relative_string not in certified or PurePosixPath(relative_string).name != "result.json":
+        if relative_string not in certified or PurePosixPath(relative_string).name != "evolve-replay.json":
             raise SystemExit("evaluation replay collector returned an uncertified result path")
         case["result_path"] = str(replay_jobs.joinpath(*PurePosixPath(relative_string).parts))
 
 
-class EvaluationReplayRollout(RolloutOperator):
+class ParentEvaluationRollout(RolloutOperator):
     def rollout(self, checkout: Path, ctx: OperatorContext) -> RolloutResult:
         if ctx.parent is None:
             raise SystemExit("evaluation replay requires a selected parent")
@@ -341,7 +337,7 @@ class EvaluationReplayRollout(RolloutOperator):
         }
         return RolloutResult(
             summary={
-                "variant": "evaluation_replay",
+                "variant": "parent_evaluation",
                 "source_parent": ctx.parent,
                 "tasks_requested": len(tasks),
                 "tasks_observed": len(tasks),
@@ -361,5 +357,9 @@ class EvaluationReplayRollout(RolloutOperator):
         )
 
 
+# Compatibility for externally vendored operator code; built-in recipes use the clear name.
+EvaluationReplayRollout = ParentEvaluationRollout
+
+
 if __name__ == "__main__":
-    sdk.main(EvaluationReplayRollout)
+    sdk.main(ParentEvaluationRollout)

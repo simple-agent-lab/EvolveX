@@ -14,7 +14,7 @@ workspace initialization generates and freezes it explicitly.
 `children_per_gen: 1` creates one candidate per round.
 `surface.include` exposes `target/**` plus `operators/**`.
 `select.variant: score_child_prop` balances score with child-proposal behavior.
-`rollout.variant: evaluation_replay` exposes the selected parent's certified gate evaluation to the trace browser without launching a second task run.
+`rollout.variant: parent_evaluation` exposes the selected parent's sanitized, certified gate evaluation without launching another task run.
 `trace_analyzer.variant: trace_browser` exposes current traces, metrics, and history through the normalized feedback bundle.
 `meta_agent.variant: hyperagents` consumes that bundle through Harbor's installed MiniSWE agent while retaining self-referential editing.
 The mutation agent uses `high` reasoning with an explicit 64k output budget.
@@ -48,7 +48,7 @@ docker build --build-arg MINISWE_VERSION=2.4.5 \
 ## Operator Routing
 
 `select: {variant: score_child_prop}` resolves to [`library/select/score_child_prop.py`](../../library/select/score_child_prop.py).
-`rollout: {variant: evaluation_replay}` resolves to [`library/rollout/evaluation_replay.py`](../../library/rollout/evaluation_replay.py) and uses the normalized collector vendored from [`library/rollout/harbor.py`](../../library/rollout/harbor.py).
+`rollout: {variant: parent_evaluation}` resolves to [`library/rollout/parent_evaluation.py`](../../library/rollout/parent_evaluation.py) and uses the normalized collector vendored from [`library/rollout/harbor.py`](../../library/rollout/harbor.py).
 `trace_analyzer: {variant: trace_browser}` resolves to [`library/trace_analyzer/trace_browser.py`](../../library/trace_analyzer/trace_browser.py).
 `meta_agent: {variant: hyperagents}` resolves to [`library/meta_agent/hyperagents.py`](../../library/meta_agent/hyperagents.py).
 `validate: {variant: hyperagents}` resolves to [`library/validate/hyperagents.py`](../../library/validate/hyperagents.py).

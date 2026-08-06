@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from .archive import RECEIPT_CERTIFIED_FIELD, archive_path, merged_rows
-from .frozen.interfaces import PayloadValidationError, validate_evaluation_diagnostics_payload
+from .evaluation.diagnostics import DiagnosticsValidationError, validate_evaluation_diagnostics_payload
 from .git import git_stdout, tag_exists
 from .surface import surface_patterns
 
@@ -137,7 +137,7 @@ def _evaluation_diagnostics(rows: list[Row], history_k: int) -> list[Row]:
             continue
         try:
             payload = validate_evaluation_diagnostics_payload(row["diagnostics"])
-        except PayloadValidationError:
+        except DiagnosticsValidationError:
             continue
         diagnostics.append(
             {

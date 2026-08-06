@@ -1,3 +1,10 @@
+from ..splits import (
+    DatasetContentIdentity,
+    dataset_content_identity,
+    local_dataset_identity,
+    registry_dataset_identity,
+    selected_dataset_identity,
+)
 from .contract import (
     ContractMode,
     ContractResolutionContext,
@@ -10,13 +17,6 @@ from .contract import (
     trusted_evaluator_config,
     verify_candidate_runtime_receipt,
     write_evaluation_contract,
-)
-from .datasets import (
-    DatasetContentIdentity,
-    dataset_content_identity,
-    local_dataset_identity,
-    registry_dataset_identity,
-    selected_dataset_identity,
 )
 from .diagnostics import (
     EvaluationDiagnosticsV1,

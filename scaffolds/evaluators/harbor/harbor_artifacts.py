@@ -12,12 +12,8 @@ SAFE_ARTIFACTS = (
     "agent/mini-swe-agent.trajectory.json",
     "agent/mini-swe-agent.txt",
     "agent/trajectory.json",
-    "trial.log",
     "verifier/diagnostics.json",
-    "verifier/reward.txt",
-    "verifier/test-stdout.txt",
-    "result.json",
-    "exception.txt",
+    "evolve-replay.json",
 )
 _CANDIDATE_MARKER = "EVOLVE_CANDIDATE_INVALID:"
 _MISSING_TOOL_OUTPUT = "No tool output found for function call"
@@ -60,6 +56,7 @@ def collect_harbor_artifacts(jobs_dir: Path) -> tuple[dict[str, Any], dict[str, 
 
 def write_harbor_artifacts(jobs_dir: Path, run_dir: Path) -> list[float]:
     _write_verifier_diagnostics(jobs_dir)
+    _write_replay_envelopes(jobs_dir)
     task_vector, artifact_index, rewards = collect_harbor_artifacts(jobs_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "task_vector.json").write_text(json.dumps(task_vector, indent=2, sort_keys=True) + "\n")
@@ -68,6 +65,41 @@ def write_harbor_artifacts(jobs_dir: Path, run_dir: Path) -> list[float]:
         json.dumps({"usd": sum(float(trial["cost_usd"]) for trial in artifact_index["trials"])}, sort_keys=True) + "\n"
     )
     return rewards
+
+
+def _write_replay_envelopes(jobs_dir: Path) -> None:
+    """Project raw Harbor results onto the only verifier-safe replay boundary."""
+    for result_path in sorted(jobs_dir.rglob("result.json")):
+        try:
+            result = json.loads(result_path.read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(result, dict):
+            continue
+        task_name, trial_name = result.get("task_name"), result.get("trial_name")
+        if not isinstance(task_name, str) or not isinstance(trial_name, str):
+            continue
+        envelope: dict[str, Any] = {"schema_version": 1, "task_name": task_name, "trial_name": trial_name}
+        reward = _reward(result)
+        if reward is not None:
+            envelope["verifier_result"] = {"rewards": {"reward": reward}}
+        exception = result.get("exception_info")
+        if isinstance(exception, dict):
+            safe_exception = {
+                "exception_type": _safe_label(exception.get("exception_type")),
+                "exception_message": _exception_message(exception.get("exception_message")),
+            }
+            envelope["exception_info"] = {key: value for key, value in safe_exception.items() if value is not None}
+        agent = result.get("agent_result")
+        if isinstance(agent, dict):
+            safe_agent = {
+                key: value
+                for key in ("n_input_tokens", "n_cache_tokens", "n_output_tokens", "cost_usd")
+                if (value := _safe_number(agent.get(key))) is not None
+            }
+            if safe_agent:
+                envelope["agent_result"] = safe_agent
+        (result_path.parent / "evolve-replay.json").write_text(json.dumps(envelope, sort_keys=True) + "\n")
 
 
 def _safe_number(value: object) -> int | float | None:

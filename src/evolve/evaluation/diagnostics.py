@@ -4,6 +4,7 @@ import re
 from collections import Counter
 from dataclasses import dataclass, replace
 from pathlib import PurePosixPath
+from typing import Any
 
 from .contract import EvaluationContractV1, TrialIdentity
 from .results import EvaluationRecord, Outcome, TrialResult
@@ -22,6 +23,17 @@ _KNOWN_OWNERS = frozenset(
     }
 )
 _ACTIONABLE_PURPOSES = frozenset({"candidate", "genesis"})
+_SAFE_DIAGNOSTIC_SLUG = re.compile(r"[a-z0-9_]{1,64}")
+_SAFE_DIAGNOSTIC_SHA = re.compile(r"[a-f0-9]{64}")
+
+
+class DiagnosticsValidationError(ValueError):
+    def __init__(self, field: str, message: str) -> None:
+        self.field = field
+        super().__init__(message)
+
+
+PayloadValidationError = DiagnosticsValidationError
 
 
 @dataclass(frozen=True)
@@ -190,6 +202,112 @@ def evaluation_diagnostics(
         contract_certified=record.contract_certified,
         artifact_references=_artifact_references(record),
     )
+
+
+def validate_evaluation_diagnostics_payload(payload: object) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise PayloadValidationError("diagnostics", "diagnostics must be a JSON object")
+    data = payload
+    if data.get("schema_version") != 1:
+        raise PayloadValidationError("diagnostics", "unsupported diagnostics schema")
+    contract_id = data.get("contract_id")
+    if contract_id is not None and (
+        not isinstance(contract_id, str) or _SAFE_DIAGNOSTIC_SHA.fullmatch(contract_id) is None
+    ):
+        raise PayloadValidationError("diagnostics contract_id", "diagnostics contract_id must be sha256 or null")
+    purpose = data.get("purpose")
+    if not isinstance(purpose, str) or not purpose or len(purpose) > 64:
+        raise PayloadValidationError("diagnostics purpose", "diagnostics purpose must be a bounded string")
+    counts = {
+        field: _diagnostic_count(data, field)
+        for field in ("expected_trials", "observed_trials", "scoreable_trials", "missing_trials")
+    }
+    if counts["scoreable_trials"] > counts["observed_trials"]:
+        raise PayloadValidationError("diagnostics scoreable_trials", "scoreable trials exceed observed trials")
+    return {
+        "schema_version": 1,
+        "contract_id": contract_id,
+        "purpose": purpose,
+        **counts,
+        "outcome_counts": _diagnostic_count_map(data, "outcome_counts"),
+        "owner_counts": _diagnostic_count_map(data, "owner_counts"),
+        "timeouts_by_owner": _diagnostic_count_map(data, "timeouts_by_owner"),
+        "failures": _diagnostic_failures(data.get("failures")),
+        "retry_eligible": _diagnostic_boolean(data, "retry_eligible"),
+        "contract_certified": _diagnostic_boolean(data, "contract_certified"),
+        "artifact_references": _diagnostic_artifacts(data.get("artifact_references")),
+    }
+
+
+def _diagnostic_count(data: dict[str, Any], field: str) -> int:
+    value = data.get(field)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise PayloadValidationError(f"diagnostics {field}", f"diagnostics {field} must be nonnegative")
+    return value
+
+
+def _diagnostic_count_map(data: dict[str, Any], field: str) -> dict[str, int]:
+    value = data.get(field)
+    if not isinstance(value, dict):
+        raise PayloadValidationError(f"diagnostics {field}", f"diagnostics {field} must be an object")
+    result: dict[str, int] = {}
+    for key, count in value.items():
+        if not isinstance(key, str) or _SAFE_DIAGNOSTIC_SLUG.fullmatch(key) is None:
+            raise PayloadValidationError(f"diagnostics {field}", f"diagnostics {field} has an unsafe key")
+        if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+            raise PayloadValidationError(f"diagnostics {field}", f"diagnostics {field} has an invalid count")
+        result[key] = count
+    return dict(sorted(result.items()))
+
+
+def _diagnostic_failures(value: object) -> list[dict[str, object]]:
+    if not isinstance(value, list) or len(value) > 16:
+        raise PayloadValidationError("diagnostics failures", "diagnostics failures must be a bounded list")
+    failures = []
+    for raw in value:
+        if not isinstance(raw, dict):
+            raise PayloadValidationError("diagnostics failures", "diagnostics failure must be an object")
+        category, owner = raw.get("category"), raw.get("owner")
+        if not all(
+            isinstance(item, str) and _SAFE_DIAGNOSTIC_SLUG.fullmatch(item) is not None for item in (category, owner)
+        ):
+            raise PayloadValidationError("diagnostics failures", "diagnostics failure has an unsafe identity")
+        count, actionable = raw.get("count"), raw.get("actionable")
+        if isinstance(count, bool) or not isinstance(count, int) or count < 1 or not isinstance(actionable, bool):
+            raise PayloadValidationError("diagnostics failures", "diagnostics failure has invalid fields")
+        failures.append({"category": category, "owner": owner, "count": count, "actionable": actionable})
+    return failures
+
+
+def _diagnostic_boolean(data: dict[str, Any], field: str) -> bool:
+    value = data.get(field)
+    if not isinstance(value, bool):
+        raise PayloadValidationError(f"diagnostics {field}", f"diagnostics {field} must be a boolean")
+    return value
+
+
+def _diagnostic_artifacts(value: object) -> list[dict[str, str]]:
+    if not isinstance(value, list) or len(value) > 8:
+        raise PayloadValidationError("diagnostics artifact_references", "artifact references must be bounded")
+    references = []
+    for raw in value:
+        if not isinstance(raw, dict):
+            raise PayloadValidationError("diagnostics artifact_references", "artifact reference must be an object")
+        kind, path, digest = raw.get("kind"), raw.get("path"), raw.get("sha256")
+        relative = PurePosixPath(path) if isinstance(path, str) else PurePosixPath("/")
+        if (
+            not isinstance(kind, str)
+            or _SAFE_DIAGNOSTIC_SLUG.fullmatch(kind) is None
+            or not isinstance(path, str)
+            or relative.is_absolute()
+            or "\\" in path
+            or any(part in {"", ".", ".."} for part in relative.parts)
+            or not isinstance(digest, str)
+            or _SAFE_DIAGNOSTIC_SHA.fullmatch(digest) is None
+        ):
+            raise PayloadValidationError("diagnostics artifact_references", "artifact reference is unsafe")
+        references.append({"kind": kind, "path": path, "sha256": digest})
+    return references
 
 
 def _safe_owner(owner: str) -> str:

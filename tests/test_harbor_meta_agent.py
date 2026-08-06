@@ -735,7 +735,7 @@ def test_file_task_meta_agent_configures_per_attempt_timeout_and_timeout_retry(
     assert config.map.compile.environments[0].docker_image == "evolve-meta-agent:test"
     assert job.agents[0].override_timeout_sec == 3600
     assert "EVOLVE_CANDIDATE_SOURCE" not in job.agents[0].env
-    assert job.environment.mounts == []
+    assert job.environment.mounts is None
     assert job.n_attempts == 1
     assert job.retry.max_retries == 1
     assert job.retry.exclude_exceptions == {
