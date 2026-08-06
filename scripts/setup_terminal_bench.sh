@@ -20,11 +20,15 @@ case "$RECIPE" in
   ahe|hyperagents)
     IMAGE=evolve-meta-agent-app:20260724-tools-mswe245
     IMAGE_CONTEXT=$ROOT/containers/meta-agent
+    IMAGE_LABEL=io.evolve.miniswe.version
+    IMAGE_VERSION=2.4.5
     BUILD_ARGS=(--build-arg MINISWE_VERSION=2.4.5)
     ;;
   aevolve|ahe_codex|gepa|hill_climb|hill_climb_codex|hyperagents_codex)
     IMAGE=evolve-meta-agent-codex:20260805-codex0145
     IMAGE_CONTEXT=$ROOT/containers/meta-agent-codex
+    IMAGE_LABEL=io.evolve.codex.version
+    IMAGE_VERSION=0.145.0
     BUILD_ARGS=(--build-arg CODEX_VERSION=0.145.0)
     ;;
   *)
@@ -50,7 +54,8 @@ if [[ ! -d "$RAW_DATASET/terminal-bench" ]]; then
 fi
 uv run --frozen python datasets/terminal_bench_2/prepare_dataset.py "$RAW_DATASET" "$DATASET"
 
-if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
+INSTALLED_VERSION=$(docker image inspect --format "{{ index .Config.Labels \"$IMAGE_LABEL\" }}" "$IMAGE" 2>/dev/null || true)
+if [[ $INSTALLED_VERSION != "$IMAGE_VERSION" ]]; then
   docker build "${BUILD_ARGS[@]}" -t "$IMAGE" "$IMAGE_CONTEXT"
 fi
 

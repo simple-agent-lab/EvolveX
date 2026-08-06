@@ -6,9 +6,11 @@ under `plugins/evolve-target/**`. Its initial `SessionStart` hook injects
 candidate-owned context, and every canonical evaluation installs the candidate
 plugin into an isolated temporary `CODEX_HOME` before invoking Codex CLI.
 
-Authentication uses the host Codex login. Run `codex login` once; a ChatGPT
-subscription login is sufficient and no `OPENAI_API_KEY` is required. The
-credential remains runtime state and is not copied into the candidate genome.
+Authentication may use an API key or an explicit Codex login file. After
+`codex login`, export `CODEX_AUTH_JSON_PATH=/absolute/path/to/auth.json` (or put
+that entry in the selected `ENV_FILE`); no home-directory credential lookup is
+performed. The credential remains runtime state and is not copied into the
+candidate genome.
 
 The recipe uses a versioned 30-task subset derived from the official
 `terminal-bench@2.0` dataset. Task names and content digests are checked into

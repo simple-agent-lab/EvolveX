@@ -39,7 +39,7 @@ def _manifest(path: Path, source: Path, names: list[str]) -> Path:
                 "dataset": "terminal-bench@2.0",
                 "name": "terminal-bench-2-30-v1",
                 "selection": {"count": len(names), "scheme": "test", "seed": "fixed"},
-                "tasks": {name: observed[name] for name in names},
+                "tasks": {name: "sha256:" + observed[name] for name in names},
                 "version": 1,
             }
         )
@@ -110,3 +110,12 @@ def test_preparer_never_overwrites_a_mismatched_destination(tmp_path: Path, monk
         module.main([str(source), str(destination)])
 
     assert sentinel.read_text() == "present\n"
+
+
+def test_checked_in_manifest_digests_normalize_to_task_content_identity() -> None:
+    module = _load_preparer()
+
+    expected = module._expected_tasks(module._manifest())
+
+    assert len(expected) == 30
+    assert all(len(digest) == 64 and not digest.startswith("sha256:") for digest in expected.values())

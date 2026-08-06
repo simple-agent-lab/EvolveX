@@ -24,15 +24,20 @@ with log.open("a") as stream:
 
 if name == "docker":
     state = Path(os.environ["DOCKER_STATE"])
-    images = set(state.read_text().splitlines()) if state.exists() else set()
+    images = json.loads(state.read_text()) if state.exists() else {}
     if args == ["info"]:
         raise SystemExit(12 if os.environ.get("FAIL_DOCKER_INFO") == "1" else 0)
     if args[:2] == ["image", "inspect"]:
-        raise SystemExit(0 if args[2] in images else 1)
+        image = args[-1]
+        if image not in images:
+            raise SystemExit(1)
+        if "--format" in args:
+            print(images[image])
+        raise SystemExit(0)
     if args[:1] == ["build"]:
         image = args[args.index("-t") + 1]
-        images.add(image)
-        state.write_text("\n".join(sorted(images)) + "\n")
+        images[image] = "2.4.5" if "meta-agent-app" in image else "0.145.0"
+        state.write_text(json.dumps(images))
         raise SystemExit(0)
     raise SystemExit(2)
 
@@ -134,6 +139,20 @@ def test_setup_builds_codex_image_for_gepa(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     build = next(call for call in calls if call[:2] == ["docker", "build"])
     assert "evolve-meta-agent-codex:20260805-codex0145" in build
+
+
+def test_setup_rebuilds_a_stale_image_with_the_expected_tag(tmp_path: Path) -> None:
+    environment, calls_path = _environment(tmp_path)
+    Path(environment["DOCKER_STATE"]).write_text(
+        json.dumps({"evolve-meta-agent-codex:20260805-codex0145": "stale"})
+    )
+
+    result = subprocess.run(
+        ["bash", str(SCRIPT), "gepa"], cwd=ROOT, env=environment, text=True, capture_output=True, check=False
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert any(call[:2] == ["docker", "build"] for call in _calls(calls_path))
 
 
 def test_setup_propagates_download_failure_without_building(tmp_path: Path) -> None:

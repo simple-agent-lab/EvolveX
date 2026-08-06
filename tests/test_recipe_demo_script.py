@@ -107,10 +107,10 @@ def test_recipe_demo_routes_common_overrides_through_uv(tmp_path: Path) -> None:
         str(workspace),
         "--recipe",
         "gepa",
-        "--tasks",
-        "4",
         "--dataset",
         str(assets / "terminal-bench-2-30-v1"),
+        "--tasks",
+        "4",
     ]
     assert calls[3] == ["run", "--frozen", f"{workspace}/evolve", "preflight", str(workspace), "--smoke"]
     assert calls[4] == [
@@ -152,8 +152,6 @@ def test_recipe_demo_loads_the_optional_env_file(tmp_path: Path) -> None:
         "./runs/ahe-demo",
         "--recipe",
         "ahe",
-        "--tasks",
-        "3",
         "--dataset",
         str(assets / "terminal-bench-2-30-v1"),
     ]
