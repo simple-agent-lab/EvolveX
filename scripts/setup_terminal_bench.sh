@@ -64,7 +64,7 @@ if [[ ! -d "$RAW_DATASET/terminal-bench" ]]; then
   mv "$RAW_PENDING" "$RAW_DATASET"
   OWNS_PENDING=0
 fi
-uv run --frozen python datasets/terminal_bench_2/prepare_dataset.py "$RAW_DATASET" "$DATASET"
+uv run --frozen python scripts/examples/terminal_bench_smoke/prepare_dataset.py "$RAW_DATASET" "$DATASET"
 
 INSTALLED_VERSION=$(docker image inspect --format "{{ index .Config.Labels \"$IMAGE_LABEL\" }}" "$IMAGE" 2>/dev/null || true)
 if [[ $INSTALLED_VERSION != "$IMAGE_VERSION" ]]; then

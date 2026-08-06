@@ -9,7 +9,7 @@ import pytest
 from evolve.splits import task_content_digests
 
 ROOT = Path(__file__).resolve().parents[1]
-PREPARER = ROOT / "datasets" / "terminal_bench_2" / "prepare_dataset.py"
+PREPARER = ROOT / "scripts" / "examples" / "terminal_bench_smoke" / "prepare_dataset.py"
 
 
 def _load_preparer():

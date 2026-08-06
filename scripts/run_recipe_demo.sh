@@ -26,7 +26,7 @@ INIT_ARGS=(--recipe "$RECIPE" --dataset "$DATASET")
 
 cd "$ROOT"
 uv sync --frozen
-"${UV_RUN[@]}" python datasets/terminal_bench_2/prepare_dataset.py "$ASSET_ROOT/raw" "$DATASET"
+"${UV_RUN[@]}" python scripts/examples/terminal_bench_smoke/prepare_dataset.py "$ASSET_ROOT/raw" "$DATASET"
 "${UV_RUN[@]}" evolve init "$WORKSPACE" "${INIT_ARGS[@]}"
 "${UV_RUN[@]}" "$WORKSPACE/evolve" preflight "$WORKSPACE"
 "${UV_RUN[@]}" "$WORKSPACE/evolve" run "$WORKSPACE" --max-generations "$GENERATIONS" --children-per-gen 1

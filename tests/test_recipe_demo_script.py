@@ -99,6 +99,7 @@ def test_recipe_demo_routes_common_overrides_through_uv(tmp_path: Path) -> None:
 
     calls = _calls(calls_path)
     assert calls[0] == ["sync", "--frozen"]
+    assert calls[1][2:4] == ["python", "scripts/examples/terminal_bench_smoke/prepare_dataset.py"]
     assert calls[2] == [
         "run",
         "--frozen",

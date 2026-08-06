@@ -80,7 +80,6 @@ packages = ["src/evolve"]
 "seeds" = "evolve/seeds"
 "skills" = "evolve/skills"
 "containers" = "evolve/containers"
-"datasets" = "evolve/datasets"
 "LICENSE" = "evolve/licenses/LICENSE"
 "NOTICE" = "evolve/licenses/NOTICE"
 

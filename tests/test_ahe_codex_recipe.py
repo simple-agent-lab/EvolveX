@@ -7,7 +7,7 @@ from evolve.config import load_config
 
 ROOT = Path(__file__).resolve().parents[1]
 RECIPE = ROOT / "recipes" / "ahe_codex"
-MANIFEST = ROOT / "datasets" / "terminal_bench_2" / "dataset-manifest.json"
+MANIFEST = ROOT / "scripts" / "examples" / "terminal_bench_smoke" / "dataset-manifest.json"
 
 
 def test_ahe_codex_dataset_manifest_is_versioned_and_content_bound() -> None:

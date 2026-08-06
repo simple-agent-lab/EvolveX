@@ -168,6 +168,17 @@ def test_setup_downloads_once_and_builds_miniswe_image_for_ahe(tmp_path: Path) -
 
     assert first.returncode == second.returncode == 0
     assert sum(call[0:5] == ["uv", "run", "--frozen", "harbor", "download"] for call in calls) == 1
+    assert any(
+        call[:5]
+        == [
+            "uv",
+            "run",
+            "--frozen",
+            "python",
+            "scripts/examples/terminal_bench_smoke/prepare_dataset.py",
+        ]
+        for call in calls
+    )
     builds = [call for call in calls if call[:2] == ["docker", "build"]]
     assert len(builds) == 1
     assert "evolve-meta-agent-app:20260724-tools-mswe245" in builds[0]

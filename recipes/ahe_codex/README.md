@@ -13,9 +13,10 @@ performed. The credential remains runtime state and is not copied into the
 candidate genome.
 
 The recipe uses a versioned 30-task subset derived from the official
-`terminal-bench@2.0` dataset. Task names and content digests are checked into
-`dataset-manifest.json`; this prevents a missing local directory from silently
-turning into a different experiment.
+`terminal-bench@2.0` dataset. Task names and content digests are checked into the
+[quick-start manifest](../../scripts/examples/terminal_bench_smoke/dataset-manifest.json);
+this prevents a missing local directory from silently turning into a different
+experiment.
 
 Prepare the dataset and pinned image, then run:
 

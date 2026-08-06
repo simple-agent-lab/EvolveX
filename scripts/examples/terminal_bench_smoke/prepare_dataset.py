@@ -1,4 +1,4 @@
-"""Materialize or verify the shared, content-pinned Terminal-Bench 2.0 subset."""
+"""Materialize or verify the content-pinned Terminal-Bench 2.0 smoke subset."""
 
 from __future__ import annotations
 
