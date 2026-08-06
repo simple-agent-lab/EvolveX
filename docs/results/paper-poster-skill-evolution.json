@@ -13,7 +13,11 @@
   "evaluator": {
     "hard_gates": [
       "renderable_self_contained_svg",
-      "geometry_integrity",
+      "geometry_integrity"
+    ],
+    "advisory_review_focus": [
+      "aesthetic_quality",
+      "visual_communication",
       "paper_fidelity"
     ],
     "rubric": "../../evals/skills/make-paper-poster/rubric.json"
@@ -75,7 +79,7 @@
     }
   },
   "notes": [
-    "Binary reward records hard-gate completion; it is not an aesthetic score.",
+    "Binary reward records deterministic renderability and geometry completion; visual quality and paper fidelity remain prose feedback for outer-agent mutation.",
     "The showcase was run on four human-selected papers and is not a general benchmark claim.",
     "Sealed-case feedback from this showcase was not used for later mutation or champion selection."
   ]

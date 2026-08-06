@@ -5,6 +5,7 @@ import json
 import subprocess
 from pathlib import Path
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -158,7 +159,14 @@ def test_successful_evaluation_uses_completion_reward_and_no_quality_score(monke
     module.LOG_DIR = log_dir
     monkeypatch.setattr(module, "static_check", lambda: ([], {"svg_bytes": 123}))
     monkeypatch.setattr(module, "render", lambda: None)
-    monkeypatch.setattr(module, "svg_geometry_check", lambda: {"exit_code": 0})
+    monkeypatch.setattr(
+        module,
+        "svg_geometry_check",
+        lambda: {
+            "exit_code": 0,
+            "result": {"valid": True, "summary": {"textOverflow": 0, "nodeOverflow": 0}},
+        },
+    )
     monkeypatch.setattr(module, "run_judge", lambda _: {"feedback": "Improve the focal point."})
 
     assert module.main() == 0
@@ -166,6 +174,42 @@ def test_successful_evaluation_uses_completion_reward_and_no_quality_score(monke
     assert payload["reward"] == 1.0
     assert payload["feedback"] == "Improve the focal point."
     assert "score" not in payload
+
+
+def test_geometry_checker_failures_are_evaluator_infrastructure_errors(monkeypatch) -> None:
+    module = _load_evaluator()
+
+    monkeypatch.setattr(
+        module.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 0, "not-json", ""),
+    )
+    with pytest.raises(RuntimeError, match="invalid JSON"):
+        module.svg_geometry_check()
+
+    monkeypatch.setattr(
+        module.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 0, "{}", ""),
+    )
+    with pytest.raises(RuntimeError, match="invalid result schema"):
+        module.svg_geometry_check()
+
+    monkeypatch.setattr(
+        module.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 2, "{}", "checker crashed"),
+    )
+    with pytest.raises(RuntimeError, match="failed with exit code 2"):
+        module.svg_geometry_check()
+
+    def timeout(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        del args, kwargs
+        raise subprocess.TimeoutExpired("svg-check", 180)
+
+    monkeypatch.setattr(module.subprocess, "run", timeout)
+    with pytest.raises(subprocess.TimeoutExpired):
+        module.svg_geometry_check()
 
 
 def test_text_overflow_is_a_deterministic_geometry_hard_failure(monkeypatch, tmp_path: Path) -> None:
@@ -187,3 +231,23 @@ def test_text_overflow_is_a_deterministic_geometry_hard_failure(monkeypatch, tmp
     assert payload["reward"] == 0.0
     assert payload["hard_failures"] == ["geometry_integrity: 3 text elements overflow the SVG viewBox"]
     assert payload["feedback"] == "Several labels are visibly clipped."
+
+
+def test_node_overflow_is_a_deterministic_geometry_hard_failure(monkeypatch, tmp_path: Path) -> None:
+    module = _load_evaluator()
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    module.LOG_DIR = log_dir
+    monkeypatch.setattr(module, "static_check", lambda: ([], {"svg_bytes": 123}))
+    monkeypatch.setattr(module, "render", lambda: None)
+    monkeypatch.setattr(
+        module,
+        "svg_geometry_check",
+        lambda: {"exit_code": 0, "result": {"valid": False, "summary": {"nodeOverflow": 2}}},
+    )
+    monkeypatch.setattr(module, "run_judge", lambda _: {"feedback": "Two decorative nodes leave the canvas."})
+
+    assert module.main() == 0
+    payload = json.loads((log_dir / "evaluation.json").read_text())
+    assert payload["reward"] == 0.0
+    assert payload["hard_failures"] == ["geometry_integrity: 2 non-text elements overflow the SVG viewBox"]

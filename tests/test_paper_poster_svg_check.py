@@ -27,6 +27,7 @@ def test_local_svg_checker_reports_overflow_and_overlap(tmp_path: Path) -> None:
         '<text id="first" x="10" y="40" font-size="10">same place</text>'
         '<text id="second" x="10" y="40" font-size="10">same place</text>'
         '<rect id="occluder" x="9" y="29" width="80" height="15"/>'
+        '<rect id="node-overflow" x="95" y="80" width="10" height="10"/>'
         "</svg>"
     )
 
@@ -36,10 +37,12 @@ def test_local_svg_checker_reports_overflow_and_overlap(tmp_path: Path) -> None:
     assert result["valid"] is False
     summary = result["summary"]
     assert summary["textOverflow"] == 1
+    assert summary["nodeOverflow"] == 1
     assert summary["nodeOverlap"] >= 1
     assert summary["textOcclusion"] >= 1
     assert {issue["kind"] for issue in result["issues"]} >= {
         "textOverflow",
+        "nodeOverflow",
         "nodeOverlap",
         "textOcclusion",
     }
@@ -58,4 +61,28 @@ def test_local_svg_checker_ignores_full_bleed_background(tmp_path: Path) -> None
     result = module.check_svg(path)
 
     assert result["valid"] is True
-    assert result["summary"] == {"textOverflow": 0, "nodeOverlap": 0, "textOcclusion": 0}
+    assert result["summary"] == {
+        "textOverflow": 0,
+        "nodeOverflow": 0,
+        "nodeOverlap": 0,
+        "textOcclusion": 0,
+    }
+
+
+def test_local_svg_checker_applies_nested_transforms(tmp_path: Path) -> None:
+    module = _load_checker()
+    path = tmp_path / "poster.svg"
+    path.write_text(
+        '<svg viewBox="0 0 100 100">'
+        '<g transform="translate(-100 0)"><text id="moved-inside" x="130" y="20" font-size="10">inside</text></g>'
+        '<g transform="translate(80 0)"><g transform="translate(5 0)">'
+        '<rect id="moved-outside" x="10" y="70" width="10" height="10"/>'
+        "</g></g>"
+        "</svg>"
+    )
+
+    result = module.check_svg(path)
+
+    assert result["summary"]["textOverflow"] == 0
+    assert result["summary"]["nodeOverflow"] == 1
+    assert [issue["element"] for issue in result["issues"] if issue["kind"] == "nodeOverflow"] == ["moved-outside"]

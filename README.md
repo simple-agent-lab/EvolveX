@@ -109,13 +109,13 @@ paper prompt produced both LoRA posters below.
     <td><img src="docs/assets/paper-poster-lora-gen2.png" alt="Generation two LoRA research poster with a paper-specific editorial layout and low-rank matrix visualization"></td>
   </tr>
   <tr>
-    <td>Hard gate failed: 14 text elements overflowed the SVG viewBox.</td>
-    <td>Passed renderability, geometry, and paper-fidelity hard gates.</td>
+    <td>Deterministic geometry gate failed: 14 text elements overflowed the SVG viewBox.</td>
+    <td>Passed deterministic renderability and geometry gates; paper fidelity remained advisory reviewer feedback.</td>
   </tr>
 </table>
 
-Across the four-paper showcase, the hard-gate pass rate moved from **1/4** at
-Gen 0 to **4/4** at Gen 2. The trials ran concurrently through Harbor's local
+Across the four-paper showcase, the deterministic completion pass rate moved
+from **1/4** at Gen 0 to **4/4** at Gen 2. The trials ran concurrently through Harbor's local
 environment without Docker and retained ATIF trajectories plus evaluator-owned
 visual feedback. This is a representative evolution run rather than a broad
 benchmark; see the [result snapshot](docs/results/paper-poster-skill-evolution.json),
