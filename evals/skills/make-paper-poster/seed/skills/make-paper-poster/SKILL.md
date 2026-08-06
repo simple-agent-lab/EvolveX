@@ -1,23 +1,12 @@
 ---
 name: make-paper-poster
-description: Create a visual poster from an academic paper as a self-contained SVG. Use when asked to summarize or present a paper as an SVG research poster.
+description: Make an SVG poster for a paper.
 ---
 
 # Make a paper poster
 
-Read the source paper and identify its central problem, method, evidence, and
-takeaway.
+Read the paper and create `poster.svg`.
 
-Create one self-contained SVG poster that communicates the paper visually.
-Preserve the paper's technical meaning and do not invent claims or results.
-
-When `EVOLVE_SVG_RENDERER` is available, render previews only through that
-command so your preview matches the evaluator. For example:
-
-```sh
-"$EVOLVE_SVG_RENDERER" poster.svg --width 1600
-```
-
-The command prints the content-addressed PNG path. Inspect that PNG, revise
-obvious problems, and render at most once more after revision. Do not probe for
-or switch to another SVG renderer. Return the final SVG path.
+Include the title, a short summary, the method, some results, and a conclusion.
+Use colors, boxes, arrows, and diagrams to make it look like an AI research
+poster. Keep everything inside the canvas and make the text readable.
