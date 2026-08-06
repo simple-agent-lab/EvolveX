@@ -189,9 +189,11 @@ def test_readme_uses_approved_identity_and_information_architecture() -> None:
 > the evaluation setup and reporting protocol are finalized."""
     assert unsupported_benchmark_placeholder not in readme
     assert "### Benchmark results" in readme
-    assert '<td rowspan="8">Terminal Bench 2 (50/19/20)</td>' in readme
-    assert '<td rowspan="8">Tau^3 Banking (50/20/27)</td>' in readme
-    assert '<td rowspan="16">Codex</td>' in readme
+    assert "#### Terminal Bench 2" in readme
+    assert "#### Tau³ Banking" in readme
+    assert readme.count("<th>Target agent</th>") == 2
+    assert readme.count('<td rowspan="4">MiniSWE Agent</td>') == 2
+    assert readme.count('<td rowspan="4">Codex</td>') == 2
 
 
 def test_readme_keeps_supported_recipes_and_honest_quick_start() -> None:
