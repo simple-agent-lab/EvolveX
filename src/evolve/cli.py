@@ -29,7 +29,7 @@ from .run_summary import assert_run_success, write_run_summary
 from .surface import check_paths, surface_patterns
 from .workspace import InitOptions, init_workspace
 
-app = typer.Typer(add_completion=False, no_args_is_help=True, help="evolve mechanism CLI")
+app = typer.Typer(add_completion=False, no_args_is_help=True, help="EvolveX mechanism CLI")
 DEFAULT_WORKSPACE = Path("~/.evolve-workspace")
 
 
@@ -41,14 +41,12 @@ def _enable_live_output(enabled: bool) -> None:
 @contextmanager
 def _workspace_environment(workspace: Path) -> Iterator[None]:
     workspace_env = workspace.resolve() / ".env"
-    caller_env = Path.cwd().resolve() / ".env"
     added: list[str] = []
     try:
-        for path in dict.fromkeys((workspace_env, caller_env)):
-            for name, value in dotenv_values(path).items():
-                if value is not None and name not in os.environ:
-                    os.environ[name] = value
-                    added.append(name)
+        for name, value in dotenv_values(workspace_env).items():
+            if value is not None and name not in os.environ:
+                os.environ[name] = value
+                added.append(name)
         yield
     finally:
         for name in reversed(added):
@@ -94,8 +92,9 @@ def init(
     ),
     seed: str | None = typer.Option(None, help="git URL to vendor into target/; local target dir; builtin-codex"),
     dataset: str | None = typer.Option(None, help="local Harbor task directory to split and freeze"),
+    tasks: int | None = typer.Option(None, "--tasks", min=1, help="limit evaluator tasks per round"),
 ) -> None:
-    """Scaffold a new evolve workspace."""
+    """Scaffold a new EvolveX workspace."""
     workspace = (workspace or DEFAULT_WORKSPACE).expanduser()
     if recipe is not None and recipe_path is not None:
         raise typer.BadParameter(
@@ -115,9 +114,10 @@ def init(
             seed=seed,
             dataset=dataset,
             recipe_path=recipe_path,
+            tasks_per_round=tasks,
         )
     )
-    print(f"Initialized evolve workspace at {workspace}")
+    print(f"Initialized EvolveX workspace at {workspace}")
 
 
 @app.command()
@@ -138,21 +138,59 @@ def preflight(
     ),
     seed: str | None = typer.Option(None, help="git URL to vendor into target/; local target dir; builtin-codex"),
     dataset: str | None = typer.Option(None, help="local Harbor task directory to split and freeze"),
+    tasks: int | None = typer.Option(None, "--tasks", min=1, help="limit evaluator tasks per round"),
+    smoke: bool = typer.Option(
+        False, "--smoke", help="include one isolated model request for an initialized workspace"
+    ),
+    init_check: bool = typer.Option(
+        False,
+        "--init-check",
+        help="check prospective evolve init inputs even when the workspace is initialized",
+    ),
 ) -> None:
-    """Check every `evolve init` precondition without writing anything.
+    """Check prospective init inputs or validate an initialized workspace.
 
-    Takes the same arguments as init and reports one checklist instead of one
-    refusal at a time."""
-    from .preflight import render, run_preflight
+    Uninitialized paths and init-specific options use the read-only init
+    checklist. An initialized workspace uses the typed runtime preflight; pass
+    ``--smoke`` to include exactly one model-backed task.
+    """
+    from .preflight import (
+        PreflightMode,
+        PreflightStatus,
+        render_init_preflight,
+        run_init_preflight,
+    )
+    from .preflight import (
+        run_preflight as run_runtime_preflight,
+    )
 
-    checks = run_preflight(
-        workspace=(workspace or DEFAULT_WORKSPACE).expanduser(),
+    selected_workspace = (workspace or DEFAULT_WORKSPACE).expanduser()
+    initialized = (selected_workspace / "evolve.yaml").is_file() and (selected_workspace / ".git").exists()
+    init_options_supplied = any(value is not None for value in (recipe, recipe_path, seed, dataset, tasks))
+    if initialized and not init_check and not init_options_supplied:
+        mode = PreflightMode.SMOKE if smoke else PreflightMode.ORDINARY
+        with _workspace_environment(selected_workspace):
+            result = run_runtime_preflight(selected_workspace, mode=mode)
+        receipt = result.receipt_path.resolve() if result.receipt_path is not None else "unwritten"
+        print(f"preflight: {result.status.value} receipt={receipt}")
+        if result.status is PreflightStatus.FAILED:
+            raise typer.Exit(2 if smoke else 1)
+        return
+    if smoke:
+        raise typer.BadParameter(
+            "--smoke requires an initialized workspace without init-specific options",
+            param_hint="--smoke",
+        )
+
+    checks = run_init_preflight(
+        workspace=selected_workspace,
         recipe=recipe,
         recipe_path=recipe_path,
         seed=seed,
         dataset=dataset,
+        tasks_per_round=tasks,
     )
-    output, ready = render(checks)
+    output, ready = render_init_preflight(checks)
     print(output)
     if not ready:
         raise typer.Exit(1)

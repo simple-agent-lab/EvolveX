@@ -13,15 +13,17 @@ workflow it represents.
 - [HyperAgents](hyperagents/README.md)
 - [HyperAgents for Codex](hyperagents_codex/README.md)
 
-Codex-backed meta-agent and trajectory-judge jobs use
-`evolve-meta-agent-codex:20260805-codex0145`. Build it before an experiment:
+All main recipes use the shared, content-pinned Terminal-Bench 2.0 subset. The
+setup script downloads and verifies it and builds only the selected recipe's
+pinned MiniSWE or Codex meta-agent image:
 
 ```bash
-docker build -t evolve-meta-agent-codex:20260805-codex0145 containers/meta-agent-codex
+./scripts/setup_terminal_bench.sh gepa
+./scripts/run_recipe_demo.sh gepa
 ```
 
-This image removes repeated Codex installation from framework-owned Harbor
-jobs. Benchmark task images remain dataset-owned; their agent setup is still
-managed by Harbor.
+Set `EVOLVE_ASSET_DIR` to place the reusable dataset outside the default
+`.evolve-assets/terminal-bench-2.0` directory. Benchmark task images remain
+dataset-owned and are managed by Harbor.
 
 Development-only recipe fixtures live under `tests/fixtures/recipes/`.

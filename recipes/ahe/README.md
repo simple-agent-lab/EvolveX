@@ -1,7 +1,7 @@
 # AHE on Terminal-Bench 2.0
 
 This recipe keeps the AHE strategy independent from the target agent. It uses
-the local `terminal-bench-2-10-10-10` dataset. Workspace initialization freezes
+the shared `terminal-bench-2-30-v1` dataset. Workspace initialization freezes
 all 30 curated instances as one optimization set without synthesizing train,
 gate, and sealed partitions. Each candidate is evaluated on those same 30 tasks
 with one trial per task. That certified evaluation is replayed as the next AHE
@@ -23,7 +23,7 @@ of the candidate runtime contract. Because upstream does not track that lock,
 workspace initialization generates and freezes it explicitly.
 
 Canonical evaluation is deliberately different: the frozen
-`MiniSweSourceAgent` adapter installs the returned candidate source and invokes
+`CandidateMiniSweAgent` adapter installs the returned candidate source and invokes
 its Python API with evaluator-owned model and resource limits. The prompt asks
 for a change manifest linking target edits to debugger evidence and predicted
 effects, but that manifest is best-effort metadata: a missing or malformed block
@@ -43,18 +43,11 @@ Candidate execution uses Harbor's native task timeouts
 (`agent_timeout_multiplier: 1`).
 
 ```bash
-export EVOLVE_RUNTIME_DIGEST="sha256:replace-with-your-immutable-evaluator-image-digest"
-harbor download terminal-bench@2.0 --export -o /absolute/path/to/raw
-python recipes/ahe/prepare_dataset.py \
-  /absolute/path/to/raw/terminal-bench \
-  /absolute/path/to/terminal-bench-2-ahe-30-v1
-
-export HARBOR_TASKS="/absolute/path/to/terminal-bench-2-ahe-30-v1"
 cd /path/to/simple-evolve-agent
-evolve init /path/to/ahe-run --recipe ahe --dataset "$HARBOR_TASKS"
+evolve init /path/to/ahe-run --recipe ahe --tasks 3
 cd /path/to/ahe-run
-./evolve doctor . --profile experiment
-./evolve smoke . --profile experiment --task cancel-async-tasks
+./evolve preflight .
+./evolve preflight . --smoke
 ./evolve run . --max-generations 1
 ```
 

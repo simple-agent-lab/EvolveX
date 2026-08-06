@@ -1,6 +1,9 @@
 import re
 import shlex
+import subprocess
+import sys
 import tomllib
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import yaml
@@ -9,6 +12,240 @@ from evolve import __version__
 
 ROOT = Path(__file__).resolve().parents[1]
 RELATIVE_LINK = re.compile(r"\[[^\]]+\]\((?!https?://|mailto:|#)([^)#]+)")
+SVG_NS = {"svg": "http://www.w3.org/2000/svg"}
+
+
+def _h2_headings(markdown: str) -> list[str]:
+    headings = []
+    in_fenced_block = False
+    for line in markdown.splitlines():
+        if line.startswith("```"):
+            in_fenced_block = not in_fenced_block
+        elif not in_fenced_block and (match := re.fullmatch(r"## (.+)", line)):
+            headings.append(match.group(1))
+    return headings
+
+
+def _fenced_shell_blocks(markdown: str) -> list[tuple[str, str]]:
+    return [
+        (match.group("language"), match.group("body"))
+        for match in re.finditer(
+            r"^```(?P<language>\w+)\n(?P<body>.*?)^```$", markdown, re.MULTILINE | re.DOTALL
+        )
+    ]
+
+
+def _relative_luminance(color: str) -> float:
+    channels = [int(color[index : index + 2], 16) / 255 for index in (1, 3, 5)]
+    linear = [
+        channel / 12.92
+        if channel <= 0.04045
+        else ((channel + 0.055) / 1.055) ** 2.4
+        for channel in channels
+    ]
+    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+
+def _contrast_ratio(first: str, second: str) -> float:
+    lighter, darker = sorted(
+        (_relative_luminance(first), _relative_luminance(second)), reverse=True
+    )
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def test_readme_visual_assets_are_current() -> None:
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "tools" / "generate_readme_assets.py"), "--check"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_architecture_visual_is_current_and_uses_identity_palette() -> None:
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "tools" / "generate_architecture_svg.py"), "--check"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    svg = (ROOT / "docs" / "architecture.svg").read_text()
+    for color in ("#10372e", "#19785a", "#65ce9f", "#b5d3c7", "#f2fbf7"):
+        assert color in svg
+    description = ET.parse(ROOT / "docs" / "architecture.svg").find("svg:desc", SVG_NS).text
+    assert "Recipes select permitted targets, operators, and stages." in description
+    assert "rewrite any stage" not in description
+    readme = (ROOT / "README.md").read_text()
+    architecture_image = re.search(r'<img src="docs/architecture\.svg" alt="([^"]+)">', readme)
+    assert architecture_image is not None
+    assert "The target and selected operators occupy a declared mutable surface." in architecture_image.group(1)
+    assert "may rewrite any stage" not in readme
+    assert "can rewrite any stage" not in readme
+
+
+def test_readme_visual_assets_have_accessible_svg_metadata() -> None:
+    for relative in ("docs/evolve-mark.svg", "docs/evolve-lineage.svg"):
+        root = ET.parse(ROOT / relative).getroot()
+        assert root.attrib["role"] == "img"
+        assert root.attrib["viewBox"]
+        labelled_by = root.attrib["aria-labelledby"].split()
+        assert len(labelled_by) == 2
+        assert root.find("svg:title", SVG_NS).attrib["id"] == labelled_by[0]
+        assert root.find("svg:desc", SVG_NS).attrib["id"] == labelled_by[1]
+
+
+def test_selected_and_explored_graphics_have_three_to_one_contrast() -> None:
+    expected_state_counts = {
+        "docs/evolve-mark.svg": {"selected": 5, "explored": 1},
+        "docs/evolve-lineage.svg": {"selected": 5, "explored": 4},
+    }
+    for relative, expected_counts in expected_state_counts.items():
+        root = ET.parse(ROOT / relative).getroot()
+        background = root.find("svg:rect", SVG_NS).attrib["fill"]
+        states = root.findall(".//*[@data-state]")
+        assert {
+            state: sum(element.attrib["data-state"] == state for element in states)
+            for state in ("selected", "explored")
+        } == expected_counts
+        for element in states:
+            state = element.attrib["data-state"]
+            color = element.attrib["stroke"]
+            ratio = _contrast_ratio(color, background)
+            assert ratio >= 3, f"{relative} {state} {color} on {background}: {ratio:.2f}:1"
+
+
+def test_readme_labeled_figures_link_to_full_size_local_svgs() -> None:
+    readme = (ROOT / "README.md").read_text()
+    for relative in ("docs/evolve-lineage.svg", "docs/architecture.svg"):
+        linked_image = re.search(
+            rf'<a href="{re.escape(relative)}">\s*'
+            rf'<img src="{re.escape(relative)}" alt="([^"]+)">\s*</a>',
+            readme,
+        )
+        assert linked_image is not None
+        assert len(linked_image.group(1).split()) >= 12
+
+
+def test_readme_uses_approved_identity_and_information_architecture() -> None:
+    readme = (ROOT / "README.md").read_text()
+    hero = """<p align="center">
+  <img src="docs/evolve-mark.svg" width="112" alt="EvolveX selected lineage mark: a selected lineage rises past explored side branches to a verified generation.">
+</p>
+
+<h1 align="center">EvolveX</h1>
+
+<p align="center">
+  <strong>Build agents that improve — and keep the evidence.</strong>
+</p>
+
+<p align="center">
+  A file-based framework for evaluator-driven evolution, reproducible candidate
+  lineage, and controlled self-modification.
+</p>
+"""
+    navigation = """<p align="center">
+  <a href="#what-evolvex-does">What EvolveX Does</a> ·
+  <a href="#how-evolvex-works">How It Works</a> ·
+  <a href="#what-can-evolve">What Can Evolve</a> ·
+  <a href="#recipes">Recipes</a> ·
+  <a href="#quick-start">Quick Start</a> ·
+  <a href="#documentation">Documentation</a>
+</p>"""
+    assert readme.startswith(hero)
+    assert navigation in readme
+    assert "docs/evolve-lineage.svg" in readme
+
+    headings = _h2_headings(readme)
+    assert headings == [
+        "What EvolveX Does",
+        "How EvolveX Works",
+        "What Can Evolve",
+        "Recipes",
+        "Quick Start",
+        "Trustworthy by Construction",
+        "Project Status",
+        "Roadmap",
+        "Documentation",
+        "License",
+    ]
+
+    navigation_targets = re.findall(r'<a href="#([^"]+)">([^<]+)</a>', navigation)
+    assert navigation_targets == [
+        ("what-evolvex-does", "What EvolveX Does"),
+        ("how-evolvex-works", "How It Works"),
+        ("what-can-evolve", "What Can Evolve"),
+        ("recipes", "Recipes"),
+        ("quick-start", "Quick Start"),
+        ("documentation", "Documentation"),
+    ]
+    assert [target for target, _ in navigation_targets] == [
+        heading.lower().replace(" ", "-")
+        for heading in (
+            "What EvolveX Does",
+            "How EvolveX Works",
+            "What Can Evolve",
+            "Recipes",
+            "Quick Start",
+            "Documentation",
+        )
+    ]
+    unsupported_benchmark_placeholder = """> **TODO:** Add reproducible benchmark results and supporting artifacts once
+> the evaluation setup and reporting protocol are finalized."""
+    assert unsupported_benchmark_placeholder not in readme
+    assert "reproducible benchmark results" not in readme
+    assert (
+        "Benchmark results will be added only with a reproducible evaluation setup and\n"
+        "supporting artifacts."
+    ) in readme
+
+
+def test_readme_keeps_supported_recipes_and_honest_quick_start() -> None:
+    readme = (ROOT / "README.md").read_text()
+    for recipe in ("`hill_climb`", "`aevolve`", "`ahe`", "`gepa`", "`hyperagents`"):
+        assert recipe in readme
+
+    quick_start = readme.split("## Quick Start\n", maxsplit=1)[1].split(
+        "\n## Trustworthy by Construction", maxsplit=1
+    )[0]
+    assert _fenced_shell_blocks(quick_start) == [
+        (
+            "bash",
+            """git clone https://github.com/simple-agent-lab/simple-evolve-agent.git
+cd simple-evolve-agent
+uv sync --dev --locked
+uv run --frozen evolve --help
+""",
+        ),
+        (
+            "bash",
+            """export EVOLVE_HOME="/tmp/evolve-home"
+
+uv run evolve init /tmp/evolve-demo \\
+  --recipe-path tests/fixtures/recipes/hill_climb-smoke \\
+  --seed tests/fixtures/seeds/dummy
+EVAL_STUB=1 /tmp/evolve-demo/evolve run /tmp/evolve-demo --max-generations 0
+/tmp/evolve-demo/evolve status /tmp/evolve-demo
+/tmp/evolve-demo/evolve verify /tmp/evolve-demo
+""",
+        ),
+        (
+            "bash",
+            """/tmp/evolve-demo/evolve operator list /tmp/evolve-demo
+/tmp/evolve-demo/evolve operator run /tmp/evolve-demo select --genid 1
+""",
+        ),
+        (
+            "bash",
+            """./scripts/setup_terminal_bench.sh ahe
+./scripts/run_recipe_demo.sh ahe
+""",
+        ),
+    ]
+    assert "does not run a mutation round or measure agent quality" in readme
 
 
 def test_license_metadata_and_notice_are_consistent() -> None:
@@ -16,7 +253,7 @@ def test_license_metadata_and_notice_are_consistent() -> None:
     assert project["version"] == __version__
     assert project["license"] == "Apache-2.0"
     assert "Apache License" in (ROOT / "LICENSE").read_text()
-    assert (ROOT / "NOTICE").read_text().startswith("Evolve Framework\n")
+    assert (ROOT / "NOTICE").read_text().startswith("EvolveX\n")
 
 
 def test_required_public_repository_files_exist() -> None:

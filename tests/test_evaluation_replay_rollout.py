@@ -12,8 +12,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _replay_module():
-    path = ROOT / "library" / "rollout" / "evaluation_replay.py"
-    spec = importlib.util.spec_from_file_location("evaluation_replay_under_test", path)
+    path = ROOT / "library" / "rollout" / "parent_evaluation.py"
+    spec = importlib.util.spec_from_file_location("parent_evaluation_under_test", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -60,7 +60,7 @@ def _artifact(
     trials = []
     for task_name in task_names:
         trial_name = f"{task_name}__trial-0"
-        result = jobs / trial_name / "result.json"
+        result = jobs / trial_name / "evolve-replay.json"
         result.parent.mkdir()
         result.write_text(
             json.dumps(
@@ -105,7 +105,7 @@ def test_replay_uses_selected_parent_certified_evaluation(tmp_path: Path, monkey
     observed: dict[str, object] = {}
 
     def collect(selected_jobs: Path, **options):
-        result = next(selected_jobs.rglob("result.json"))
+        result = next(selected_jobs.rglob("evolve-replay.json"))
         observed.update(
             {
                 "jobs_is_certified_view": selected_jobs != jobs,
@@ -187,7 +187,9 @@ def test_replay_merges_base_and_repair_artifacts_for_composite_evaluation(tmp_pa
     rows = {"3": {"genid": "3", "artifacts": composite_reference, "score": 2 / 3}}
 
     def collect(selected_jobs: Path, **_options):
-        task_names = {json.loads(result.read_text())["task_name"] for result in selected_jobs.rglob("result.json")}
+        task_names = {
+            json.loads(result.read_text())["task_name"] for result in selected_jobs.rglob("evolve-replay.json")
+        }
         if task_names == {"task-a", "task-b", "task-c"}:
             return [
                 {
@@ -250,7 +252,7 @@ def test_replay_loads_collector_from_vendored_workspace_library(tmp_path: Path) 
     jobs = tmp_path / "jobs"
     trial = jobs / "trial-a"
     trial.mkdir(parents=True)
-    (trial / "result.json").write_text(
+    (trial / "evolve-replay.json").write_text(
         json.dumps(
             {
                 "trial_name": "trial-a",
@@ -310,7 +312,7 @@ def test_replay_rejects_modified_indexed_result_without_changing_index_reference
     module = _replay_module()
     workspace = tmp_path / "workspace"
     jobs, reference = _artifact(workspace)
-    result = next(jobs.rglob("result.json"))
+    result = next(jobs.rglob("evolve-replay.json"))
     original = result.read_bytes()
     modified = original.replace(b'"reward": 1.0', b'"reward": 0.0')
     assert len(modified) == len(original)
@@ -344,7 +346,7 @@ def test_replay_rejects_missing_indexed_file(tmp_path: Path, monkeypatch) -> Non
     module = _replay_module()
     workspace = tmp_path / "workspace"
     jobs, reference = _artifact(workspace)
-    next(jobs.rglob("result.json")).unlink()
+    next(jobs.rglob("evolve-replay.json")).unlink()
     monkeypatch.setattr(module, "ArchiveView", lambda _workspace: _Archive({"3": {"artifacts": reference}}))
     monkeypatch.setattr(module, "_load_collect_cases", lambda _checkout: lambda *_args, **_kwargs: [])
     ctx = _context(workspace, parent="3")
@@ -359,7 +361,7 @@ def test_replay_rejects_indexed_path_outside_jobs(tmp_path: Path, monkeypatch) -
     _jobs, reference = _artifact(workspace)
     artifact = workspace / reference["path"]
     index = json.loads(artifact.read_text())
-    index["trials"][0]["files"][0]["path"] = "../result.json"
+    index["trials"][0]["files"][0]["path"] = "../evolve-replay.json"
     artifact.write_text(json.dumps(index))
     reference["sha256"] = hashlib.sha256(artifact.read_bytes()).hexdigest()
     monkeypatch.setattr(module, "ArchiveView", lambda _workspace: _Archive({"3": {"artifacts": reference}}))
@@ -374,7 +376,7 @@ def test_replay_rejects_unindexed_result_file(tmp_path: Path, monkeypatch) -> No
     module = _replay_module()
     workspace = tmp_path / "workspace"
     jobs, reference = _artifact(workspace)
-    forged = jobs / "forged" / "result.json"
+    forged = jobs / "forged" / "evolve-replay.json"
     forged.parent.mkdir()
     forged.write_text(
         json.dumps(
@@ -389,11 +391,11 @@ def test_replay_rejects_unindexed_result_file(tmp_path: Path, monkeypatch) -> No
     monkeypatch.setattr(module, "_load_collect_cases", lambda _checkout: lambda *_args, **_kwargs: [])
     ctx = _context(workspace, parent="3")
 
-    with pytest.raises(SystemExit, match="unindexed replay result: forged/result.json"):
+    with pytest.raises(SystemExit, match="unindexed replay result: forged/evolve-replay.json"):
         module.EvaluationReplayRollout().rollout(ctx.checkout, ctx)
 
 
-def test_replay_rejects_unindexed_safe_replay_file(tmp_path: Path, monkeypatch) -> None:
+def test_replay_does_not_materialize_raw_verifier_reward(tmp_path: Path, monkeypatch) -> None:
     module = _replay_module()
     workspace = tmp_path / "workspace"
     jobs, reference = _artifact(workspace)
@@ -401,10 +403,28 @@ def test_replay_rejects_unindexed_safe_replay_file(tmp_path: Path, monkeypatch) 
     reward.parent.mkdir()
     reward.write_text("0\n")
     monkeypatch.setattr(module, "ArchiveView", lambda _workspace: _Archive({"3": {"artifacts": reference}}))
+    def collect(selected_jobs: Path, **_kwargs):
+        assert not list(selected_jobs.rglob("reward.txt"))
+        return [{"task_name": "task-a", "trial_name": "task-a__trial-0", "reward": 1.0, "outcome": "passed"}]
+
+    monkeypatch.setattr(module, "_load_collect_cases", lambda _checkout: collect)
+    ctx = _context(workspace, parent="3")
+
+    module.EvaluationReplayRollout().rollout(ctx.checkout, ctx)
+
+
+def test_replay_rejects_unindexed_verifier_diagnostic_file(tmp_path: Path, monkeypatch) -> None:
+    module = _replay_module()
+    workspace = tmp_path / "workspace"
+    jobs, reference = _artifact(workspace)
+    diagnostics = next(jobs.iterdir()) / "verifier" / "diagnostics.json"
+    diagnostics.parent.mkdir()
+    diagnostics.write_text('{"status":"mismatch"}\n')
+    monkeypatch.setattr(module, "ArchiveView", lambda _workspace: _Archive({"3": {"artifacts": reference}}))
     monkeypatch.setattr(module, "_load_collect_cases", lambda _checkout: lambda *_args, **_kwargs: [])
     ctx = _context(workspace, parent="3")
 
-    with pytest.raises(SystemExit, match="unindexed replay file: task-a__trial-0/verifier/reward.txt"):
+    with pytest.raises(SystemExit, match="unindexed replay file: task-a__trial-0/verifier/diagnostics.json"):
         module.EvaluationReplayRollout().rollout(ctx.checkout, ctx)
 
 
@@ -444,7 +464,7 @@ def test_replay_collector_and_returned_paths_stay_in_persistent_certified_view(
     assert certified_jobs.is_dir()
     assert certified_jobs != jobs
     assert certified_jobs.is_relative_to(ctx.run_dir / "rollout" / "certified-jobs")
-    assert Path(cases[0]["result_path"]) == certified_jobs / "task-a__trial-0" / "result.json"
+    assert Path(cases[0]["result_path"]) == certified_jobs / "task-a__trial-0" / "evolve-replay.json"
     assert Path(cases[0]["result_path"]).is_file()
     assert certified_jobs.stat().st_mode & 0o222 == 0
     assert Path(cases[0]["result_path"]).stat().st_mode & 0o222 == 0
@@ -468,7 +488,7 @@ def test_replay_uses_verified_index_snapshot_when_index_mutates_after_validation
         return sources
 
     def collect(selected_jobs: Path, **_options):
-        result = next(selected_jobs.rglob("result.json"))
+        result = next(selected_jobs.rglob("evolve-replay.json"))
         payload = json.loads(result.read_text())
         return [
             {

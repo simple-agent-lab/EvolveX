@@ -17,7 +17,7 @@ from .execution_runtime import (
     prepare_execution_environment,
     resolve_execution_runtime,
 )
-from .runtime import _terminate
+from .runtime.process import _terminate
 
 
 @dataclass(frozen=True)

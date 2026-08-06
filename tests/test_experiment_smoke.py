@@ -16,11 +16,29 @@ def test_experiment_smoke_runs_in_isolated_clone_and_produces_real_child(
     split = {
         "version": 2,
         "resolved": True,
-        "tasks": {"train": ["task-a"], "gate": ["task-a"], "sealed": []},
-        "task_digests": {"task-a": "sha256:task-a"},
+        "identity_status": "verified",
+        "dataset_identity": {
+            "source": "local",
+            "digest": "d" * 64,
+            "resolved_reference": "sha256:" + "d" * 64,
+        },
+        "tasks": {"train": ["task-a"], "gate": [], "sealed": []},
+        "task_digests": {"task-a": "a" * 64},
     }
     (workspace / "evaluator" / "splits.json").write_text(json.dumps(split) + "\n")
-    git(workspace, "add", "evaluator/splits.json")
+    (workspace / "evaluator" / "dataset.pin").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "source": "local",
+                "digest": "d" * 64,
+                "resolved_reference": "sha256:" + "d" * 64,
+                "members": ["task-a"],
+            }
+        )
+        + "\n"
+    )
+    git(workspace, "add", "evaluator/splits.json", "evaluator/dataset.pin")
     git(workspace, "commit", "-m", "freeze smoke task")
     git(workspace, "tag", "-f", "gen/0")
     source_rows = rows_by_genid(workspace)

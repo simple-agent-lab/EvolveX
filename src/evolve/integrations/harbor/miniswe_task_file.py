@@ -37,7 +37,7 @@ runpy.run_path(entrypoint, run_name="__main__")
 """
 
 
-class FileTaskMiniSweAgent(MiniSweAgent):
+class InstalledMiniSweAgent(MiniSweAgent):
     async def exec_as_agent(
         self,
         environment: BaseEnvironment,
@@ -57,7 +57,9 @@ class FileTaskMiniSweAgent(MiniSweAgent):
             raise RuntimeError("unable to decode MiniSWE task argument")
 
         uses_responses = "model.model_class=litellm_response" in command
-        cache_key = f"evolve-{uuid.uuid4().hex}"
+        configured_session_id = self._get_env("EVOLVE_SESSION_ID") or ""
+        session_id = configured_session_id if configured_session_id.strip() else ""
+        cache_key = session_id or f"evolve-{uuid.uuid4().hex}"
         command_tokens = shlex.split(command)
         has_output_budget = any(
             flag == "-c" and re.fullmatch(r"model\.model_kwargs\.max_output_tokens=\d+", value)
@@ -66,8 +68,9 @@ class FileTaskMiniSweAgent(MiniSweAgent):
         model_kwargs = {
             "include": ["reasoning.encrypted_content"],
             "prompt_cache_key": cache_key,
-            "extra_headers": {"extra": json.dumps({"session_id": cache_key}, separators=(",", ":"))},
         }
+        if session_id:
+            model_kwargs["extra_headers"] = {"extra": json.dumps({"session_id": session_id}, separators=(",", ":"))}
         if not has_output_budget:
             model_kwargs["max_output_tokens"] = 64_000
         responses_config = {"model": {"model_kwargs": model_kwargs}}
@@ -102,3 +105,6 @@ class FileTaskMiniSweAgent(MiniSweAgent):
         )
         rewritten = prefix + file_launch + flags_before_task + f" --task-file={TASK_PATH}" + flags_after_task
         return await super().exec_as_agent(environment, command=rewritten, env=env, cwd=cwd, timeout_sec=timeout_sec)
+
+
+FileTaskMiniSweAgent = InstalledMiniSweAgent

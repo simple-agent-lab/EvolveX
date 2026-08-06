@@ -1,7 +1,16 @@
-<h1 align="center">Evolve Framework</h1>
+<p align="center">
+  <img src="docs/evolve-mark.svg" width="112" alt="EvolveX selected lineage mark: a selected lineage rises past explored side branches to a verified generation.">
+</p>
+
+<h1 align="center">EvolveX</h1>
 
 <p align="center">
-  <strong>Traceable, evaluator-driven evolution for AI agents.</strong>
+  <strong>Build agents that improve — and keep the evidence.</strong>
+</p>
+
+<p align="center">
+  A file-based framework for evaluator-driven evolution, reproducible candidate
+  lineage, and controlled self-modification.
 </p>
 
 <p align="center">
@@ -17,67 +26,70 @@
 </p>
 
 <p align="center">
-  <a href="#overview">Overview</a> ·
-  <a href="#features">Features</a> ·
-  <a href="#quick-start">Quick Start</a> ·
-  <a href="#concepts">Concepts</a> ·
+  <a href="#what-evolvex-does">What EvolveX Does</a> ·
+  <a href="#how-evolvex-works">How It Works</a> ·
+  <a href="#what-can-evolve">What Can Evolve</a> ·
   <a href="#recipes">Recipes</a> ·
-  <a href="#result">Result</a> ·
+  <a href="#quick-start">Quick Start</a> ·
   <a href="#documentation">Documentation</a>
 </p>
 
-## Overview
-
-Evolve is a file-based framework for running agent-evolution experiments without
-rebuilding the mechanics for candidate snapshots, evaluation, lineage, and
-reporting. It provides composable recipes inspired by systems such as A-Evolve,
-AHE, GEPA, and HyperAgents.
-
-Each experiment is a separate Git repository. Generation tags identify
-candidates, `archive.jsonl` records outcomes, and the evaluator stays outside the
-candidate's mutable surface. The project is an active prototype intended for
-research and controlled experimentation.
-
-## Features
-
-- **Composable loops:** select, rollout, trace analysis, editing, validation,
-  gating, and recording are independent operators.
-- **Reproducible workspaces:** generated projects include a locked Python runtime,
-  frozen evaluator configuration, and vendored framework mechanism.
-- **Controlled self-modification:** each recipe declares exactly which target and
-  operator paths may evolve.
-- **Traceable outcomes:** Git lineage, evaluation artifacts, and stamped archive
-  records connect every candidate to its evidence.
-- **Content-bound evaluation:** Local task trees, generation commits, candidate
-  runtimes, and replayed artifact bytes are bound into the evidence used for
-  parent selection.
-
-## Structure
-
 <p align="center">
-  <img src="docs/architecture.svg" alt="Evolve Framework architecture: evolution methods such as Hill Climb, A-Evolve, AHE, GEPA and HyperAgents plug into one loop of select, rollout, analyze, mutate, gate and record. The loop and the agent it improves sit inside a declared mutable surface, so the meta-agent can rewrite any stage. Only the substrate below stays frozen: the evaluator, the runtime, the surface check and the stamped evidence.">
+  <a href="docs/evolve-lineage.svg">
+    <img src="docs/evolve-lineage.svg" alt="A baseline branches into evaluated candidates. The selected lineage rises through successive generations to a verified improvement, while unselected candidates remain visible as evidence.">
+  </a>
 </p>
 
-Every recipe runs the same loop: select a parent, run the tasks, analyze the
-traces, edit, gate, record. Each stage is an operator rather than a fixed step,
-and a recipe decides which of them the meta-agent may rewrite along with the
-target. The evaluator, runtime, surface check, and evidence stamps stay outside
-that surface.
+## What EvolveX Does
 
-## Repository layout
+EvolveX gives an agent a controlled way to improve itself. It runs candidates
+against a fixed evaluator, keeps the evidence for every generation, and carries
+verified improvements forward without letting candidate code rewrite the rules
+that score it.
 
-| Path | Role |
-| --- | --- |
-| `src/evolve/` | Framework implementation and CLI. |
-| `library/` | Composable evolution operators. |
-| `recipes/` | Runnable evolution configurations and method guides. |
-| `skills/` | Skill packages used by agents and workspaces. |
-| `evals/skills/` | Behavior and routing evaluations for those skills. |
-| `tests/` | Deterministic implementation and contract tests. |
-| `scaffolds/evaluators/` | Evaluator templates for generated workspaces. |
-| `runs/` | Local generated artifacts; ignored and not source documentation. |
+| For agent builders | For researchers | Evidence built in |
+| --- | --- | --- |
+| Improve prompts, skills, harnesses, and agent code in a reusable experiment workspace. | Compare evolution strategies under fixed evaluation and mutation boundaries. | Connect every candidate to scores, artifacts, archive records, and Git lineage. |
 
-The current evaluation assets are documented in [`evals/README.md`](evals/README.md).
+## How EvolveX Works
+
+Every recipe composes the same loop:
+
+**select → evaluate → analyze → mutate → gate → record**
+
+<p align="center">
+  <a href="docs/architecture.svg">
+    <img src="docs/architecture.svg" alt="EvolveX architecture: five built-in strategies and custom recipes compose a loop of select, rollout and evaluation, analyze, mutate, gate, and record. The target and selected operators occupy a declared mutable surface. The evaluator, runtime, surface check, and stamped evidence remain protected from candidate changes.">
+  </a>
+</p>
+
+A recipe decides how parents are selected, how traces are analyzed, what may be
+edited, and which evaluations admit a new generation. The framework owns the
+mechanism that makes those decisions inspectable: clean candidate snapshots,
+protected scoring, surface enforcement, Git tags, and stamped archive records.
+
+## What Can Evolve
+
+| Surface | Examples | Best fit |
+| --- | --- | --- |
+| prompts and skills | system prompts, task skills, reusable instructions | policy and behavior improvement |
+| harnesses and target code | tools, orchestration, agent implementation | agent engineering |
+| selected evolution operators | analysis or mutation policy chosen by a recipe | controlled co-evolution |
+
+Each recipe declares its mutable paths. Evaluators, archive stamps, and the
+vendored framework mechanism stay outside that surface.
+
+## Recipes
+
+| Choose this when you want to… | Recipe | Mutable surface |
+| --- | --- | --- |
+| improve one candidate from its current best parent | `hill_climb` | target |
+| evolve prompts and reusable agent skills | `aevolve` | prompt and target skills |
+| engineer the agent harness against evaluator feedback | `ahe` | target |
+| balance multiple objectives with minibatch validation | `gepa` | prompt and task skill |
+| co-evolve the target and selected evolution policy | `hyperagents` | target and selected operators |
+
+See [the recipe guide](recipes/README.md) for each strategy’s workflow and configuration.
 
 ## Quick Start
 
@@ -97,10 +109,11 @@ experiments.
 Run a deterministic baseline smoke test without a model or Docker:
 
 ```bash
-export EVOLVE_RUNTIME_DIGEST="sha256:local-smoke-runtime"
 export EVOLVE_HOME="/tmp/evolve-home"
 
-uv run evolve init /tmp/evolve-demo  # default recipe gepa: built-in seed, no clone
+uv run evolve init /tmp/evolve-demo \
+  --recipe-path tests/fixtures/recipes/hill_climb-smoke \
+  --seed tests/fixtures/seeds/dummy
 EVAL_STUB=1 /tmp/evolve-demo/evolve run /tmp/evolve-demo --max-generations 0
 /tmp/evolve-demo/evolve status /tmp/evolve-demo
 /tmp/evolve-demo/evolve verify /tmp/evolve-demo
@@ -125,76 +138,59 @@ novelty results are tied to the exact candidate tree, so editing afterward
 requires rerunning them. See the generated workspace's `program.md` and
 `skills/evolve-agent/SKILL.md` for the complete sequence and method guidance.
 
-For a real Harbor run, provide an immutable evaluator digest and a local task
-dataset:
+For a reproducible Terminal-Bench 2.0 run, prepare the shared pinned dataset and
+the selected recipe's image once, then use the short execution script:
 
 ```bash
-export EVOLVE_RUNTIME_DIGEST="sha256:replace-with-your-evaluator-digest"
-
-uv run evolve preflight /tmp/evolve-harbor \
-  --recipe aevolve \
-  --dataset /absolute/path/to/harbor/tasks
-uv run evolve init /tmp/evolve-harbor \
-  --recipe aevolve \
-  --dataset /absolute/path/to/harbor/tasks
-evolve doctor /tmp/evolve-harbor --profile experiment
-evolve smoke /tmp/evolve-harbor --profile experiment
-/tmp/evolve-harbor/evolve run /tmp/evolve-harbor --max-generations 5
+./scripts/setup_terminal_bench.sh ahe
+./scripts/run_recipe_demo.sh ahe
 ```
 
-`evolve preflight` takes the same arguments as `init`, writes nothing, and
-reports every unmet precondition as one checklist. Inspect a run with
-`evolve status`, `evolve report`, `git tag --list 'gen/*'`,
+The scripts support A-Evolve, AHE, GEPA, Hill Climb, and HyperAgents, including
+their Codex profiles. Common execution overrides are `WORKSPACE`, `TASKS`,
+`GENERATIONS`, `ENV_FILE`, and `EVOLVE_ASSET_DIR`. Preflight validates the
+selected runtime's authentication before any experiment generation runs.
+
+Initialization resolves each recipe's inline runtime block into
+`evaluator/runtime.json` and generates the certified evaluation inputs.
+Evaluator repetitions default to one. Workspace preflight performs offline,
+cacheless validation and writes a redacted receipt; `--smoke` additionally makes
+one real model request against a detached candidate snapshot.
+
+Workspace commands load only `WORKSPACE/.env`; explicitly exported variables
+override it, and caller or parent `.env` files are ignored. API-key
+authentication is the default. Codex agents may instead use an explicit
+`CODEX_AUTH_JSON_PATH`, with no automatic home-directory lookup. Explicitly
+supplied standard proxy variables are inherited as optional host transport for
+dependency downloads; the configured model endpoint is added to `NO_PROXY`,
+and users without a proxy need no proxy setup. Recipes may still declare a
+required proxy policy for environments that must fail closed.
+Secrets, endpoint URLs, auth paths, and proxy values are excluded from resolved
+runtime configuration and evaluation contracts.
+
+Inspect a run with `evolve status`, `evolve report`, `git tag --list 'gen/*'`,
 and the generated `archive.jsonl`. Run `evolve --help` for the complete CLI.
 
-## Concepts
+## Trustworthy by Construction
 
-| Concept | Meaning |
-| --- | --- |
-| workspace | A generated experiment repository. |
-| target | The code or agent being improved. |
-| operator | One step in the evolution loop. |
-| evaluator | A pinned black-box scoring contract. |
-| archive | Stamped outcomes in `archive.jsonl` plus generation tags. |
-| mutable surface | The paths a proposal is allowed to change. |
+EvolveX separates evolvable policy from the mechanism that judges it:
 
-The generated `.evolve/` runtime and evaluator are protected from candidate
-edits. Operators run as subprocesses instead of being imported into the
-framework process.
+1. **The evaluator is frozen.** Candidates cannot change the scoring contract.
+2. **Mutation is bounded.** Each recipe declares which target and operator paths may change.
+3. **Evaluation is canonical.** New generations are scored from clean candidate snapshots.
+4. **Evidence is durable.** Reports recompute results from stamped `archive.jsonl` records and Git generation tags.
 
-## Recipes
+Operators run as subprocesses rather than being imported into the framework
+process. See [DESIGN.md](DESIGN.md) for the complete ownership model and invariants.
 
-| Recipe | Search shape | Mutable surface |
-| --- | --- | --- |
-| `hill_climb` | single-parent improvement | target |
-| `hill_climb_codex` | single-parent Codex prompt/skill improvement | target |
-| `aevolve` | prompt and skill evolution | prompt and target skills |
-| `ahe` | harness engineering | target |
-| `ahe_codex` | Codex harness engineering | target |
-| `gepa` (default) | Pareto selection with minibatch validation | prompt and task skill |
-| `gepa_local` | GEPA with local no-Docker Harbor trials | knowledge file |
-| `hyperagents` | target and meta-agent co-evolution | target and selected operators |
-| `hyperagents_codex` | Codex and operator co-evolution | target and selected operators |
+## Project Status
 
-See [the recipe guide](recipes/README.md) for the workflow and configuration of
-each recipe.
+EvolveX is an active prototype for research and controlled experimentation. The
+current focus is reliable experiment mechanics, local-first workflows, and
+composable strategies for different agent-evolution scenarios.
 
-## Trust Boundaries
-
-Evolve enforces three core rules:
-
-1. Scores and statuses are written by the mechanism, not workspace operators.
-2. Canonical evaluation runs on clean candidate snapshots against a frozen
-   evaluator.
-3. Reports are recomputed from stamped archive records rather than mutable
-   operator claims.
-
-See [DESIGN.md](DESIGN.md) for the complete model and invariants.
-
-## Result
-
-> **TODO:** Add reproducible benchmark results and supporting artifacts once
-> the evaluation setup and reporting protocol are finalized.
+Benchmark results will be added only with a reproducible evaluation setup and
+supporting artifacts.
 
 ## Roadmap
 
@@ -222,5 +218,5 @@ See [DESIGN.md](DESIGN.md) for the complete model and invariants.
 
 ## License
 
-Evolve Framework is licensed under [Apache-2.0](LICENSE). See
+EvolveX is licensed under [Apache-2.0](LICENSE). See
 [NOTICE](NOTICE) for required attributions.

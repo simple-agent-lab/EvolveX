@@ -32,10 +32,10 @@ def test_release_wheel_has_one_resource_owner_and_complete_metadata() -> None:
     with ZipFile(_release_wheel()) as archive:
         names = set(archive.namelist())
         assert not [name for name in names if name.startswith("library/")]
+        assert not [name for name in names if name.startswith("evolve/datasets/")]
         assert {
             "evolve/library/PROTOCOL.md",
             "evolve/recipes/aevolve/evolve.yaml",
-            "evolve/recipes/ahe_codex/dataset-manifest.json",
             "evolve/recipes/ahe_codex/evolve.yaml",
             "evolve/scaffolds/workspace/README.md",
             "evolve/seeds/codex/agent.py",
@@ -54,9 +54,9 @@ def test_release_wheel_has_one_resource_owner_and_complete_metadata() -> None:
         metadata_path = next(name for name in names if name.endswith(".dist-info/METADATA"))
         metadata = Parser().parsestr(archive.read(metadata_path).decode())
 
-    assert metadata["Name"] == "evolve-framework"
+    assert metadata["Name"] == "evolvex"
     assert metadata["Description-Content-Type"] == "text/markdown"
-    assert "Evolve Framework" in metadata.get_payload()
+    assert "EvolveX" in metadata.get_payload()
     project_urls = metadata.get_all("Project-URL") or []
     assert any(value.startswith("Repository, https://github.com/") for value in project_urls)
     assert any(value.startswith("Issues, https://github.com/") for value in project_urls)

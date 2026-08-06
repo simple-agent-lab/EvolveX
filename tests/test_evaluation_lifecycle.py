@@ -1,3 +1,4 @@
+import json
 import stat
 from pathlib import Path
 
@@ -22,10 +23,11 @@ def _lifecycle_workspace(tmp_path: Path, outcomes: dict[str, list[str]]) -> Path
         "purpose = os.environ['EVOLVE_EVAL_KIND']\n"
         "attempt = int(run_dir.name[len('attempt-'):])\n"
         "sequence = outcomes.get(purpose, outcomes.get('candidate', ['benchmark_complete']))\n"
+        "task = json.loads(Path(os.environ['EVOLVE_RUN_PLAN']).read_text())['tasks'][0]\n"
         "outcome = sequence[min(attempt - 1, len(sequence) - 1)]\n"
         "owner = 'candidate' if outcome == 'candidate_invalid' else 'benchmark_agent'\n"
         "reward = 1.0 if outcome == 'benchmark_complete' else (0.0 if outcome == 'timeout' else None)\n"
-        "vector = {'schema_version': 1, 'tasks': {'case-a': {'trials': [{\n"
+        "vector = {'schema_version': 1, 'tasks': {task: {'trials': [{\n"
         "    'trial': 0, 'status': outcome, 'reward': reward, 'owner': owner,\n"
         "}]}}}\n"
         "(run_dir / 'task_vector.json').write_text(json.dumps(vector) + '\\n')\n"
@@ -33,7 +35,11 @@ def _lifecycle_workspace(tmp_path: Path, outcomes: dict[str, list[str]]) -> Path
     script.chmod(script.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     config = workspace / "evolve.yaml"
     config.write_text(config.read_text().replace("tasks_per_round: 16", "tasks_per_round: 1"))
-    git(workspace, "add", "evaluator/eval.sh", "evolve.yaml")
+    splits_path = workspace / "evaluator/splits.json"
+    splits = json.loads(splits_path.read_text())
+    splits["gate_tasks_per_round"] = 1
+    splits_path.write_text(json.dumps(splits) + "\n")
+    git(workspace, "add", "evaluator/eval.sh", "evaluator/splits.json", "evolve.yaml")
     git(workspace, "commit", "-m", "configure lifecycle evaluator")
     git(workspace, "tag", "-f", "gen/0")
     return workspace

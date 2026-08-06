@@ -21,28 +21,28 @@ MANIFEST_FILE = Path("target/.ahe-change-manifest.json")
 
 AHE_PROMPT = """# Agentic Harness Engineering
 
-Improve the MiniSWE harness under `target/`; do not solve a benchmark task
-directly. Optimize pass@1. Treat debugger reports as evidence, not proof.
+Improve the configured candidate harness; do not solve a benchmark task directly.
+Optimize pass@1. Treat debugger reports as evidence, not proof. Follow the
+workspace contract and make changes only within the declared mutable surface.
 
 For this generation:
 1. Read the debugger overview and relevant task details first.
 2. Read change_evaluation.json and the previous change context.
 3. Decide KEEP, REVISE, or ROLLBACK + PIVOT before editing.
 4. Cite specific debugger tasks and distinguish evidence from causal inference.
-5. Choose the harness component matching the root cause.
+5. Identify the active execution path, then choose the harness component matching the root cause.
 6. If the same failure survived repeated changes at one component, pivot levels.
-7. Make one coherent target/** change and run proportionate checks.
+7. Make one coherent change within the declared mutable surface and run proportionate checks.
 8. Write one official-style change manifest to the required control file.
 
-Files under `target/` become the deployed benchmark-solving harness.
+Files on the active execution path become the deployed benchmark-solving harness.
 Evolution artifacts and instructions in this prompt are not available inside benchmark episodes.
-If you edit a target runtime prompt, include only instructions usable by the benchmark-solving agent.
+If you edit a runtime prompt, include only instructions usable by the benchmark-solving agent.
 Do not copy this evolution workflow, evidence
-paths, KEEP/REVISE/ROLLBACK decisions, or manifest requirements into target files.
-Do not refer to debuggers or other evolution-only context in target runtime prompts.
-Canonical evaluation runs the target's `DefaultAgent` with the `mini` configuration.
-Make changes on that execution path. Benchmark-specific configurations are inactive
-unless evaluator configuration explicitly selects them.
+paths, KEEP/REVISE/ROLLBACK decisions, or manifest requirements into runtime files.
+Do not refer to debuggers or other evolution-only context in runtime prompts.
+Determine the execution path from the supplied workspace contract and evaluator configuration;
+do not assume an agent class, configuration name, or repository layout.
 
 Current debugger reports evaluate the selected parent. The new edit will be
 evaluated by the next loop. Do not edit the Harbor adapter, evaluator, mechanism,

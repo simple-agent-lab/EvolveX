@@ -1,4 +1,4 @@
-# Evolve Operator Protocol
+# EvolveX Operator Protocol
 
 This document describes protocol version `1` for workspace operators. The
 mechanism launches operator files as subprocesses and consumes files from the
@@ -178,6 +178,40 @@ def annotate(self, child: Row, ctx) -> RecordResult:
 Implement `annotate`. Return `RecordResult` with field `fields`. The subprocess
 writes `record/fields.json`. The driver strips mechanism-owned fields before
 appending the remaining object to the archive.
+
+## Evaluation Contracts and Receipts
+
+A strict evaluation attempt contains `evaluation-contract.json`. The mechanism
+generates it atomically before candidate runtime preparation; operator code and
+experiment scripts do not populate its fields. Its `contract_id` hashes the
+canonical immutable inputs, including candidate and evaluator Git identities,
+selected task content, repetitions, runtime, model, concurrency, retry policy,
+and framework version.
+
+`EvaluationRecord` remains the evaluation-level receipt and may include the
+contract ID, a workspace-relative contract artifact reference, and whether
+observed runtime evidence certified the contract. A strict candidate runtime
+receipt binds the same contract ID, candidate commit, dependency digest, and
+resolved runtime digest. Any mismatch is evaluator infrastructure failure and
+prevents benchmark launch. Legacy receipts retain their historical schema and
+do not gain a fabricated strict runtime identity.
+
+## Evaluation Diagnostics
+
+Strict receipts include diagnostics derived automatically from canonical
+`TrialResult` evidence and the immutable contract. They record expected,
+observed, scoreable, and missing trial counts; outcome and owner counts; bounded
+safe failure categories; retry eligibility; and hashed workspace-relative
+artifact references.
+
+Missing contract identities are materialized as evaluator-owned `missing`
+results with a null reward. Infrastructure results also keep a null reward.
+Diagnostics never contain raw exception messages, verifier output, absolute
+host paths, credentials, proxy values, or private expected answers.
+Candidate-owned failures are actionable only for candidate/genesis purposes;
+anchor and sealed evidence remains non-actionable. The frozen SDK exposes the
+receipt-validated projection through `evaluation_diagnostics(workspace,
+genid)`, and reports render coverage and certification independently from score.
 
 ## Write Your Own Variant in Three Steps
 

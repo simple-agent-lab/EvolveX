@@ -72,11 +72,11 @@ def _rewrite_eval_env(path: Path) -> None:
     path.write_text("\n".join(lines) + "\n")
 
 
-def _prepare_smoke_workspace(source: Path, destination: Path, task: str, digest: str) -> None:
+def _prepare_smoke_workspace(source: Path, destination: Path, task: str, _digest: str) -> None:
     # The destination is inside source/runs; pack transport avoids macOS local-clone copy races.
     git(source, "clone", "--quiet", "--no-local", str(source), str(destination))
-    git(destination, "config", "user.name", "Evolve Experiment Smoke")
-    git(destination, "config", "user.email", "smoke@evolve.invalid")
+    git(destination, "config", "user.name", "EvolveX Experiment Smoke")
+    git(destination, "config", "user.email", "smoke@evolvex.invalid")
     for tag in git_stdout(destination, "tag", "--list").splitlines():
         git(destination, "tag", "--delete", tag, check=False)
     for path in (destination / "archive.jsonl", destination / ".evolve-eval-receipts.jsonl"):
@@ -94,16 +94,27 @@ def _prepare_smoke_workspace(source: Path, destination: Path, task: str, digest:
     experiment["id"] = f"{source.name}-smoke-{int(time.time())}"
     experiment["max_generations"] = 1
     experiment["children_per_gen"] = 1
-    evaluator["task_names"] = [task]
+    evaluator.pop("task_names", None)
+    evaluator["task_scope"] = "full"
     evaluator["tasks_per_round"] = 1
-    evaluator["k"] = 1
+    evaluator["anchor"] = {"final": False, "every_rounds": 0}
+    evaluator.pop("k", None)
+    evaluator["repetitions"] = 1
     evaluator["n_concurrent"] = 1
-    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
-
     split_path = destination / "evaluator" / "splits.json"
     split = json.loads(split_path.read_text())
-    split["tasks"] = {"train": [task], "gate": [task], "sealed": []}
-    split["task_digests"] = {task: digest}
+    task_splits = split.get("tasks")
+    if not isinstance(task_splits, dict):
+        raise ValueError("experiment smoke workspace has invalid split membership")
+    selected_split = next(
+        (name for name in ("train", "gate", "sealed") if task in task_splits.get(name, [])),
+        None,
+    )
+    if selected_split is None:
+        raise ValueError(f"experiment smoke task is absent from frozen splits: {task}")
+    task_splits[selected_split] = [task, *(name for name in task_splits[selected_split] if name != task)]
+    evaluator["evaluation_split"] = selected_split
+    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
     split["gate_tasks_per_round"] = 1
     split_path.write_text(json.dumps(split, indent=2, sort_keys=True) + "\n")
     _rewrite_eval_env(destination / "evaluator" / "eval.env")
@@ -148,7 +159,19 @@ def run_experiment_smoke(workspace: Path, *, task: str | None = None) -> Experim
         ) == row.get("candidate_commit")
         if not complete or not tag_bound:
             raise RuntimeError("full-loop smoke did not produce a complete commit-bound gen/1")
-        payload = {"status": "passed", "task": selected, "workspace": str(destination)}
+        if audit := row.get("audit"):
+            raise RuntimeError(f"full-loop smoke produced an unresolved audit signal: {audit}")
+        if violations := row.get("surface_violations"):
+            raise RuntimeError(f"full-loop smoke produced mutable-surface violations: {violations}")
+        scores = [
+            value
+            for genid in ("0", "1")
+            if isinstance((value := rows_by_genid(destination).get(genid, {}).get("score")), (int, float))
+        ]
+        warnings = (
+            ["all observed smoke scores are zero"] if scores and all(float(score) == 0.0 for score in scores) else []
+        )
+        payload = {"status": "passed", "task": selected, "workspace": str(destination), "warnings": warnings}
         result_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
         return ExperimentSmokeResult("passed", destination, selected, result_path)
     except Exception as error:

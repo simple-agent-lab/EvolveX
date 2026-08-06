@@ -4,7 +4,7 @@ Harbor 0.18 bounds environment image preparation and verifier execution at
 600 seconds each, and agent setup at 360 seconds.  Agent execution is bounded
 separately by the configured per-attempt timeout.  Harbor does not put one
 aggregate deadline around artifact/log collection or environment teardown, so
-Evolve assigns each of those lifecycle phases the same conservative 600-second
+EvolveX assigns each of those lifecycle phases the same conservative 600-second
 allowance as Harbor's standard bounded phases.
 
 The Harbor process budget is:
@@ -33,14 +33,16 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-HARBOR_FILE_TASK_AGENT = "evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent"
+from .integrations.harbor._agent_roles import INSTALLED_MINISWE_AGENT, is_installed_miniswe_agent
+
+HARBOR_FILE_TASK_AGENT = INSTALLED_MINISWE_AGENT
 
 # Pinned Harbor 0.18 lifecycle defaults.
 HARBOR_ENVIRONMENT_START_S = 600.0
 HARBOR_AGENT_SETUP_S = 360.0
 HARBOR_VERIFIER_S = 600.0
 
-# Explicit Evolve allowances for Harbor phases without their own aggregate cap.
+# Explicit EvolveX allowances for Harbor phases without their own aggregate cap.
 HARBOR_ARTIFACT_LOG_COLLECTION_S = 600.0
 HARBOR_TEARDOWN_FINALIZATION_S = 600.0
 HARBOR_TASK_COMPILATION_S = 600.0
@@ -55,8 +57,7 @@ OUTER_FINAL_CLEANUP_S = 60.0
 def harbor_agent_supports_per_attempt_timeout(agent: object) -> bool:
     """Whether the runner's config-mode branch writes an agent timeout cap."""
 
-    name = str(agent or "")
-    return name == HARBOR_FILE_TASK_AGENT or name.endswith(":MiniSweSourceAgent")
+    return is_installed_miniswe_agent(agent)
 
 
 def uses_harbor_per_attempt_timeout(config: Mapping[str, object]) -> bool:

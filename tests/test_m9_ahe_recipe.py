@@ -34,7 +34,7 @@ def test_ahe_recipe_initializes_harbor_miniswe_composition(tmp_path: Path) -> No
     assert (workspace / "target/pyproject.toml").is_file()
     assert (workspace / "target/uv.lock").is_file()
     assert surface_lists(workspace) == (["target/**"], [])
-    assert "source=library/rollout/evaluation_replay.py" in (workspace / "operators/rollout.py").read_text()
+    assert "source=library/rollout/parent_evaluation.py" in (workspace / "operators/rollout.py").read_text()
     assert (workspace / "library/rollout/harbor.py").is_file()
     assert "source=library/trace_analyzer/ahe.py" in (workspace / "operators/trace_analyzer.py").read_text()
     assert "source=library/meta_agent/ahe.py" in (workspace / "operators/meta_agent.py").read_text()
@@ -64,7 +64,7 @@ def test_ahe_recipe_initializes_harbor_miniswe_composition(tmp_path: Path) -> No
     assert "variant: ahe" in config
     assert "runner: harbor" in config
     assert "expose_gate_data: false" in config
-    assert "agent: evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent" in config
+    assert "agent: evolve.integrations.harbor.miniswe_task_file:InstalledMiniSweAgent" in config
     assert "editable_roots:" in config
     operators = operator_blocks(workspace)
     assert "agent_env" not in operators["meta_agent"]
@@ -78,7 +78,7 @@ def test_ahe_recipe_initializes_harbor_miniswe_composition(tmp_path: Path) -> No
         "max_tasks": 30,
         "max_concurrent": 10,
         "timeout_per_task": 600,
-        "debugger_max_retries": 2,
+        "retry_attempts": 1,
         "debugger_agent_kwargs": {"reasoning_effort": "high", "max_tokens": 64000},
         "field_limit": 2000,
         "timeout_s": 3600,
@@ -90,5 +90,5 @@ def test_ahe_recipe_initializes_harbor_miniswe_composition(tmp_path: Path) -> No
     assert "  evaluation_split: train" in config
     assert "  tasks_per_round: 30" in config
     assert "\n  split:" not in config
-    assert "  k: 1" in config
+    assert "  repetitions: 1" in config
     assert "  n_concurrent: 10" in config

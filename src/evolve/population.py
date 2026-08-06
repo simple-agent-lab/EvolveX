@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from .archive import RECEIPT_CERTIFIED_FIELD
-from .evaluation.identity import fixed_evaluation_identity
+from .evaluation.contract import fixed_evaluation_identity
 from .git import git
 
 

@@ -280,8 +280,9 @@ def test_select_runs_the_champion_operator_version(tmp_path: Path) -> None:
     workspace = tmp_path / "hyperagents"
     evolve_home = tmp_path / "evolve-home"
     init_fixture_workspace(workspace, "hyperagents-smoke")
+    failed_task = json.loads((workspace / "evaluator/splits.json").read_text())["tasks"]["gate"][0]
     baseline_target = workspace / "target/agent.py"
-    baseline_target.write_text(baseline_target.read_text() + "\n# FAIL task-0\n")
+    baseline_target.write_text(baseline_target.read_text() + f"\n# FAIL {failed_task}\n")
     git(workspace, "add", "target/agent.py")
     git(workspace, "commit", "-m", "make baseline improvable")
     git(workspace, "tag", "-f", "gen/0")
@@ -290,7 +291,7 @@ def test_select_runs_the_champion_operator_version(tmp_path: Path) -> None:
     child = tmp_path / "process-candidate"
     assert run_evolve("fork", str(workspace), "0", str(child)).returncode == 0
     target = child / "target/agent.py"
-    target.write_text(target.read_text().replace("\n# FAIL task-0\n", "\n"))
+    target.write_text(target.read_text().replace(f"\n# FAIL {failed_task}\n", "\n"))
     (child / "operators/select.py").write_text(
         """
 from evolve.frozen import sdk

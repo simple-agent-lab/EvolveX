@@ -25,13 +25,13 @@ execution_runtime:
 evaluator:
   engine: harbor
   model: gpt-5.4
-  dataset: swe-bench-lite
+  dataset: terminal-bench-2-30-v1
   agent: target.agent:HarborAgent
   split: {train: 0.5, gate: 0.4, sealed: 0.1, seed: 0}
   sampling: static
   tasks_per_round: 16
   anchor: {final: true, every_rounds: 0}
-  k: 1
+  repetitions: 1
   n_concurrent: 4
   agent_setup_timeout_multiplier: 1
   max_retries: 1
