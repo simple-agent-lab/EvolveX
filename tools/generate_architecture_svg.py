@@ -196,8 +196,8 @@ def loop_band() -> list[str]:
         rect(M, 140, INNER, 226, 16, "band"),
         text("ONE COMPOSABLE LOOP", M + 22, 164, "lbl"),
         text("recipes choose which stages and targets may evolve", W - M - 22, 164, "cap-accent", "end"),
-        rect(M + 16, 178, INNER - 32, 134, 14, "mutable"),
-        rect(W / 2 - 172, 167, 344, 22, 11, "knock"),
+        rect(M + 16, 190, INNER - 32, 122, 14, "mutable"),
+        rect(W / 2 - 172, 169, 344, 20, 10, "knock"),
         text("DECLARED MUTABLE SURFACE · target + selected operators", W / 2, 183, "lbl-accent", "middle"),
     ]
 
