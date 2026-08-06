@@ -70,6 +70,25 @@ def test_materialize_missing_trials_accepts_unique_harbor_task_suffix() -> None:
     ]
 
 
+def test_materialize_missing_trials_accepts_unique_harbor_dataset_namespace() -> None:
+    expected = (TrialIdentity("task-a", 0, False, None),)
+    observed = (
+        TrialResult(
+            "terminal-bench/task-a",
+            0,
+            Outcome.BENCHMARK_COMPLETE,
+            1.0,
+            "benchmark",
+        ),
+    )
+
+    trials = materialize_missing_trials(expected, observed)
+
+    assert [(trial.task_id, trial.outcome) for trial in trials] == [
+        ("task-a", Outcome.BENCHMARK_COMPLETE),
+    ]
+
+
 def test_materialize_missing_trials_rejects_ambiguous_harbor_task_suffix() -> None:
     expected = (
         TrialIdentity("task-a", 0, False, None),
@@ -89,6 +108,27 @@ def test_materialize_missing_trials_rejects_ambiguous_harbor_task_suffix() -> No
 
     assert [trial.outcome for trial in trials[:2]] == [Outcome.MISSING, Outcome.MISSING]
     assert trials[2].task_id == "registry__dataset__task-a"
+
+
+def test_materialize_missing_trials_rejects_ambiguous_harbor_dataset_namespace() -> None:
+    expected = (
+        TrialIdentity("task-a", 0, False, None),
+        TrialIdentity("dataset/task-a", 0, False, None),
+    )
+    observed = (
+        TrialResult(
+            "registry/dataset/task-a",
+            0,
+            Outcome.BENCHMARK_COMPLETE,
+            1.0,
+            "benchmark",
+        ),
+    )
+
+    trials = materialize_missing_trials(expected, observed)
+
+    assert [trial.outcome for trial in trials[:2]] == [Outcome.MISSING, Outcome.MISSING]
+    assert trials[2].task_id == "registry/dataset/task-a"
 
 
 def _mixed_record() -> EvaluationRecord:

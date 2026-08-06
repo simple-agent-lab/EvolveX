@@ -120,7 +120,11 @@ def materialize_missing_trials(
 def _normalize_harbor_task_id(trial: TrialResult, expected_task_ids: set[str]) -> TrialResult:
     if trial.task_id in expected_task_ids:
         return trial
-    matches = [task_id for task_id in expected_task_ids if trial.task_id.endswith(f"__{task_id}")]
+    matches = [
+        task_id
+        for task_id in expected_task_ids
+        if trial.task_id.endswith(f"__{task_id}") or trial.task_id.endswith(f"/{task_id}")
+    ]
     return replace(trial, task_id=matches[0]) if len(matches) == 1 else trial
 
 
