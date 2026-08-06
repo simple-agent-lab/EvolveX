@@ -26,7 +26,6 @@ evaluator:
   engine: harbor
   runtime:
     candidate: {variant: uv, project: target, python: "3.12"}
-    proxy: {mode: optional, model_endpoint: bypass}
   dataset: swe-bench-lite
   agent: evolve.integrations.harbor.miniswe_candidate:CandidateMiniSweAgent
   split: {train: 0.5, gate: 0.4, sealed: 0.1, seed: 0}

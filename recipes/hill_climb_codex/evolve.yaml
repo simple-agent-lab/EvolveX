@@ -25,8 +25,7 @@ execution_runtime:
 evaluator:
   engine: harbor
   model: gpt-5.4
-  runtime:
-    proxy: {mode: optional, model_endpoint: bypass}
+  runtime: {}
   dataset: swe-bench-lite
   agent: target.agent:HarborAgent
   split: {train: 0.5, gate: 0.4, sealed: 0.1, seed: 0}

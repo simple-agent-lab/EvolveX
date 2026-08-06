@@ -121,7 +121,7 @@ def resolve_runtime_environment(
             meta_auth,
         )
 
-    proxy_active = _add_configured_proxies(process, role_values, source, runtime)
+    proxy_active, proxy_mode = _add_configured_proxies(process, role_values, source, runtime)
     _apply_overrides(process, role_values[RuntimeRole.AGENT], RuntimeRole.AGENT, agent_overrides)
     if meta_agent_kind is not None:
         _apply_overrides(
@@ -141,7 +141,11 @@ def resolve_runtime_environment(
         "schema_version": 1,
         "runtime_digest": runtime.digest,
         "endpoint_digest": runtime.endpoint_digest,
-        "proxy": (None if runtime.config.proxy is None else {**runtime.config.proxy.to_dict(), "active": proxy_active}),
+        "proxy": {
+            "active": proxy_active,
+            "mode": proxy_mode,
+            "model_endpoint": "bypass",
+        },
         "forwarded_names_by_role": {role.value: sorted(role_values[role]) for role in RuntimeRole},
     }
     return _plan(process, role_values, evidence)
@@ -255,21 +259,21 @@ def _add_configured_proxies(
     role_values: dict[RuntimeRole, dict[str, str]],
     source: Mapping[str, str],
     runtime: ResolvedRuntimeV1,
-) -> bool:
+) -> tuple[bool, str]:
     configured = runtime.config.proxy
-    if configured is None:
-        return False
+    required = configured is not None and configured.mode is ProxyMode.REQUIRED
+    mode = configured.mode.value if configured is not None else "host_optional"
     values: dict[tuple[str, str], str] = {}
     for aliases in _PROXY_ALIASES[:-1]:
         if value := _proxy_alias_value(source, aliases):
             values[aliases] = value
     active = bool(values)
-    if configured.mode is ProxyMode.REQUIRED and not active:
+    if required and not active:
         raise RuntimeEnvironmentResolutionError(
             "runtime proxy routing is required but no HTTP_PROXY, HTTPS_PROXY, or ALL_PROXY is configured"
         )
     if not active:
-        return False
+        return False, mode
     bypass = _proxy_alias_value(source, _PROXY_ALIASES[-1]) or ""
     entries = [entry.strip() for entry in bypass.split(",") if entry.strip()]
     model_host = model_endpoint_hostname(source.get("OPENAI_BASE_URL"))
@@ -280,7 +284,7 @@ def _add_configured_proxies(
         for name in aliases:
             for role in RuntimeRole:
                 _add_value(process, role_values[role], role, name, value)
-    return True
+    return True, mode
 
 
 def _add_legacy_proxies(

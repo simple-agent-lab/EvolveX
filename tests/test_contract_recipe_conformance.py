@@ -49,10 +49,7 @@ def test_all_partner_recipes_resolve_the_same_automatic_contract_schema(
     assert contract.repetitions == 1
     assert len(contract.trial_identities) == len(contract.task_members)
     assert all(trial.repetition == 0 for trial in contract.trial_identities)
-    assert evaluator["runtime"]["proxy"] == {
-        "mode": "optional",
-        "model_endpoint": "bypass",
-    }
+    assert "proxy" not in evaluator["runtime"]
     assert ("candidate" in evaluator["runtime"]) is managed_candidate
     assert "candidate_runtime" not in evaluator
     runtime = json.loads((workspace / "evaluator/runtime.json").read_text())

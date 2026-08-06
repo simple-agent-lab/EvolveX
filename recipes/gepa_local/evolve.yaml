@@ -48,8 +48,7 @@ execution_runtime:
   backend: local
 evaluator:
   engine: harbor
-  runtime:
-    proxy: {mode: optional, model_endpoint: bypass}
+  runtime: {}
   dataset: local-tasks
   agent: target.agent:HarborAgent
   environment: "evolve.harbor_local:LocalEnvironment"

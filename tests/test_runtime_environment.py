@@ -94,14 +94,29 @@ def test_proxy_configuration_is_optional_or_required_as_declared() -> None:
         "OPENAI_BASE_URL": "https://model.example/v1",
     }
     assert "HTTP_PROXY" not in resolve_runtime_environment(resolved_runtime(), environment).agent_env()
-    assert (
-        "HTTP_PROXY"
-        not in resolve_runtime_environment(
-            resolved_runtime(proxy=False), {**environment, "HTTP_PROXY": "http://ignored.example"}
-        ).agent_env()
-    )
     with pytest.raises(RuntimeEnvironmentResolutionError, match="proxy routing is required"):
         resolve_runtime_environment(resolved_runtime(required=True), environment)
+
+
+def test_undeclared_proxy_policy_inherits_optional_host_transport() -> None:
+    environment = {
+        "OPENAI_API_KEY": "sensitive-key-value",
+        "OPENAI_BASE_URL": "https://model.example/v1",
+        "HTTP_PROXY": "http://proxy.example:8118",
+        "NO_PROXY": "localhost",
+    }
+
+    plan = resolve_runtime_environment(resolved_runtime(proxy=False), environment)
+
+    assert plan.process_env()["EVOLVE_RUNTIME_AGENT_HTTP_PROXY"] == "http://proxy.example:8118"
+    assert plan.process_env()["EVOLVE_RUNTIME_AGENT_NO_PROXY"] == "localhost,model.example"
+    assert plan.agent_env()["HTTP_PROXY"] == "${EVOLVE_RUNTIME_AGENT_HTTP_PROXY}"
+    assert plan.verifier_env()["NO_PROXY"] == "${EVOLVE_RUNTIME_VERIFIER_NO_PROXY}"
+    assert dict(plan.evidence)["proxy"] == {
+        "active": True,
+        "mode": "host_optional",
+        "model_endpoint": "bypass",
+    }
 
 
 @pytest.mark.parametrize("missing", ["OPENAI_API_KEY"])

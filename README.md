@@ -146,9 +146,11 @@ one real model request against a detached candidate snapshot.
 Workspace commands load only `WORKSPACE/.env`; explicitly exported variables
 override it, and caller or parent `.env` files are ignored. API-key
 authentication is the default. Codex agents may instead use an explicit
-`CODEX_AUTH_JSON_PATH`, with no automatic home-directory lookup. Optional
-standard proxy variables support dependency downloads; the configured model
-endpoint is added to `NO_PROXY`, and users without a proxy need no proxy setup.
+`CODEX_AUTH_JSON_PATH`, with no automatic home-directory lookup. Explicitly
+supplied standard proxy variables are inherited as optional host transport for
+dependency downloads; the configured model endpoint is added to `NO_PROXY`,
+and users without a proxy need no proxy setup. Recipes may still declare a
+required proxy policy for environments that must fail closed.
 Secrets, endpoint URLs, auth paths, and proxy values are excluded from resolved
 runtime configuration and evaluation contracts.
 
