@@ -1,8 +1,10 @@
 # coding-style.md — how we write
 
 Binding ethos for code and prose. Architecture (where things live, what is
-frozen, operator contracts) lives in [`DESIGN.md`](../DESIGN.md) and
-[`ARCHITECTURE.md`](../ARCHITECTURE.md). This file is only *how* we write.
+frozen, operator contracts) lives in [the design guide](../concepts/design.md)
+and the
+[source architecture map](https://github.com/simple-agent-lab/EvolveX/blob/main/ARCHITECTURE.md).
+This file is only *how* we write.
 
 Throughline: **don't trust discipline — build the constraint.** Prefer a rule a
 machine can check over a habit a human must remember.

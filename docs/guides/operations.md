@@ -3,6 +3,11 @@
 Use the lightweight checks for local skill and plugin iteration. Use the
 experiment checks before a real multi-generation benchmark run.
 
+Load the same credentials, endpoint, runtime identity, proxy, and storage
+settings for initialization and every resumed command. See
+[Environment Variables](../reference/environment-variables.md) when a command
+cannot reach the model, Docker-host service, cache, or experiment state.
+
 ## Local skill or plugin iteration
 
 ```bash
@@ -69,6 +74,15 @@ the shared content-bound Terminal-Bench subset and selected recipe image with:
 ```bash
 ./scripts/setup_terminal_bench.sh ahe
 ./scripts/run_recipe_demo.sh ahe
+```
+
+To download the complete upstream Harbor dataset without preparing the pinned
+EvolveX subset, export it directly:
+
+```bash
+uv run --frozen harbor download terminal-bench@2.0 \
+  --export \
+  -o /absolute/path/to/terminal-bench-2
 ```
 
 `evolve init --dataset ...` writes the selected task names and content digests

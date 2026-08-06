@@ -47,6 +47,7 @@ def test_ahe_recipe_initializes_harbor_miniswe_composition(tmp_path: Path) -> No
         "library/meta_agent/support/evidence.py",
     ):
         assert (workspace / relative).is_file(), relative
+    assert (workspace / ".evolve/evolve/integrations/harbor/codex_candidate.py").is_file()
     assert (workspace / ".evolve/evolve/integrations/harbor/miniswe_candidate.py").is_file()
     assert (workspace / ".evolve/evolve/integrations/harbor/miniswe_task_file.py").is_file()
     assert not (workspace / "evolve_harbor_adapter").exists()

@@ -31,6 +31,9 @@ class FakeCodex:
     def _get_env(self, name: str) -> str | None:
         return self._extra_env.get(name)
 
+    def build_cli_flags(self) -> str:
+        return ""
+
     def _build_register_skills_command(self) -> str | None:
         return "register-base-skills"
 
@@ -168,6 +171,47 @@ def test_builtin_codex_wrapper_injects_skills_and_opt_in_compaction(tmp_path: Pa
     (custom_home / "auth.json").write_text("{}\n")
     agent._get_env = lambda name: str(custom_home) if name == "CODEX_HOME" else None
     assert agent._resolve_auth_json_path() == custom_home / "auth.json"
+
+    api_agent = module.HarborAgent(
+        logs_dir=tmp_path / "api-logs",
+        extra_env={
+            "OPENAI_BASE_URL": "http://bridge.example/v1",
+            "OPENAI_API_KEY": "test-key",
+        },
+    )
+    assert api_agent._auth_mode() == "api"
+    assert api_agent._resolve_auth_json_path() is None
+    api_flags = api_agent.build_cli_flags()
+    assert 'model_provider="evolve_http"' in api_flags
+    assert 'forced_login_method="api"' in api_flags
+    assert 'model_providers.evolve_http.base_url="http://bridge.example/v1"' in api_flags
+    assert 'model_providers.evolve_http.wire_api="responses"' in api_flags
+    assert 'model_providers.evolve_http.env_http_headers={"api-key"="OPENAI_API_KEY"}' in api_flags
+    assert "model_providers.evolve_http.supports_websockets=false" in api_flags
+
+    forced_auth_agent = module.HarborAgent(
+        logs_dir=tmp_path / "forced-auth-logs",
+        extra_env={
+            "CODEX_FORCE_AUTH_JSON": "1",
+            "CODEX_HOME": str(custom_home),
+            "OPENAI_BASE_URL": "http://bridge.example/v1",
+            "OPENAI_API_KEY": "test-key",
+        },
+    )
+    assert forced_auth_agent._auth_mode() == "auth_json"
+    assert forced_auth_agent._resolve_auth_json_path() == custom_home / "auth.json"
+    assert 'model_provider="evolve_http"' not in forced_auth_agent.build_cli_flags()
+
+    explicit_api_agent = module.HarborAgent(
+        logs_dir=tmp_path / "explicit-api-logs",
+        extra_env={
+            "EVOLVE_CODEX_AUTH_MODE": "api",
+            "OPENAI_API_BASE": "http://bridge.example/v1",
+            "OPENAI_API_KEY": "test-key",
+        },
+    )
+    assert explicit_api_agent._auth_mode() == "api"
+    assert explicit_api_agent._resolve_auth_json_path() is None
 
     config_path = workspace / "target" / "codex.toml"
     config_path.write_text(config_path.read_text().replace("override_defaults = false", "override_defaults = true"))

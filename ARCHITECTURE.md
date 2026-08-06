@@ -2,7 +2,7 @@
 
 > **Note:** the enforced current-state map of `src/evolve/`. The design rationale
 > (three rings, the frozen contract, the operator registry) lives in
-> [`DESIGN.md`](DESIGN.md); this file is the authority on modules and budgets.
+> [the design guide](docs/concepts/design.md); this file is the authority on modules and budgets.
 
 The ownership map of the mechanism. **This file is enforced**: 
 `tests/test_coherence.py` fails if a module exists that is not listed
@@ -77,6 +77,7 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `integrations/harbor/local_auto_agent.py` | 275 | local CLI discovery and delegation to Harbor installed-agent adapters with required ATIF output |
 | `integrations/harbor/_agent_roles.py` | 50 | canonical MiniSWE role names and narrow compatibility aliases |
 | `integrations/harbor/_candidate_source.py` | 75 | exact candidate-source validation and archive-copy boundary |
+| `integrations/harbor/codex_candidate.py` | 75 | Codex adapter for OpenAI-compatible Responses endpoints |
 | `integrations/harbor/miniswe_candidate.py` | 550 | exact-candidate MiniSWE Harbor evaluator agent |
 | `integrations/harbor/miniswe_task_file.py` | 130 | large-task MiniSWE meta-agent transport |
 | `meta_agent_budget.py` | 150 | shared Harbor meta-agent retry and timeout budget calculations |
@@ -105,8 +106,8 @@ that is the spec's rule, not a style preference.
 | File | Meaning |
 | --- | --- |
 | `ARCHITECTURE.md` | this map (enforced by tests/test_coherence.py) |
-| `DESIGN.md` | the design + rationale (three rings, mechanisms) — a maintained doc |
-| `docs/coding-style.md` | coding conventions — a maintained doc |
+| `docs/concepts/design.md` | the design + rationale (three rings, mechanisms) — a maintained doc |
+| `docs/` | MkDocs user, technical, and contributor documentation |
 | `README.md` | user-facing overview — must never overstate milestone reality |
 | `CONTRIBUTING.md` | contributor entry (setup + the enforced constraints) |
 | `pyproject.toml`, `uv.lock` | packaging; runtime is stdlib-only |

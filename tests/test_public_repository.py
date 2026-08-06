@@ -1,5 +1,7 @@
 import re
 import shlex
+import subprocess
+import sys
 import tomllib
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -43,19 +45,18 @@ def _contrast_ratio(first: str, second: str) -> float:
 
 
 def test_architecture_visual_uses_identity_palette() -> None:
-    svg = (ROOT / "docs" / "architecture.svg").read_text()
+    svg = (ROOT / "docs" / "assets" / "architecture.svg").read_text()
     for color in ("#10372e", "#19785a", "#65ce9f", "#b5d3c7", "#f2fbf7"):
         assert color in svg
-    description = ET.parse(ROOT / "docs" / "architecture.svg").find("svg:desc", SVG_NS).text
+    description = ET.parse(ROOT / "docs" / "assets" / "architecture.svg").find("svg:desc", SVG_NS).text
     assert "Recipes select permitted targets, operators, and stages." in description
     assert "rewrite any stage" not in description
     readme = (ROOT / "README.md").read_text()
-    architecture_image = re.search(r'<img src="docs/architecture\.svg" alt="([^"]+)">', readme)
+    architecture_image = re.search(r'<img src="docs/assets/architecture\.svg" alt="([^"]+)">', readme)
     assert architecture_image is not None
     assert "The target and selected operators occupy a declared mutable surface." in architecture_image.group(1)
     assert "may rewrite any stage" not in readme
     assert "can rewrite any stage" not in readme
-
 
 def test_readme_visual_assets_have_accessible_svg_metadata() -> None:
     for relative in ("docs/evolve-mark.svg", "docs/evolve-lineage.svg"):
@@ -90,7 +91,7 @@ def test_selected_and_explored_graphics_have_three_to_one_contrast() -> None:
 
 def test_readme_labeled_figures_link_to_full_size_local_svgs() -> None:
     readme = (ROOT / "README.md").read_text()
-    for relative in ("docs/evolve-lineage.svg", "docs/architecture.svg"):
+    for relative in ("docs/evolve-lineage.svg", "docs/assets/architecture.svg"):
         linked_image = re.search(
             rf'<a href="{re.escape(relative)}">\s*'
             rf'<img src="{re.escape(relative)}" alt="([^"]+)">\s*</a>',
@@ -129,6 +130,7 @@ def test_readme_uses_approved_identity_and_information_architecture() -> None:
     assert readme.startswith(hero)
     assert navigation in readme
     assert "docs/evolve-lineage.svg" in readme
+    assert "docs/assets/benchmark-results.svg" in readme
 
     headings = _h2_headings(readme)
     assert headings == [
@@ -167,10 +169,16 @@ def test_readme_uses_approved_identity_and_information_architecture() -> None:
             "Documentation",
         )
     ]
+    assert 'alt="Documentation"' in readme
     unsupported_benchmark_placeholder = """> **TODO:** Add reproducible benchmark results and supporting artifacts once
 > the evaluation setup and reporting protocol are finalized."""
     assert unsupported_benchmark_placeholder not in readme
-    assert "reproducible benchmark results" not in readme
+    assert "### Benchmark results" in readme
+    assert "#### Terminal Bench 2" in readme
+    assert "#### Tau³ Banking" in readme
+    assert readme.count('<th width="14%">Target agent</th>') == 2
+    assert readme.count('<td rowspan="4">MiniSWE Agent</td>') == 2
+    assert readme.count('<td rowspan="4">Codex</td>') == 2
     assert "representative evolution run rather than a broad\nbenchmark" in readme
     assert "docs/results/paper-poster-skill-evolution.json" in readme
 
@@ -188,36 +196,87 @@ def test_readme_keeps_supported_recipes_and_honest_quick_start() -> None:
             "bash",
             """git clone https://github.com/simple-agent-lab/EvolveX.git
 cd EvolveX
-uv sync --dev --locked
-uv run --frozen evolve --help
-""",
-        ),
-        (
-            "bash",
-            """export EVOLVE_HOME="/tmp/evolve-home"
 
-uv run evolve init /tmp/evolve-demo \\
-  --recipe-path tests/fixtures/recipes/hill_climb-smoke \\
-  --seed tests/fixtures/seeds/dummy
-EVAL_STUB=1 /tmp/evolve-demo/evolve run /tmp/evolve-demo --max-generations 0
-/tmp/evolve-demo/evolve status /tmp/evolve-demo
-/tmp/evolve-demo/evolve verify /tmp/evolve-demo
+# API authentication is the default. Keep credentials out of recipe YAML.
+cat > .env <<'EOF'
+OPENAI_API_KEY=replace-me
+# OPENAI_BASE_URL=https://your-openai-compatible-endpoint/v1
+EOF
+
+docker info
 """,
         ),
         (
             "bash",
-            """/tmp/evolve-demo/evolve operator list /tmp/evolve-demo
-/tmp/evolve-demo/evolve operator run /tmp/evolve-demo select --genid 1
-""",
-        ),
-        (
-            "bash",
-            """./scripts/setup_terminal_bench.sh ahe
-./scripts/run_recipe_demo.sh ahe
+            """RECIPE=ahe
+./scripts/setup_terminal_bench.sh "$RECIPE"
+./scripts/run_recipe_demo.sh "$RECIPE"
 """,
         ),
     ]
-    assert "does not run a mutation round or measure agent quality" in readme
+    assert "deterministic baseline smoke test" not in quick_start
+    assert "operator run" not in quick_start
+    assert "Terminal-Bench 2.0" in quick_start
+    assert "CODEX_AUTH_JSON_PATH" in quick_start
+
+
+def test_mkdocs_covers_custom_recipe_operator_and_experiment_workflows() -> None:
+    mkdocs = (ROOT / "mkdocs.yml").read_text()
+    expected_pages = (
+        "docs/guides/custom-recipes.md",
+        "docs/guides/recipe-to-experiment.md",
+        "docs/reference/environment-variables.md",
+        "docs/reference/operators.md",
+    )
+    for page in expected_pages:
+        assert (ROOT / page).is_file()
+        assert page.removeprefix("docs/") in mkdocs
+
+    custom_recipe = (ROOT / expected_pages[0]).read_text()
+    assert "--recipe-path" in custom_recipe
+    assert "surface:" in custom_recipe
+    assert "editable_roots" in custom_recipe
+    assert "evolve preflight" in custom_recipe
+
+    experiment = (ROOT / expected_pages[1]).read_text()
+    for command in ("evolve init", "./evolve doctor", "./evolve smoke", "./evolve run", "./evolve verify"):
+        assert command in experiment
+
+    environment = (ROOT / expected_pages[2]).read_text()
+    for variable in (
+        "OPENAI_API_KEY",
+        "OPENAI_BASE_URL",
+        "CODEX_AUTH_JSON_PATH",
+        "EVOLVE_RUNTIME_DIGEST",
+        "EVOLVE_HOME",
+        "EVOLVE_UV_CACHE_DIR",
+        "HTTP_PROXY",
+        "NO_PROXY",
+    ):
+        assert variable in environment
+    assert "Environment Variables" in experiment
+    assert "environment-checklist" in experiment
+
+    operators = (ROOT / expected_pages[3]).read_text()
+    stages = {
+        "select": "Select",
+        "rollout": "Rollout",
+        "trace_analyzer": "Trace Analyzer",
+        "meta_agent": "Meta Agent",
+        "validate": "Validate",
+        "novelty": "Novelty",
+        "gate": "Gate",
+        "record": "Record",
+        "reflect": "Reflect",
+    }
+    for stage, title in stages.items():
+        assert stage in operators
+        page = ROOT / "docs" / "reference" / "operators" / f"{stage}.md"
+        assert page.is_file()
+        assert page.read_text().startswith(f"# {title}\n")
+        assert f"- {title}: reference/operators/{stage}.md" in mkdocs
+
+    assert not (ROOT / "docs/reference/trace-analyzers.md").exists()
 
 
 def test_license_metadata_and_notice_are_consistent() -> None:

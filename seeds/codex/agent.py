@@ -18,6 +18,8 @@ REMOTE_SKILLS_DIR = "/tmp/evolve-target-skills"
 REMOTE_PLUGIN_MARKETPLACE = "/tmp/evolve-target-marketplace"
 PLUGIN_NAME = "evolve-target"
 PLUGIN_MARKETPLACE = "evolve-target"
+AUTH_MODE_ENV = "EVOLVE_CODEX_AUTH_MODE"
+AUTH_MODES = ("auto", "api", "auth_json")
 
 
 def _target_root(extra_env: object) -> Path:
@@ -97,7 +99,47 @@ class HarborAgent(Codex):
 
         super().__init__(logs_dir=logs_dir, model_name=resolved_model, **kwargs)
 
-    def _resolve_auth_json_path(self) -> Path:
+    def _auth_mode(self) -> str:
+        configured = (self._get_env(AUTH_MODE_ENV) or "auto").strip().lower()
+        if configured not in AUTH_MODES:
+            raise ValueError(f"{AUTH_MODE_ENV} must be one of: {', '.join(AUTH_MODES)}")
+        if configured != "auto":
+            return configured
+        if self._get_env("CODEX_AUTH_JSON_PATH") or _truthy(self._get_env("CODEX_FORCE_AUTH_JSON")):
+            return "auth_json"
+        if self._get_env("OPENAI_BASE_URL") or self._get_env("OPENAI_API_BASE"):
+            return "api"
+        return "auth_json"
+
+    def _api_base_url(self) -> str:
+        base_url = self._get_env("OPENAI_BASE_URL") or self._get_env("OPENAI_API_BASE")
+        if not base_url:
+            raise ValueError(f"{AUTH_MODE_ENV}=api requires OPENAI_BASE_URL or OPENAI_API_BASE")
+        if not self._get_env("OPENAI_API_KEY"):
+            raise ValueError(f"{AUTH_MODE_ENV}=api requires OPENAI_API_KEY")
+        return base_url
+
+    def build_cli_flags(self) -> str:
+        parts = [super().build_cli_flags()]
+        if self._auth_mode() == "api":
+            base_url = self._api_base_url()
+            configs = [
+                'model_provider="evolve_http"',
+                'forced_login_method="api"',
+                'model_providers.evolve_http.name="Evolve HTTP Responses"',
+                f'model_providers.evolve_http.base_url="{base_url}"',
+                'model_providers.evolve_http.env_key="OPENAI_API_KEY"',
+                'model_providers.evolve_http.wire_api="responses"',
+                'model_providers.evolve_http.env_http_headers={"api-key"="OPENAI_API_KEY"}',
+                "model_providers.evolve_http.supports_websockets=false",
+            ]
+            parts.extend(f"-c {shlex.quote(config)}" for config in configs)
+        return " ".join(part for part in parts if part)
+
+    def _resolve_auth_json_path(self) -> Path | None:
+        if self._auth_mode() == "api":
+            self._api_base_url()
+            return None
         configured = self._get_env("CODEX_AUTH_JSON_PATH")
         codex_home = Path(self._get_env("CODEX_HOME") or Path.home() / ".codex")
         auth_path = Path(configured).expanduser() if configured else codex_home / "auth.json"
@@ -174,3 +216,7 @@ class HarborAgent(Codex):
                 source_dir=plugins,
                 target_dir=f"{REMOTE_PLUGIN_MARKETPLACE}/plugins",
             )
+
+
+def _truthy(value: str | None) -> bool:
+    return bool(value and value.strip().lower() in {"1", "true", "yes", "on"})

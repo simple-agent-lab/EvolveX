@@ -505,6 +505,7 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
         "uv.lock",
         ".python-version",
         ".evolve-components.json",
+        ".evolve/evolve/integrations/harbor/codex_candidate.py",
         ".evolve/evolve/integrations/harbor/miniswe_candidate.py",
         ".evolve/evolve/integrations/harbor/miniswe_task_file.py",
         "evolve.yaml",

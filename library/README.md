@@ -4,7 +4,7 @@ A curated, framework-versioned pool of operator implementations to **consult and
 adapt**, one folder per verb. This is reference material, not the runtime: it is
 **not** copied wholesale into a workspace, and nothing here is executed as-is.
 
-See `DESIGN.md` §7 for the full rationale. In short:
+See [`docs/concepts/design.md`](../docs/concepts/design.md) §7 for the full rationale. In short:
 
 - The meta-agent reads `library/<verb>/*.py`, then adapts a variant
   **into** the workspace's active `operators/<verb>.py`. Only that adapted-in,
@@ -93,5 +93,5 @@ operators:
     timeout_s: 3600
 ```
 
-See [`META_AGENTS.md`](../META_AGENTS.md) for command examples, supported Harbor
+See [the meta-agent guide](../docs/guides/meta-agents.md) for command examples, supported Harbor
 agent identifiers, custom adapter configuration, and the artifact boundary.

@@ -176,17 +176,6 @@ def test_miniswe_wrapper_source_environment_contains_only_strings(adapter_path: 
     assert all(isinstance(value, str) for value in source_env.values())
 
 
-def test_candidate_adapter_disables_codex_websockets_for_responses_endpoint(monkeypatch) -> None:
-    _install_fake_harbor(monkeypatch)
-    module = _load(ADAPTER)
-
-    flags = module.ResponsesCodexAgent(extra_env={"OPENAI_BASE_URL": "http://bridge.example/v1"}).build_cli_flags()
-
-    assert 'model_provider="evolve_http"' in flags
-    assert 'model_providers.evolve_http.base_url="http://bridge.example/v1"' in flags
-    assert "model_providers.evolve_http.supports_websockets=false" in flags
-
-
 def test_miniswe_wrapper_omits_session_header_when_unset(adapter_path: Path, monkeypatch) -> None:
     _, build_model, (FakeLitellmModel, FakeLitellmResponseModel) = _load_model_factory(adapter_path, monkeypatch)
     monkeypatch.setenv("MSWEA_MODEL_NAME", "openai/gpt-5.4")

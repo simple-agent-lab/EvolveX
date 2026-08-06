@@ -1,8 +1,10 @@
 # EvolveX design
 
 This document describes the framework model and rationale. The executable
-module inventory lives in [ARCHITECTURE.md](ARCHITECTURE.md); the operator
-contract in `src/evolve/frozen/interfaces.py` is authoritative for interfaces.
+module inventory lives in
+[ARCHITECTURE.md on GitHub](https://github.com/simple-agent-lab/EvolveX/blob/main/ARCHITECTURE.md);
+the operator contract in `src/evolve/frozen/interfaces.py` is authoritative for
+interfaces.
 
 ## The model
 

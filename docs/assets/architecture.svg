@@ -56,7 +56,7 @@
   <text x="66" y="164" class="lbl">ONE COMPOSABLE LOOP</text>
   <text x="1174" y="164" text-anchor="end" class="cap-accent">recipes choose which stages and targets may evolve</text>
   <rect x="60" y="178" width="1120" height="134" rx="14" class="mutable"/>
-  <rect x="448" y="167" width="344" height="22" rx="11" class="knock"/>
+  <rect x="380" y="167" width="480" height="22" rx="11" class="knock"/>
   <text x="620" y="183" text-anchor="middle" class="lbl-accent">DECLARED MUTABLE SURFACE · target + selected operators</text>
   <line x1="159.167" y1="204" x2="1080.83" y2="204" class="flow-accent"/>
   <line x1="712.167" y1="204" x2="712.167" y2="228" class="flow-accent"/>

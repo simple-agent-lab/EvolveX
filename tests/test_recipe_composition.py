@@ -12,6 +12,7 @@ from evolve.config import RECIPE_NAMES, default_config, load_config, recipe_root
 from evolve.workspace import InitOptions, _write_target, init_workspace
 
 CANDIDATE = "evolve.integrations.harbor.miniswe_candidate:CandidateMiniSweAgent"
+OPTIONAL_INTEGRATIONS = {"evolve.integrations.harbor.codex_candidate"}
 FILE_TASK = "evolve.integrations.harbor.miniswe_task_file:InstalledMiniSweAgent"
 ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 CASES = {
@@ -59,6 +60,7 @@ def test_supported_recipe_initializes_only_selected_components(
     )
     assert (workspace / "target" / "codex.toml").is_file() is (target_kind == "codex")
     assert (workspace / "evaluator" / "cleanup_harbor.py").is_file()
+    assert (workspace / ".evolve" / "evolve" / "integrations" / "harbor" / "codex_candidate.py").is_file()
     assert (workspace / ".evolve" / "evolve" / "integrations" / "harbor" / "miniswe_candidate.py").is_file()
     assert not (workspace / "evolve_harbor_adapter").exists()
     assert not (workspace / "evolve_harbor_agent").exists()
@@ -255,7 +257,8 @@ def test_every_production_resource_has_a_supported_consumer() -> None:
 
     assert evaluator_scaffolds == engines
     assert seeds == builtin_seeds
-    assert integration_modules == {ref.split(":", 1)[0] for ref in agent_refs if ref.startswith("evolve.integrations.")}
+    configured_integrations = {ref.split(":", 1)[0] for ref in agent_refs if ref.startswith("evolve.integrations.")}
+    assert integration_modules == configured_integrations | OPTIONAL_INTEGRATIONS
 
 
 COMMON_OUTPUTS = {

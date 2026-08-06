@@ -27,7 +27,7 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://github.com/simple-agent-lab/EvolveX"
-Documentation = "https://github.com/simple-agent-lab/EvolveX#documentation"
+Documentation = "https://simple-agent-lab.github.io/EvolveX/"
 Repository = "https://github.com/simple-agent-lab/EvolveX"
 Issues = "https://github.com/simple-agent-lab/EvolveX/issues"
 
@@ -40,6 +40,9 @@ dev = [
     "pytest-xdist>=3.8",
     "ruff>=0.8",
     "ty>=0.0.1a1",
+]
+docs = [
+    "mkdocs-material>=9.6,<10",
 ]
 
 [tool.ruff]
