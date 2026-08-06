@@ -20,6 +20,7 @@ _CERTIFIED_REPLAY_ARTIFACTS = (
     "agent/mini-swe-agent.txt",
     "agent/trajectory.json",
     "trial.log",
+    "verifier/diagnostics.json",
     "verifier/reward.txt",
     "verifier/test-stdout.txt",
     "result.json",

@@ -408,6 +408,21 @@ def test_replay_rejects_unindexed_safe_replay_file(tmp_path: Path, monkeypatch) 
         module.EvaluationReplayRollout().rollout(ctx.checkout, ctx)
 
 
+def test_replay_rejects_unindexed_verifier_diagnostic_file(tmp_path: Path, monkeypatch) -> None:
+    module = _replay_module()
+    workspace = tmp_path / "workspace"
+    jobs, reference = _artifact(workspace)
+    diagnostics = next(jobs.iterdir()) / "verifier" / "diagnostics.json"
+    diagnostics.parent.mkdir()
+    diagnostics.write_text('{"status":"mismatch"}\n')
+    monkeypatch.setattr(module, "ArchiveView", lambda _workspace: _Archive({"3": {"artifacts": reference}}))
+    monkeypatch.setattr(module, "_load_collect_cases", lambda _checkout: lambda *_args, **_kwargs: [])
+    ctx = _context(workspace, parent="3")
+
+    with pytest.raises(SystemExit, match="unindexed replay file: task-a__trial-0/verifier/diagnostics.json"):
+        module.EvaluationReplayRollout().rollout(ctx.checkout, ctx)
+
+
 def test_replay_collector_and_returned_paths_stay_in_persistent_certified_view(
     tmp_path: Path,
     monkeypatch,

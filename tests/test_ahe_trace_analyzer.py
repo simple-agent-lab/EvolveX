@@ -663,6 +663,59 @@ def test_ahe_analyzer_attributes_prior_manifest(tmp_path: Path, monkeypatch: pyt
     assert change["unattributed_regressions"] == []
 
 
+def test_ahe_analyzer_resolves_unique_short_manifest_task_names_to_canonical_ids(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _module()
+    ctx = _ctx(tmp_path, genid="2", parent="1")
+    fixed_task = "sierra-research/tau3-bench__task-001"
+    regressed_task = "sierra-research/tau3-bench__task-002"
+    prior = ctx.workspace / "runs" / "gen-1"
+    _write_cases(
+        prior,
+        [
+            _case("old-a", "failed", 0, task=fixed_task),
+            _case("old-b", "passed", 1, task=regressed_task),
+        ],
+    )
+    manifest_dir = prior / "meta_agent"
+    manifest_dir.mkdir()
+    (manifest_dir / "change_manifest.json").write_text(
+        json.dumps(
+            {
+                "changes": [
+                    {
+                        "id": "chg-1",
+                        "description": "improve runtime handling",
+                        "files": ["target/environment.py"],
+                        "predicted_fixes": ["tau3-bench__task-001"],
+                        "risk_tasks": ["tau3-bench__task-002"],
+                    }
+                ]
+            }
+        )
+    )
+    _write_cases(
+        ctx.run_dir,
+        [
+            _case("new-a", "passed", 1, task=fixed_task),
+            _case("new-b", "failed", 0, task=regressed_task),
+        ],
+    )
+    monkeypatch.setattr(module, "run_readonly_agent", _fake_debugger)
+
+    module.AheTraceAnalyzer().analyze(ctx.checkout, ctx)
+
+    change = json.loads((ctx.run_dir / "trace_analyzer/analysis/change_evaluation.json").read_text())
+    assert change["prediction_results"] == {fixed_task: "confirmed"}
+    assert change["risk_results"] == {regressed_task: "realized"}
+    assert change["change_evaluations"][0]["predicted_fixes"] == [fixed_task]
+    assert change["change_evaluations"][0]["actually_fixed"] == [fixed_task]
+    assert change["change_evaluations"][0]["predicted_risks"] == [regressed_task]
+    assert change["change_evaluations"][0]["risk_realized"] == [regressed_task]
+    assert change["unattributed_regressions"] == []
+
+
 def test_ahe_analyzer_computes_transitions_without_prior_manifest(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

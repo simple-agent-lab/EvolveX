@@ -557,6 +557,14 @@ def _change_verdict(predicted: list[str], fixed: list[str], realized: list[str])
     return "INEFFECTIVE"
 
 
+def _canonical_task_reference(task: object, observed_tasks: set[str]) -> str:
+    reference = str(task)
+    if reference in observed_tasks:
+        return reference
+    matches = [observed for observed in observed_tasks if observed.rsplit("/", 1)[-1] == reference]
+    return matches[0] if len(matches) == 1 else reference
+
+
 def _change_evaluation(
     ctx: OperatorContext,
     cases: list[Case],
@@ -593,14 +601,15 @@ def _change_evaluation(
     transitions = {
         task: _transition(before.get(task), after.get(task)) for task in sorted(before.keys() | after.keys())
     }
+    observed_tasks = set(transitions)
     predicted = {
-        str(task)
+        _canonical_task_reference(task, observed_tasks)
         for change in (manifest["changes"] if manifest else [])
         if isinstance(change, dict)
         for task in change.get("predicted_fixes", [])
     }
     risks = {
-        str(task)
+        _canonical_task_reference(task, observed_tasks)
         for change in (manifest["changes"] if manifest else [])
         if isinstance(change, dict)
         for task in change.get("risk_tasks", [])
@@ -609,8 +618,10 @@ def _change_evaluation(
     for change in manifest["changes"] if manifest else []:
         if not isinstance(change, dict):
             continue
-        change_predicted = [str(task) for task in change.get("predicted_fixes", [])]
-        change_risks = [str(task) for task in change.get("risk_tasks", [])]
+        change_predicted = [
+            _canonical_task_reference(task, observed_tasks) for task in change.get("predicted_fixes", [])
+        ]
+        change_risks = [_canonical_task_reference(task, observed_tasks) for task in change.get("risk_tasks", [])]
         fixed = [task for task in change_predicted if transitions.get(task) == "fail_to_pass"]
         still_failed = [task for task in change_predicted if task not in fixed]
         realized = [task for task in change_risks if transitions.get(task) == "pass_to_fail"]

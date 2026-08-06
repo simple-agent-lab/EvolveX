@@ -364,3 +364,64 @@ def test_write_harbor_artifacts_indexes_only_retained_safe_files(tmp_path: Path)
     serialized = json.dumps(artifacts).lower()
     assert ".env" not in serialized
     assert "config" not in serialized
+
+
+def test_write_harbor_artifacts_derives_safe_verifier_diagnostics(tmp_path: Path) -> None:
+    jobs = tmp_path / "jobs"
+    trial = jobs / "case-a__one"
+    write_trial(trial, task="case-a", trial="one", reward=0.0)
+    verifier = trial / "verifier"
+    verifier.mkdir()
+    (verifier / "result.json").write_text(
+        json.dumps(
+            {
+                "reward": 0.0,
+                "reward_basis": ["DB"],
+                "reward_info": {
+                    "action_checks": [
+                        {
+                            "action": {
+                                "name": "private_expected_action",
+                                "arguments": {"customer_name": "ground-truth-secret"},
+                            },
+                            "action_match": False,
+                            "action_reward": 0.0,
+                            "tool_type": "write",
+                        }
+                    ],
+                    "db_check": {"db_match": False, "db_reward": 0.0},
+                    "reward": 0.0,
+                    "reward_basis": ["DB"],
+                    "reward_breakdown": {"DB": 0.0},
+                },
+                "runtime_initialization": {
+                    "accepted": {"max_errors": 10, "max_steps": 200, "seed": None},
+                    "accepted_once_count": 1,
+                    "phase": "started",
+                    "rejected_mutations": {"uninitialized_start": 1},
+                },
+                "status": "mismatch",
+            }
+        )
+    )
+    run_dir = tmp_path / "run"
+
+    write_harbor_artifacts(jobs, run_dir)
+
+    diagnostics_path = verifier / "diagnostics.json"
+    diagnostics = json.loads(diagnostics_path.read_text())
+    assert diagnostics["status"] == "mismatch"
+    assert diagnostics["reward_basis"] == ["DB"]
+    assert diagnostics["reward_info"]["action_checks"] == [
+        {"action_match": False, "action_reward": 0.0, "tool_type": "write"}
+    ]
+    assert diagnostics["reward_info"]["db_check"] == {"db_match": False, "db_reward": 0.0}
+    assert diagnostics["runtime_initialization"]["rejected_mutations"] == {"uninitialized_start": 1}
+    serialized = json.dumps(diagnostics)
+    assert "private_expected_action" not in serialized
+    assert "ground-truth-secret" not in serialized
+
+    artifacts = json.loads((run_dir / "evaluation_artifacts.json").read_text())
+    indexed_paths = {entry["path"] for entry in artifacts["trials"][0]["files"]}
+    assert "case-a__one/verifier/diagnostics.json" in indexed_paths
+    assert "case-a__one/verifier/result.json" not in indexed_paths
