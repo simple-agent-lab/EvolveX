@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="360" viewBox="0 0 960 360" role="img" aria-labelledby="lineage-title lineage-description">
+  <title id="lineage-title">Verified candidate lineage</title>
+  <desc id="lineage-description">A baseline branches into evaluated candidates. The selected lineage rises through successive generations to a verified improvement while unselected candidates remain visible as evidence.</desc>
+  <rect width="960" height="360" rx="24" fill="#f2fbf7"/>
+  <path d="M 208 244 L 346 312 M 342 185 L 218 72 M 603 130 L 754 258" fill="none" stroke="#608675" stroke-width="5" stroke-linecap="round" data-state="explored"/>
+  <path d="M 80 286 C 188 270 188 199 303 197 S 460 142 576 139 S 760 79 866 58" fill="none" stroke="#19785a" stroke-width="9" stroke-linecap="round" data-state="selected"/>
+  <circle cx="80" cy="286" r="13" fill="#ffffff" stroke="#19785a" stroke-width="5" data-state="selected"/>
+  <circle cx="208" cy="244" r="13" fill="#ffffff" stroke="#19785a" stroke-width="5" data-state="selected"/>
+  <circle cx="342" cy="185" r="13" fill="#ffffff" stroke="#19785a" stroke-width="5" data-state="selected"/>
+  <circle cx="603" cy="130" r="13" fill="#ffffff" stroke="#19785a" stroke-width="5" data-state="selected"/>
+  <circle cx="346" cy="312" r="11" fill="#f2fbf7" stroke="#608675" stroke-width="4" data-state="explored"/>
+  <circle cx="218" cy="72" r="11" fill="#f2fbf7" stroke="#608675" stroke-width="4" data-state="explored"/>
+  <circle cx="754" cy="258" r="11" fill="#f2fbf7" stroke="#608675" stroke-width="4" data-state="explored"/>
+  <circle cx="866" cy="58" r="20" fill="#65ce9f" stroke="#19785a" stroke-width="6"/>
+  <path d="M 857 58 L 864 65 L 877 48" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <g font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="16" fill="#607169">
+    <text x="48" y="326">baseline</text>
+    <text x="150" y="46">explored candidates</text>
+    <text x="470" y="112" fill="#19785a" font-weight="700">selected lineage</text>
+    <text x="684" y="38" fill="#19785a" font-weight="700">verified generation</text>
+  </g>
+</svg>
