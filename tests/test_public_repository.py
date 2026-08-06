@@ -133,10 +133,10 @@ def test_readme_labeled_figures_link_to_full_size_local_svgs() -> None:
 def test_readme_uses_approved_identity_and_information_architecture() -> None:
     readme = (ROOT / "README.md").read_text()
     hero = """<p align="center">
-  <img src="docs/evolve-mark.svg" width="112" alt="Evolve selected lineage mark: a selected lineage rises past explored side branches to a verified generation.">
+  <img src="docs/evolve-mark.svg" width="112" alt="EvolveX selected lineage mark: a selected lineage rises past explored side branches to a verified generation.">
 </p>
 
-<h1 align="center">Evolve Framework</h1>
+<h1 align="center">EvolveX</h1>
 
 <p align="center">
   <strong>Build agents that improve — and keep the evidence.</strong>
@@ -148,8 +148,8 @@ def test_readme_uses_approved_identity_and_information_architecture() -> None:
 </p>
 """
     navigation = """<p align="center">
-  <a href="#what-evolve-does">What Evolve Does</a> ·
-  <a href="#how-evolve-works">How It Works</a> ·
+  <a href="#what-evolvex-does">What EvolveX Does</a> ·
+  <a href="#how-evolvex-works">How It Works</a> ·
   <a href="#what-can-evolve">What Can Evolve</a> ·
   <a href="#recipes">Recipes</a> ·
   <a href="#quick-start">Quick Start</a> ·
@@ -161,8 +161,8 @@ def test_readme_uses_approved_identity_and_information_architecture() -> None:
 
     headings = _h2_headings(readme)
     assert headings == [
-        "What Evolve Does",
-        "How Evolve Works",
+        "What EvolveX Does",
+        "How EvolveX Works",
         "What Can Evolve",
         "Recipes",
         "Quick Start",
@@ -175,8 +175,8 @@ def test_readme_uses_approved_identity_and_information_architecture() -> None:
 
     navigation_targets = re.findall(r'<a href="#([^"]+)">([^<]+)</a>', navigation)
     assert navigation_targets == [
-        ("what-evolve-does", "What Evolve Does"),
-        ("how-evolve-works", "How It Works"),
+        ("what-evolvex-does", "What EvolveX Does"),
+        ("how-evolvex-works", "How It Works"),
         ("what-can-evolve", "What Can Evolve"),
         ("recipes", "Recipes"),
         ("quick-start", "Quick Start"),
@@ -185,8 +185,8 @@ def test_readme_uses_approved_identity_and_information_architecture() -> None:
     assert [target for target, _ in navigation_targets] == [
         heading.lower().replace(" ", "-")
         for heading in (
-            "What Evolve Does",
-            "How Evolve Works",
+            "What EvolveX Does",
+            "How EvolveX Works",
             "What Can Evolve",
             "Recipes",
             "Quick Start",
@@ -216,16 +216,17 @@ def test_readme_keeps_supported_recipes_and_honest_quick_start() -> None:
             "bash",
             """git clone https://github.com/simple-agent-lab/simple-evolve-agent.git
 cd simple-evolve-agent
-uv sync --dev --frozen
-uv run evolve --help
+uv sync --dev --locked
+uv run --frozen evolve --help
 """,
         ),
         (
             "bash",
-            """export EVOLVE_RUNTIME_DIGEST="sha256:local-smoke-runtime"
-export EVOLVE_HOME="/tmp/evolve-home"
+            """export EVOLVE_HOME="/tmp/evolve-home"
 
-uv run evolve init /tmp/evolve-demo --recipe hill_climb
+uv run evolve init /tmp/evolve-demo \\
+  --recipe-path tests/fixtures/recipes/hill_climb-smoke \\
+  --seed tests/fixtures/seeds/dummy
 EVAL_STUB=1 /tmp/evolve-demo/evolve run /tmp/evolve-demo --max-generations 0
 /tmp/evolve-demo/evolve status /tmp/evolve-demo
 /tmp/evolve-demo/evolve verify /tmp/evolve-demo
@@ -233,12 +234,14 @@ EVAL_STUB=1 /tmp/evolve-demo/evolve run /tmp/evolve-demo --max-generations 0
         ),
         (
             "bash",
-            """export EVOLVE_RUNTIME_DIGEST="sha256:replace-with-your-evaluator-digest"
-
-uv run evolve init /tmp/evolve-harbor \\
-  --recipe aevolve \\
-  --dataset /absolute/path/to/harbor/tasks
-/tmp/evolve-harbor/evolve run /tmp/evolve-harbor --max-generations 5
+            """/tmp/evolve-demo/evolve operator list /tmp/evolve-demo
+/tmp/evolve-demo/evolve operator run /tmp/evolve-demo select --genid 1
+""",
+        ),
+        (
+            "bash",
+            """./scripts/setup_terminal_bench.sh ahe
+./scripts/run_recipe_demo.sh ahe
 """,
         ),
     ]
@@ -250,7 +253,7 @@ def test_license_metadata_and_notice_are_consistent() -> None:
     assert project["version"] == __version__
     assert project["license"] == "Apache-2.0"
     assert "Apache License" in (ROOT / "LICENSE").read_text()
-    assert (ROOT / "NOTICE").read_text().startswith("Evolve Framework\n")
+    assert (ROOT / "NOTICE").read_text().startswith("EvolveX\n")
 
 
 def test_required_public_repository_files_exist() -> None:

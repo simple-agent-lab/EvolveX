@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="docs/evolve-mark.svg" width="112" alt="Evolve selected lineage mark: a selected lineage rises past explored side branches to a verified generation.">
+  <img src="docs/evolve-mark.svg" width="112" alt="EvolveX selected lineage mark: a selected lineage rises past explored side branches to a verified generation.">
 </p>
 
-<h1 align="center">Evolve Framework</h1>
+<h1 align="center">EvolveX</h1>
 
 <p align="center">
   <strong>Build agents that improve — and keep the evidence.</strong>
@@ -26,8 +26,8 @@
 </p>
 
 <p align="center">
-  <a href="#what-evolve-does">What Evolve Does</a> ·
-  <a href="#how-evolve-works">How It Works</a> ·
+  <a href="#what-evolvex-does">What EvolveX Does</a> ·
+  <a href="#how-evolvex-works">How It Works</a> ·
   <a href="#what-can-evolve">What Can Evolve</a> ·
   <a href="#recipes">Recipes</a> ·
   <a href="#quick-start">Quick Start</a> ·
@@ -40,9 +40,9 @@
   </a>
 </p>
 
-## What Evolve Does
+## What EvolveX Does
 
-Evolve gives an agent a controlled way to improve itself. It runs candidates
+EvolveX gives an agent a controlled way to improve itself. It runs candidates
 against a fixed evaluator, keeps the evidence for every generation, and carries
 verified improvements forward without letting candidate code rewrite the rules
 that score it.
@@ -51,7 +51,7 @@ that score it.
 | --- | --- | --- |
 | Improve prompts, skills, harnesses, and agent code in a reusable experiment workspace. | Compare evolution strategies under fixed evaluation and mutation boundaries. | Connect every candidate to scores, artifacts, archive records, and Git lineage. |
 
-## How Evolve Works
+## How EvolveX Works
 
 Every recipe composes the same loop:
 
@@ -59,7 +59,7 @@ Every recipe composes the same loop:
 
 <p align="center">
   <a href="docs/architecture.svg">
-    <img src="docs/architecture.svg" alt="Evolve architecture: five built-in strategies and custom recipes compose a loop of select, rollout and evaluation, analyze, mutate, gate, and record. The target and selected operators occupy a declared mutable surface. The evaluator, runtime, surface check, and stamped evidence remain protected from candidate changes.">
+    <img src="docs/architecture.svg" alt="EvolveX architecture: five built-in strategies and custom recipes compose a loop of select, rollout and evaluation, analyze, mutate, gate, and record. The target and selected operators occupy a declared mutable surface. The evaluator, runtime, surface check, and stamped evidence remain protected from candidate changes.">
   </a>
 </p>
 
@@ -98,8 +98,8 @@ Requirements: Python 3.12+, [`uv`](https://docs.astral.sh/uv/), and Git.
 ```bash
 git clone https://github.com/simple-agent-lab/simple-evolve-agent.git
 cd simple-evolve-agent
-uv sync --dev --frozen
-uv run evolve --help
+uv sync --dev --locked
+uv run --frozen evolve --help
 ```
 
 `evolve init` accepts an optional workspace path. When omitted, it creates the
@@ -109,10 +109,11 @@ experiments.
 Run a deterministic baseline smoke test without a model or Docker:
 
 ```bash
-export EVOLVE_RUNTIME_DIGEST="sha256:local-smoke-runtime"
 export EVOLVE_HOME="/tmp/evolve-home"
 
-uv run evolve init /tmp/evolve-demo --recipe hill_climb
+uv run evolve init /tmp/evolve-demo \
+  --recipe-path tests/fixtures/recipes/hill_climb-smoke \
+  --seed tests/fixtures/seeds/dummy
 EVAL_STUB=1 /tmp/evolve-demo/evolve run /tmp/evolve-demo --max-generations 0
 /tmp/evolve-demo/evolve status /tmp/evolve-demo
 /tmp/evolve-demo/evolve verify /tmp/evolve-demo
@@ -121,26 +122,58 @@ EVAL_STUB=1 /tmp/evolve-demo/evolve run /tmp/evolve-demo --max-generations 0
 This checks workspace generation, baseline evaluation, and archive integrity; it
 does not run a mutation round or measure agent quality.
 
-For a real Harbor run, provide an immutable evaluator digest and a local task
-dataset:
+An outer coding agent can also orchestrate a generation while reusing the
+framework's operators:
 
 ```bash
-export EVOLVE_RUNTIME_DIGEST="sha256:replace-with-your-evaluator-digest"
-
-uv run evolve init /tmp/evolve-harbor \
-  --recipe aevolve \
-  --dataset /absolute/path/to/harbor/tasks
-/tmp/evolve-harbor/evolve run /tmp/evolve-harbor --max-generations 5
+/tmp/evolve-demo/evolve operator list /tmp/evolve-demo
+/tmp/evolve-demo/evolve operator run /tmp/evolve-demo select --genid 1
 ```
 
-`evolve preflight` takes the same arguments as `init`, writes nothing, and
-reports every unmet precondition as one checklist. Inspect a run with
-`evolve status`, `evolve report`, `git tag --list 'gen/*'`,
+The agent reads the retained operator artifacts, forks and edits the selected
+parent, then uses `commit`, `eval`, and `finalize`. This keeps the agent in
+control of the harness change while the mechanism still owns evaluation,
+configured admission checks, gating, recording, and lineage. Validation and
+novelty results are tied to the exact candidate tree, so editing afterward
+requires rerunning them. See the generated workspace's `program.md` and
+`skills/evolve-agent/SKILL.md` for the complete sequence and method guidance.
+
+For a reproducible Terminal-Bench 2.0 run, prepare the shared pinned dataset and
+the selected recipe's image once, then use the short execution script:
+
+```bash
+./scripts/setup_terminal_bench.sh ahe
+./scripts/run_recipe_demo.sh ahe
+```
+
+The scripts support A-Evolve, AHE, GEPA, Hill Climb, and HyperAgents, including
+their Codex profiles. Common execution overrides are `WORKSPACE`, `TASKS`,
+`GENERATIONS`, `ENV_FILE`, and `EVOLVE_ASSET_DIR`. Preflight validates the
+selected runtime's authentication before any experiment generation runs.
+
+Initialization resolves each recipe's inline runtime block into
+`evaluator/runtime.json` and generates the certified evaluation inputs.
+Evaluator repetitions default to one. Workspace preflight performs offline,
+cacheless validation and writes a redacted receipt; `--smoke` additionally makes
+one real model request against a detached candidate snapshot.
+
+Workspace commands load only `WORKSPACE/.env`; explicitly exported variables
+override it, and caller or parent `.env` files are ignored. API-key
+authentication is the default. Codex agents may instead use an explicit
+`CODEX_AUTH_JSON_PATH`, with no automatic home-directory lookup. Explicitly
+supplied standard proxy variables are inherited as optional host transport for
+dependency downloads; the configured model endpoint is added to `NO_PROXY`,
+and users without a proxy need no proxy setup. Recipes may still declare a
+required proxy policy for environments that must fail closed.
+Secrets, endpoint URLs, auth paths, and proxy values are excluded from resolved
+runtime configuration and evaluation contracts.
+
+Inspect a run with `evolve status`, `evolve report`, `git tag --list 'gen/*'`,
 and the generated `archive.jsonl`. Run `evolve --help` for the complete CLI.
 
 ## Trustworthy by Construction
 
-Evolve separates evolvable policy from the mechanism that judges it:
+EvolveX separates evolvable policy from the mechanism that judges it:
 
 1. **The evaluator is frozen.** Candidates cannot change the scoring contract.
 2. **Mutation is bounded.** Each recipe declares which target and operator paths may change.
@@ -152,7 +185,7 @@ process. See [DESIGN.md](DESIGN.md) for the complete ownership model and invaria
 
 ## Project Status
 
-Evolve is an active prototype for research and controlled experimentation. The
+EvolveX is an active prototype for research and controlled experimentation. The
 current focus is reliable experiment mechanics, local-first workflows, and
 composable strategies for different agent-evolution scenarios.
 
@@ -185,5 +218,5 @@ supporting artifacts.
 
 ## License
 
-Evolve Framework is licensed under [Apache-2.0](LICENSE). See
+EvolveX is licensed under [Apache-2.0](LICENSE). See
 [NOTICE](NOTICE) for required attributions.

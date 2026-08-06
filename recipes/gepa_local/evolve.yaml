@@ -55,7 +55,7 @@ evaluator:
   sampling: static
   tasks_per_round: 4
   anchor: {final: true, every_rounds: 0}
-  k: 1
+  repetitions: 1
   n_concurrent: 2
   max_retries: 1
   partial_floor: 0.8

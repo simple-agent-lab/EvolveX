@@ -424,7 +424,7 @@ wheels = [
 ]
 
 [[package]]
-name = "evolve-framework"
+name = "evolvex"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

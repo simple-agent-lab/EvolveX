@@ -188,7 +188,7 @@ def run_doctor(
     config_path = root / "evolve.yaml"
     config = load_config(config_path) if config_path.is_file() else {}
     if profile == "experiment" and not config:
-        raise ValueError("experiment doctor requires an initialized evolve workspace")
+        raise ValueError("experiment doctor requires an initialized EvolveX workspace")
 
     backend = "local" if profile == "local" else _backend(config)
     runtime_values = config.get("execution_runtime") if profile == "experiment" else {"minimum_free_gib": 1}

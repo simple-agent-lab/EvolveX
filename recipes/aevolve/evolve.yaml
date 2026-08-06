@@ -42,17 +42,15 @@ operators:
   gate: {variant: hillclimb, strict: true, timeout_s: 600}
   record: {variant: jsonl, timeout_s: 600}
   timeout_s: 600
-execution_runtime:
-  backend: docker
 evaluator:
   engine: harbor
-  dataset: swe-bench-lite
+  dataset: terminal-bench-2-30-v1
   agent: target.agent:HarborAgent
   split: {train: 0.5, gate: 0.4, sealed: 0.1, seed: 0}
   sampling: static
   tasks_per_round: 10
   anchor: {final: true, every_rounds: 0}
-  k: 1
+  repetitions: 1
   n_concurrent: 4
   agent_setup_timeout_multiplier: 1
   max_retries: 1

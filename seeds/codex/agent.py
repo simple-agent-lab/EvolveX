@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import shlex
 import tomllib
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -12,15 +13,26 @@ from harbor.agents.installed.base import CliFlag
 from harbor.agents.installed.codex import Codex
 from harbor.environments.base import BaseEnvironment
 
-TARGET_ROOT = Path(__file__).resolve().parent
+MODULE_ROOT = Path(__file__).resolve().parent
 REMOTE_SKILLS_DIR = "/tmp/evolve-target-skills"
 REMOTE_PLUGIN_MARKETPLACE = "/tmp/evolve-target-marketplace"
 PLUGIN_NAME = "evolve-target"
 PLUGIN_MARKETPLACE = "evolve-target"
 
 
-def _settings() -> dict[str, Any]:
-    with (TARGET_ROOT / "codex.toml").open("rb") as config_file:
+def _target_root(extra_env: object) -> Path:
+    if not isinstance(extra_env, Mapping) or "EVOLVE_CANDIDATE_SOURCE" not in extra_env:
+        return MODULE_ROOT
+    candidate_source = extra_env["EVOLVE_CANDIDATE_SOURCE"]
+    if candidate_source == "":
+        return MODULE_ROOT
+    if not isinstance(candidate_source, str):
+        raise TypeError("EVOLVE_CANDIDATE_SOURCE must be a string")
+    return Path(candidate_source).expanduser().resolve()
+
+
+def _settings(target_root: Path) -> dict[str, Any]:
+    with (target_root / "codex.toml").open("rb") as config_file:
         return tomllib.load(config_file)
 
 
@@ -56,7 +68,8 @@ class HarborAgent(Codex):
     ]
 
     def __init__(self, logs_dir: Path, model_name: str | None = None, **kwargs: Any) -> None:
-        settings = _settings()
+        self._target_root = _target_root(kwargs.get("extra_env"))
+        settings = _settings(self._target_root)
         codex = _table(settings, "codex")
         skills = _table(settings, "skills")
         compaction = _table(settings, "compaction")
@@ -71,7 +84,7 @@ class HarborAgent(Codex):
         kwargs.setdefault("reasoning_effort", codex.get("reasoning_effort", "high"))
         kwargs.setdefault("reasoning_summary", codex.get("reasoning_summary", "auto"))
         kwargs.setdefault("web_search", codex.get("web_search", "disabled"))
-        kwargs.setdefault("prompt_template_path", TARGET_ROOT / "prompt.md")
+        kwargs.setdefault("prompt_template_path", self._target_root / "prompt.md")
         kwargs.setdefault("skills_dir", REMOTE_SKILLS_DIR if self._skills_enabled else None)
 
         if compaction.get("override_defaults", False):
@@ -131,10 +144,10 @@ class HarborAgent(Codex):
 
     async def setup(self, environment: BaseEnvironment) -> None:
         await super().setup(environment)
-        skills = TARGET_ROOT / "skills"
-        marketplace_root = TARGET_ROOT / ".agents"
+        skills = self._target_root / "skills"
+        marketplace_root = self._target_root / ".agents"
         marketplace = marketplace_root / "plugins" / "marketplace.json"
-        plugins = TARGET_ROOT / "plugins"
+        plugins = self._target_root / "plugins"
         remote_directories: list[str] = []
         if self._skills_enabled and skills.is_dir():
             remote_directories.append(REMOTE_SKILLS_DIR)

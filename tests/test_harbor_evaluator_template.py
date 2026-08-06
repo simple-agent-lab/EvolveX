@@ -5,6 +5,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from harbor.agents.installed.codex import Codex
+
 from evolve.config import scaffold_root
 from evolve.splits import build_manifest
 from evolve.workspace import _eval_env, _eval_sh
@@ -42,7 +44,7 @@ def test_harbor_evaluator_uses_locked_workspace_runtime() -> None:
     text = _eval_sh("harbor", "fixture")
 
     assert "PYTHONPATH" not in text
-    assert text.count('--python "$EVOLVE_FRAMEWORK_PYTHON"') == 4
+    assert text.count('--python "$EVOLVE_FRAMEWORK_PYTHON"') == 5
     assert 'python "$PWD/.evolve/launch_splits.py"' in text
     assert 'harbor "$@"' in text
     assert '"$PWD/.evolve/launch_splits.py"' in text
@@ -257,6 +259,135 @@ def test_harbor_evaluator_forwards_workspace_openai_environment() -> None:
     assert 'set -- "$@" --ae "$credential_name=$credential_value"' in text
 
 
+def test_harbor_evaluator_consumes_certified_runtime_environment_files() -> None:
+    text = _eval_sh("harbor", "fixture")
+
+    assert 'done < "$EVOLVE_RUN_DIR/runtime-agent.env"' in text
+    assert 'done < "$EVOLVE_RUN_DIR/runtime-verifier.env"' in text
+    # Subscription isolation is the final authority even if a runtime input is hostile.
+    assert text.index('done < "$EVOLVE_RUN_DIR/runtime-agent.env"') < text.index(
+        'if [ "${EVOLVE_HARBOR_CODEX_SUBSCRIPTION:-0}" = "1" ]; then'
+    )
+
+
+def test_harbor_evaluator_forwards_protected_agent_kwargs() -> None:
+    text = _eval_sh("harbor", "fixture")
+
+    assert "if [ -f evaluator/agent.kwargs ]; then" in text
+    assert 'set -- "$@" --agent-kwarg "$agent_kwarg"' in text
+
+
+def test_harbor_evaluator_isolates_codex_subscription_from_ambient_api_credentials(
+    tmp_path: Path,
+) -> None:
+    evaluator = tmp_path / "evaluator"
+    evaluator.mkdir()
+    _write_executable(evaluator / "eval.sh", _eval_sh("harbor", "fixture"))
+    (evaluator / "eval.env").write_text(
+        _eval_env(
+            "experiment",
+            "fixture",
+            n_concurrent=1,
+            tasks_per_round=1,
+            trials=1,
+            partial_floor=0.8,
+            agent="custom:Agent",
+        )
+    )
+    (evaluator / "agent.kwargs").write_text("reasoning_effort=high\n")
+    _write_evaluator_helpers(evaluator)
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    _write_fake_uv(fake_bin)
+    _write_executable(
+        fake_bin / "harbor",
+        "#!/bin/sh\n"
+        '[ "$OPENAI_API_KEY" = "ambient-api-key" ] || exit 81\n'
+        '[ "$OPENAI_BASE_URL" = "https://ambient-base.invalid/v1" ] || exit 82\n'
+        '[ "$OPENAI_API_BASE" = "https://ambient-api-base.invalid/v1" ] || exit 83\n'
+        'touch "$HARBOR_PARENT_ENV_MARKER"\n'
+        'printf \'%s\\n\' "$@" > "$HARBOR_ARGS_CAPTURE"\n'
+        "jobs_dir=\n"
+        'while [ "$#" -gt 0 ]; do\n'
+        '  if [ "$1" = "--jobs-dir" ]; then shift; jobs_dir=$1; fi\n'
+        "  shift || true\n"
+        "done\n"
+        'mkdir -p "$jobs_dir/trial"\n'
+        'printf \'%s\\n\' \'{"task_name":"task","trial_name":"trial","verifier_result":{"rewards":{"reward":1}}}\' > "$jobs_dir/trial/result.json"\n',
+    )
+    _write_executable(fake_bin / "docker", "#!/bin/sh\nexit 0\n")
+
+    args_capture = tmp_path / "args"
+    parent_env_marker = tmp_path / "parent-env-retained"
+    env = {
+        **os.environ,
+        "HOME": str(tmp_path / "home"),
+        "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
+        "HARBOR_ARGS_CAPTURE": str(args_capture),
+        "HARBOR_PARENT_ENV_MARKER": str(parent_env_marker),
+        "EVOLVE_RUN_DIR": str(tmp_path / "run"),
+        "EVOLVE_ATTEMPT_ID": "subscription-isolation",
+        "EVOLVE_FRAMEWORK_PYTHON": sys.executable,
+        "EVOLVE_CANDIDATE_RUNTIME_ENV_JSON": "{}",
+        "EVOLVE_CANDIDATE_RUNTIME_MOUNTS_JSON": "[]",
+    }
+    env.update(
+        {
+            "EVOLVE_HARBOR_CODEX_SUBSCRIPTION": "1",
+            "CODEX_FORCE_AUTH_JSON": "1",
+            "OPENAI_API_KEY": "ambient-api-key",
+            "OPENAI_BASE_URL": "https://ambient-base.invalid/v1",
+            "OPENAI_API_BASE": "https://ambient-api-base.invalid/v1",
+            "HTTP_PROXY": "http://proxy.invalid:8118",
+            "HTTPS_PROXY": "http://proxy.invalid:8118",
+        }
+    )
+
+    result = subprocess.run(
+        [str(evaluator / "eval.sh")],
+        cwd=tmp_path,
+        env=env,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    args = args_capture.read_text().splitlines()
+    assert args[args.index("--agent-kwarg") + 1] == "reasoning_effort=high"
+    agent_environment = [args[index + 1] for index, value in enumerate(args) if value == "--ae"]
+    openai_names = {"OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_API_BASE"}
+    assert [entry for entry in agent_environment if entry.partition("=")[0] in openai_names] == [
+        "OPENAI_API_KEY=",
+        "OPENAI_BASE_URL=",
+        "OPENAI_API_BASE=",
+    ]
+    for ambient_value in (
+        "ambient-api-key",
+        "https://ambient-base.invalid/v1",
+        "https://ambient-api-base.invalid/v1",
+    ):
+        assert all(ambient_value not in entry for entry in agent_environment)
+    assert parent_env_marker.exists()
+    assert "CODEX_FORCE_AUTH_JSON=1" in agent_environment
+    assert "HTTP_PROXY=http://proxy.invalid:8118" in agent_environment
+    assert "HTTPS_PROXY=http://proxy.invalid:8118" in agent_environment
+
+
+def test_installed_harbor_codex_empty_extra_env_shadows_parent_base_url(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://ambient-base.invalid/v1")
+
+    agent = Codex(
+        logs_dir=tmp_path,
+        extra_env={"OPENAI_BASE_URL": ""},
+    )
+
+    assert agent._get_env("OPENAI_BASE_URL") == ""
+
+
 def test_harbor_evaluator_prefers_explicit_agent_proxy_over_ambient_proxy(
     tmp_path: Path,
 ) -> None:
@@ -317,7 +448,7 @@ def test_harbor_evaluator_prefers_explicit_agent_proxy_over_ambient_proxy(
     args = args_capture.read_text().splitlines()
     agent_environment = [args[index + 1] for index, value in enumerate(args) if value == "--ae"]
     verifier_environment = [args[index + 1] for index, value in enumerate(args) if value == "--ve"]
-    expected = "172.17.0.1,127.0.0.1,localhost"
+    expected = "172.17.0.1,127.0.0.1,localhost,model.example"
     assert [value for value in agent_environment if value.startswith("NO_PROXY=")][-1] == f"NO_PROXY={expected}"
     assert [value for value in agent_environment if value.startswith("no_proxy=")][-1] == f"no_proxy={expected}"
     assert f"NO_PROXY={expected}" in verifier_environment
@@ -426,11 +557,16 @@ def test_harbor_stage_limit_and_anchor_task_file_override(tmp_path: Path) -> Non
     )
     (evaluator / "tasks" / "train.txt").write_text("train-task\n")
     (evaluator / "tasks" / "sealed.txt").write_text("sealed-a\nsealed-b\n")
+    (evaluator / "splits.json").write_text('{"resolved":false}\n')
     _write_evaluator_helpers(evaluator)
+    evolve_dir = tmp_path / ".evolve"
+    evolve_dir.mkdir()
+    (evolve_dir / "launch_splits.py").write_text((scaffold_root() / "workspace" / "launch_splits.py").read_text())
 
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     _write_fake_uv(fake_bin)
+    _write_executable(fake_bin / "python", f'#!/bin/sh\nexec "{sys.executable}" "$@"\n')
     _write_executable(
         fake_bin / "harbor",
         "#!/bin/sh\n"
@@ -525,6 +661,88 @@ def test_harbor_run_plan_escapes_literal_task_name_patterns(tmp_path: Path) -> N
     args = args_capture.read_text().splitlines()
     included = [args[index + 1] for index, value in enumerate(args) if value == "--include-task-name"]
     assert included == ["task[[]1]"]
+
+
+def test_resolved_split_task_limit_is_authoritative_for_zero_reward(tmp_path: Path) -> None:
+    dataset = tmp_path / "dataset"
+    dataset.mkdir()
+    for name in ("task-a", "task-b", "task-c"):
+        task = dataset / name
+        task.mkdir()
+        (task / "task.toml").write_text(f'version = "1.0"\nname = "{name}"\n')
+    manifest = build_manifest(
+        str(dataset),
+        {"train": 1.0, "gate": 0.0, "sealed": 0.0, "seed": 0},
+        base_dir=tmp_path,
+        sampling="static",
+        gate_limit=0,
+    )
+    expected_task = manifest["tasks"]["train"][0]
+    evaluator = tmp_path / "evaluator"
+    evaluator.mkdir()
+    _write_executable(evaluator / "eval.sh", _eval_sh("harbor", str(dataset)))
+    (evaluator / "eval.env").write_text(
+        _eval_env(
+            "experiment",
+            str(dataset),
+            n_concurrent=1,
+            tasks_per_round=3,
+            trials=1,
+            partial_floor=0.8,
+            agent="target.agent:HarborAgent",
+        )
+    )
+    (evaluator / "splits.json").write_text(json.dumps(manifest))
+    _write_evaluator_helpers(evaluator)
+    evolve_dir = tmp_path / ".evolve"
+    evolve_dir.mkdir()
+    (evolve_dir / "launch_splits.py").write_text((scaffold_root() / "workspace" / "launch_splits.py").read_text())
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    _write_fake_uv(fake_bin)
+    _write_executable(fake_bin / "python", f'#!/bin/sh\nexec "{sys.executable}" "$@"\n')
+    _write_executable(
+        fake_bin / "harbor",
+        "#!/bin/sh\n"
+        'printf \'%s\\n\' "$@" > "$HARBOR_ARGS_CAPTURE"\n'
+        "jobs_dir=\n"
+        'while [ "$#" -gt 0 ]; do\n'
+        '  if [ "$1" = "--jobs-dir" ]; then shift; jobs_dir=$1; fi\n'
+        "  shift || true\n"
+        "done\n"
+        'mkdir -p "$jobs_dir/trial"\n'
+        f"printf '%s\\n' '{json.dumps({'task_name': expected_task, 'trial_name': 'trial', 'verifier_result': {'rewards': {'reward': 0.0}}})}' > \"$jobs_dir/trial/result.json\"\n",
+    )
+
+    run_dir = tmp_path / "run"
+    args_capture = tmp_path / "args"
+    env = {
+        **os.environ,
+        "HOME": str(tmp_path / "home"),
+        "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
+        "HARBOR_ARGS_CAPTURE": str(args_capture),
+        "EVOLVE_RUN_DIR": str(run_dir),
+        "EVOLVE_WORKSPACE": str(tmp_path),
+        "EVOLVE_ATTEMPT_ID": "limited-zero-reward",
+        "EVOLVE_EVAL_SPLIT": "train",
+        "EVOLVE_FRAMEWORK_PYTHON": sys.executable,
+        "EVOLVE_TASK_LIMIT": "1",
+    }
+
+    result = subprocess.run([str(evaluator / "eval.sh")], cwd=tmp_path, env=env, text=True, capture_output=True)
+
+    assert result.returncode == 0, result.stderr
+    assert (run_dir / "status").read_text().strip() == "complete"
+    assert json.loads((run_dir / "task-split.json").read_text())["tasks"] == [expected_task]
+    metrics = json.loads((run_dir / "metrics.json").read_text())["dimensions"]
+    assert metrics == {
+        "completed_trials": 1,
+        "expected_trials": 1,
+        "harbor_rc": 0,
+        "missing_trials": 0,
+        "pass_rate": 0.0,
+    }
 
 
 def test_harbor_smoke_is_install_only_and_exposes_raw_diagnostics(tmp_path: Path) -> None:
@@ -737,7 +955,7 @@ def test_score_parser_accepts_complete_final_vector_after_nonzero_harbor_exit(tm
     assert metrics["completed_trials"] == 2
 
 
-def test_score_parser_respects_explicit_task_limit_over_frozen_selection(tmp_path: Path) -> None:
+def test_score_parser_prefers_frozen_selection_over_explicit_task_limit(tmp_path: Path) -> None:
     evaluator = tmp_path / "evaluator"
     evaluator.mkdir()
     _write_evaluator_helpers(evaluator)
@@ -767,11 +985,12 @@ def test_score_parser_respects_explicit_task_limit_over_frozen_selection(tmp_pat
         capture_output=True,
     )
 
-    assert result.returncode == 0, result.stderr
-    assert (run_dir / "status").read_text().strip() == "complete"
+    assert result.returncode == 3, result.stderr
+    assert (run_dir / "status").read_text().strip() == "infra_failed"
     metrics = json.loads((run_dir / "metrics.json").read_text())["dimensions"]
-    assert metrics["expected_trials"] == 1
+    assert metrics["expected_trials"] == 30
     assert metrics["completed_trials"] == 1
+    assert metrics["missing_trials"] == 29
 
 
 def test_harbor_shell_uses_canonical_parser_result() -> None:

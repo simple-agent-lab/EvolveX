@@ -13,9 +13,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .config import DEFAULT_RECIPE, RECIPE_NAMES, default_config
-from .splits import build_manifest
-from .workspace import _path_recipe
+from ..config import DEFAULT_RECIPE, RECIPE_NAMES, default_config
+from ..splits import build_manifest
+from ..workspace import _path_recipe
 
 _TEST_ONLY_SEEDS = frozenset({"builtin-dummy"})
 _BUILTIN_SEEDS = frozenset({"builtin-codex", "builtin-local-smoke"})
@@ -97,20 +97,10 @@ def _check_dataset(evaluator: dict[str, Any], *, rollout_needs_dataset: bool) ->
     dataset = str(evaluator.get("dataset") or "")
     if not dataset:
         return Check("dataset", "fail", "evaluator.dataset is empty; pass --dataset")
-    split = evaluator.get("split")
-    if not isinstance(split, dict):
-        split = {"train": 1.0, "gate": 0.0, "sealed": 0.0, "seed": 0}
-    try:
-        manifest = build_manifest(
-            dataset,
-            split,
-            base_dir=Path.cwd(),
-            sampling=str(evaluator.get("sampling", "static")),
-            gate_limit=int(evaluator.get("tasks_per_round", 1)),
-        )
-    except ValueError as error:
-        return Check("dataset", "fail", str(error))
-    if not manifest["resolved"]:
+    candidate = Path(dataset).expanduser()
+    if not candidate.is_absolute():
+        candidate = Path.cwd() / candidate
+    if not candidate.is_dir():
         if rollout_needs_dataset:
             return Check(
                 "dataset",
@@ -123,8 +113,22 @@ def _check_dataset(evaluator: dict[str, Any], *, rollout_needs_dataset: bool) ->
             "warn",
             f"{dataset!r} does not resolve to a local task directory; splits stay symbolic",
         )
-    resolved = Path(str(manifest["dataset"]))
+    resolved = candidate.resolve()
+    split = evaluator.get("split")
+    if not isinstance(split, dict):
+        split = {"train": 1.0, "gate": 0.0, "sealed": 0.0, "seed": 0}
     valid, invalid = _valid_harbor_task_dirs(resolved)
+    if valid and valid != [resolved.name]:
+        try:
+            build_manifest(
+                dataset,
+                split,
+                base_dir=Path.cwd(),
+                sampling=str(evaluator.get("sampling", "static")),
+                gate_limit=int(evaluator.get("tasks_per_round", 1)),
+            )
+        except ValueError as error:
+            return Check("dataset", "fail", str(error))
     if not valid:
         return Check(
             "dataset",
@@ -156,6 +160,7 @@ def run_preflight(
     recipe_path: Path | None,
     seed: str | None,
     dataset: str | None,
+    tasks_per_round: int | None = None,
 ) -> list[Check]:
     checks = [
         _binary("uv", "the workspace console runs through it"),
@@ -167,6 +172,8 @@ def run_preflight(
         evaluator = dict(config.get("evaluator") or {})
         if dataset:
             evaluator["dataset"] = dataset
+        if tasks_per_round is not None:
+            evaluator["tasks_per_round"] = tasks_per_round
         target = dict(config.get("target") or {})
         engine = str(evaluator.get("engine") or "")
         checks.append(_check_digest(engine))

@@ -168,13 +168,13 @@ contract above. Candidate dependency preparation directs `uv sync` to a
 temporary environment under the run directory rather than `target/.venv`, and
 removes that temporary environment after preparation.
 
-Codex authentication always uses a host `auth.json`: run `codex login` before
-starting the experiment. For `agent: codex`, the Harbor runner automatically
-sets `CODEX_FORCE_AUTH_JSON=1`; the built-in Codex target also requires
-`~/.codex/auth.json`. Use `CODEX_AUTH_JSON_PATH` when the file is stored at a
-different path. Credentials are uploaded at runtime and never written into the
-recipe, target, or retained Harbor command. Proxy values are forwarded from the
-standard proxy environment or `EVOLVE_HARBOR_*_PROXY` overrides.
+API-key authentication is the default for every agent. Codex agents may instead
+use an explicit `CODEX_AUTH_JSON_PATH`; this path takes precedence over
+`OPENAI_API_KEY`, and there is no automatic home-directory lookup. Non-Codex
+agents do not accept Codex auth files. Credentials are forwarded at runtime and
+never written into the recipe, target, retained Harbor command, profile, or
+contract. Standard proxy variables are optional and forwarded through the
+certified role-specific runtime inputs, with the model endpoint bypassed.
 
 ## Retained Harbor evidence
 

@@ -22,8 +22,10 @@ from evolve.frozen.interfaces import OperatorContext
 from evolve.operators import _operator_deadline_s
 
 ROOT = Path(__file__).resolve().parents[1]
-FILE_TASK_AGENT = "evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent"
-CANDIDATE_AGENT = "evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent"
+INSTALLED_AGENT = "evolve.integrations.harbor.miniswe_task_file:InstalledMiniSweAgent"
+LEGACY_INSTALLED_AGENT = "evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent"
+CANDIDATE_AGENT = "evolve.integrations.harbor.miniswe_candidate:CandidateMiniSweAgent"
+LEGACY_CANDIDATE_AGENT = "evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent"
 
 
 def _harbor_runner_module():
@@ -256,16 +258,35 @@ def test_harbor_rejects_oversized_instruction_with_unsafe_agent(tmp_path: Path) 
         runner._instruction_transport("mini-swe-agent", prompt)
 
 
-def test_harbor_accepts_oversized_instruction_with_file_agent(tmp_path: Path) -> None:
+@pytest.mark.parametrize("agent", [INSTALLED_AGENT, LEGACY_INSTALLED_AGENT])
+def test_harbor_accepts_oversized_instruction_with_installed_agent(tmp_path: Path, agent: str) -> None:
     runner = _harbor_runner_module()
     prompt = tmp_path / "prompt.md"
     prompt.write_text("x" * 200_000)
 
-    assert runner._instruction_transport(FILE_TASK_AGENT, prompt) == {
+    assert runner._instruction_transport(agent, prompt) == {
         "bytes": 200_000,
         "mode": "mounted-file",
         "safe": True,
     }
+
+
+@pytest.mark.parametrize(
+    "agent",
+    [
+        CANDIDATE_AGENT,
+        LEGACY_CANDIDATE_AGENT,
+        "custom:FileTaskMiniSweAgent",
+        "custom:MiniSweSourceAgent",
+    ],
+)
+def test_harbor_does_not_infer_safe_transport_from_class_suffix(tmp_path: Path, agent: str) -> None:
+    runner = _harbor_runner_module()
+    prompt = tmp_path / "prompt.md"
+    prompt.write_text("x" * 200_000)
+
+    with pytest.raises(RuntimeError, match="harbor_instruction_transport_unsafe"):
+        runner._instruction_transport(agent, prompt)
 
 
 def _git(root: Path, *args: str) -> str:
@@ -390,15 +411,12 @@ if "--config" in sys.argv:
     job_name = job_config["job_name"]
     agent_config = job_config["agents"][0]
     if agent_config["name"] not in (
-        "evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent",
+        "evolve.integrations.harbor.miniswe_task_file:InstalledMiniSweAgent",
         "evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent",
     ):
         raise SystemExit("unexpected config agent")
     if agent_config["model_name"] != "gpt-test":
         raise SystemExit("expected config model")
-    mounts = job_config["environment"]["mounts"]
-    if not any(item.get("target") == "/installed-agent/uv-cache" for item in mounts):
-        raise SystemExit("expected persistent uv cache mount")
     readonly = "/app/task/workspace" not in compile_config.get("artifacts", [])
     miniswe = True
 else:
@@ -413,9 +431,20 @@ else:
     if option("--workdir") != "/app":
         raise SystemExit("expected /app workdir")
     agent_name = option("--agent")
-    if agent_name not in ("codex", "mini-swe-agent", "evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent"):
+    if agent_name not in (
+        "codex",
+        "mini-swe-agent",
+        "evolve.integrations.harbor.miniswe_candidate:CandidateMiniSweAgent",
+        "evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent",
+        "evolve.integrations.harbor.miniswe_task_file:InstalledMiniSweAgent",
+        "evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent",
+    ):
         raise SystemExit("unexpected agent")
-    miniswe = agent_name in ("mini-swe-agent", "evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent")
+    miniswe = agent_name in (
+        "mini-swe-agent",
+        "evolve.integrations.harbor.miniswe_task_file:InstalledMiniSweAgent",
+        "evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent",
+    )
     if option("--model") != "gpt-test":
         raise SystemExit("expected gpt-test model")
     source = Path(option("--path", "-p"))
@@ -649,34 +678,26 @@ def test_harbor_rejects_symlinked_artifact_ancestor_before_install(
     assert not (checkout / "artifacts" / "generations" / "1" / "handoff.md").exists()
 
 
-def test_harbor_meta_agent_injects_staged_miniswe_candidate_source(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("agent", [CANDIDATE_AGENT, LEGACY_CANDIDATE_AGENT])
+def test_candidate_adapter_uses_generic_meta_agent_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, agent: str
 ) -> None:
     checkout, run_dir = _checkout(tmp_path)
     bin_dir = tmp_path / "bin"
     _install_fake_harbor(bin_dir)
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
     ctx = _ctx(checkout, run_dir)
-    ctx.config["agent"] = CANDIDATE_AGENT
+    ctx.config["agent"] = agent
 
     _harbor_runner_module().run_agent(checkout, "failure evidence", ctx)
 
     harbor_root = run_dir / "meta_agent" / "harbor"
     command = json.loads((harbor_root / "command.json").read_text())
     harbor_index = command.index("harbor")
-    assert command[harbor_index : harbor_index + 3] == ["harbor", "exec", "--config"]
-    config = json.loads((harbor_root / "exec-config.json").read_text())
-    job = config["map"]["job"]
-    candidate_source = job["agents"][0]["env"]["EVOLVE_CANDIDATE_SOURCE"]
-    assert candidate_source.endswith("/task/workspace/target")
-    mounts = job["environment"]["mounts"]
-    assert mounts == [
-        {
-            "type": "bind",
-            "source": str((checkout / "runs" / "runtime" / "uv-cache").resolve()),
-            "target": "/installed-agent/uv-cache",
-        }
-    ]
+    assert command[harbor_index : harbor_index + 2] == ["harbor", "exec"]
+    assert "--config" not in command
+    assert command[command.index("--agent") + 1] == agent
+    assert not (harbor_root / "exec-config.json").exists()
 
 
 def test_file_task_meta_agent_configures_per_attempt_timeout_and_timeout_retry(
@@ -690,7 +711,7 @@ def test_file_task_meta_agent_configures_per_attempt_timeout_and_timeout_retry(
     ctx = _ctx(checkout, run_dir)
     ctx.config.update(
         {
-            "agent": FILE_TASK_AGENT,
+            "agent": INSTALLED_AGENT,
             "image": "evolve-meta-agent:test",
             "max_retries": 1,
             "timeout_s": 3600,
@@ -713,6 +734,8 @@ def test_file_task_meta_agent_configures_per_attempt_timeout_and_timeout_retry(
     job = config.map.job
     assert config.map.compile.environments[0].docker_image == "evolve-meta-agent:test"
     assert job.agents[0].override_timeout_sec == 3600
+    assert "EVOLVE_CANDIDATE_SOURCE" not in job.agents[0].env
+    assert job.environment.mounts is None
     assert job.n_attempts == 1
     assert job.retry.max_retries == 1
     assert job.retry.exclude_exceptions == {
@@ -841,7 +864,7 @@ def test_agent_timeout_retry_loop_fits_full_lifecycle_budgets(
     assert elapsed_s == runner._meta_agent_process_timeout_s(
         {
             "runner": "harbor",
-            "agent": FILE_TASK_AGENT,
+            "agent": INSTALLED_AGENT,
             "timeout_s": 3600,
             "max_retries": 1,
         }
@@ -850,7 +873,7 @@ def test_agent_timeout_retry_loop_fits_full_lifecycle_budgets(
         "meta_agent",
         {
             "runner": "harbor",
-            "agent": FILE_TASK_AGENT,
+            "agent": INSTALLED_AGENT,
             "max_retries": 1,
         },
         3600,
@@ -860,8 +883,8 @@ def test_agent_timeout_retry_loop_fits_full_lifecycle_budgets(
 @pytest.mark.parametrize(
     "agent",
     [
-        CANDIDATE_AGENT,
-        FILE_TASK_AGENT,
+        INSTALLED_AGENT,
+        LEGACY_INSTALLED_AGENT,
     ],
 )
 def test_harbor_meta_agent_rejects_unsuccessful_miniswe_exit(

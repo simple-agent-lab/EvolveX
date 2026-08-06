@@ -32,16 +32,6 @@ def _write_outputs(run_dir: Path, *, status: str, metrics: dict[str, object], sc
 
 
 def _expected_trials(run_dir: Path, env_values: dict[str, str]) -> int:
-    run_plan = os.environ.get("EVOLVE_RUN_PLAN")
-    if run_plan:
-        payload = json.loads(Path(run_plan).read_text())
-        expected = payload.get("expected_trials") if isinstance(payload, dict) else None
-        if not isinstance(expected, int) or isinstance(expected, bool) or expected < 1:
-            raise ValueError("evaluation run plan has invalid expected_trials")
-        return expected
-    explicit = os.environ.get("EVOLVE_HARBOR_EXPECTED_TRIALS")
-    if explicit:
-        return max(1, int(explicit))
     selection = run_dir / "task-split.json"
     if selection.exists():
         payload = json.loads(selection.read_text())
@@ -50,7 +40,12 @@ def _expected_trials(run_dir: Path, env_values: dict[str, str]) -> int:
             return max(1, len(tasks) * int(env_values.get("EVOLVE_HARBOR_ATTEMPTS", "1")))
     return max(
         1,
-        int(env_values.get("EVOLVE_HARBOR_EXPECTED_TRIALS", env_values.get("EVOLVE_HARBOR_N", "1"))),
+        int(
+            os.environ.get(
+                "EVOLVE_HARBOR_EXPECTED_TRIALS",
+                env_values.get("EVOLVE_HARBOR_EXPECTED_TRIALS", env_values.get("EVOLVE_HARBOR_N", "1")),
+            )
+        ),
     )
 
 

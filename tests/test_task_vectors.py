@@ -76,6 +76,53 @@ def test_trial_results_converts_normalized_vector_to_canonical_evidence() -> Non
     assert trial_results(vector)[0].exception_type == "RuntimeError"
 
 
+def test_trial_results_preserves_safe_failure_category() -> None:
+    vector = {
+        "schema_version": 1,
+        "tasks": {
+            "task-a": {
+                "trials": [
+                    {
+                        "trial": 0,
+                        "status": "infrastructure_failed",
+                        "reward": None,
+                        "owner": "evaluator",
+                        "failure_category": "verifier_dependency_download",
+                    }
+                ]
+            }
+        },
+    }
+
+    assert trial_results(vector)[0].failure_category == "verifier_dependency_download"
+
+
+@pytest.mark.parametrize(
+    "category",
+    ["Uppercase", "contains-dash", "x" * 65, 17],
+)
+def test_task_vector_rejects_unsafe_failure_category(category: object) -> None:
+    vector = {
+        "schema_version": 1,
+        "tasks": {
+            "task-a": {
+                "trials": [
+                    {
+                        "trial": 0,
+                        "status": "infrastructure_failed",
+                        "reward": None,
+                        "owner": "evaluator",
+                        "failure_category": category,
+                    }
+                ]
+            }
+        },
+    }
+
+    with pytest.raises(TaskVectorError, match="invalid failure_category for task-a trial 0"):
+        normalize_task_vector(vector)
+
+
 def test_trial_results_preserves_repair_attempt_provenance() -> None:
     vector = {
         "schema_version": 1,
@@ -256,6 +303,7 @@ def test_stub_eval_emits_configured_completed_trials_without_changing_score(tmp_
     (target_dir / "agent.py").write_text("# FAIL task-0\n")
     run_dir = tmp_path / "run"
     script = Path(__file__).resolve().parents[1] / "scaffolds" / "workspace" / "evaluator" / "stub_eval.py"
+    assert "from __future__ import annotations" in script.read_text()
 
     result = subprocess.run(
         [sys.executable, str(script), str(run_dir)],

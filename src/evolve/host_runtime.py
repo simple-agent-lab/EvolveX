@@ -18,7 +18,7 @@ def clean_python_env(source: Mapping[str, str] | None = None) -> dict[str, str]:
 
 
 def uv_executable(env: Mapping[str, str] | None = None) -> str:
-    """Resolve uv from the explicit Evolve override or the supplied PATH."""
+    """Resolve uv from the explicit EvolveX override or the supplied PATH."""
     values = os.environ if env is None else env
     configured = values.get("EVOLVE_UV_BINARY")
     candidate = configured or shutil.which("uv", path=values.get("PATH"))
