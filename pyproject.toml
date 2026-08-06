@@ -26,10 +26,10 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/simple-agent-lab/simple-evolve-agent"
-Documentation = "https://github.com/simple-agent-lab/simple-evolve-agent#documentation"
-Repository = "https://github.com/simple-agent-lab/simple-evolve-agent"
-Issues = "https://github.com/simple-agent-lab/simple-evolve-agent/issues"
+Homepage = "https://github.com/simple-agent-lab/EvolveX"
+Documentation = "https://github.com/simple-agent-lab/EvolveX#documentation"
+Repository = "https://github.com/simple-agent-lab/EvolveX"
+Issues = "https://github.com/simple-agent-lab/EvolveX/issues"
 
 [project.scripts]
 evolve = "evolve.cli:main"

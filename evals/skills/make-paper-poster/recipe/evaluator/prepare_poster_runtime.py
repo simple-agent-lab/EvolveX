@@ -98,7 +98,7 @@ def renderer_asset(system: str | None = None, machine: str | None = None) -> Ass
 
 
 def download(asset: Asset, destination: Path) -> None:
-    request = urllib.request.Request(asset.url, headers={"User-Agent": "simple-evolve-agent-paper-poster/1"})
+    request = urllib.request.Request(asset.url, headers={"User-Agent": "evolvex-paper-poster/1"})
     with urllib.request.urlopen(request, timeout=120) as response, destination.open("wb") as output:
         shutil.copyfileobj(response, output)
     actual = sha256_file(destination)

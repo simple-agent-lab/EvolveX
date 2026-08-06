@@ -8,7 +8,8 @@
     "SVG rendered to a 1600px-wide PNG",
     "programmatic check results"
   ],
-  "purpose": "Produce one high-signal prose critique of the poster's aesthetic quality and visual communication. The evaluator must not assign numeric quality scores.",
+  "purpose": "Produce one high-signal prose critique of the poster's aesthetic quality, visual communication, and paper fidelity for the outer agent's next mutation. The evaluator must not assign numeric quality scores.",
+  "feedback_policy": "Visual quality and paper fidelity are advisory natural-language mutation signals for the outer agent; they do not affect binary reward.",
   "review_focus": [
     "authored visual language: deliberate palette, effects, and paper-specific visual identity rather than generic AI-template styling",
     "readability and hierarchy: legible typography, contrast, focal point, and a clear path from problem to method to evidence to takeaway",
@@ -27,6 +28,7 @@
       "command": "python3 /tests/svg_check.py --input poster.svg --format json",
       "reads": [
         "data.check.summary.textOverflow",
+        "data.check.summary.nodeOverflow",
         "data.check.summary.nodeOverlap",
         "data.check.summary.textOcclusion",
         "data.check.issues[].severity"
@@ -49,11 +51,7 @@
     },
     {
       "id": "geometry_integrity",
-      "description": "No text is clipped, truncated, outside the viewBox, or materially occluded. No unintended overlap hides content or makes two content regions ambiguous. Checker warnings alone do not fail this gate; confirm them against the rendered PNG."
-    },
-    {
-      "id": "paper_fidelity",
-      "description": "The poster does not invent a material claim, result, number, comparison, dataset, or causal conclusion, and it does not reverse the paper's meaning."
+      "description": "No text or non-text geometry extends outside the SVG viewBox. Overlap and occlusion warnings remain advisory review cues because intentional foreground/background overlap can be valid."
     }
   ]
 }

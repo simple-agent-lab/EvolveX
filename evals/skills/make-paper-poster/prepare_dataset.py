@@ -62,7 +62,7 @@ def load_cases() -> list[dict[str, object]]:
 def download(url: str, destination: Path) -> str:
     if not destination.is_file():
         pending = destination.with_suffix(".pending")
-        request = urllib.request.Request(url, headers={"User-Agent": "simple-evolve-agent-paper-poster/1"})
+        request = urllib.request.Request(url, headers={"User-Agent": "evolvex-paper-poster/1"})
         with urllib.request.urlopen(request, timeout=120) as response, pending.open("wb") as stream:
             shutil.copyfileobj(response, stream)
         pending.replace(destination)

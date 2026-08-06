@@ -164,24 +164,45 @@ def svg_geometry_check() -> dict[str, object]:
     command = ["python3", str(SVG_CHECK), "--input", str(POSTER), "--format", "json"]
     completed = subprocess.run(command, capture_output=True, text=True, timeout=180)
     text = completed.stdout.strip() or completed.stderr.strip()
+    if completed.returncode != 0:
+        raise RuntimeError(f"SVG geometry checker failed with exit code {completed.returncode}: {text[-1200:]}")
     try:
         payload = json.loads(text)
-    except json.JSONDecodeError:
-        return {"available": True, "exit_code": completed.returncode, "parse_error": text[-1200:]}
+    except json.JSONDecodeError as error:
+        raise RuntimeError(f"SVG geometry checker returned invalid JSON: {text[-1200:]}") from error
+    summary = payload.get("summary") if isinstance(payload, dict) else None
+    if (
+        not isinstance(payload, dict)
+        or payload.get("checker") != "local-svg-geometry-v1"
+        or not isinstance(payload.get("valid"), bool)
+        or not isinstance(summary, dict)
+        or not isinstance(payload.get("issues"), list)
+    ):
+        raise RuntimeError("SVG geometry checker returned an invalid result schema")
+    for key in ("textOverflow", "nodeOverflow"):
+        count = summary.get(key)
+        if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+            raise RuntimeError(f"SVG geometry checker returned an invalid {key} count")
     return {"available": True, "exit_code": completed.returncode, "result": payload}
 
 
 def geometry_hard_failures(geometry: dict[str, object]) -> list[str]:
     result = geometry.get("result")
     if not isinstance(result, dict):
-        return []
+        raise RuntimeError("SVG geometry checker result is missing")
     summary = result.get("summary")
     if not isinstance(summary, dict):
-        return []
-    count = summary.get("textOverflow", 0)
-    if isinstance(count, bool) or not isinstance(count, (int, float)) or count <= 0:
-        return []
-    return [f"geometry_integrity: {int(count)} text elements overflow the SVG viewBox"]
+        raise RuntimeError("SVG geometry checker summary is missing")
+    failures: list[str] = []
+    for key, label in (("textOverflow", "text"), ("nodeOverflow", "non-text")):
+        count = summary.get(key, 0)
+        if isinstance(count, bool) or not isinstance(count, (int, float)):
+            raise RuntimeError(f"SVG geometry checker returned an invalid {key} count")
+        if count > 0:
+            failures.append(f"geometry_integrity: {int(count)} {label} elements overflow the SVG viewBox")
+    if result.get("valid") is False and not failures:
+        raise RuntimeError("SVG geometry checker reported an unrecognized hard failure")
+    return failures
 
 
 def run_judge(programmatic: dict[str, object]) -> dict[str, object]:
@@ -298,10 +319,7 @@ def main() -> int:
         write_result(payload, 0.0)
         return 0
 
-    try:
-        geometry: dict[str, object] = svg_geometry_check()
-    except (subprocess.SubprocessError, OSError) as exc:
-        geometry = {"available": False, "error": str(exc)}
+    geometry: dict[str, object] = svg_geometry_check()
     programmatic = {**static_signals, "svg_geometry_check": geometry, "svg_render": render_receipt}
     judgment = run_judge(programmatic)
     hard_failures = geometry_hard_failures(geometry)

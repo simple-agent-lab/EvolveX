@@ -5,12 +5,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
 
 _NUMBER = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?"
+_TRANSFORM = re.compile(r"([A-Za-z]+)\s*\(([^)]*)\)")
+Matrix = tuple[float, float, float, float, float, float]
+IDENTITY: Matrix = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
 
 
 @dataclass(frozen=True)
@@ -49,6 +53,84 @@ def _number(value: str | None, default: float = 0.0) -> float:
 
 def _numbers(value: str | None) -> list[float]:
     return [float(match.group(0)) for match in re.finditer(_NUMBER, value or "")]
+
+
+def _multiply(left: Matrix, right: Matrix) -> Matrix:
+    a1, b1, c1, d1, e1, f1 = left
+    a2, b2, c2, d2, e2, f2 = right
+    return (
+        a1 * a2 + c1 * b2,
+        b1 * a2 + d1 * b2,
+        a1 * c2 + c1 * d2,
+        b1 * c2 + d1 * d2,
+        a1 * e2 + c1 * f2 + e1,
+        b1 * e2 + d1 * f2 + f1,
+    )
+
+
+def _parse_transform(value: str | None) -> Matrix:
+    if not value or not value.strip():
+        return IDENTITY
+    matrix = IDENTITY
+    position = 0
+    for match in _TRANSFORM.finditer(value):
+        if value[position : match.start()].strip(" ,\t\r\n"):
+            raise ValueError(f"unsupported SVG transform syntax: {value}")
+        name, arguments = match.group(1), _numbers(match.group(2))
+        if name == "matrix" and len(arguments) == 6:
+            current: Matrix = tuple(arguments)  # type: ignore[assignment]
+        elif name == "translate" and len(arguments) in {1, 2}:
+            current = (1.0, 0.0, 0.0, 1.0, arguments[0], arguments[1] if len(arguments) == 2 else 0.0)
+        elif name == "scale" and len(arguments) in {1, 2}:
+            current = (arguments[0], 0.0, 0.0, arguments[-1], 0.0, 0.0)
+        elif name == "rotate" and len(arguments) in {1, 3}:
+            angle = math.radians(arguments[0])
+            cosine, sine = math.cos(angle), math.sin(angle)
+            rotation: Matrix = (cosine, sine, -sine, cosine, 0.0, 0.0)
+            if len(arguments) == 1:
+                current = rotation
+            else:
+                center_x, center_y = arguments[1:]
+                current = _multiply(
+                    _multiply((1.0, 0.0, 0.0, 1.0, center_x, center_y), rotation),
+                    (1.0, 0.0, 0.0, 1.0, -center_x, -center_y),
+                )
+        elif name == "skewX" and len(arguments) == 1:
+            current = (1.0, 0.0, math.tan(math.radians(arguments[0])), 1.0, 0.0, 0.0)
+        elif name == "skewY" and len(arguments) == 1:
+            current = (1.0, math.tan(math.radians(arguments[0])), 0.0, 1.0, 0.0, 0.0)
+        else:
+            raise ValueError(f"unsupported SVG transform: {name}({match.group(2)})")
+        matrix = _multiply(matrix, current)
+        position = match.end()
+    if position == 0 or value[position:].strip(" ,\t\r\n"):
+        raise ValueError(f"unsupported SVG transform syntax: {value}")
+    return matrix
+
+
+def _transform_point(matrix: Matrix, x: float, y: float) -> tuple[float, float]:
+    a, b, c, d, e, f = matrix
+    return a * x + c * y + e, b * x + d * y + f
+
+
+def _transform_box(box: Box, matrix: Matrix) -> Box:
+    corners = [
+        _transform_point(matrix, box.x, box.y),
+        _transform_point(matrix, box.right, box.y),
+        _transform_point(matrix, box.x, box.bottom),
+        _transform_point(matrix, box.right, box.bottom),
+    ]
+    xs = [point[0] for point in corners]
+    ys = [point[1] for point in corners]
+    return Box(
+        min(xs),
+        min(ys),
+        max(xs) - min(xs),
+        max(ys) - min(ys),
+        box.kind,
+        box.element,
+        box.order,
+    )
 
 
 def _style_value(element: ET.Element, name: str) -> str | None:
@@ -177,14 +259,25 @@ def check_svg(path: Path) -> dict[str, object]:
     view_box = tuple(view_values)  # type: ignore[assignment]
     x, y, width, height = view_box
     boxes: list[Box] = []
-    for order, element in enumerate(root.iter()):
+    order = 0
+
+    def collect_boxes(element: ET.Element, parent_matrix: Matrix) -> None:
+        nonlocal order
+        element_order = order
+        order += 1
+        matrix = _multiply(parent_matrix, _parse_transform(element.attrib.get("transform")))
         kind = _local_name(element.tag)
-        box = _text_box(element, order) if kind == "text" else _shape_box(element, order)
+        box = _text_box(element, element_order) if kind == "text" else _shape_box(element, element_order)
         if box is not None and box.area > 0:
-            boxes.append(box)
+            boxes.append(_transform_box(box, matrix))
+        for child in element:
+            collect_boxes(child, matrix)
+
+    collect_boxes(root, IDENTITY)
 
     issues: list[dict[str, object]] = []
     text_overflow = 0
+    node_overflow = 0
     for box in boxes:
         if _full_bleed(box, view_box):
             continue
@@ -197,6 +290,8 @@ def check_svg(path: Path) -> dict[str, object]:
         if any(value > 0.01 for value in overflow.values()):
             if box.kind == "text":
                 text_overflow += 1
+            else:
+                node_overflow += 1
             issues.append(
                 {
                     "kind": "textOverflow" if box.kind == "text" else "nodeOverflow",
@@ -244,6 +339,7 @@ def check_svg(path: Path) -> dict[str, object]:
         "valid": not any(issue["severity"] == "error" for issue in issues),
         "summary": {
             "textOverflow": text_overflow,
+            "nodeOverflow": node_overflow,
             "nodeOverlap": node_overlap,
             "textOcclusion": text_occlusion,
         },

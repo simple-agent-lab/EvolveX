@@ -186,8 +186,8 @@ def test_readme_keeps_supported_recipes_and_honest_quick_start() -> None:
     assert _fenced_shell_blocks(quick_start) == [
         (
             "bash",
-            """git clone https://github.com/simple-agent-lab/simple-evolve-agent.git
-cd simple-evolve-agent
+            """git clone https://github.com/simple-agent-lab/EvolveX.git
+cd EvolveX
 uv sync --dev --locked
 uv run --frozen evolve --help
 """,
