@@ -1,6 +1,6 @@
 {
   "dataset": "terminal-bench@2.0",
-  "name": "terminal-bench-2-ahe-30-v1",
+  "name": "terminal-bench-2-30-v1",
   "selection": {
     "count": 30,
     "scheme": "sha256-order-v1",

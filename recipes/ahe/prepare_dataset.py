@@ -6,4 +6,4 @@ import runpy
 from pathlib import Path
 
 if __name__ == "__main__":
-    runpy.run_path(str(Path(__file__).parents[1] / "ahe_codex" / "prepare_dataset.py"), run_name="__main__")
+    runpy.run_path(str(Path(__file__).parents[2] / "datasets" / "terminal_bench_2" / "prepare_dataset.py"), run_name="__main__")
