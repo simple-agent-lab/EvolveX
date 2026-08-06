@@ -1,8 +1,8 @@
 site_name: EvolveX
 site_description: Build agents that improve — and keep the evidence.
-site_url: https://simple-agent-lab.github.io/simple-evolve-agent/
-repo_url: https://github.com/simple-agent-lab/simple-evolve-agent
-repo_name: simple-agent-lab/simple-evolve-agent
+site_url: https://simple-agent-lab.github.io/EvolveX/
+repo_url: https://github.com/simple-agent-lab/EvolveX
+repo_name: simple-agent-lab/EvolveX
 edit_uri: edit/main/docs/
 
 theme:
