@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for improving Evolve Framework. Read [DESIGN.md](DESIGN.md),
+Thank you for improving EvolveX. Read [DESIGN.md](DESIGN.md),
 [ARCHITECTURE.md](ARCHITECTURE.md), and [docs/coding-style.md](docs/coding-style.md)
 before making a non-trivial change.
 

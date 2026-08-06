@@ -17,6 +17,7 @@ from evolve.archive import archive_path, merged_rows
 from evolve.config import operator_blocks
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import OperatorContext, TraceAnalyzerOperator, TraceAnalyzerResult
+from evolve.integrations.harbor._agent_roles import uses_miniswe_submission
 from library.meta_agent.runners import run_readonly_agent
 
 Case = dict[str, Any]
@@ -368,8 +369,7 @@ def _debugger_prompt(job: TaskAnalysisJob) -> str:
 
 def _debugger_runner_prompt(job: TaskAnalysisJob, config: dict[str, Any]) -> str:
     prompt = _debugger_prompt(job)
-    agent = str(config.get("agent") or "")
-    if agent != "mini-swe-agent" and not agent.endswith(":FileTaskMiniSweAgent"):
+    if not uses_miniswe_submission(config.get("agent")):
         return prompt
     return (
         prompt + "\n\n# MiniSWE submission protocol\n\n"
@@ -557,6 +557,19 @@ def _change_verdict(predicted: list[str], fixed: list[str], realized: list[str])
     return "INEFFECTIVE"
 
 
+def _canonical_task_reference(task: object, observed_tasks: set[str]) -> str:
+    reference = str(task)
+    if reference in observed_tasks:
+        return reference
+    matches = []
+    for observed in observed_tasks:
+        leaf = observed.rsplit("/", 1)[-1]
+        aliases = {leaf, leaf.rsplit("__", 1)[-1]}
+        if reference in aliases:
+            matches.append(observed)
+    return matches[0] if len(matches) == 1 else reference
+
+
 def _change_evaluation(
     ctx: OperatorContext,
     cases: list[Case],
@@ -593,14 +606,15 @@ def _change_evaluation(
     transitions = {
         task: _transition(before.get(task), after.get(task)) for task in sorted(before.keys() | after.keys())
     }
+    observed_tasks = set(transitions)
     predicted = {
-        str(task)
+        _canonical_task_reference(task, observed_tasks)
         for change in (manifest["changes"] if manifest else [])
         if isinstance(change, dict)
         for task in change.get("predicted_fixes", [])
     }
     risks = {
-        str(task)
+        _canonical_task_reference(task, observed_tasks)
         for change in (manifest["changes"] if manifest else [])
         if isinstance(change, dict)
         for task in change.get("risk_tasks", [])
@@ -609,8 +623,10 @@ def _change_evaluation(
     for change in manifest["changes"] if manifest else []:
         if not isinstance(change, dict):
             continue
-        change_predicted = [str(task) for task in change.get("predicted_fixes", [])]
-        change_risks = [str(task) for task in change.get("risk_tasks", [])]
+        change_predicted = [
+            _canonical_task_reference(task, observed_tasks) for task in change.get("predicted_fixes", [])
+        ]
+        change_risks = [_canonical_task_reference(task, observed_tasks) for task in change.get("risk_tasks", [])]
         fixed = [task for task in change_predicted if transitions.get(task) == "fail_to_pass"]
         still_failed = [task for task in change_predicted if task not in fixed]
         realized = [task for task in change_risks if transitions.get(task) == "pass_to_fail"]

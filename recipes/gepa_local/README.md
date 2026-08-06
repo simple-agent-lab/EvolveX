@@ -23,7 +23,6 @@ credentials are copied into the per-trial local root rather than written into
 the workspace or run artifacts.
 
 ```bash
-export EVOLVE_RUNTIME_DIGEST="sha256:local-run"
 evolve preflight ws --recipe gepa_local --dataset /path/to/tasks
 evolve init ws --recipe gepa_local --dataset /path/to/tasks
 cd ws && ./evolve run . --max-generations 0

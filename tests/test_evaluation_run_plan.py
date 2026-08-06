@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from evolve.evaluation.identity import effective_task_set_identity
+from evolve.evaluation.legacy import effective_task_set_identity
 from evolve.evaluation.run_plan import EvaluationRunPlan
 
 
@@ -51,8 +51,14 @@ def test_task_limit_changes_both_members_and_identity(tmp_path: Path) -> None:
             {
                 "version": 2,
                 "resolved": True,
+                "identity_status": "verified",
+                "dataset_identity": {
+                    "source": "local",
+                    "digest": "d" * 64,
+                    "resolved_reference": "sha256:" + "d" * 64,
+                },
                 "tasks": {"train": [], "gate": ["task-c", "task-a", "task-b"], "sealed": []},
-                "task_digests": {"task-a": "a", "task-b": "b", "task-c": "c"},
+                "task_digests": {"task-a": "a" * 64, "task-b": "b" * 64, "task-c": "c" * 64},
             }
         )
     )
@@ -62,7 +68,7 @@ def test_task_limit_changes_both_members_and_identity(tmp_path: Path) -> None:
     limited = effective_task_set_identity(tmp_path, config, task_limit=1)
 
     assert full.members == ("task-a", "task-b", "task-c")
-    assert limited.members == ("task-a",)
+    assert limited.members == ("task-c",)
     assert limited.digest != full.digest
 
 
@@ -74,10 +80,16 @@ def test_gate_identity_uses_the_frozen_per_round_limit(tmp_path: Path) -> None:
             {
                 "version": 2,
                 "resolved": True,
+                "identity_status": "verified",
+                "dataset_identity": {
+                    "source": "local",
+                    "digest": "d" * 64,
+                    "resolved_reference": "sha256:" + "d" * 64,
+                },
                 "sampling": "static",
                 "gate_tasks_per_round": 2,
                 "tasks": {"train": [], "gate": ["task-c", "task-a", "task-b"], "sealed": []},
-                "task_digests": {"task-a": "a", "task-b": "b", "task-c": "c"},
+                "task_digests": {"task-a": "a" * 64, "task-b": "b" * 64, "task-c": "c" * 64},
             }
         )
     )

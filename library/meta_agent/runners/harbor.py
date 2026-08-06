@@ -24,9 +24,8 @@ from evolve.execution_runtime import execution_runtime_config, resolve_execution
 from evolve.frozen.interfaces import OperatorContext
 from evolve.git import git, head_commit, working_tree_changed_paths
 from evolve.host_runtime import uv_run
+from evolve.integrations.harbor._agent_roles import is_installed_miniswe_agent, uses_miniswe_submission
 from evolve.meta_agent_budget import (
-    HARBOR_FILE_TASK_AGENT,
-    harbor_agent_supports_per_attempt_timeout,
     harbor_meta_agent_budget,
     uses_harbor_per_attempt_timeout,
 )
@@ -39,7 +38,6 @@ _ARTIFACT_SOURCE = "/app/task/workspace"
 _READONLY_ARTIFACT_SOURCE = "/logs/artifacts"
 _READONLY_REPORT = "ahe-debugger-response.md"
 _EVAL_RECEIPT = ".evolve-eval-receipts.jsonl"
-_FILE_TASK_AGENT = HARBOR_FILE_TASK_AGENT
 _SAFE_INLINE_INSTRUCTION_BYTES = 96 * 1024
 _RETRY_EXCLUDE_EXCEPTIONS = (
     "VerifierTimeoutError",
@@ -247,8 +245,8 @@ def _nonignored_manifest_changes(
 
 def _initialize_sanitized_git(workspace: Path) -> None:
     git(workspace, "init", "--quiet")
-    git(workspace, "config", "user.name", "Evolve Meta-Agent")
-    git(workspace, "config", "user.email", "meta-agent@evolve.invalid")
+    git(workspace, "config", "user.name", "EvolveX Meta-Agent")
+    git(workspace, "config", "user.email", "meta-agent@evolvex.invalid")
     # This repository is copied into the Harbor task immediately after the
     # baseline commit.  Git may otherwise detach automatic maintenance on
     # platforms such as macOS, racing that copy as maintenance.lock appears
@@ -568,9 +566,8 @@ def _write_json(path: Path, payload: object) -> None:
 
 def _instruction_transport(agent: str, prompt_path: Path) -> dict[str, object]:
     size = prompt_path.stat().st_size
-    config_file = agent.endswith(":MiniSweSourceAgent")
-    safe = agent == _FILE_TASK_AGENT or config_file
-    mode = "config-file" if config_file else "mounted-file" if safe else "inline-argument"
+    safe = is_installed_miniswe_agent(agent)
+    mode = "mounted-file" if safe else "inline-argument"
     if size > _SAFE_INLINE_INSTRUCTION_BYTES and not safe:
         raise RuntimeError(
             f"harbor_instruction_transport_unsafe: agent={agent} bytes={size} limit={_SAFE_INLINE_INSTRUCTION_BYTES}"
@@ -664,6 +661,8 @@ def _agent_env(config: dict[str, Any]) -> dict[str, str]:
     configured = config.get("agent_env")
     if isinstance(configured, dict):
         values.update({str(key): str(value) for key, value in configured.items()})
+    if values.get("OPENAI_BASE_URL"):
+        values.pop("OPENAI_API_BASE", None)
     for _, lower, upper in _PROXY_ENV:
         value = values.get(lower) or values.get(upper)
         if value:
@@ -707,17 +706,7 @@ def _harbor_process_env(
     return runtime.process_environment(sanitized)
 
 
-def _uv_cache_dir(workspace: Path) -> Path:
-    configured = os.environ.get("EVOLVE_UV_CACHE_DIR")
-    cache = Path(configured).expanduser() if configured else workspace / "runs" / "runtime" / "uv-cache"
-    if not cache.is_absolute():
-        cache = workspace / cache
-    cache = cache.resolve()
-    cache.mkdir(parents=True, exist_ok=True)
-    return cache
-
-
-def _miniswe_config_command(
+def _installed_miniswe_config_command(
     harbor: list[str],
     source: Path,
     prompt_path: Path,
@@ -726,13 +715,10 @@ def _miniswe_config_command(
     job_name: str,
     config: dict[str, Any],
     *,
-    candidate_source: Path,
     artifact: str | None,
-    uv_cache_dir: Path,
     agent_timeout_s: float | None,
 ) -> list[str]:
     agent_env = _agent_env(config)
-    agent_env.setdefault("EVOLVE_CANDIDATE_SOURCE", str(candidate_source.resolve()))
     agent: dict[str, Any] = {
         "name": str(config.get("agent")),
         "env": agent_env,
@@ -761,16 +747,7 @@ def _miniswe_config_command(
         "environments": [compile_environment],
         "verifiers": ([{"auto_verifier": {"required_artifacts": [artifact]}}] if artifact else []),
     }
-    environment: dict[str, Any] = {
-        "type": str(config.get("environment") or "docker"),
-        "mounts": [
-            {
-                "type": "bind",
-                "source": str(uv_cache_dir.resolve()),
-                "target": "/installed-agent/uv-cache",
-            }
-        ],
-    }
+    environment: dict[str, Any] = {"type": str(config.get("environment") or "docker")}
     environment_kwargs = config.get("environment_kwargs")
     if isinstance(environment_kwargs, dict):
         environment["kwargs"] = environment_kwargs
@@ -857,13 +834,10 @@ def _build_command(
     tasks_dir: Path,
     job_name: str,
     config: dict[str, Any],
-    uv_cache_dir: Path | None = None,
 ) -> list[str]:
     agent = str(config.get("agent") or "codex")
-    if harbor_agent_supports_per_attempt_timeout(agent):
-        if "target" not in bundle.roots:
-            raise ValueError("MiniSweSourceAgent requires target in editable_roots")
-        return _miniswe_config_command(
+    if is_installed_miniswe_agent(agent):
+        return _installed_miniswe_config_command(
             harbor,
             bundle.task_root,
             prompt_path,
@@ -871,9 +845,7 @@ def _build_command(
             tasks_dir,
             job_name,
             config,
-            candidate_source=bundle.workspace / "target",
             artifact=_ARTIFACT_SOURCE,
-            uv_cache_dir=uv_cache_dir or _uv_cache_dir(bundle.task_root),
             agent_timeout_s=_positive_float(config.get("timeout_s")),
         )
     command = _base_command(harbor, bundle.task_root, prompt_path, jobs_root, tasks_dir, job_name, config)
@@ -1048,8 +1020,7 @@ def _readonly_artifact_output(trial_dir: Path) -> str:
 
 
 def _uses_miniswe_artifact(agent: object) -> bool:
-    name = str(agent or "")
-    return name == "mini-swe-agent" or name.endswith(":FileTaskMiniSweAgent")
+    return uses_miniswe_submission(agent)
 
 
 def _usage(payload: dict[str, Any], wall_s: float) -> dict[str, Any]:
@@ -1105,23 +1076,7 @@ def run_readonly_agent(
             output_dir / "instruction-transport.json",
             _instruction_transport(str(ctx.config.get("agent") or "codex"), prompt_path),
         )
-        agent = str(ctx.config.get("agent") or "codex")
-        if agent.endswith(":MiniSweSourceAgent"):
-            command = _miniswe_config_command(
-                harbor,
-                task_root,
-                prompt_path,
-                jobs_root,
-                tasks_dir,
-                job_name,
-                ctx.config,
-                candidate_source=checkout / "target",
-                artifact=None,
-                uv_cache_dir=_uv_cache_dir(ctx.workspace),
-                agent_timeout_s=timeout_s,
-            )
-        else:
-            command = _base_command(harbor, task_root, prompt_path, jobs_root, tasks_dir, job_name, ctx.config)
+        command = _base_command(harbor, task_root, prompt_path, jobs_root, tasks_dir, job_name, ctx.config)
         _write_json(
             output_dir / "command.json",
             [_redact(arg, redaction_environment) for arg in command],
@@ -1231,7 +1186,6 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
             tasks_dir,
             job_name,
             ctx.config,
-            _uv_cache_dir(ctx.workspace),
         )
         _write_json(
             harbor_root / "command.json",
@@ -1265,9 +1219,7 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
             raise RuntimeError(
                 f"Harbor meta-agent trial failed: {_redact(str(trial.get('exception_info')), redaction_environment)}"
             )
-        if str(ctx.config.get("agent") or "").endswith(":MiniSweSourceAgent") or _uses_miniswe_artifact(
-            ctx.config.get("agent")
-        ):
+        if _uses_miniswe_artifact(ctx.config.get("agent")):
             exit_status = _miniswe_exit_status(trial_dir)
             if exit_status != "Submitted":
                 raise RuntimeError(

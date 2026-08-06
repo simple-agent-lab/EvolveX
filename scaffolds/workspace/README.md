@@ -1,4 +1,4 @@
-# This is an Evolve workspace
+# This is an EvolveX workspace
 
 This directory is an independent Git repository. Each candidate generation is
 a commit tagged `gen/<id>`; `archive.jsonl` records the append-only lineage.
@@ -13,6 +13,7 @@ Every workspace receives these files or directories:
 .evolve-components.json       derived recipe, seed, engine, and integration manifest
 .evolve-protocol-version      workspace protocol marker
 .gitignore                    ignores generated state
+.env                          optional local credentials, endpoint, and proxy settings
 .python-version               pinned Python version
 AGENTS.md                     workspace agent entry point
 PROTOCOL.md                   human-readable operator contract
@@ -21,8 +22,8 @@ archive.jsonl                 append-only lineage record
 evolve                        workspace console
 evolve.yaml                   rendered recipe configuration
 library/                      recipe-relevant operator variants
-LICENSE.evolve-framework      license for the vendored framework and operator library
-NOTICE.evolve-framework       framework and third-party attribution notices
+LICENSE.evolvex               license for the vendored framework and operator library
+NOTICE.evolvex                framework and third-party attribution notices
 operators/                    active operator scripts, supporting Markdown, and index
 program.md                    loop orchestration guidance
 pyproject.toml, uv.lock       locked workspace runtime
@@ -33,7 +34,7 @@ skills/evolve-agent/          method guide and workspace operating manual
 target/                       seed selected by the recipe
 ```
 
-The frozen evaluator is generated under `evaluator/`: `eval.sh`, `eval.env`,
+The frozen evaluator is generated under `evaluator/`: internal `eval.sh`, `eval.env`,
 `agent.env`, `environment.kwargs`, `splits.json`, `dataset.pin`, `runtime.pin`,
 `stub_eval.py`, and `engines/local.sh`. Harbor recipes also receive
 `cleanup_harbor.py`, `harbor_artifacts.py`, `parse_score.py`, and `smoke.sh`.
@@ -48,8 +49,17 @@ The vendored framework includes framework-owned integrations under
 `.evolve/evolve/integrations/harbor/`. No standalone Harbor adapter package is
 generated at the workspace root.
 
+Commands load settings only from the project-root `.env`; explicitly exported
+variables take precedence. Caller and parent `.env` files are not loaded, and
+`.env` is ignored by Git. The minimal setup is `OPENAI_API_KEY=...`.
+`OPENAI_BASE_URL` is optional. Codex agents may instead use an explicit absolute
+`CODEX_AUTH_JSON_PATH`; the framework never searches `~/.codex/auth.json`.
+Standard proxy variables are optional. Do not invoke `evaluator/eval.sh`
+directly: workspace evaluation first prepares its certified private runtime
+inputs.
+
 The vendored framework runtime and operator library are provided under
-Apache-2.0; see `LICENSE.evolve-framework` and `NOTICE.evolve-framework`.
+Apache-2.0; see `LICENSE.evolvex` and `NOTICE.evolvex`.
 The target under `target/` retains its own upstream licensing terms.
 
 ## Rules

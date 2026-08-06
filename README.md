@@ -1,4 +1,4 @@
-<h1 align="center">Evolve Framework</h1>
+<h1 align="center">EvolveX</h1>
 
 <p align="center">
   <strong>Traceable, evaluator-driven evolution for AI agents.</strong>
@@ -22,13 +22,13 @@
   <a href="#quick-start">Quick Start</a> ·
   <a href="#concepts">Concepts</a> ·
   <a href="#recipes">Recipes</a> ·
-  <a href="#result">Result</a> ·
+  <a href="#skill-evolution-showcase">Showcase</a> ·
   <a href="#documentation">Documentation</a>
 </p>
 
 ## Overview
 
-Evolve is a file-based framework for running agent-evolution experiments without
+EvolveX is a file-based framework for running agent-evolution experiments without
 rebuilding the mechanics for candidate snapshots, evaluation, lineage, and
 reporting. It provides composable recipes inspired by systems such as A-Evolve,
 AHE, GEPA, and HyperAgents.
@@ -51,11 +51,14 @@ research and controlled experimentation.
 - **Content-bound evaluation:** Local task trees, generation commits, candidate
   runtimes, and replayed artifact bytes are bound into the evidence used for
   parent selection.
+- **Certified evaluation:** Immutable contracts bind task identities,
+  repetitions, runtime, retry policy, and candidate commits to redacted receipts
+  and bounded diagnostics.
 
 ## Structure
 
 <p align="center">
-  <img src="docs/architecture.svg" alt="Evolve Framework architecture: evolution methods such as Hill Climb, A-Evolve, AHE, GEPA and HyperAgents plug into one loop of select, rollout, analyze, mutate, gate and record. The loop and the agent it improves sit inside a declared mutable surface, so the meta-agent can rewrite any stage. Only the substrate below stays frozen: the evaluator, the runtime, the surface check and the stamped evidence.">
+  <img src="docs/architecture.svg" alt="EvolveX architecture: evolution methods such as Hill Climb, A-Evolve, AHE, GEPA and HyperAgents plug into one loop of select, rollout, analyze, mutate, gate and record. The loop and the agent it improves sit inside a declared mutable surface, so the meta-agent can rewrite any stage. Only the substrate below stays frozen: the evaluator, the runtime, the surface check and the stamped evidence.">
 </p>
 
 Every recipe runs the same loop: select a parent, run the tasks, analyze the
@@ -97,10 +100,11 @@ experiments.
 Run a deterministic baseline smoke test without a model or Docker:
 
 ```bash
-export EVOLVE_RUNTIME_DIGEST="sha256:local-smoke-runtime"
 export EVOLVE_HOME="/tmp/evolve-home"
 
-uv run evolve init /tmp/evolve-demo  # default recipe gepa: built-in seed, no clone
+uv run evolve init /tmp/evolve-demo \
+  --recipe-path tests/fixtures/recipes/hill_climb-smoke \
+  --seed tests/fixtures/seeds/dummy
 EVAL_STUB=1 /tmp/evolve-demo/evolve run /tmp/evolve-demo --max-generations 0
 /tmp/evolve-demo/evolve status /tmp/evolve-demo
 /tmp/evolve-demo/evolve verify /tmp/evolve-demo
@@ -125,26 +129,37 @@ novelty results are tied to the exact candidate tree, so editing afterward
 requires rerunning them. See the generated workspace's `program.md` and
 `skills/evolve-agent/SKILL.md` for the complete sequence and method guidance.
 
-For a real Harbor run, provide an immutable evaluator digest and a local task
-dataset:
+For a reproducible Terminal-Bench 2.0 run, prepare the shared pinned dataset and
+the selected recipe's image once, then use the short execution script:
 
 ```bash
-export EVOLVE_RUNTIME_DIGEST="sha256:replace-with-your-evaluator-digest"
-
-uv run evolve preflight /tmp/evolve-harbor \
-  --recipe aevolve \
-  --dataset /absolute/path/to/harbor/tasks
-uv run evolve init /tmp/evolve-harbor \
-  --recipe aevolve \
-  --dataset /absolute/path/to/harbor/tasks
-evolve doctor /tmp/evolve-harbor --profile experiment
-evolve smoke /tmp/evolve-harbor --profile experiment
-/tmp/evolve-harbor/evolve run /tmp/evolve-harbor --max-generations 5
+./scripts/setup_terminal_bench.sh ahe
+./scripts/run_recipe_demo.sh ahe
 ```
 
-`evolve preflight` takes the same arguments as `init`, writes nothing, and
-reports every unmet precondition as one checklist. Inspect a run with
-`evolve status`, `evolve report`, `git tag --list 'gen/*'`,
+The scripts support A-Evolve, AHE, GEPA, Hill Climb, and HyperAgents, including
+their Codex profiles. Common execution overrides are `WORKSPACE`, `TASKS`,
+`GENERATIONS`, `ENV_FILE`, and `EVOLVE_ASSET_DIR`. Preflight validates the
+selected runtime's authentication before any experiment generation runs.
+
+Initialization resolves each recipe's inline runtime block into
+`evaluator/runtime.json` and generates the certified evaluation inputs.
+Evaluator repetitions default to one. Workspace preflight performs offline,
+cacheless validation and writes a redacted receipt; `--smoke` additionally makes
+one real model request against a detached candidate snapshot.
+
+Workspace commands load only `WORKSPACE/.env`; explicitly exported variables
+override it, and caller or parent `.env` files are ignored. API-key
+authentication is the default. Codex agents may instead use an explicit
+`CODEX_AUTH_JSON_PATH`, with no automatic home-directory lookup. Explicitly
+supplied standard proxy variables are inherited as optional host transport for
+dependency downloads; the configured model endpoint is added to `NO_PROXY`,
+and users without a proxy need no proxy setup. Recipes may still declare a
+required proxy policy for environments that must fail closed.
+Secrets, endpoint URLs, auth paths, and proxy values are excluded from resolved
+runtime configuration and evaluation contracts.
+
+Inspect a run with `evolve status`, `evolve report`, `git tag --list 'gen/*'`,
 and the generated `archive.jsonl`. Run `evolve --help` for the complete CLI.
 
 ## Concepts
@@ -181,7 +196,7 @@ each recipe.
 
 ## Trust Boundaries
 
-Evolve enforces three core rules:
+EvolveX enforces three core rules:
 
 1. Scores and statuses are written by the mechanism, not workspace operators.
 2. Canonical evaluation runs on clean candidate snapshots against a frozen
@@ -191,10 +206,35 @@ Evolve enforces three core rules:
 
 See [DESIGN.md](DESIGN.md) for the complete model and invariants.
 
-## Result
+## Skill Evolution Showcase
 
-> **TODO:** Add reproducible benchmark results and supporting artifacts once
-> the evaluation setup and reporting protocol are finalized.
+EvolveX can improve a Skill as a complete package: instructions, references,
+and validation scripts evolve together while a frozen evaluator keeps the
+comparison honest. In this local Paper2Poster run, the same Codex model and
+paper prompt produced both LoRA posters below.
+
+<table>
+  <tr>
+    <th width="50%">Gen 0 · minimal 12-line Skill</th>
+    <th width="50%">Gen 2 · evolved editorial Skill</th>
+  </tr>
+  <tr>
+    <td><img src="docs/assets/paper-poster-lora-gen0.png" alt="Generation zero LoRA research poster with a generic dashboard-style layout"></td>
+    <td><img src="docs/assets/paper-poster-lora-gen2.png" alt="Generation two LoRA research poster with a paper-specific editorial layout and low-rank matrix visualization"></td>
+  </tr>
+  <tr>
+    <td>Hard gate failed: 14 text elements overflowed the SVG viewBox.</td>
+    <td>Passed renderability, geometry, and paper-fidelity hard gates.</td>
+  </tr>
+</table>
+
+Across the four-paper showcase, the hard-gate pass rate moved from **1/4** at
+Gen 0 to **4/4** at Gen 2. The trials ran concurrently through Harbor's local
+environment without Docker and retained ATIF trajectories plus evaluator-owned
+visual feedback. This is a representative evolution run rather than a broad
+benchmark; see the [result snapshot](docs/results/paper-poster-skill-evolution.json),
+[frozen rubric](evals/skills/make-paper-poster/rubric.json), and
+[minimal seed Skill](evals/skills/make-paper-poster/seed/skills/make-paper-poster/SKILL.md).
 
 ## Roadmap
 
@@ -222,5 +262,5 @@ See [DESIGN.md](DESIGN.md) for the complete model and invariants.
 
 ## License
 
-Evolve Framework is licensed under [Apache-2.0](LICENSE). See
+EvolveX is licensed under [Apache-2.0](LICENSE). See
 [NOTICE](NOTICE) for required attributions.

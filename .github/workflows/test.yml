@@ -73,8 +73,8 @@ jobs:
       # runner has no global one — configure it so any stray git op still works.
       - name: Configure git identity
         run: |
-          git config --global user.name "evolve-ci"
-          git config --global user.email "evolve-ci@example.invalid"
+          git config --global user.name "evolvex-ci"
+          git config --global user.email "evolvex-ci@example.invalid"
           git config --global init.defaultBranch main
 
       # The default tier is the coherence guard (ARCHITECTURE + line budgets +
@@ -136,5 +136,5 @@ jobs:
           "$GITHUB_WORKSPACE/.venv/bin/python" -c 'from pathlib import Path; import sys, evolve; assert Path(evolve.__file__).resolve().is_relative_to(Path(sys.prefix).resolve()), evolve.__file__'
           EVOLVE_HOME="$RUNNER_TEMP/wheel-smoke-home" EVOLVE_RUNTIME_DIGEST="sha256:release-artifact-smoke" "$GITHUB_WORKSPACE/.venv/bin/evolve" init "$RUNNER_TEMP/wheel-smoke" --recipe aevolve
           EVOLVE_HOME="$RUNNER_TEMP/wheel-smoke-home" "$GITHUB_WORKSPACE/.venv/bin/evolve" status "$RUNNER_TEMP/wheel-smoke"
-          test -f "$RUNNER_TEMP/wheel-smoke/LICENSE.evolve-framework"
-          test -f "$RUNNER_TEMP/wheel-smoke/NOTICE.evolve-framework"
+          test -f "$RUNNER_TEMP/wheel-smoke/LICENSE.evolvex"
+          test -f "$RUNNER_TEMP/wheel-smoke/NOTICE.evolvex"

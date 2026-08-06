@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from conftest import FIXTURE_SEEDS, run_evolve
 
+from evolve import splits as splits_module
 from evolve.frozen.interfaces import OperatorContext
 from evolve.splits import (
     build_manifest,
@@ -137,6 +138,69 @@ def test_runtime_selection_rejects_a_snapshot_that_misses_the_frozen_digest(tmp_
     assert not (run_dir / ".task-dataset.pending").exists()
 
 
+def test_runtime_selection_applies_limit_before_recording_identity(tmp_path: Path) -> None:
+    dataset = _dataset(tmp_path / "tasks", count=6)
+    manifest = build_manifest(
+        dataset.as_posix(),
+        {"train": 1.0, "gate": 0.0, "sealed": 0.0, "seed": 7},
+        base_dir=tmp_path,
+        sampling="static",
+        gate_limit=0,
+    )
+    manifest_path = tmp_path / "splits.json"
+    manifest_path.write_text(json.dumps(manifest))
+    run_dir = tmp_path / "run"
+
+    splits_module.write_runtime_selection(manifest_path, dataset.as_posix(), "train", run_dir, limit=1)
+
+    recorded = json.loads((run_dir / "task-split.json").read_text())
+    assert recorded["tasks"] == manifest["tasks"]["train"][:1]
+    assert (run_dir / "task-names.txt").read_text().splitlines() == [
+        splits_module.harbor_task_pattern(recorded["tasks"][0])
+    ]
+    assert (run_dir / "task_set_hash").read_text().strip() == split_selection_digest("train", recorded["tasks"])
+
+
+def test_runtime_task_file_selection_limits_active_declared_names(tmp_path: Path) -> None:
+    task_file = tmp_path / "tasks.txt"
+    task_file.write_text("# frozen selection\n\nthird\nfirst\nsecond\n")
+    run_dir = tmp_path / "run"
+
+    splits_module.write_runtime_task_file_selection(task_file, run_dir, limit=1)
+
+    assert json.loads((run_dir / "task-split.json").read_text()) == {
+        "split": "task_file",
+        "tasks": ["third"],
+    }
+    assert (run_dir / "task-names.txt").read_text() == "third\n"
+
+
+def test_split_cli_accepts_explicit_task_limit(tmp_path: Path) -> None:
+    dataset = _dataset(tmp_path / "tasks", count=3)
+    manifest = build_manifest(
+        dataset.as_posix(),
+        {"train": 1.0, "gate": 0.0, "sealed": 0.0, "seed": 0},
+        base_dir=tmp_path,
+        sampling="static",
+        gate_limit=0,
+    )
+    manifest_path = tmp_path / "splits.json"
+    manifest_path.write_text(json.dumps(manifest))
+    run_dir = tmp_path / "run"
+
+    assert splits_module.main(["select", str(manifest_path), str(dataset), "train", str(run_dir), "--limit", "1"]) == 0
+    assert len(json.loads((run_dir / "task-split.json").read_text())["tasks"]) == 1
+
+
+def test_split_cli_limits_explicit_task_file(tmp_path: Path) -> None:
+    task_file = tmp_path / "tasks.txt"
+    task_file.write_text("one\ntwo\n")
+    run_dir = tmp_path / "run"
+
+    assert splits_module.main(["limit-file", str(task_file), str(run_dir), "--limit", "1"]) == 0
+    assert json.loads((run_dir / "task-split.json").read_text())["tasks"] == ["one"]
+
+
 def test_init_dataset_option_freezes_local_harbor_tasks(tmp_path: Path) -> None:
     dataset = _dataset(tmp_path / "tasks")
     workspace = tmp_path / "workspace"
@@ -155,9 +219,11 @@ def test_init_dataset_option_freezes_local_harbor_tasks(tmp_path: Path) -> None:
     manifest = json.loads((workspace / "evaluator" / "splits.json").read_text())
     assert manifest["resolved"] is True
     assert manifest["dataset"] == str(dataset)
-    assert (workspace / "evaluator" / "dataset.pin").read_text() == (
-        f"dataset={dataset}\nchecksum={manifest['dataset_digest']}\n"
-    )
+    pin = json.loads((workspace / "evaluator" / "dataset.pin").read_text())
+    assert pin["schema_version"] == 1
+    assert pin["source"] == "local"
+    assert pin["digest"] == manifest["dataset_identity"]["digest"]
+    assert pin["members"] == sorted(name for members in manifest["tasks"].values() for name in members)
     assert sum(len(manifest["tasks"][name]) for name in ("train", "gate", "sealed")) == 10
 
 

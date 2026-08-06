@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a reproducible defect in Evolve Framework.
+description: Report a reproducible defect in EvolveX.
 title: "[Bug]: "
 labels: [bug]
 body:

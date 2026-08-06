@@ -2,8 +2,10 @@ import asyncio
 import importlib.util
 import json
 import os
+import stat
 import subprocess
 import sys
+import tarfile
 import time
 import types
 from pathlib import Path
@@ -13,7 +15,7 @@ from conftest import git, write_locked_miniswe_seed
 
 ROOT = Path(__file__).resolve().parents[1]
 ADAPTER = ROOT / "src" / "evolve" / "integrations" / "harbor" / "miniswe_candidate.py"
-CANDIDATE_AGENT = "evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent"
+CANDIDATE_AGENT = "evolve.integrations.harbor.miniswe_candidate:CandidateMiniSweAgent"
 
 
 def _known_unbounded_local_run(command, cwd, env, timeout):
@@ -143,6 +145,13 @@ def _load_model_factory(adapter_path: Path, monkeypatch):
     return module, namespace["build_model"], model_classes
 
 
+def test_candidate_miniswe_exposes_canonical_name_and_legacy_alias(adapter_path: Path, monkeypatch) -> None:
+    _install_fake_harbor(monkeypatch)
+    module = _load(adapter_path)
+
+    assert module.MiniSweSourceAgent is module.CandidateMiniSweAgent
+
+
 def test_miniswe_wrapper_forwards_reasoning_effort(adapter_path: Path, monkeypatch) -> None:
     _install_fake_harbor(monkeypatch)
     module = _load(adapter_path)
@@ -178,10 +187,11 @@ def test_candidate_adapter_disables_codex_websockets_for_responses_endpoint(monk
     assert "model_providers.evolve_http.supports_websockets=false" in flags
 
 
-def test_miniswe_wrapper_uses_responses_reasoning_and_session_for_openai(adapter_path: Path, monkeypatch) -> None:
+def test_miniswe_wrapper_omits_session_header_when_unset(adapter_path: Path, monkeypatch) -> None:
     _, build_model, (FakeLitellmModel, FakeLitellmResponseModel) = _load_model_factory(adapter_path, monkeypatch)
     monkeypatch.setenv("MSWEA_MODEL_NAME", "openai/gpt-5.4")
     monkeypatch.setenv("MINISWE_REASONING_EFFORT", "high")
+    monkeypatch.delenv("EVOLVE_SESSION_ID", raising=False)
 
     model = build_model(
         {
@@ -204,9 +214,45 @@ def test_miniswe_wrapper_uses_responses_reasoning_and_session_for_openai(adapter
     assert kwargs["reasoning"] == {"effort": "high"}
     assert kwargs["include"] == ["reasoning.encrypted_content"]
     assert kwargs["prompt_cache_key"].startswith("evolve-")
-    assert json.loads(kwargs["extra_headers"]["extra"]) == {"session_id": kwargs["prompt_cache_key"]}
+    assert "extra_headers" not in kwargs
     assert "reasoning_effort" not in kwargs
     assert "store" not in kwargs
+
+
+def test_miniswe_wrapper_treats_blank_session_id_as_unset(adapter_path: Path, monkeypatch) -> None:
+    _, build_model, _ = _load_model_factory(adapter_path, monkeypatch)
+    monkeypatch.setenv("MSWEA_MODEL_NAME", "openai/gpt-5.4")
+    monkeypatch.setenv("EVOLVE_SESSION_ID", "   ")
+
+    model = build_model({"model": {}})
+
+    kwargs = model.kwargs["model_kwargs"]
+    assert kwargs["prompt_cache_key"].startswith("evolve-")
+    assert "extra_headers" not in kwargs
+
+
+def test_miniswe_wrapper_uses_configured_session_id_literally(adapter_path: Path, monkeypatch) -> None:
+    _, build_model, (_, FakeLitellmResponseModel) = _load_model_factory(adapter_path, monkeypatch)
+    monkeypatch.setenv("MSWEA_MODEL_NAME", "openai/gpt-5.4")
+    monkeypatch.setenv("EVOLVE_SESSION_ID", "experiment-42")
+
+    model = build_model({"model": {}})
+
+    assert type(model) is FakeLitellmResponseModel
+    kwargs = model.kwargs["model_kwargs"]
+    assert kwargs["prompt_cache_key"] == "experiment-42"
+    assert json.loads(kwargs["extra_headers"]["extra"]) == {"session_id": "experiment-42"}
+
+
+def test_candidate_source_environment_forwards_only_configured_session_id(adapter_path: Path, monkeypatch) -> None:
+    _install_fake_harbor(monkeypatch)
+    module = _load(adapter_path)
+    monkeypatch.delenv("EVOLVE_SESSION_ID", raising=False)
+
+    assert "EVOLVE_SESSION_ID" not in module.CandidateMiniSweAgent()._source_env()
+
+    monkeypatch.setenv("EVOLVE_SESSION_ID", "experiment-42")
+    assert module.CandidateMiniSweAgent()._source_env()["EVOLVE_SESSION_ID"] == "experiment-42"
 
 
 def test_miniswe_wrapper_preserves_explicit_responses_output_budget(adapter_path: Path, monkeypatch) -> None:
@@ -372,6 +418,67 @@ def test_miniswe_wrapper_rejects_invalid_evolved_memory(
         namespace["_load_evolved_context"](tmp_path / "candidate")
 
 
+def test_candidate_archive_normalizes_owner_modes_without_mutating_source(tmp_path: Path) -> None:
+    archive_module = importlib.import_module("evolve.integrations.harbor._candidate_source")
+    source = tmp_path / "source"
+    package = source / "src" / "minisweagent"
+    package.mkdir(parents=True)
+    (source / "pyproject.toml").write_text("[project]\nname='fixture'\n")
+    executable = source / "run.sh"
+    executable.write_text("#!/bin/sh\n")
+    source.chmod(0o700)
+    (source / "pyproject.toml").chmod(0o600)
+    executable.chmod(0o700)
+
+    with archive_module.candidate_source_archive(source) as archive_path:
+        assert stat.S_IMODE(archive_path.stat().st_mode) == 0o644
+        with tarfile.open(archive_path) as archive:
+            members = {member.name: member for member in archive.getmembers()}
+        assert members["."].mode == 0o700
+        assert members["./pyproject.toml"].mode == 0o600
+        assert members["./src"].mode == 0o700
+        assert members["./run.sh"].mode == 0o700
+        assert not (members["./pyproject.toml"].mode & stat.S_IWOTH)
+        retained_path = archive_path
+
+    assert not retained_path.exists()
+    assert stat.S_IMODE(source.stat().st_mode) == 0o700
+    assert stat.S_IMODE((source / "pyproject.toml").stat().st_mode) == 0o600
+
+
+@pytest.mark.parametrize("target", ["/outside", "../../outside"])
+def test_candidate_archive_rejects_symlinks_escaping_source(tmp_path: Path, target: str) -> None:
+    archive_module = importlib.import_module("evolve.integrations.harbor._candidate_source")
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "escape").symlink_to(target)
+
+    with pytest.raises(archive_module.UnsafeCandidateSourceError, match="symlink escapes candidate source"):
+        with archive_module.candidate_source_archive(source):
+            pytest.fail("unsafe source must be rejected before archive creation")
+
+
+def test_candidate_adapter_classifies_escaping_source_symlink_as_candidate_invalid(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _install_fake_harbor(monkeypatch)
+    source = tmp_path / "source"
+    (source / "src" / "minisweagent").mkdir(parents=True)
+    (source / "pyproject.toml").write_text("[project]\nname='fixture'\n")
+    (source / "uv.lock").write_text("version = 1\n")
+    (source / "escape").symlink_to("../../outside")
+    monkeypatch.setenv("EVOLVE_CANDIDATE_SOURCE", str(source))
+    module = _load(ADAPTER)
+
+    class Environment:
+        async def upload_file(self, source_path, target_path):
+            pytest.fail(f"unsafe source must not be uploaded: {source_path} -> {target_path}")
+
+    with pytest.raises(module.EvolveCandidateInvalidError, match="unsafe_source_tree"):
+        asyncio.run(module.CandidateMiniSweAgent().install(Environment()))
+
+
 def test_miniswe_wrapper_subclasses_harbor_miniswe_and_installs_candidate_source(
     tmp_path: Path,
     monkeypatch,
@@ -382,19 +489,30 @@ def test_miniswe_wrapper_subclasses_harbor_miniswe_and_installs_candidate_source
     (target / "pyproject.toml").write_text("[project]\nname = 'mini-swe-agent'\nversion = '0.test'\n")
     (target / "uv.lock").write_text("version = 1\nrevision = 1\nrequires-python = '>=3.11'\n")
     (target / "src" / "minisweagent").mkdir(parents=True)
+    target.chmod(0o700)
+    (target / "pyproject.toml").chmod(0o600)
+    (target / "uv.lock").chmod(0o600)
     module = _load(ADAPTER)
 
     class Environment:
         def __init__(self) -> None:
             self.uploads = []
+            self.uploaded_directories = []
             self.commands = []
             self.envs = []
+            self.archive_modes = {}
+            self.uploaded_archive_destination = None
 
         async def upload_dir(self, source_dir, target_dir):
-            self.uploads.append((Path(source_dir), target_dir))
+            self.uploaded_directories.append((Path(source_dir), target_dir))
 
         async def upload_file(self, source_path, target_path):
-            self.uploads.append((Path(source_path), target_path))
+            source = Path(source_path)
+            self.uploads.append((source, target_path))
+            if target_path == "/tmp/evolve-miniswe-source.tar":
+                self.uploaded_archive_destination = target_path
+                with tarfile.open(source) as archive:
+                    self.archive_modes = {member.name: member.mode for member in archive.getmembers()}
 
     environment = Environment()
     host_uv = tmp_path / "uv"
@@ -411,9 +529,23 @@ def test_miniswe_wrapper_subclasses_harbor_miniswe_and_installs_candidate_source
     asyncio.run(agent.install(environment))
 
     assert issubclass(module.MiniSweSourceAgent, base)
-    assert environment.uploads == [(target.resolve(), "/installed-agent/miniswe-source"), (host_uv, "/tmp/evolve-uv")]
+    assert not environment.uploaded_directories
+    assert environment.uploaded_archive_destination == "/tmp/evolve-miniswe-source.tar"
+    assert environment.uploads[1] == (host_uv, "/tmp/evolve-uv")
+    assert environment.archive_modes["./pyproject.toml"] == 0o600
+    assert environment.archive_modes["./src"] == 0o700
+    assert not (environment.archive_modes["./pyproject.toml"] & stat.S_IWOTH)
+    assert stat.S_IMODE(target.stat().st_mode) == 0o700
+    assert stat.S_IMODE((target / "pyproject.toml").stat().st_mode) == 0o600
+    assert stat.S_IMODE((target / "uv.lock").stat().st_mode) == 0o600
     joined = "\n".join(environment.commands)
-    bootstrap = environment.commands[0]
+    assert "chmod -R a+rX" not in joined
+    extraction = environment.commands[0]
+    assert "tar -xf /tmp/evolve-miniswe-source.tar" in extraction
+    assert "--no-same-owner" in extraction
+    assert "mkdir -p /installed-agent/miniswe-source" in extraction
+    assert "rm -f /tmp/evolve-miniswe-source.tar" not in extraction
+    bootstrap = environment.commands[1]
     assert "apt-get" not in joined
     assert "apk add" not in joined
     assert 'cp /tmp/evolve-uv "$HOME/.local/bin/uv"' in joined
@@ -669,7 +801,7 @@ def test_init_with_local_miniswe_seed_writes_protected_harbor_adapter(tmp_path: 
 
     wrapper = workspace / ".evolve" / "evolve" / "integrations" / "harbor" / "miniswe_candidate.py"
     assert wrapper.exists()
-    assert "class MiniSweSourceAgent(MiniSweAgent):" in wrapper.read_text()
+    assert "class CandidateMiniSweAgent(MiniSweAgent):" in wrapper.read_text()
     assert not (workspace / "evolve_harbor_adapter").exists()
     assert not (workspace / "evolve_harbor_agent").exists()
     assert (workspace / "target" / "uv.lock").read_bytes() == expected_lock

@@ -1,0 +1,42 @@
+{
+  "dataset": "terminal-bench@2.0",
+  "name": "terminal-bench-2-30-v1",
+  "selection": {
+    "count": 30,
+    "scheme": "sha256-order-v1",
+    "seed": "terminal-bench@2.0 + NUL + ahe-codex-30-v1 + NUL"
+  },
+  "tasks": {
+    "cancel-async-tasks": "sha256:4a7c648f81f05983bb190b9d70bc7f849e889e640fd5ef691940ebb27bb90bb5",
+    "cobol-modernization": "sha256:54de4abe8f54640ded4b3a63d4a3d661feee54766cc202809f7b1987ad2a9f93",
+    "code-from-image": "sha256:0d40c9b2b32669c85dfb222c2cc4350c926b3c5d3dc6586c75b56a5d0f11e6a9",
+    "compile-compcert": "sha256:b17aa687dad441f850e886dfe9f94ec043c4b7b2cd8314b72d94187770549c74",
+    "db-wal-recovery": "sha256:98fff0e7c7683609240a4e4d413f245d4ebca0e4e8e380e081a887815ba02ef1",
+    "dna-insert": "sha256:b26e28b3a1b8068e96b2668f54b3c792d7553610950b925096f9234ce264f27b",
+    "extract-elf": "sha256:7ef77ca011aa7425f8337ec148c92ca876f12fb2a4764ea1070de66eabfe0fdf",
+    "feal-differential-cryptanalysis": "sha256:de9766ad74871e53624e7fa4dc1bedc1c5e55bd5ac5231d4791324fb12b56a80",
+    "feal-linear-cryptanalysis": "sha256:0ba25d10d0b6cfceaa13a9e8f9b1d4961b3726d71ee40ff183191b1fbba677e5",
+    "financial-document-processor": "sha256:1d23dadab99a49d2a9c4bb607c3b2938390fbc7fdbc9cbfbc7fd06e7a655a333",
+    "fix-code-vulnerability": "sha256:5b86f07640fce0475c043a071cb87ef28a3ecb195fc750b22a9cb2191dd12906",
+    "fix-ocaml-gc": "sha256:cc979425b8dcdf0d126da8bc0142e25c06e819ebf429c6930dd09ac6e2d12d19",
+    "git-leak-recovery": "sha256:e43933c07856137cf86a346781b53fa5c3c454ec4bb64fe6ec3c1c710ef5e4db",
+    "install-windows-3.11": "sha256:a674954a8c5453d2c20bf7eb85a125ff582fb5f3d57bc2a72d64f1290bd9a265",
+    "log-summary-date-ranges": "sha256:aca765ff8bb8829b55d440f6646b5c6cb0ea2c612de77f1c85a2e4c1f22e0880",
+    "merge-diff-arc-agi-task": "sha256:128d91f5855712e611a5088f81e1bf0563f518ff84f7f780a22dec14c8ce1050",
+    "model-extraction-relu-logits": "sha256:61e4c51a6616f2bf0e9b525ab43021f31183e1cf72213596c573398075ca89b3",
+    "nginx-request-logging": "sha256:dd09b475fb1ea2fd198d07c9e2f2cc62c12c138b2ac082f5d12a5a3f9dcf8b56",
+    "pypi-server": "sha256:9cffc0b3c4729cebc82c208c7efb77306d88afeba8dd6f339614723cf91de3f6",
+    "qemu-startup": "sha256:2fa92a2994c6364bc9e6fcef7fbd3032292506c71ee3484b176fdc00a6f3d0e7",
+    "raman-fitting": "sha256:ca465a91814807123fb3533d74649ebfd9ae8da7c0ec748d3b2822f727dc2fa3",
+    "reshard-c4-data": "sha256:aa2ecc81e045ad8a9e8821a688f88bd3f51320bc19255ae3930255f237bc9889",
+    "sqlite-db-truncate": "sha256:6eadb7d343183471fd31d3f0976486147f33cf5177e435c518ed7ce1a7581163",
+    "sqlite-with-gcov": "sha256:6d6753ec527b81efe21dc99785ddc1a1d1a99a6b43a9277cb7b7936044149978",
+    "torch-pipeline-parallelism": "sha256:96c05de71d9a9a1e244aab9bbc54f99a37c875fbfb147d007080bf11b4d4ff5d",
+    "tune-mjcf": "sha256:98bd936be39f19e5f041def130d3e12f3645ff5f26959e0476819eb804a3f55a",
+    "video-processing": "sha256:abb658e8a1a47a546d003368fcfb36ab329c0c4238042455c325d306c3dd31f9",
+    "vulnerable-secret": "sha256:3540ebafdbc1548fc609f9cb329771a1676c1895bfb99a703cbbace6110ca4d5",
+    "winning-avg-corewars": "sha256:b887b68ca26e049b62b5addcdd6ff6f26e7d7ef9bc4f56246a5514895646b800",
+    "write-compressor": "sha256:874f369f36cb270064d32a90893f620aaab9ae1eb00994da7d60f6f8aa2f424e"
+  },
+  "version": 1
+}

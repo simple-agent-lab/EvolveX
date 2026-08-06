@@ -129,6 +129,9 @@ def test_ahe_prompt_uses_official_decisions_and_required_manifest(tmp_path: Path
     checkout, _run_dir, ctx = _case(tmp_path)
     prompt = module.build_prompt(checkout, "fallback", ctx)
     for required in (
+        "configured candidate harness",
+        "declared mutable surface",
+        "Identify the active execution path",
         "KEEP",
         "REVISE",
         "ROLLBACK + PIVOT",
@@ -139,14 +142,19 @@ def test_ahe_prompt_uses_official_decisions_and_required_manifest(tmp_path: Path
         "deployed benchmark-solving harness",
         "not available inside benchmark episodes",
         "Do not copy this evolution workflow",
-        "runs the target's `DefaultAgent` with the `mini` configuration",
-        "Benchmark-specific configurations are inactive",
         "Do not refer to debuggers",
         "You CAN modify any file under `target/`",
         "Runtime prompt/config: `target/src/minisweagent/config/mini.yaml`",
         "This method further restricts the current proposal to: `target`",
     ):
         assert required in prompt
+    for forbidden in (
+        "Improve the MiniSWE harness",
+        "Make one coherent target/** change",
+        "runs the target's `DefaultAgent` with the `mini` configuration",
+        "Benchmark-specific configurations are inactive",
+    ):
+        assert forbidden not in prompt
     assert "Evidence reading order" in prompt
     assert "OVERVIEW ROOT CAUSE" not in prompt
     assert "ATTRIBUTION BODY MUST STAY ON DISK" not in prompt

@@ -173,7 +173,7 @@ def test_run_loads_workspace_dotenv_without_overriding_explicit_environment(
     assert os.environ["OPENAI_API_KEY"] == "explicit-key"
 
 
-def test_run_uses_caller_dotenv_as_fallback_for_separate_workspace(
+def test_run_does_not_load_caller_dotenv_for_separate_workspace(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     caller = tmp_path / "framework"
@@ -193,4 +193,4 @@ def test_run_uses_caller_dotenv_as_fallback_for_separate_workspace(
 
     cli.run(workspace, max_generations=0, assert_success=False)
 
-    assert captured["base_url"] == "https://caller.example/v1"
+    assert captured["base_url"] is None

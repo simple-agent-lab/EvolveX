@@ -8,6 +8,8 @@ from pathlib import Path
 from harbor.agents.installed.codex import Codex
 from harbor.agents.installed.mini_swe_agent import MiniSweAgent
 
+from ._candidate_source import UnsafeCandidateSourceError, candidate_source_archive
+
 SOURCE_DIR = "/installed-agent/miniswe-source"
 VENV_PYTHON = f"{SOURCE_DIR}/.venv/bin/python"
 UV_CACHE_DIR = "/opt/evolve/uv/cache"
@@ -17,6 +19,7 @@ TASK_PATH = "/tmp/miniswe-source-task.txt"
 LOG_PATH = "/logs/agent/mini-swe-agent.txt"
 RUNTIME_EVIDENCE_PATH = "/logs/agent/evolve-runtime.json"
 HOST_UV_PATH = "/tmp/evolve-uv"
+SOURCE_ARCHIVE_PATH = "/tmp/evolve-miniswe-source.tar"
 PROXY_ENV_NAMES = ("HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy")
 
 
@@ -41,7 +44,7 @@ class ResponsesCodexAgent(Codex):
         configs = [
             'model_provider="evolve_http"',
             'forced_login_method="api"',
-            'model_providers.evolve_http.name="Evolve HTTP Responses"',
+            'model_providers.evolve_http.name="EvolveX HTTP Responses"',
             f'model_providers.evolve_http.base_url="{base_url}"',
             'model_providers.evolve_http.env_key="OPENAI_API_KEY"',
             'model_providers.evolve_http.wire_api="responses"',
@@ -104,11 +107,14 @@ def build_model(config):
         if "reasoning.encrypted_content" not in include:
             include.append("reasoning.encrypted_content")
         nested_kwargs["include"] = include
-        cache_key = f"evolve-{uuid.uuid4().hex}"
+        configured_session_id = os.environ.get("EVOLVE_SESSION_ID", "")
+        session_id = configured_session_id if configured_session_id.strip() else ""
+        cache_key = session_id or f"evolve-{uuid.uuid4().hex}"
         nested_kwargs["prompt_cache_key"] = cache_key
-        extra_headers = dict(nested_kwargs.get("extra_headers") or {})
-        extra_headers["extra"] = json.dumps({"session_id": cache_key}, separators=(",", ":"))
-        nested_kwargs["extra_headers"] = extra_headers
+        if session_id:
+            extra_headers = dict(nested_kwargs.get("extra_headers") or {})
+            extra_headers["extra"] = json.dumps({"session_id": session_id}, separators=(",", ":"))
+            nested_kwargs["extra_headers"] = extra_headers
         model_kwargs["model_kwargs"] = nested_kwargs
         return LitellmResponseModel(**model_kwargs)
 
@@ -316,7 +322,7 @@ print("EVOLVE_PREFLIGHT: model_path_init_ok")
 ).strip()
 
 
-class MiniSweSourceAgent(MiniSweAgent):
+class CandidateMiniSweAgent(MiniSweAgent):
     async def install(self, environment):
         source = self._get_env("EVOLVE_CANDIDATE_SOURCE")
         if not source:
@@ -328,11 +334,25 @@ class MiniSweSourceAgent(MiniSweAgent):
             raise EvolveCandidateInvalidError("EVOLVE_CANDIDATE_INVALID: lock_missing")
         if not ((source_dir / "src" / "minisweagent").is_dir() or (source_dir / "minisweagent").is_dir()):
             raise EvolveCandidateInvalidError("EVOLVE_CANDIDATE_INVALID: source_missing")
-        await environment.upload_dir(source_dir, SOURCE_DIR)
+        try:
+            with candidate_source_archive(source_dir) as archive_path:
+                await environment.upload_file(archive_path, SOURCE_ARCHIVE_PATH)
+        except UnsafeCandidateSourceError as error:
+            raise EvolveCandidateInvalidError("EVOLVE_CANDIDATE_INVALID: unsafe_source_tree") from error
         host_uv = self._host_uv_binary()
         if host_uv is not None:
             await environment.upload_file(host_uv, HOST_UV_PATH)
         install_env = self._install_env()
+        await self._runtime_phase(
+            environment,
+            command=(
+                "set -euo pipefail; "
+                f"mkdir -p {SOURCE_DIR}; "
+                f"tar -xf {SOURCE_ARCHIVE_PATH} --no-same-owner --directory {SOURCE_DIR}"
+            ),
+            code="source_extract_failed",
+            env=install_env,
+        )
         offline_runtime = self._get_env("UV_OFFLINE") == "1"
         missing_uv = (
             'printf "EVOLVE_UV_BOOTSTRAP_MISSING\\n" >&2; false; '
@@ -518,4 +538,10 @@ class MiniSweSourceAgent(MiniSweAgent):
         smoke_mode = self._get_env("EVOLVE_CANDIDATE_SMOKE_MODE")
         if smoke_mode is not None:
             env["EVOLVE_CANDIDATE_SMOKE_MODE"] = smoke_mode
+        session_id = self._get_env("EVOLVE_SESSION_ID") or ""
+        if session_id.strip():
+            env["EVOLVE_SESSION_ID"] = session_id
         return env
+
+
+MiniSweSourceAgent = CandidateMiniSweAgent

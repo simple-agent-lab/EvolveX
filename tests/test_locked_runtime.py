@@ -6,11 +6,12 @@ import sys
 from pathlib import Path
 
 import pytest
-from conftest import write_locked_miniswe_seed
+from conftest import init_recipe_with_local_inputs, write_locked_miniswe_seed
 
-from evolve import uv_runtime as uv_runtime_module
+from evolve.config import load_config
 from evolve.evaluation import Outcome
-from evolve.uv_runtime import candidate_runtime_config, prepare_candidate_runtime
+from evolve.runtime import uv as uv_runtime_module
+from evolve.runtime.uv import candidate_runtime_config, prepare_candidate_runtime
 
 
 def _fake_uv(tmp_path: Path) -> tuple[Path, Path]:
@@ -72,6 +73,22 @@ def _runtime_fixture(tmp_path: Path) -> tuple[Path, Path, Path, dict[str, object
     return checkout, run_dir, runtime_root, evaluator, env, calls
 
 
+def _strict_runtime_fixture(
+    tmp_path: Path,
+) -> tuple[Path, Path, Path, dict[str, object], dict[str, str], Path]:
+    checkout = init_recipe_with_local_inputs(tmp_path, "ahe")
+    run_dir = tmp_path / "strict-run"
+    runtime_root = tmp_path / "strict-runtime"
+    executable, calls = _fake_uv(tmp_path)
+    evaluator = load_config(checkout / "evolve.yaml")["evaluator"]
+    env = {
+        **os.environ,
+        "EVOLVE_UV_BINARY": str(executable),
+        "UV_CALLS": str(calls),
+    }
+    return checkout, run_dir, runtime_root, evaluator, env, calls
+
+
 def _prepare(tmp_path: Path, **env_overrides: str):
     checkout, run_dir, runtime_root, evaluator, env, calls = _runtime_fixture(tmp_path)
     env.update(env_overrides)
@@ -84,6 +101,21 @@ def _prepare(tmp_path: Path, **env_overrides: str):
         env=env,
     )
     return result, run_dir, calls
+
+
+def test_candidate_dependency_digest_matches_runtime_project_inputs(tmp_path: Path) -> None:
+    checkout, _run_dir, _runtime_root, evaluator, _env, _calls = _runtime_fixture(tmp_path)
+
+    first = uv_runtime_module.candidate_dependency_digest(checkout, evaluator)
+    (checkout / "target" / "README.md").write_text("unrelated")
+    unchanged = uv_runtime_module.candidate_dependency_digest(checkout, evaluator)
+    (checkout / "target" / "uv.lock").write_text("version = 2\n")
+    changed = uv_runtime_module.candidate_dependency_digest(checkout, evaluator)
+
+    assert len(first) == 64
+    assert unchanged == first
+    assert changed != first
+    assert uv_runtime_module.candidate_dependency_digest(checkout, {}) is None
 
 
 def test_uv_runtime_prepares_cache_and_emits_offline_contract(tmp_path: Path) -> None:
@@ -101,6 +133,7 @@ def test_uv_runtime_prepares_cache_and_emits_offline_contract(tmp_path: Path) ->
         "/opt/evolve/uv/cache",
         "/opt/evolve/uv/python",
     ]
+    assert [mount.read_only for mount in result.mounts] == [False, True]
     receipt = json.loads((run_dir / "candidate-runtime.json").read_text())
     assert receipt["variant"] == "uv"
     assert receipt["project"] == "target"
@@ -108,6 +141,46 @@ def test_uv_runtime_prepares_cache_and_emits_offline_contract(tmp_path: Path) ->
     assert receipt["outcome"] == "ready"
     assert receipt["attempts"] == 1
     assert not (run_dir / ".candidate-runtime-venv").exists()
+
+
+def test_legacy_uv_runtime_receipt_with_contract_id_remains_schema_two(tmp_path: Path) -> None:
+    checkout, run_dir, runtime_root, evaluator, env, _calls = _runtime_fixture(tmp_path)
+
+    result = prepare_candidate_runtime(
+        checkout,
+        run_dir,
+        runtime_root,
+        candidate_commit="abc123",
+        evaluator=evaluator,
+        env=env,
+        contract_id="a" * 64,
+    )
+
+    assert result.ready
+    receipt = json.loads((run_dir / "candidate-runtime.json").read_text())
+    assert receipt["schema_version"] == 2
+    assert receipt["contract_id"] == "a" * 64
+
+
+def test_strict_uv_receipt_contains_runtime_identity(tmp_path: Path) -> None:
+    checkout, run_dir, runtime_root, evaluator, env, _calls = _strict_runtime_fixture(tmp_path)
+    runtime = json.loads((checkout / "evaluator/runtime.json").read_text())
+
+    result = prepare_candidate_runtime(
+        checkout,
+        run_dir,
+        runtime_root,
+        candidate_commit="abc123",
+        evaluator=evaluator,
+        env=env,
+        contract_id="a" * 64,
+    )
+
+    assert result.ready
+    receipt = json.loads((run_dir / "candidate-runtime.json").read_text())
+    assert receipt["schema_version"] == 3
+    assert receipt["runtime_digest"] == runtime["digest"]
+    assert receipt["contract_id"] == "a" * 64
 
 
 def test_uv_runtime_does_not_mount_host_executables_over_container_tools(tmp_path: Path) -> None:
@@ -290,6 +363,29 @@ def test_uv_runtime_config_resolves_project_inside_checkout(tmp_path: Path) -> N
     assert config.python == "3.12"
 
 
+def test_uv_runtime_config_is_derived_from_resolved_runtime(tmp_path: Path) -> None:
+    workspace = init_recipe_with_local_inputs(tmp_path, "ahe")
+    evaluator = load_config(workspace / "evolve.yaml")["evaluator"]
+
+    config = candidate_runtime_config(workspace, evaluator)
+
+    assert config is not None
+    assert config.variant == "uv"
+    assert config.project == (workspace / "target").resolve()
+    assert config.project_relative == "target"
+    assert config.python == "3.12"
+
+
+def test_strict_runtime_rejects_legacy_candidate_runtime_override(tmp_path: Path) -> None:
+    workspace = init_recipe_with_local_inputs(tmp_path, "ahe")
+
+    with pytest.raises(ValueError, match="cannot combine"):
+        candidate_runtime_config(
+            workspace,
+            {"candidate_runtime": {"variant": "uv", "project": "target", "python": "3.12"}},
+        )
+
+
 @pytest.mark.parametrize(
     "value, message",
     [
@@ -321,6 +417,30 @@ def test_stub_evaluation_skips_candidate_runtime_preparation(tmp_path: Path) -> 
     assert result.ready
     assert result.variant is None
     assert result.receipt_path is None
+    assert not calls.exists()
+
+
+def test_eval_stub_cannot_certify_strict_candidate_runtime(tmp_path: Path) -> None:
+    checkout, run_dir, runtime_root, evaluator, env, calls = _strict_runtime_fixture(tmp_path)
+    env["EVAL_STUB"] = "1"
+
+    result = prepare_candidate_runtime(
+        checkout,
+        run_dir,
+        runtime_root,
+        "abc123",
+        evaluator,
+        env=env,
+        contract_id="a" * 64,
+    )
+
+    assert result.ready is False
+    assert result.outcome is Outcome.INFRASTRUCTURE_FAILED
+    assert result.reason is not None and "strict runtime preparation" in result.reason
+    assert result.receipt_path is not None
+    receipt = json.loads(result.receipt_path.read_text())
+    assert receipt["schema_version"] == 3
+    assert receipt["runtime_digest"] == json.loads((checkout / "evaluator/runtime.json").read_text())["digest"]
     assert not calls.exists()
 
 

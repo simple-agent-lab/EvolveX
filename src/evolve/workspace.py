@@ -25,8 +25,10 @@ from .config import (
     OPTIONAL_OPERATOR_KINDS,
     SOURCE_ROOT,
     default_config,
+    evaluator_repetitions,
     library_root,
     load_config,
+    normalize_evaluator_config,
     recipe_root,
     render_yaml,
     resource_root,
@@ -34,6 +36,8 @@ from .config import (
     seed_root,
 )
 from .host_runtime import uv_executable
+from .integrations.harbor._agent_roles import is_candidate_miniswe_agent
+from .runtime.config import resolve_runtime
 from .splits import build_manifest
 
 _SEED_IGNORE_PATTERNS = (
@@ -50,7 +54,25 @@ _SEED_IGNORE_PATTERNS = (
 )
 _ENV_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _GIT_COMMIT = re.compile(r"[0-9a-fA-F]{40}")
-_MINISWE_CANDIDATE_AGENT = "evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent"
+_GENERATED_EVALUATOR_PATHS = frozenset(
+    {
+        "evaluator/agent.env",
+        "evaluator/cleanup_harbor.py",
+        "evaluator/dataset.pin",
+        "evaluator/engines/local.sh",
+        "evaluator/environment.kwargs",
+        "evaluator/eval.env",
+        "evaluator/eval.sh",
+        "evaluator/harbor_artifacts.py",
+        "evaluator/parse_score.py",
+        "evaluator/runtime.json",
+        "evaluator/runtime.pin",
+        "evaluator/smoke.sh",
+        "evaluator/splits.json",
+        "evaluator/stub_eval.py",
+        "evaluator/verifier.env",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -60,6 +82,7 @@ class InitOptions:
     seed: str | None = None
     dataset: str | None = None
     recipe_path: Path | None = None
+    tasks_per_round: int | None = None
 
 
 @dataclass(frozen=True)
@@ -95,6 +118,12 @@ def init_workspace(options: InitOptions) -> None:
         evaluator = config["evaluator"]
         assert isinstance(evaluator, dict)
         evaluator["dataset"] = options.dataset
+    if options.tasks_per_round is not None:
+        if options.tasks_per_round < 1:
+            raise ValueError("--tasks must be at least 1")
+        evaluator = config["evaluator"]
+        assert isinstance(evaluator, dict)
+        evaluator["tasks_per_round"] = options.tasks_per_round
 
     evaluator = config["evaluator"]
     assert isinstance(evaluator, dict)
@@ -188,12 +217,23 @@ def _write_files(
     evaluator_agent = str(evaluator.get("agent") or "")
     if evaluator_engine == "harbor" and not evaluator_agent:
         raise ValueError("evaluator.agent is required for harbor recipes")
-    runtime_digest = os.environ.get("EVOLVE_RUNTIME_DIGEST", "").strip()
-    if evaluator_engine == "harbor" and not runtime_digest:
-        raise ValueError(
-            "EVOLVE_RUNTIME_DIGEST must identify the evaluator capsule (normally an immutable image digest)"
-        )
-    evaluator_trials = int(evaluator.get("k", 1))
+    recipe_evaluator_assets = _recipe_evaluator_assets(
+        recipe,
+        recipe_directory=recipe_directory,
+    )
+    evaluator_collisions = sorted(
+        relative_path
+        for relative_path in recipe_evaluator_assets
+        if relative_path.casefold() in _GENERATED_EVALUATOR_PATHS
+    )
+    if evaluator_collisions:
+        raise ValueError("recipe evaluator asset collides with generated file: " + ", ".join(evaluator_collisions))
+    resolved_runtime = resolve_runtime(
+        evaluator.get("runtime"),
+        engine=evaluator_engine,
+        environment=os.environ,
+    )
+    evaluator_trials = evaluator_repetitions(evaluator)
     tasks_per_round = int(evaluator.get("tasks_per_round", evaluator_trials))
     evaluator_n = int(evaluator.get("n_concurrent", evaluator_trials))
     evaluator_environment = str(evaluator.get("environment") or "")
@@ -233,12 +273,12 @@ def _write_files(
         "README.md": _workspace_scaffold("README.md"),
         "AGENTS.md": _workspace_scaffold("AGENTS.md"),
         "program.md": _workspace_scaffold("program.md"),
-        "LICENSE.evolve-framework": _framework_legal_text("LICENSE"),
-        "NOTICE.evolve-framework": _framework_legal_text("NOTICE"),
+        "LICENSE.evolvex": _framework_legal_text("LICENSE"),
+        "NOTICE.evolvex": _framework_legal_text("NOTICE"),
         ".gitignore": _workspace_scaffold(".gitignore"),
         ".evolve-protocol-version": "1\n",
         "operators/engines/local.sh": _shell_script("operator local engine"),
-        "operators/preflight.sh": _shell_script("operator preflight"),
+        "operators/preflight.sh": _workspace_scaffold("operators/preflight.sh"),
         "operators/select.md": _workspace_scaffold("operators/select.md"),
         "operators/rollout.md": _workspace_scaffold("operators/rollout.md"),
         "operators/gate.md": _workspace_scaffold("operators/gate.md"),
@@ -267,10 +307,9 @@ def _write_files(
         "evaluator/verifier.env": _agent_env(evaluator.get("verifier_env")),
         "evaluator/environment.kwargs": _environment_kwargs(evaluator.get("environment_kwargs")),
         "evaluator/splits.json": json.dumps(split_manifest, indent=2, sort_keys=True) + "\n",
-        "evaluator/dataset.pin": (
-            f"dataset={evaluator_dataset}\nchecksum={split_manifest['dataset_digest'] or 'unresolved'}\n"
-        ),
-        "evaluator/runtime.pin": f"{runtime_digest}\n",
+        "evaluator/dataset.pin": _dataset_pin(evaluator_dataset, split_manifest),
+        "evaluator/runtime.pin": f"{resolved_runtime.digest}\n",
+        "evaluator/runtime.json": json.dumps(resolved_runtime.to_dict(), indent=2, sort_keys=True) + "\n",
         "evaluator/stub_eval.py": _workspace_scaffold("evaluator/stub_eval.py"),
         "evaluator/engines/local.sh": _shell_script("canonical local engine"),
         "archive.jsonl": "",
@@ -296,10 +335,6 @@ def _write_files(
         files[f"operators/{binding.kind}.py"] = _with_provenance(binding.kind, binding.source, binding.text)
         if binding.companion_text is not None:
             files[f"operators/{binding.kind}.md"] = binding.companion_text
-    recipe_evaluator_assets = _recipe_evaluator_assets(
-        recipe,
-        recipe_directory=recipe_directory,
-    )
     generated_output_paths = {relative_path.casefold() for relative_path in files}
     evaluator_collisions = sorted(
         relative_path for relative_path in recipe_evaluator_assets if relative_path.casefold() in generated_output_paths
@@ -553,6 +588,9 @@ def _with_provenance(kind: str, source: str, source_text: str) -> str:
 
 def _runtime_config(config: dict[str, object]) -> dict[str, object]:
     runtime = copy.deepcopy(config)
+    evaluator = runtime.get("evaluator")
+    if isinstance(evaluator, dict):
+        runtime["evaluator"] = normalize_evaluator_config(cast("dict[str, Any]", evaluator))
     operators = runtime.get("operators")
     if isinstance(operators, dict):
         for kind in OPERATOR_KINDS:
@@ -561,6 +599,21 @@ def _runtime_config(config: dict[str, object]) -> dict[str, object]:
                 block.pop("variant", None)
                 block.pop("script", None)
     return runtime
+
+
+def _dataset_pin(dataset: str, manifest: dict[str, Any]) -> str:
+    identity = manifest.get("dataset_identity")
+    if manifest.get("identity_status") == "verified" and isinstance(identity, dict):
+        members = sorted(str(name) for split in manifest["tasks"].values() for name in split)
+        payload = {
+            "schema_version": 1,
+            "source": identity["source"],
+            "digest": identity["digest"],
+            "resolved_reference": identity["resolved_reference"],
+            "members": members,
+        }
+        return json.dumps(payload, indent=2, sort_keys=True) + "\n"
+    return f"dataset={dataset}\nchecksum=sha256:stub\n"
 
 
 def _component_manifest(recipe: str, config: dict[str, object]) -> dict[str, object]:
@@ -579,6 +632,7 @@ def _component_manifest(recipe: str, config: dict[str, object]) -> dict[str, obj
 
 
 def _validate_evaluator_config(evaluator: dict[str, Any]) -> None:
+    normalize_evaluator_config(evaluator)
     engine = str(evaluator.get("engine") or "")
     _evaluator_scaffold(engine, "engine.sh")
     if engine == "harbor" and not evaluator.get("agent"):
@@ -610,7 +664,7 @@ def _validate_target_config(target: dict[str, Any]) -> None:
 
 
 def _validate_candidate_target_contract(prepared_target: Path, evaluator: dict[str, Any]) -> None:
-    if evaluator.get("agent") != _MINISWE_CANDIDATE_AGENT:
+    if not is_candidate_miniswe_agent(evaluator.get("agent")):
         return
     missing = [relative for relative in ("pyproject.toml", "uv.lock") if not (prepared_target / relative).is_file()]
     if missing:
@@ -805,8 +859,8 @@ def _remove_generated_target_metadata(target: Path) -> None:
 
 def _init_git(workspace: Path) -> None:
     _git(workspace, "init")
-    _git(workspace, "config", "user.name", "Evolve Mechanism")
-    _git(workspace, "config", "user.email", "evolve@example.invalid")
+    _git(workspace, "config", "user.name", "EvolveX Mechanism")
+    _git(workspace, "config", "user.email", "evolvex@example.invalid")
     _git(workspace, "add", ".")
     # A vendored seed is an exact experiment input. Its own ignore rules must
     # not silently remove copied files (for example an upstream-ignored

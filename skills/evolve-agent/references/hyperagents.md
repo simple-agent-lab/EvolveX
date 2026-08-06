@@ -18,7 +18,7 @@ harder attribution problem than target-only evolution.
 
 Run `./evolve operator list . --json` before choosing a stage. The shipped
 HyperAgents profile normally combines population-aware selection,
-`evaluation_replay`, `trace_browser`, a `hyperagents` meta agent, and an
+`parent_evaluation`, `trace_browser`, a `hyperagents` meta agent, and an
 independent `hyperagents` validate stage. Invoke configured direct evidence
 and admission stages and inspect their generation artifacts. Use the configured
 `meta_agent` through the driver when it should own both target and process

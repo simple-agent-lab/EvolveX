@@ -12,17 +12,14 @@ SAFE_ARTIFACTS = (
     "agent/mini-swe-agent.trajectory.json",
     "agent/mini-swe-agent.txt",
     "agent/trajectory.json",
-    "trial.log",
-    "verifier/reward.txt",
-    "verifier/test-stdout.txt",
     # Structured, verifier-owned evidence for artifact-producing evaluations.
     # Keep this explicit allowlist: arbitrary verifier files may contain secrets.
+    "verifier/diagnostics.json",
     "verifier/evaluation.json",
     "verifier/judge.json",
     "verifier/poster.svg",
     "verifier/poster.png",
-    "result.json",
-    "exception.txt",
+    "evolve-replay.json",
 )
 _CANDIDATE_MARKER = "EVOLVE_CANDIDATE_INVALID:"
 _MISSING_TOOL_OUTPUT = "No tool output found for function call"
@@ -64,6 +61,8 @@ def collect_harbor_artifacts(jobs_dir: Path) -> tuple[dict[str, Any], dict[str, 
 
 
 def write_harbor_artifacts(jobs_dir: Path, run_dir: Path) -> list[float]:
+    _write_verifier_diagnostics(jobs_dir)
+    _write_replay_envelopes(jobs_dir)
     task_vector, artifact_index, rewards = collect_harbor_artifacts(jobs_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "task_vector.json").write_text(json.dumps(task_vector, indent=2, sort_keys=True) + "\n")
@@ -72,6 +71,176 @@ def write_harbor_artifacts(jobs_dir: Path, run_dir: Path) -> list[float]:
         json.dumps({"usd": sum(float(trial["cost_usd"]) for trial in artifact_index["trials"])}, sort_keys=True) + "\n"
     )
     return rewards
+
+
+def _write_replay_envelopes(jobs_dir: Path) -> None:
+    """Project raw Harbor results onto the only verifier-safe replay boundary."""
+    for result_path in sorted(jobs_dir.rglob("result.json")):
+        try:
+            result = json.loads(result_path.read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(result, dict):
+            continue
+        task_name, trial_name = result.get("task_name"), result.get("trial_name")
+        if not isinstance(task_name, str) or not isinstance(trial_name, str):
+            continue
+        envelope: dict[str, Any] = {"schema_version": 1, "task_name": task_name, "trial_name": trial_name}
+        reward = _reward(result)
+        if reward is not None:
+            envelope["verifier_result"] = {"rewards": {"reward": reward}}
+        exception = result.get("exception_info")
+        if isinstance(exception, dict):
+            safe_exception = {
+                "exception_type": _safe_label(exception.get("exception_type")),
+                "exception_message": _exception_message(exception.get("exception_message")),
+            }
+            envelope["exception_info"] = {key: value for key, value in safe_exception.items() if value is not None}
+        agent = result.get("agent_result")
+        if isinstance(agent, dict):
+            safe_agent = {
+                key: value
+                for key in ("n_input_tokens", "n_cache_tokens", "n_output_tokens", "cost_usd")
+                if (value := _safe_number(agent.get(key))) is not None
+            }
+            if safe_agent:
+                envelope["agent_result"] = safe_agent
+        (result_path.parent / "evolve-replay.json").write_text(json.dumps(envelope, sort_keys=True) + "\n")
+
+
+def _safe_number(value: object) -> int | float | None:
+    return value if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+def _safe_label(value: object, limit: int = 80) -> str | None:
+    if not isinstance(value, str):
+        return None
+    text = _redact_environment_values(value)
+    return text if len(text) <= limit and re.fullmatch(r"[A-Za-z0-9_.:-]+", text) else None
+
+
+def _safe_text_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [text for item in value[:20] if (text := _safe_label(item)) is not None]
+
+
+def _safe_numeric_map(value: object) -> dict[str, int | float]:
+    if not isinstance(value, dict):
+        return {}
+    result: dict[str, int | float] = {}
+    for key, item in value.items():
+        number = _safe_number(item)
+        safe_key = _safe_label(str(key))
+        if number is not None and safe_key is not None:
+            result[safe_key] = number
+    return result
+
+
+def _verifier_diagnostics(verifier_result: object) -> dict[str, Any] | None:
+    if not isinstance(verifier_result, dict):
+        return None
+    diagnostics: dict[str, Any] = {"schema_version": 1}
+    for key in ("reward",):
+        if (number := _safe_number(verifier_result.get(key))) is not None:
+            diagnostics[key] = number
+    for key in ("status", "termination_reason"):
+        if (text := _safe_label(verifier_result.get(key))) is not None:
+            diagnostics[key] = text
+    if reward_basis := _safe_text_list(verifier_result.get("reward_basis")):
+        diagnostics["reward_basis"] = reward_basis
+
+    reward_info = verifier_result.get("reward_info")
+    if isinstance(reward_info, dict):
+        safe_reward_info: dict[str, Any] = {}
+        action_checks = reward_info.get("action_checks")
+        if isinstance(action_checks, list):
+            safe_checks: list[dict[str, Any]] = []
+            for check in action_checks[:50]:
+                if not isinstance(check, dict):
+                    continue
+                safe_check: dict[str, Any] = {}
+                if isinstance(check.get("action_match"), bool):
+                    safe_check["action_match"] = check["action_match"]
+                if (number := _safe_number(check.get("action_reward"))) is not None:
+                    safe_check["action_reward"] = number
+                if (text := _safe_label(check.get("tool_type"))) is not None:
+                    safe_check["tool_type"] = text
+                if safe_check:
+                    safe_checks.append(safe_check)
+            if safe_checks:
+                safe_reward_info["action_checks"] = safe_checks
+        db_check = reward_info.get("db_check")
+        if isinstance(db_check, dict):
+            safe_db_check: dict[str, Any] = {}
+            if isinstance(db_check.get("db_match"), bool):
+                safe_db_check["db_match"] = db_check["db_match"]
+            if (number := _safe_number(db_check.get("db_reward"))) is not None:
+                safe_db_check["db_reward"] = number
+            if safe_db_check:
+                safe_reward_info["db_check"] = safe_db_check
+        if (number := _safe_number(reward_info.get("reward"))) is not None:
+            safe_reward_info["reward"] = number
+        if reward_basis := _safe_text_list(reward_info.get("reward_basis")):
+            safe_reward_info["reward_basis"] = reward_basis
+        if reward_breakdown := _safe_numeric_map(reward_info.get("reward_breakdown")):
+            safe_reward_info["reward_breakdown"] = reward_breakdown
+        if safe_reward_info:
+            diagnostics["reward_info"] = safe_reward_info
+
+    runtime = verifier_result.get("runtime_initialization")
+    if isinstance(runtime, dict):
+        safe_runtime: dict[str, Any] = {}
+        accepted = runtime.get("accepted")
+        if isinstance(accepted, dict):
+            safe_accepted: dict[str, Any] = {}
+            for key in ("max_errors", "max_steps"):
+                if (number := _safe_number(accepted.get(key))) is not None:
+                    safe_accepted[key] = number
+            if "seed" in accepted and (
+                (seed := _safe_number(accepted.get("seed"))) is not None or accepted["seed"] is None
+            ):
+                safe_accepted["seed"] = seed
+            if safe_accepted:
+                safe_runtime["accepted"] = safe_accepted
+        for key in (
+            "accepted_event_ordinal",
+            "accepted_once_count",
+            "event_ordinal",
+            "idempotent_replay_count",
+            "schema_version",
+            "start_event_ordinal",
+        ):
+            if (number := _safe_number(runtime.get(key))) is not None:
+                safe_runtime[key] = number
+        if (text := _safe_label(runtime.get("phase"))) is not None:
+            safe_runtime["phase"] = text
+        if rejected := _safe_numeric_map(runtime.get("rejected_mutations")):
+            safe_runtime["rejected_mutations"] = rejected
+        if safe_runtime:
+            diagnostics["runtime_initialization"] = safe_runtime
+
+    return diagnostics if len(diagnostics) > 1 else None
+
+
+def _write_verifier_diagnostics(jobs_dir: Path) -> None:
+    for result_path in sorted(jobs_dir.rglob("result.json")):
+        try:
+            result = json.loads(result_path.read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(result, dict) or not result.get("task_name") or not result.get("trial_name"):
+            continue
+        verifier_path = result_path.parent / "verifier" / "result.json"
+        try:
+            verifier_result = json.loads(verifier_path.read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        diagnostics = _verifier_diagnostics(verifier_result)
+        if diagnostics is None:
+            continue
+        output = result_path.parent / "verifier" / "diagnostics.json"
+        output.write_text(json.dumps(diagnostics, indent=2, sort_keys=True) + "\n")
 
 
 def _load_task_trials(jobs_dir: Path) -> list[dict[str, Any]]:
