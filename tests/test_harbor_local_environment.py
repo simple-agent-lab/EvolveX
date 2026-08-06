@@ -52,6 +52,15 @@ class _BaseEnvironment:
     def _output_callback(self):
         return None
 
+    async def _upload_environment_dir_after_start(self):
+        if (
+            self.task_env_config.docker_image
+            and not (self.environment_dir / "Dockerfile").exists()
+            and not (self.environment_dir / "docker-compose.yaml").exists()
+            and any(self.environment_dir.iterdir())
+        ):
+            await self.upload_dir(self.environment_dir, self.task_env_config.workdir or "/app")
+
 
 class _Capabilities:
     def __init__(self, **values):
@@ -81,6 +90,7 @@ class _EnvironmentPaths:
 class _TaskConfig:
     os: str = _TaskOS.LINUX
     workdir: str | None = None
+    docker_image: str | None = None
 
 
 def _load_module(monkeypatch: pytest.MonkeyPatch):
@@ -170,6 +180,68 @@ def test_local_environment_copies_directory_contents(tmp_path: Path, monkeypatch
     mapped_target = tmp_path / "trial" / "local-environment" / "tests" / "target"
     assert (mapped_target / "file.txt").read_text() == "payload"
     assert (downloaded / "file.txt").read_text() == "payload"
+
+
+def test_local_environment_stages_compiled_inputs_for_prebuilt_task(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _load_module(monkeypatch)
+    environment_dir = tmp_path / "environment"
+    workspace = environment_dir / "task" / "workspace"
+    workspace.mkdir(parents=True)
+    (workspace / "candidate.txt").write_text("candidate\n")
+    environment = module.LocalEnvironment(
+        environment_dir=environment_dir,
+        session_id="trial",
+        task_env_config=_TaskConfig(workdir="/app", docker_image="ubuntu:latest"),
+        trial_paths=types.SimpleNamespace(trial_dir=tmp_path / "trial"),
+    )
+
+    asyncio.run(environment.start(force_build=False))
+
+    staged = tmp_path / "trial" / "local-environment" / "app" / "task" / "workspace" / "candidate.txt"
+    assert staged.read_text() == "candidate\n"
+
+
+def test_local_environment_stages_inputs_when_task_has_dockerfile(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _load_module(monkeypatch)
+    environment_dir = tmp_path / "environment"
+    environment_dir.mkdir()
+    (environment_dir / "Dockerfile").write_text("FROM scratch\n")
+    (environment_dir / "paper.pdf").write_bytes(b"paper")
+    environment = module.LocalEnvironment(
+        environment_dir=environment_dir,
+        session_id="trial",
+        task_env_config=_TaskConfig(workdir="/app"),
+        trial_paths=types.SimpleNamespace(trial_dir=tmp_path / "trial"),
+    )
+
+    asyncio.run(environment.start(force_build=False))
+
+    staged = tmp_path / "trial" / "local-environment" / "app"
+    assert (staged / "paper.pdf").read_bytes() == b"paper"
+    assert (staged / "Dockerfile").read_text() == "FROM scratch\n"
+
+
+def test_local_environment_rewrites_virtual_paths_inside_verifier_scripts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _load_module(monkeypatch)
+    environment = _environment(module, tmp_path)
+    source = tmp_path / "tests-source"
+    source.mkdir()
+    script = source / "test.sh"
+    script.write_text("#!/bin/sh\nmkdir -p /logs/verifier\nprintf '1\\n' > /logs/verifier/reward.txt\n")
+
+    asyncio.run(environment.start(force_build=False))
+    asyncio.run(environment.upload_dir(source, "/tests"))
+    result = asyncio.run(environment.exec("chmod +x /tests/test.sh && /tests/test.sh"))
+
+    reward = tmp_path / "trial" / "local-environment" / "logs" / "verifier" / "reward.txt"
+    assert result.return_code == 0
+    assert reward.read_text() == "1\n"
 
 
 def test_local_environment_ignores_container_definition(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

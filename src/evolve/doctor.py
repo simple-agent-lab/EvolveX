@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Literal
 
 from .config import load_config
+from .evaluator_doctor import has_contract, probe_evaluator_contract
 from .execution_runtime import (
     ExecutionRuntimeProbeReport,
     RuntimeCheck,
@@ -190,6 +191,9 @@ def run_doctor(
     if profile == "experiment" and not config:
         raise ValueError("experiment doctor requires an initialized EvolveX workspace")
 
+    report_dir = root / "runs" / "doctor"
+    report_dir.mkdir(parents=True, exist_ok=True)
+
     backend = "local" if profile == "local" else _backend(config)
     runtime_values = config.get("execution_runtime") if profile == "experiment" else {"minimum_free_gib": 1}
     runtime_config = execution_runtime_config(runtime_values, default_backend=backend)
@@ -200,9 +204,8 @@ def run_doctor(
     checks.extend(_plugin_checks(root))
     if profile == "experiment":
         checks.extend(_experiment_checks(root, config))
+        checks.extend(probe_evaluator_contract(root, config))
 
-    report_dir = root / "runs" / "doctor"
-    report_dir.mkdir(parents=True, exist_ok=True)
     report_path = report_dir / f"{profile}-latest.json"
     report = DoctorReport(
         schema_version=1,
@@ -212,7 +215,20 @@ def run_doctor(
         execution_runtime=runtime_report.to_dict(),
         report_path=report_path,
     )
-    temporary = report_path.with_suffix(".json.tmp")
+    temporary = report_path.with_name(f".{report_path.name}.{os.getpid()}.tmp")
     temporary.write_text(json.dumps(report.to_dict(), indent=2, sort_keys=True) + "\n")
     temporary.replace(report_path)
+    return report
+
+
+def ensure_evaluator_ready(root: Path) -> DoctorReport | None:
+    """Fail before rollout when an opt-in frozen evaluator contract is unhealthy."""
+    root = root.expanduser().resolve()
+    if not has_contract(root):
+        return None
+    report = run_doctor(root, profile="experiment")
+    failures = [check for check in report.checks if check.status == "fail"]
+    if failures:
+        summary = "; ".join(f"{check.name}: {check.detail}" for check in failures[:5])
+        raise RuntimeError(f"evaluator doctor failed before rollout: {summary}; report: {report.report_path}")
     return report

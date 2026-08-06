@@ -77,10 +77,10 @@ jobs:
           git config --global user.email "evolvex-ci@example.invalid"
           git config --global init.defaultBranch main
 
-      # The suite is the coherence guard (ARCHITECTURE + line budgets + the
-      # operator registry single-source are all enforced here). It must pass on
-      # every PR — this is what keeps an agent/human-built codebase from rotting.
-      - name: pytest
+      # The default tier is the coherence guard (ARCHITECTURE + line budgets +
+      # the operator registry single-source are all enforced here). Slow tests
+      # are opt-in and run only for changes to the workflow they exercise.
+      - name: pytest (default tier)
         run: uv run --frozen pytest -q
 
       - name: deterministic mechanism smoke (init → run → verify progress)

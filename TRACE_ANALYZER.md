@@ -48,7 +48,8 @@ The analyzer reads:
 
 - `rollout/cases.json`: normalized task identity, reward/outcome, ordered
   message/tool-call/tool-result events, verifier evidence, exceptions, usage,
-  timing, and artifact inventory;
+  timing, artifact inventory, and a digest-bound workspace-relative reference
+  to the complete ATIF trajectory when one is available;
 - prior run metrics and lineage through the feedback history generated after
   analysis.
 

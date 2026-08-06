@@ -12,7 +12,13 @@ SAFE_ARTIFACTS = (
     "agent/mini-swe-agent.trajectory.json",
     "agent/mini-swe-agent.txt",
     "agent/trajectory.json",
+    # Structured, verifier-owned evidence for artifact-producing evaluations.
+    # Keep this explicit allowlist: arbitrary verifier files may contain secrets.
     "verifier/diagnostics.json",
+    "verifier/evaluation.json",
+    "verifier/judge.json",
+    "verifier/poster.svg",
+    "verifier/poster.png",
     "evolve-replay.json",
 )
 _CANDIDATE_MARKER = "EVOLVE_CANDIDATE_INVALID:"

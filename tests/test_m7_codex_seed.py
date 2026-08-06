@@ -193,6 +193,26 @@ def test_builtin_codex_seed_contains_valid_plugin_layout() -> None:
     assert "EVOLVE_PLUGIN_SESSION_CONTEXT_V1" in (plugin / "context.md").read_text()
 
 
+def test_paper_poster_codex_seed_uses_cli_default_unless_model_is_explicit(tmp_path: Path, monkeypatch) -> None:
+    _install_fake_harbor(monkeypatch)
+    module = _load_target_agent(
+        Path(__file__).parents[1] / "evals" / "skills" / "make-paper-poster" / "seed" / "agent.py"
+    )
+
+    default_agent = module.HarborAgent(logs_dir=tmp_path / "default")
+    assert default_agent.model_name is None
+    command = asyncio.run(
+        default_agent.exec_as_agent(
+            RecordingEnvironment(),
+            f"codex exec --model {module.DEFAULT_MODEL_SENTINEL} --json -- task",
+        )
+    )
+    assert "--model" not in command
+
+    pinned_agent = module.HarborAgent(logs_dir=tmp_path / "pinned", model_name="gpt-pinned")
+    assert pinned_agent.model_name == "gpt-pinned"
+
+
 def test_builtin_codex_wrapper_uses_candidate_source_from_extra_env(tmp_path: Path, monkeypatch) -> None:
     original_target = tmp_path / "original" / "target"
     original_target.mkdir(parents=True)

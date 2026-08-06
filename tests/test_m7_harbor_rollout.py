@@ -112,9 +112,104 @@ def test_harbor_rollout_distinguishes_task_agent_and_infra_failures(tmp_path: Pa
     assert "missing output" in by_name["task-failed"]["observations"][0]
     assert by_name["task-failed"]["events"][-1]["source"] == "agent"
     assert by_name["task-failed"]["artifact_inventory"]["agent"] == ["trajectory.json"]
+    assert by_name["task-failed"]["execution"]["trajectory"]["format"] == "atif"
+    assert by_name["task-failed"]["execution"]["trajectory"]["status"] == "available"
+    assert "content" not in by_name["task-failed"]["execution"]["trajectory"]
     assert "must-not-leak" not in by_name["task-failed"]["verifier_output"]
     assert "[REDACTED]" in by_name["task-failed"]["verifier_output"]
     assert "json-secret" not in module._redact('{"OPENAI_API_KEY":"json-secret"}')
+
+
+def test_harbor_rollout_promotes_artifact_rubric_evidence(tmp_path: Path) -> None:
+    module = _harbor_rollout_module()
+    jobs = tmp_path / "jobs"
+    trial = _write_trial(jobs, name="poster-task", reward=0.75)
+    tasks = tmp_path / "tasks" / "poster-task"
+    tasks.mkdir(parents=True)
+    (tasks / "instruction.md").write_text("Create a research poster.\n")
+    (trial / "agent" / "trajectory.json").unlink()
+    (trial / "verifier" / "poster.svg").write_text('<svg viewBox="0 0 100 100"/>\n')
+    (trial / "verifier" / "evaluation.json").write_text(
+        json.dumps(
+            {
+                "score": 75,
+                "raw_weighted_score": 80,
+                "criteria": {"authored_visual_language": 2, "layout_balance_and_geometry": 4},
+                "hard_failures": ["geometry_integrity: title exceeds viewBox"],
+                "summary": "The palette is generic.",
+                "improvement_feedback": "Use a restrained paper-specific palette.",
+            }
+        )
+    )
+
+    [case] = module.collect_cases(jobs, tasks_dir=tmp_path / "tasks")
+
+    assert case["instruction"] == "Create a research poster."
+    assert case["outputs"]["primary_artifact"] == "verifier/poster.svg"
+    assert case["metrics"] == {"reward": 0.75, "score": 75.0, "raw_weighted_score": 80.0}
+    assert {item["rubric_id"] for item in case["judgments"]} == {
+        "authored_visual_language",
+        "layout_balance_and_geometry",
+        "geometry_integrity",
+    }
+    assert case["feedback"]["improvement"] == "Use a restrained paper-specific palette."
+    assert case["execution"] == {
+        "trajectory_available": False,
+        "trajectory": {"format": "atif", "status": "missing"},
+    }
+
+
+def test_harbor_rollout_references_workspace_atif_without_copying_it(tmp_path: Path) -> None:
+    module = _harbor_rollout_module()
+    workspace = tmp_path / "workspace"
+    jobs = workspace / "runs" / "harbor-rollouts" / "gen-1"
+    trial = _write_trial(jobs, name="task-a", reward=1)
+    trajectory_path = trial / "agent" / "trajectory.json"
+    archive = workspace / "runs" / "gen-1" / "rollout" / "trajectories"
+
+    [case] = module.collect_cases(
+        jobs,
+        workspace=workspace,
+        trajectory_archive_dir=archive,
+    )
+
+    reference = case["execution"]["trajectory"]
+    assert case["execution"]["trajectory_available"] is True
+    assert reference == {
+        "format": "atif",
+        "status": "available",
+        "path": trajectory_path.relative_to(workspace).as_posix(),
+        "sha256": module._file_sha256(trajectory_path),
+        "steps": 3,
+    }
+    assert not archive.exists()
+
+
+def test_harbor_rollout_archives_external_atif_once(tmp_path: Path) -> None:
+    module = _harbor_rollout_module()
+    workspace = tmp_path / "workspace"
+    jobs = tmp_path / "external-jobs"
+    source = _write_trial(jobs, name="task-a", reward=1) / "agent" / "trajectory.json"
+    archive = workspace / "runs" / "gen-1" / "rollout" / "trajectories"
+
+    [case] = module.collect_cases(
+        jobs,
+        workspace=workspace,
+        trajectory_archive_dir=archive,
+    )
+    [same_case] = module.collect_cases(
+        jobs,
+        workspace=workspace,
+        trajectory_archive_dir=archive,
+    )
+
+    reference = case["execution"]["trajectory"]
+    retained = workspace / reference["path"]
+    assert retained.parent == archive
+    assert retained.read_bytes() == source.read_bytes()
+    assert reference["sha256"] == module._file_sha256(source)
+    assert same_case["execution"]["trajectory"] == reference
+    assert len(list(archive.glob("*.json"))) == 1
 
 
 def test_harbor_rollout_redacts_configured_proxy_literal(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -4,7 +4,7 @@ import re
 from collections import Counter
 from dataclasses import dataclass, replace
 from pathlib import PurePosixPath
-from typing import Any
+from typing import Any, cast
 
 from .contract import EvaluationContractV1, TrialIdentity
 from .results import EvaluationRecord, Outcome, TrialResult
@@ -207,7 +207,7 @@ def evaluation_diagnostics(
 def validate_evaluation_diagnostics_payload(payload: object) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise PayloadValidationError("diagnostics", "diagnostics must be a JSON object")
-    data = payload
+    data = cast(dict[str, Any], payload)
     if data.get("schema_version") != 1:
         raise PayloadValidationError("diagnostics", "unsupported diagnostics schema")
     contract_id = data.get("contract_id")

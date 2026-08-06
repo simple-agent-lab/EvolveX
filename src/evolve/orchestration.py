@@ -13,6 +13,7 @@ from typing import Any
 from .archive import ensure_local_archive, rows_by_genid
 from .candidate.snapshot import build_candidate_snapshot
 from .config import experiment_id, operator_blocks
+from .doctor import ensure_evaluator_ready
 from .driver import (
     _assert_child_worktree_for_parent,
     _assert_valid_parent,
@@ -294,6 +295,7 @@ def _assert_candidate_receipt(path: Path, expected_tree: str, name: str) -> None
 def eval_agent_child(workspace: Path, genid: str, *, force: bool = False) -> EvaluationRecord | None:
     workspace = workspace.resolve()
     with workspace_run_lock(workspace):
+        ensure_evaluator_ready(workspace)
         return eval_child(workspace, genid, force=force)
 
 

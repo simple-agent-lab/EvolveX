@@ -18,6 +18,8 @@ def test_gepa_recipe_initializes_all_native_operators(tmp_path: Path) -> None:
     assert "seed: builtin-codex" in config
     assert "variant: minibatch_improvement" in config
     assert "component_strategy: round_robin" in config
+    assert "task_execution_skill: target/skills/task-execution\n" in config
+    assert "task_execution_skill: target/skills/task-execution/SKILL.md" not in config
     assert "expose_gate_data: false" in config
     assert "agent: target.agent:HarborAgent" in config
     assert "class ParetoSelect" in (workspace / "operators/select.py").read_text()

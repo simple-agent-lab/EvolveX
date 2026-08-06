@@ -122,6 +122,7 @@ def test_readme_uses_approved_identity_and_information_architecture() -> None:
   <a href="#how-evolvex-works">How It Works</a> ·
   <a href="#what-can-evolve">What Can Evolve</a> ·
   <a href="#recipes">Recipes</a> ·
+  <a href="#skill-evolution-showcase">Showcase</a> ·
   <a href="#quick-start">Quick Start</a> ·
   <a href="#documentation">Documentation</a>
 </p>"""
@@ -135,6 +136,7 @@ def test_readme_uses_approved_identity_and_information_architecture() -> None:
         "How EvolveX Works",
         "What Can Evolve",
         "Recipes",
+        "Skill Evolution Showcase",
         "Quick Start",
         "Trustworthy by Construction",
         "Project Status",
@@ -149,6 +151,7 @@ def test_readme_uses_approved_identity_and_information_architecture() -> None:
         ("how-evolvex-works", "How It Works"),
         ("what-can-evolve", "What Can Evolve"),
         ("recipes", "Recipes"),
+        ("skill-evolution-showcase", "Showcase"),
         ("quick-start", "Quick Start"),
         ("documentation", "Documentation"),
     ]
@@ -159,6 +162,7 @@ def test_readme_uses_approved_identity_and_information_architecture() -> None:
             "How EvolveX Works",
             "What Can Evolve",
             "Recipes",
+            "Skill Evolution Showcase",
             "Quick Start",
             "Documentation",
         )
@@ -167,9 +171,8 @@ def test_readme_uses_approved_identity_and_information_architecture() -> None:
 > the evaluation setup and reporting protocol are finalized."""
     assert unsupported_benchmark_placeholder not in readme
     assert "reproducible benchmark results" not in readme
-    assert (
-        "Benchmark results will be added only with a reproducible evaluation setup and\nsupporting artifacts."
-    ) in readme
+    assert "representative evolution run rather than a broad\nbenchmark" in readme
+    assert "docs/results/paper-poster-skill-evolution.json" in readme
 
 
 def test_readme_keeps_supported_recipes_and_honest_quick_start() -> None:

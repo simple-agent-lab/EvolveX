@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import inspect
 import json
 import re
 import tempfile
@@ -263,8 +264,9 @@ def _certify_result_paths(
     cases: list[dict[str, Any]],
     replay_jobs: Path,
     certified: dict[str, bytes],
+    workspace: Path | None = None,
 ) -> None:
-    """Reject collector paths that do not name a certified result in the view."""
+    """Reject collector paths that do not name certified files in the view."""
     replay_root = replay_jobs.resolve()
     for case in cases:
         value = case.get("result_path")
@@ -280,6 +282,34 @@ def _certify_result_paths(
         if relative_string not in certified or PurePosixPath(relative_string).name != "evolve-replay.json":
             raise SystemExit("evaluation replay collector returned an uncertified result path")
         case["result_path"] = str(replay_jobs.joinpath(*PurePosixPath(relative_string).parts))
+
+        execution = case.get("execution")
+        trajectory = execution.get("trajectory") if isinstance(execution, dict) else None
+        if not isinstance(trajectory, dict) or trajectory.get("status") != "available":
+            continue
+        trajectory_path = trajectory.get("path")
+        expected_digest = trajectory.get("sha256")
+        if not isinstance(trajectory_path, str) or not isinstance(expected_digest, str):
+            raise SystemExit("evaluation replay collector returned a malformed trajectory reference")
+        candidate = Path(trajectory_path)
+        if not candidate.is_absolute():
+            if workspace is None:
+                raise SystemExit("evaluation replay cannot resolve a workspace-relative trajectory reference")
+            candidate = workspace / candidate
+        try:
+            trajectory_relative = candidate.resolve().relative_to(replay_root)
+        except ValueError as error:
+            raise SystemExit("evaluation replay collector returned a trajectory outside the certified view") from error
+        trajectory_relative_string = trajectory_relative.as_posix()
+        trajectory_parts = PurePosixPath(trajectory_relative_string).parts
+        if (
+            trajectory_relative_string not in certified
+            or len(trajectory_parts) < 2
+            or trajectory_parts[-2:] != ("agent", "trajectory.json")
+        ):
+            raise SystemExit("evaluation replay collector returned an uncertified trajectory path")
+        if hashlib.sha256(certified[trajectory_relative_string]).hexdigest() != expected_digest:
+            raise SystemExit("evaluation replay collector returned a trajectory digest mismatch")
 
 
 class ParentEvaluationRollout(RolloutOperator):
@@ -306,15 +336,18 @@ class ParentEvaluationRollout(RolloutOperator):
         certified_parent = rollout_dir / "certified-jobs"
         certified_parent.mkdir(exist_ok=True)
         certified_root = Path(tempfile.mkdtemp(prefix="snapshot-", dir=certified_parent))
+        collector_parameters = inspect.signature(collector).parameters
         for source_index, (source, _original_jobs, certified, task_filter, inclusive) in enumerate(sources):
             replay_jobs = _materialize_certified_jobs(certified_root, source_index, source, certified)
             jobs_dirs.append(replay_jobs)
-            source_cases = collector(
-                replay_jobs,
-                field_limit=int(ctx.config.get("field_limit", 2000)),
-                pass_threshold=float(ctx.config.get("pass_threshold", 1.0)),
-            )
-            _certify_result_paths(source_cases, replay_jobs, certified)
+            collector_kwargs: dict[str, Any] = {
+                "field_limit": int(ctx.config.get("field_limit", 2000)),
+                "pass_threshold": float(ctx.config.get("pass_threshold", 1.0)),
+            }
+            if "workspace" in collector_parameters:
+                collector_kwargs["workspace"] = ctx.workspace
+            source_cases = collector(replay_jobs, **collector_kwargs)
+            _certify_result_paths(source_cases, replay_jobs, certified, workspace=ctx.workspace)
             if task_filter is not None:
                 source_cases = [
                     case for case in source_cases if (str(case.get("task_name")) in task_filter) is inclusive

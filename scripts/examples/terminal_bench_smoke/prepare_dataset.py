@@ -27,7 +27,9 @@ def _expected_tasks(manifest: dict[str, object]) -> dict[str, str]:
     if not isinstance(tasks, dict):
         raise SystemExit("dataset manifest has no task mapping")
     normalized = {str(name): str(digest).removeprefix("sha256:") for name, digest in tasks.items()}
-    if any(len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest) for digest in normalized.values()):
+    if any(
+        len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest) for digest in normalized.values()
+    ):
         raise SystemExit("dataset manifest contains an invalid sha256 digest")
     return normalized
 

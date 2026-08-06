@@ -11,6 +11,7 @@ parent).
 import json
 from pathlib import Path
 
+import pytest
 from conftest import run_evolve
 
 TASKS_LOCAL = Path(__file__).parent / "fixtures" / "tasks-local"
@@ -41,6 +42,7 @@ def test_eval_stub_targets_the_resolved_split(tmp_path: Path) -> None:
     assert sorted(row["task_vector"]["tasks"]) == sorted(gate_members)
 
 
+@pytest.mark.slow
 def test_gepa_local_full_generation_improves_champion(tmp_path: Path) -> None:
     workspace = tmp_path / "ws"
 

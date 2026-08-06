@@ -24,6 +24,17 @@ Read the proposal inputs from the files listed below, inspect the candidate,
 and edit the checkout directly. Preserve behavior that worked. Do not encode
 benchmark answers or change the evaluator, dataset, splits, Harbor adapter,
 mechanism, credentials, endpoint, model, or resource limits.
+
+Treat `Feedback.natural_language_feedback` in each reflective example as the
+primary evaluator signal. Absorb its concrete prose critique into the mutation
+hypothesis. The execution reward is only a protocol completion signal; it is not
+a quality score and must not replace the natural-language feedback.
+
+When a component path is a skill directory, treat the whole directory as one
+component: `SKILL.md` is its required entrypoint, while `references/`,
+`scripts/`, `assets/`, and `agents/openai.yaml` are bundled behavior resources.
+Inspect existing resources and add, update, or remove them coherently with the
+entrypoint. Run any changed scripts before finishing.
 """
 
 

@@ -30,6 +30,7 @@
   <a href="#how-evolvex-works">How It Works</a> ·
   <a href="#what-can-evolve">What Can Evolve</a> ·
   <a href="#recipes">Recipes</a> ·
+  <a href="#skill-evolution-showcase">Showcase</a> ·
   <a href="#quick-start">Quick Start</a> ·
   <a href="#documentation">Documentation</a>
 </p>
@@ -90,6 +91,36 @@ vendored framework mechanism stay outside that surface.
 | co-evolve the target and selected evolution policy | `hyperagents` | target and selected operators |
 
 See [the recipe guide](recipes/README.md) for each strategy’s workflow and configuration.
+
+## Skill Evolution Showcase
+
+EvolveX can improve a Skill as a complete package: instructions, references,
+and validation scripts evolve together while a frozen evaluator keeps the
+comparison honest. In this local Paper2Poster run, the same Codex model and
+paper prompt produced both LoRA posters below.
+
+<table>
+  <tr>
+    <th width="50%">Gen 0 · minimal 12-line Skill</th>
+    <th width="50%">Gen 2 · evolved editorial Skill</th>
+  </tr>
+  <tr>
+    <td><img src="docs/assets/paper-poster-lora-gen0.png" alt="Generation zero LoRA research poster with a generic dashboard-style layout"></td>
+    <td><img src="docs/assets/paper-poster-lora-gen2.png" alt="Generation two LoRA research poster with a paper-specific editorial layout and low-rank matrix visualization"></td>
+  </tr>
+  <tr>
+    <td>Hard gate failed: 14 text elements overflowed the SVG viewBox.</td>
+    <td>Passed renderability, geometry, and paper-fidelity hard gates.</td>
+  </tr>
+</table>
+
+Across the four-paper showcase, the hard-gate pass rate moved from **1/4** at
+Gen 0 to **4/4** at Gen 2. The trials ran concurrently through Harbor's local
+environment without Docker and retained ATIF trajectories plus evaluator-owned
+visual feedback. This is a representative evolution run rather than a broad
+benchmark; see the [result snapshot](docs/results/paper-poster-skill-evolution.json),
+[frozen rubric](evals/skills/make-paper-poster/rubric.json), and
+[minimal seed Skill](evals/skills/make-paper-poster/seed/skills/make-paper-poster/SKILL.md).
 
 ## Quick Start
 
@@ -188,9 +219,6 @@ process. See [DESIGN.md](DESIGN.md) for the complete ownership model and invaria
 EvolveX is an active prototype for research and controlled experimentation. The
 current focus is reliable experiment mechanics, local-first workflows, and
 composable strategies for different agent-evolution scenarios.
-
-Benchmark results will be added only with a reproducible evaluation setup and
-supporting artifacts.
 
 ## Roadmap
 

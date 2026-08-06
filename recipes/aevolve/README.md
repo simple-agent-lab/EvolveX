@@ -24,7 +24,7 @@ The mapping is:
 | infer likely outcomes | read-only per-task judge inside `trace_analyzer: trajectory_only` |
 | group patterns and review drafts | `meta_agent: aevolve` |
 | LLM with workspace shell access | Harbor meta-agent runner |
-| mutate prompt and skills | `target/prompt.md`, `target/skills/**` |
+| mutate prompt and complete skill directories | `target/prompt.md`, `target/skills/**` |
 | Git snapshots | generation tags |
 | holdout validation | disjoint gate split plus strict hill-climb gate |
 
