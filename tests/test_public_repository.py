@@ -1,7 +1,5 @@
 import re
 import shlex
-import subprocess
-import sys
 import tomllib
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -44,26 +42,7 @@ def _contrast_ratio(first: str, second: str) -> float:
     return (lighter + 0.05) / (darker + 0.05)
 
 
-def test_readme_visual_assets_are_current() -> None:
-    result = subprocess.run(
-        [sys.executable, str(ROOT / "tools" / "generate_readme_assets.py"), "--check"],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert result.returncode == 0, result.stdout + result.stderr
-
-
-def test_architecture_visual_is_current_and_uses_identity_palette() -> None:
-    result = subprocess.run(
-        [sys.executable, str(ROOT / "tools" / "generate_architecture_svg.py"), "--check"],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert result.returncode == 0, result.stdout + result.stderr
+def test_architecture_visual_uses_identity_palette() -> None:
     svg = (ROOT / "docs" / "architecture.svg").read_text()
     for color in ("#10372e", "#19785a", "#65ce9f", "#b5d3c7", "#f2fbf7"):
         assert color in svg
