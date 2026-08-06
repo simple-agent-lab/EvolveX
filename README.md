@@ -40,17 +40,20 @@
   </a>
 </p>
 
-<p align="center">
-  <a href="docs/assets/terminal-bench-full-results.svg">
-    <img src="docs/assets/terminal-bench-full-results.svg" alt="Terminal Bench 2 full-benchmark results for AHE, Hyperagents, A Evolve, and GEPA with MiniSWE and Codex target agents. Each stacked bar shows the seed score in a dark target-agent color and the improvement to the best score in a lighter shade.">
-  </a>
-</p>
-
-<p align="center">
-  <a href="docs/assets/tau3-banking-full-results.svg">
-    <img src="docs/assets/tau3-banking-full-results.svg" alt="Tau cubed Banking full-benchmark results for AHE, Hyperagents, A Evolve, and GEPA with MiniSWE and Codex target agents. Each stacked bar shows the seed score in a dark target-agent color and the improvement to the best score in a lighter shade.">
-  </a>
-</p>
+<table>
+  <tr>
+    <td width="50%">
+      <a href="docs/assets/terminal-bench-full-results.svg">
+        <img src="docs/assets/terminal-bench-full-results.svg" alt="Terminal Bench 2 full-benchmark results for AHE, Hyperagents, A Evolve, and GEPA with MiniSWE and Codex target agents. Each stacked bar labels the seed score inside the dark section and the best score plus improvement above the light section.">
+      </a>
+    </td>
+    <td width="50%">
+      <a href="docs/assets/tau3-banking-full-results.svg">
+        <img src="docs/assets/tau3-banking-full-results.svg" alt="Tau cubed Banking full-benchmark results for AHE, Hyperagents, A Evolve, and GEPA with MiniSWE and Codex target agents. Each stacked bar labels the seed score inside the dark section and the best score plus improvement above the light section.">
+      </a>
+    </td>
+  </tr>
+</table>
 
 ## What EvolveX Does
 
