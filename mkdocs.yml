@@ -7,6 +7,8 @@ edit_uri: edit/main/docs/
 
 theme:
   name: material
+  logo: evolve-mark.svg
+  favicon: evolve-mark.svg
   language: en
   features:
     - navigation.sections
