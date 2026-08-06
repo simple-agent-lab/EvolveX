@@ -112,7 +112,7 @@ def test_recipe_demo_routes_common_overrides_through_uv(tmp_path: Path) -> None:
         "--tasks",
         "4",
     ]
-    assert calls[3] == ["run", "--frozen", f"{workspace}/evolve", "preflight", str(workspace), "--smoke"]
+    assert calls[3] == ["run", "--frozen", f"{workspace}/evolve", "preflight", str(workspace)]
     assert calls[4] == [
         "run",
         "--frozen",
