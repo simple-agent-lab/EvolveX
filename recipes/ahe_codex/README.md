@@ -15,26 +15,11 @@ The recipe uses a versioned 30-task subset derived from the official
 `dataset-manifest.json`; this prevents a missing local directory from silently
 turning into a different experiment.
 
-Prepare the dataset:
+Prepare the dataset and pinned image, then run:
 
 ```bash
-harbor download terminal-bench@2.0 --export -o /absolute/path/to/raw
-python recipes/ahe_codex/prepare_dataset.py \
-  /absolute/path/to/raw/terminal-bench \
-  /absolute/path/to/terminal-bench-2-ahe-30-v1
-```
-
-Then initialize and run:
-
-```bash
-export HARBOR_TASKS="/absolute/path/to/terminal-bench-2-ahe-30-v1"
-evolve init /absolute/path/to/ahe-codex-run \
-  --recipe ahe_codex \
-  --dataset "$HARBOR_TASKS"
-cd /absolute/path/to/ahe-codex-run
-./evolve doctor . --profile experiment --probe-model
-./evolve smoke . --profile experiment --task cancel-async-tasks
-EVOLVE_HARBOR_N_CONCURRENT_OVERRIDE=5 ./evolve run . --max-generations 1
+./scripts/setup_terminal_bench.sh ahe_codex
+./scripts/run_recipe_demo.sh ahe_codex
 ```
 
 Generation 0 and subsequent generations use the same frozen 30 tasks. This is

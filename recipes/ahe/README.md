@@ -1,7 +1,7 @@
 # AHE on Terminal-Bench 2.0
 
 This recipe keeps the AHE strategy independent from the target agent. It uses
-the local `terminal-bench-2-10-10-10` dataset. Workspace initialization freezes
+the shared `terminal-bench-2-30-v1` dataset. Workspace initialization freezes
 all 30 curated instances as one optimization set without synthesizing train,
 gate, and sealed partitions. Each candidate is evaluated on those same 30 tasks
 with one trial per task. That certified evaluation is replayed as the next AHE

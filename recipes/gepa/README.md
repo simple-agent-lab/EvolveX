@@ -25,15 +25,11 @@ mutation, and minibatch acceptance. GEPA's optional system-aware merge proposal
 is not enabled: it needs a two-parent/common-ancestor lineage contract, while
 the current driver creates each child from one parent.
 
-Initialize and run it with:
+Prepare and run it on the shared pinned Terminal-Bench 2.0 dataset:
 
 ```bash
-export HARBOR_TASKS="/absolute/path/to/harbor/tasks"
-evolve init ./my-gepa-run \
-  --recipe gepa \
-  --dataset "$HARBOR_TASKS"
-cd ./my-gepa-run
-./evolve run .
+./scripts/setup_terminal_bench.sh gepa
+./scripts/run_recipe_demo.sh gepa
 ```
 
 The most useful artifacts are:

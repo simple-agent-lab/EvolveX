@@ -43,7 +43,17 @@ def _fake_uv(tmp_path: Path) -> tuple[Path, Path]:
 
 def _environment(fake_bin: Path, calls: Path, **values: str) -> dict[str, str]:
     environment = os.environ.copy()
-    for name in ("DATASET", "ENV_FILE", "GENERATIONS", "OPENAI_API_KEY", "RECIPE", "SEED", "TASKS", "WORKSPACE"):
+    for name in (
+        "DATASET",
+        "ENV_FILE",
+        "EVOLVE_ASSET_DIR",
+        "GENERATIONS",
+        "OPENAI_API_KEY",
+        "RECIPE",
+        "SEED",
+        "TASKS",
+        "WORKSPACE",
+    ):
         environment.pop(name, None)
     environment.update(
         {
@@ -56,12 +66,22 @@ def _environment(fake_bin: Path, calls: Path, **values: str) -> dict[str, str]:
 
 
 def _calls(path: Path) -> list[list[str]]:
-    return [json.loads(line) for line in path.read_text().splitlines()]
+    return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+
+
+def _assets(tmp_path: Path) -> Path:
+    root = tmp_path / "assets"
+    (root / "raw" / "terminal-bench").mkdir(parents=True)
+    prepared = root / "terminal-bench-2-30-v1"
+    prepared.mkdir()
+    (prepared / "dataset-source.json").write_text("{}\n")
+    return root
 
 
 def test_recipe_demo_routes_common_overrides_through_uv(tmp_path: Path) -> None:
     fake_bin, calls_path = _fake_uv(tmp_path)
     workspace = tmp_path / "workspace"
+    assets = _assets(tmp_path)
 
     subprocess.run(
         ["bash", str(SCRIPT), "gepa"],
@@ -70,12 +90,10 @@ def test_recipe_demo_routes_common_overrides_through_uv(tmp_path: Path) -> None:
         env=_environment(
             fake_bin,
             calls_path,
-            OPENAI_API_KEY="demo-key",
+            EVOLVE_ASSET_DIR=str(assets),
             WORKSPACE=str(workspace),
             TASKS="4",
             GENERATIONS="2",
-            DATASET="/datasets/gepa",
-            SEED="/seeds/gepa",
         ),
     )
 
@@ -92,9 +110,7 @@ def test_recipe_demo_routes_common_overrides_through_uv(tmp_path: Path) -> None:
         "--tasks",
         "4",
         "--dataset",
-        "/datasets/gepa",
-        "--seed",
-        "/seeds/gepa",
+        str(assets / "terminal-bench-2-30-v1"),
     ]
     assert calls[3] == ["run", "--frozen", f"{workspace}/evolve", "preflight", str(workspace), "--smoke"]
     assert calls[4] == [
@@ -111,8 +127,9 @@ def test_recipe_demo_routes_common_overrides_through_uv(tmp_path: Path) -> None:
     assert all(call[:2] == ["run", "--frozen"] for call in calls[1:])
 
 
-def test_recipe_demo_loads_default_ahe_key_from_env_file(tmp_path: Path) -> None:
+def test_recipe_demo_loads_the_optional_env_file(tmp_path: Path) -> None:
     fake_bin, calls_path = _fake_uv(tmp_path)
+    assets = _assets(tmp_path)
     env_file = tmp_path / ".env"
     env_file.write_text("OPENAI_API_KEY=file-key\n")
 
@@ -120,7 +137,7 @@ def test_recipe_demo_loads_default_ahe_key_from_env_file(tmp_path: Path) -> None
         ["bash", str(SCRIPT)],
         check=True,
         cwd=tmp_path,
-        env=_environment(fake_bin, calls_path, ENV_FILE=str(env_file)),
+        env=_environment(fake_bin, calls_path, ENV_FILE=str(env_file), EVOLVE_ASSET_DIR=str(assets)),
     )
 
     calls = _calls(calls_path)
@@ -137,10 +154,12 @@ def test_recipe_demo_loads_default_ahe_key_from_env_file(tmp_path: Path) -> None
         "ahe",
         "--tasks",
         "3",
+        "--dataset",
+        str(assets / "terminal-bench-2-30-v1"),
     ]
 
 
-def test_recipe_demo_rejects_missing_api_key_before_init(tmp_path: Path) -> None:
+def test_recipe_demo_rejects_missing_setup_assets_before_sync(tmp_path: Path) -> None:
     fake_bin, calls_path = _fake_uv(tmp_path)
 
     result = subprocess.run(
@@ -149,15 +168,29 @@ def test_recipe_demo_rejects_missing_api_key_before_init(tmp_path: Path) -> None
         capture_output=True,
         text=True,
         cwd=tmp_path,
-        env=_environment(fake_bin, calls_path, ENV_FILE=str(tmp_path / "missing.env")),
+        env=_environment(fake_bin, calls_path, EVOLVE_ASSET_DIR=str(tmp_path / "missing-assets")),
     )
 
     assert result.returncode != 0
-    assert "OPENAI_API_KEY" in result.stderr
-    assert _calls(calls_path) == [
-        ["sync", "--frozen"],
-        ["run", "--frozen", "sh", "-c", ': "${OPENAI_API_KEY:?Set OPENAI_API_KEY in the environment or ENV_FILE}"'],
-    ]
+    assert "setup_terminal_bench.sh hill_climb" in result.stderr
+    assert _calls(calls_path) == []
+
+
+def test_recipe_demo_rejects_non_main_recipes_before_sync(tmp_path: Path) -> None:
+    fake_bin, calls_path = _fake_uv(tmp_path)
+
+    result = subprocess.run(
+        ["bash", str(SCRIPT), "gepa_local"],
+        check=False,
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+        env=_environment(fake_bin, calls_path, EVOLVE_ASSET_DIR=str(_assets(tmp_path))),
+    )
+
+    assert result.returncode != 0
+    assert "supported recipes" in result.stderr
+    assert _calls(calls_path) == []
 
 
 def test_recipe_demo_remains_short_portable_bash() -> None:

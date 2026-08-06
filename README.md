@@ -129,20 +129,18 @@ novelty results are tied to the exact candidate tree, so editing afterward
 requires rerunning them. See the generated workspace's `program.md` and
 `skills/evolve-agent/SKILL.md` for the complete sequence and method guidance.
 
-For a real run, provide `OPENAI_API_KEY` in the terminal or in `.env`, then use
-the portable public demo. It defaults to AHE and accepts any supported recipe:
+For a reproducible Terminal-Bench 2.0 run, prepare the shared pinned dataset and
+the selected recipe's image once, then use the short execution script:
 
 ```bash
-export OPENAI_API_KEY="..."
+./scripts/setup_terminal_bench.sh ahe
 ./scripts/run_recipe_demo.sh ahe
-
-DATASET=/absolute/path/to/tasks ./scripts/run_recipe_demo.sh gepa
 ```
 
-Common overrides are `WORKSPACE`, `TASKS`, `GENERATIONS`, `DATASET`, `SEED`,
-and `ENV_FILE`. Recipe-specific dataset preparation, images, seeds, and host
-services remain documented in each [recipe guide](recipes/README.md); the demo
-does not duplicate that setup in shell branches.
+The scripts support A-Evolve, AHE, GEPA, Hill Climb, and HyperAgents, including
+their Codex profiles. Common execution overrides are `WORKSPACE`, `TASKS`,
+`GENERATIONS`, `ENV_FILE`, and `EVOLVE_ASSET_DIR`. Preflight validates the
+selected runtime's authentication before any experiment generation runs.
 
 Initialization resolves each recipe's inline runtime block into
 `evaluator/runtime.json` and generates the certified evaluation inputs.
