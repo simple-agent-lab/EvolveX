@@ -668,8 +668,8 @@ def test_ahe_analyzer_resolves_unique_short_manifest_task_names_to_canonical_ids
 ) -> None:
     module = _module()
     ctx = _ctx(tmp_path, genid="2", parent="1")
-    fixed_task = "sierra-research/tau3-bench__task-001"
-    regressed_task = "sierra-research/tau3-bench__task-002"
+    fixed_task = "sierra-research/tau3-bench__tau3-banking_knowledge-task-001"
+    regressed_task = "sierra-research/tau3-bench__tau3-banking_knowledge-task-002"
     prior = ctx.workspace / "runs" / "gen-1"
     _write_cases(
         prior,
@@ -688,8 +688,8 @@ def test_ahe_analyzer_resolves_unique_short_manifest_task_names_to_canonical_ids
                         "id": "chg-1",
                         "description": "improve runtime handling",
                         "files": ["target/environment.py"],
-                        "predicted_fixes": ["tau3-bench__task-001"],
-                        "risk_tasks": ["tau3-bench__task-002"],
+                        "predicted_fixes": ["tau3-banking_knowledge-task-001"],
+                        "risk_tasks": ["tau3-banking_knowledge-task-002"],
                     }
                 ]
             }

@@ -561,7 +561,12 @@ def _canonical_task_reference(task: object, observed_tasks: set[str]) -> str:
     reference = str(task)
     if reference in observed_tasks:
         return reference
-    matches = [observed for observed in observed_tasks if observed.rsplit("/", 1)[-1] == reference]
+    matches = []
+    for observed in observed_tasks:
+        leaf = observed.rsplit("/", 1)[-1]
+        aliases = {leaf, leaf.rsplit("__", 1)[-1]}
+        if reference in aliases:
+            matches.append(observed)
     return matches[0] if len(matches) == 1 else reference
 
 
