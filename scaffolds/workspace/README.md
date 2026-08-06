@@ -1,4 +1,4 @@
-# This is an Evolve workspace
+# This is an EvolveX workspace
 
 This directory is an independent Git repository. Each candidate generation is
 a commit tagged `gen/<id>`; `archive.jsonl` records the append-only lineage.
@@ -21,8 +21,8 @@ archive.jsonl                 append-only lineage record
 evolve                        workspace console
 evolve.yaml                   rendered recipe configuration
 library/                      recipe-relevant operator variants
-LICENSE.evolve-framework      license for the vendored framework and operator library
-NOTICE.evolve-framework       framework and third-party attribution notices
+LICENSE.evolvex               license for the vendored framework and operator library
+NOTICE.evolvex                framework and third-party attribution notices
 operators/                    active operator scripts, supporting Markdown, and index
 program.md                    loop orchestration guidance
 pyproject.toml, uv.lock       locked workspace runtime
@@ -49,7 +49,7 @@ The vendored framework includes framework-owned integrations under
 generated at the workspace root.
 
 The vendored framework runtime and operator library are provided under
-Apache-2.0; see `LICENSE.evolve-framework` and `NOTICE.evolve-framework`.
+Apache-2.0; see `LICENSE.evolvex` and `NOTICE.evolvex`.
 The target under `target/` retains its own upstream licensing terms.
 
 ## Rules

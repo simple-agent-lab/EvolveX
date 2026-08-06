@@ -1,4 +1,4 @@
-# Evolve Operator Protocol
+# EvolveX Operator Protocol
 
 This document describes protocol version `1` for workspace operators. The
 mechanism launches operator files as subprocesses and consumes files from the

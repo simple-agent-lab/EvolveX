@@ -1,4 +1,4 @@
-<h1 align="center">Evolve Framework</h1>
+<h1 align="center">EvolveX</h1>
 
 <p align="center">
   <strong>Traceable, evaluator-driven evolution for AI agents.</strong>
@@ -28,7 +28,7 @@
 
 ## Overview
 
-Evolve is a file-based framework for running agent-evolution experiments without
+EvolveX is a file-based framework for running agent-evolution experiments without
 rebuilding the mechanics for candidate snapshots, evaluation, lineage, and
 reporting. It provides composable recipes inspired by systems such as A-Evolve,
 AHE, GEPA, and HyperAgents.
@@ -55,7 +55,7 @@ research and controlled experimentation.
 ## Structure
 
 <p align="center">
-  <img src="docs/architecture.svg" alt="Evolve Framework architecture: evolution methods such as Hill Climb, A-Evolve, AHE, GEPA and HyperAgents plug into one loop of select, rollout, analyze, mutate, gate and record. The loop and the agent it improves sit inside a declared mutable surface, so the meta-agent can rewrite any stage. Only the substrate below stays frozen: the evaluator, the runtime, the surface check and the stamped evidence.">
+  <img src="docs/architecture.svg" alt="EvolveX architecture: evolution methods such as Hill Climb, A-Evolve, AHE, GEPA and HyperAgents plug into one loop of select, rollout, analyze, mutate, gate and record. The loop and the agent it improves sit inside a declared mutable surface, so the meta-agent can rewrite any stage. Only the substrate below stays frozen: the evaluator, the runtime, the surface check and the stamped evidence.">
 </p>
 
 Every recipe runs the same loop: select a parent, run the tasks, analyze the
@@ -181,7 +181,7 @@ each recipe.
 
 ## Trust Boundaries
 
-Evolve enforces three core rules:
+EvolveX enforces three core rules:
 
 1. Scores and statuses are written by the mechanism, not workspace operators.
 2. Canonical evaluation runs on clean candidate snapshots against a frozen
@@ -222,5 +222,5 @@ See [DESIGN.md](DESIGN.md) for the complete model and invariants.
 
 ## License
 
-Evolve Framework is licensed under [Apache-2.0](LICENSE). See
+EvolveX is licensed under [Apache-2.0](LICENSE). See
 [NOTICE](NOTICE) for required attributions.

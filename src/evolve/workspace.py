@@ -229,8 +229,8 @@ def _write_files(
         "README.md": _workspace_scaffold("README.md"),
         "AGENTS.md": _workspace_scaffold("AGENTS.md"),
         "program.md": _workspace_scaffold("program.md"),
-        "LICENSE.evolve-framework": _framework_legal_text("LICENSE"),
-        "NOTICE.evolve-framework": _framework_legal_text("NOTICE"),
+        "LICENSE.evolvex": _framework_legal_text("LICENSE"),
+        "NOTICE.evolvex": _framework_legal_text("NOTICE"),
         ".gitignore": _workspace_scaffold(".gitignore"),
         ".evolve-protocol-version": "1\n",
         "operators/engines/local.sh": _shell_script("operator local engine"),
@@ -800,8 +800,8 @@ def _remove_generated_target_metadata(target: Path) -> None:
 
 def _init_git(workspace: Path) -> None:
     _git(workspace, "init")
-    _git(workspace, "config", "user.name", "Evolve Mechanism")
-    _git(workspace, "config", "user.email", "evolve@example.invalid")
+    _git(workspace, "config", "user.name", "EvolveX Mechanism")
+    _git(workspace, "config", "user.email", "evolvex@example.invalid")
     _git(workspace, "add", ".")
     # A vendored seed is an exact experiment input. Its own ignore rules must
     # not silently remove copied files (for example an upstream-ignored

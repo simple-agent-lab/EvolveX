@@ -1,5 +1,5 @@
 [project]
-name = "evolve-framework"
+name = "evolvex"
 version = "0.1.0"
 description = "File-based framework for evolving coding agents."
 readme = "README.md"

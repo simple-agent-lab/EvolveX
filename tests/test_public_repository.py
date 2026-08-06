@@ -16,7 +16,7 @@ def test_license_metadata_and_notice_are_consistent() -> None:
     assert project["version"] == __version__
     assert project["license"] == "Apache-2.0"
     assert "Apache License" in (ROOT / "LICENSE").read_text()
-    assert (ROOT / "NOTICE").read_text().startswith("Evolve Framework\n")
+    assert (ROOT / "NOTICE").read_text().startswith("EvolveX\n")
 
 
 def test_required_public_repository_files_exist() -> None:

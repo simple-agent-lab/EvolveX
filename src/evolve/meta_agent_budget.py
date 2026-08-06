@@ -4,7 +4,7 @@ Harbor 0.18 bounds environment image preparation and verifier execution at
 600 seconds each, and agent setup at 360 seconds.  Agent execution is bounded
 separately by the configured per-attempt timeout.  Harbor does not put one
 aggregate deadline around artifact/log collection or environment teardown, so
-Evolve assigns each of those lifecycle phases the same conservative 600-second
+EvolveX assigns each of those lifecycle phases the same conservative 600-second
 allowance as Harbor's standard bounded phases.
 
 The Harbor process budget is:
@@ -40,7 +40,7 @@ HARBOR_ENVIRONMENT_START_S = 600.0
 HARBOR_AGENT_SETUP_S = 360.0
 HARBOR_VERIFIER_S = 600.0
 
-# Explicit Evolve allowances for Harbor phases without their own aggregate cap.
+# Explicit EvolveX allowances for Harbor phases without their own aggregate cap.
 HARBOR_ARTIFACT_LOG_COLLECTION_S = 600.0
 HARBOR_TEARDOWN_FINALIZATION_S = 600.0
 HARBOR_TASK_COMPILATION_S = 600.0

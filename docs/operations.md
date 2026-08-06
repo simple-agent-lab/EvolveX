@@ -1,4 +1,4 @@
-# Running Evolve Reliably
+# Running EvolveX Reliably
 
 Use the lightweight checks for local skill and plugin iteration. Use the
 experiment checks before a real multi-generation benchmark run.
