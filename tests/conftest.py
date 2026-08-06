@@ -124,7 +124,14 @@ def strict_workspace(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def legacy_workspace(tmp_path: Path) -> Path:
-    return init_fixture_workspace(tmp_path / "legacy-workspace")
+    workspace = init_fixture_workspace(tmp_path / "legacy-workspace")
+    (workspace / "evaluator/runtime.json").unlink()
+    (workspace / "evaluator/runtime.pin").write_text("legacy-unverified\n")
+    git(workspace, "add", "evaluator/runtime.pin")
+    git(workspace, "rm", "evaluator/runtime.json")
+    git(workspace, "commit", "-m", "represent pre-contract workspace")
+    git(workspace, "tag", "-f", "gen/0")
+    return workspace
 
 
 def run_evolve(

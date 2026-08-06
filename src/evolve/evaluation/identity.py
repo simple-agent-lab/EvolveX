@@ -8,7 +8,6 @@ from typing import Any
 
 import yaml
 
-from ..evaluator_config import evaluator_repetitions
 from ..git import git
 
 
@@ -16,6 +15,12 @@ from ..git import git
 class TaskSetIdentity:
     digest: str
     members: tuple[str, ...]
+
+
+def _evaluator_repetitions(evaluator: dict[str, Any]) -> int:
+    from ..config import evaluator_repetitions
+
+    return evaluator_repetitions(evaluator)
 
 
 def evaluation_split_name(evaluator: dict[str, Any], purpose: str = "candidate") -> str:
@@ -63,7 +68,7 @@ def effective_task_set_identity(
     ):
         return task_set_identity(
             evaluator.get("dataset", ""),
-            evaluator_repetitions(evaluator),
+            _evaluator_repetitions(evaluator),
             _limited_members(tuple(configured_names), task_limit),
             purpose=purpose,
         )
@@ -105,7 +110,7 @@ def effective_task_set_identity(
                 )
             except (OSError, json.JSONDecodeError, RuntimeError):
                 members = ()
-    attempts = evaluator_repetitions(evaluator)
+    attempts = _evaluator_repetitions(evaluator)
     return task_set_identity(
         evaluator.get("dataset", ""),
         attempts,
@@ -140,7 +145,7 @@ def _fixed_task_set_identity(workspace: Path, evaluator: dict[str, Any]) -> Task
     if isinstance(configured_names, list) and all(isinstance(name, str) and name for name in configured_names):
         return task_set_identity(
             evaluator.get("dataset", ""),
-            evaluator_repetitions(evaluator),
+            _evaluator_repetitions(evaluator),
             tuple(configured_names),
         )
     split_text = _git_text(workspace, "show", "gen/0:evaluator/splits.json", strip=False)
@@ -153,7 +158,7 @@ def _fixed_task_set_identity(workspace: Path, evaluator: dict[str, Any]) -> Task
             return verified
     return task_set_identity(
         evaluator.get("dataset", ""),
-        evaluator_repetitions(evaluator),
+        _evaluator_repetitions(evaluator),
         _fixed_task_members(workspace, evaluator),
     )
 
@@ -182,7 +187,7 @@ def _verified_task_set_identity(
         "dataset_content_digest": selected.digest,
         "split": split,
         "task_members": list(selected.members),
-        "repetitions": evaluator_repetitions(evaluator),
+        "repetitions": _evaluator_repetitions(evaluator),
     }
     digest = hashlib.sha256(json.dumps(digest_payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     return TaskSetIdentity(digest, selected.members)

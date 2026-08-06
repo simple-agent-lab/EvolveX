@@ -1,9 +1,14 @@
+from importlib import util
 from pathlib import Path
 
 import pytest
 
 from evolve import config as config_module
 from evolve.config import CONFIG_SECTIONS, load_config, operator_blocks, render_yaml
+
+
+def test_evaluator_config_has_no_separate_top_level_module() -> None:
+    assert util.find_spec("evolve.evaluator_config") is None
 
 
 def test_operator_blocks_parse_nested_operator_config(tmp_path: Path) -> None:

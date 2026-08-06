@@ -228,14 +228,10 @@ def _write_files(
     )
     if evaluator_collisions:
         raise ValueError("recipe evaluator asset collides with generated file: " + ", ".join(evaluator_collisions))
-    resolved_runtime = (
-        resolve_runtime(
-            evaluator["runtime"],
-            engine=evaluator_engine,
-            environment=os.environ,
-        )
-        if "runtime" in evaluator
-        else None
+    resolved_runtime = resolve_runtime(
+        evaluator.get("runtime"),
+        engine=evaluator_engine,
+        environment=os.environ,
     )
     evaluator_trials = evaluator_repetitions(evaluator)
     tasks_per_round = int(evaluator.get("tasks_per_round", evaluator_trials))
@@ -307,15 +303,14 @@ def _write_files(
         "evaluator/environment.kwargs": _environment_kwargs(evaluator.get("environment_kwargs")),
         "evaluator/splits.json": json.dumps(split_manifest, indent=2, sort_keys=True) + "\n",
         "evaluator/dataset.pin": _dataset_pin(evaluator_dataset, split_manifest),
-        "evaluator/runtime.pin": f"{resolved_runtime.digest if resolved_runtime else 'legacy-unverified'}\n",
+        "evaluator/runtime.pin": f"{resolved_runtime.digest}\n",
+        "evaluator/runtime.json": json.dumps(resolved_runtime.to_dict(), indent=2, sort_keys=True) + "\n",
         "evaluator/stub_eval.py": _workspace_scaffold("evaluator/stub_eval.py"),
         "evaluator/engines/local.sh": _shell_script("canonical local engine"),
         "archive.jsonl": "",
         "best_ever.json": "null\n",
     }
     files.update(_skill_package("evolve-agent"))
-    if resolved_runtime is not None:
-        files["evaluator/runtime.json"] = json.dumps(resolved_runtime.to_dict(), indent=2, sort_keys=True) + "\n"
     if evaluator_engine == "harbor":
         files.update(
             {

@@ -41,11 +41,14 @@ def test_init_generates_canonical_resolved_runtime(tmp_path: Path, recipe: str, 
     assert git(workspace, "show", "gen/0:evaluator/runtime.json")
 
 
-def test_init_keeps_custom_recipe_without_runtime_on_legacy_path(tmp_path: Path) -> None:
-    workspace = init_fixture_workspace(tmp_path / "legacy-workspace")
+def test_init_certifies_default_runtime_when_recipe_omits_runtime(tmp_path: Path) -> None:
+    workspace = init_fixture_workspace(tmp_path / "workspace")
 
-    assert not (workspace / "evaluator/runtime.json").exists()
-    assert (workspace / "evaluator/runtime.pin").read_text() == "legacy-unverified\n"
+    payload = json.loads((workspace / "evaluator/runtime.json").read_text())
+    assert payload["engine"] == "harbor"
+    assert "candidate" not in payload
+    assert "proxy" not in payload
+    assert (workspace / "evaluator/runtime.pin").read_text().strip() == payload["digest"]
 
 
 def test_generated_preflight_wrapper_only_delegates_to_framework(tmp_path: Path) -> None:

@@ -25,7 +25,6 @@ execution_runtime:
 evaluator:
   engine: harbor
   model: gpt-5.4
-  runtime: {}
   dataset: terminal-bench-2-ahe-30-v1
   agent: target.agent:HarborAgent
   task_scope: full

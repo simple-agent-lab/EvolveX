@@ -48,7 +48,6 @@ execution_runtime:
   backend: local
 evaluator:
   engine: harbor
-  runtime: {}
   dataset: local-tasks
   agent: target.agent:HarborAgent
   environment: "evolve.harbor_local:LocalEnvironment"

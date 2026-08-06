@@ -1,8 +1,10 @@
 from pathlib import Path
 
 import pytest
+import yaml
 from conftest import allow_local_runtime, contract_for_gen0, init_recipe_with_local_inputs
 
+from evolve.config import recipe_root
 from evolve.preflight import PreflightStatus, run_preflight
 
 
@@ -37,3 +39,19 @@ def test_partner_recipe_runtime_conformance(
         for path in root.rglob("*"):
             if path.is_file():
                 assert path.name != "auth.json"
+
+
+def test_builtin_recipes_declare_runtime_only_for_candidate_preparation() -> None:
+    expected = {"ahe", "hill_climb", "hyperagents"}
+    configured = set()
+    for recipe in recipe_root().iterdir():
+        path = recipe / "evolve.yaml"
+        if not path.is_file():
+            continue
+        payload = yaml.safe_load(path.read_text())
+        runtime = payload["evaluator"].get("runtime")
+        assert runtime != {}
+        if runtime is not None:
+            assert set(runtime) == {"candidate"}
+            configured.add(recipe.name)
+    assert configured == expected

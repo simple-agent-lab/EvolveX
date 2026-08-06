@@ -14,7 +14,6 @@ from typing import Any
 import yaml
 
 from .. import __version__
-from ..evaluator_config import evaluator_repetitions
 from ..git import git
 from ..runtime.config import (
     ResolvedRuntimeV1,
@@ -327,7 +326,7 @@ def _semantic_evaluator_config(evaluator: dict[str, Any], dataset_reference: str
     normalized: dict[str, Any] = {str(key): value for key, value in redacted.items()}
     normalized["dataset"] = dataset_reference
     normalized.pop("k", None)
-    normalized["repetitions"] = evaluator_repetitions(evaluator)
+    normalized["repetitions"] = _resolve_repetitions(evaluator)
     return normalized
 
 
@@ -376,7 +375,13 @@ def _trusted_runtime(workspace: Path) -> ResolvedRuntimeV1:
 
 def _resolve_repetitions(evaluator: dict[str, Any]) -> int:
     try:
-        return evaluator_repetitions(evaluator)
+        has_repetitions = "repetitions" in evaluator
+        has_legacy_k = "k" in evaluator
+        repetitions = _integer(evaluator.get("repetitions", 1), "repetitions", minimum=1)
+        legacy_k = _integer(evaluator["k"], "k", minimum=1) if has_legacy_k else repetitions
+        if has_repetitions and has_legacy_k and repetitions != legacy_k:
+            raise ValueError("evaluator.repetitions and evaluator.k must be equal")
+        return repetitions if has_repetitions else legacy_k
     except ValueError as error:
         raise EvaluationContractResolutionError("repetitions", str(error)) from error
 
