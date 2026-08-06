@@ -14,8 +14,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/simple-agent-lab/simple-evolve-agent/actions/workflows/test.yml">
-    <img alt="Tests" src="https://github.com/simple-agent-lab/simple-evolve-agent/actions/workflows/test.yml/badge.svg">
+  <a href="https://github.com/simple-agent-lab/EvolveX/actions/workflows/test.yml">
+    <img alt="Tests" src="https://github.com/simple-agent-lab/EvolveX/actions/workflows/test.yml/badge.svg">
   </a>
   <a href="https://www.python.org/">
     <img alt="Python 3.12+" src="https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&amp;logoColor=white">
@@ -127,8 +127,8 @@ benchmark; see the [result snapshot](docs/results/paper-poster-skill-evolution.j
 Requirements: Python 3.12+, [`uv`](https://docs.astral.sh/uv/), and Git.
 
 ```bash
-git clone https://github.com/simple-agent-lab/simple-evolve-agent.git
-cd simple-evolve-agent
+git clone https://github.com/simple-agent-lab/EvolveX.git
+cd EvolveX
 uv sync --dev --locked
 uv run --frozen evolve --help
 ```

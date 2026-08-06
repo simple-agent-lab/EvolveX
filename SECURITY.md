@@ -8,7 +8,7 @@ is supported with security fixes.
 ## Reporting a vulnerability
 
 Do not open a public issue for a suspected vulnerability. Submit it through
-[GitHub private vulnerability reporting](https://github.com/simple-agent-lab/simple-evolve-agent/security/advisories/new).
+[GitHub private vulnerability reporting](https://github.com/simple-agent-lab/EvolveX/security/advisories/new).
 
 Repository maintainers aim to acknowledge reports within three business days
 and provide a status update within seven business days. Disclosure timing is
