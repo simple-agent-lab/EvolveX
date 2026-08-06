@@ -23,6 +23,9 @@
   <a href="LICENSE">
     <img alt="Apache-2.0 License" src="https://img.shields.io/badge/License-Apache--2.0-blue.svg">
   </a>
+  <a href="https://simple-agent-lab.github.io/simple-evolve-agent/">
+    <img alt="Documentation" src="https://img.shields.io/badge/Documentation-EvolveX-0F766E?logo=materialformkdocs&amp;logoColor=white">
+  </a>
 </p>
 
 <p align="center">

@@ -185,6 +185,7 @@ def test_readme_uses_approved_identity_and_information_architecture() -> None:
             "Documentation",
         )
     ]
+    assert 'alt="Documentation"' in readme
     unsupported_benchmark_placeholder = """> **TODO:** Add reproducible benchmark results and supporting artifacts once
 > the evaluation setup and reporting protocol are finalized."""
     assert unsupported_benchmark_placeholder not in readme
