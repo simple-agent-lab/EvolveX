@@ -29,27 +29,18 @@ def _h2_headings(markdown: str) -> list[str]:
 def _fenced_shell_blocks(markdown: str) -> list[tuple[str, str]]:
     return [
         (match.group("language"), match.group("body"))
-        for match in re.finditer(
-            r"^```(?P<language>\w+)\n(?P<body>.*?)^```$", markdown, re.MULTILINE | re.DOTALL
-        )
+        for match in re.finditer(r"^```(?P<language>\w+)\n(?P<body>.*?)^```$", markdown, re.MULTILINE | re.DOTALL)
     ]
 
 
 def _relative_luminance(color: str) -> float:
     channels = [int(color[index : index + 2], 16) / 255 for index in (1, 3, 5)]
-    linear = [
-        channel / 12.92
-        if channel <= 0.04045
-        else ((channel + 0.055) / 1.055) ** 2.4
-        for channel in channels
-    ]
+    linear = [channel / 12.92 if channel <= 0.04045 else ((channel + 0.055) / 1.055) ** 2.4 for channel in channels]
     return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
 
 
 def _contrast_ratio(first: str, second: str) -> float:
-    lighter, darker = sorted(
-        (_relative_luminance(first), _relative_luminance(second)), reverse=True
-    )
+    lighter, darker = sorted((_relative_luminance(first), _relative_luminance(second)), reverse=True)
     return (lighter + 0.05) / (darker + 0.05)
 
 
@@ -73,14 +64,14 @@ def test_architecture_visual_is_current_and_uses_identity_palette() -> None:
         check=False,
     )
     assert result.returncode == 0, result.stdout + result.stderr
-    svg = (ROOT / "docs" / "architecture.svg").read_text()
+    svg = (ROOT / "docs" / "assets" / "architecture.svg").read_text()
     for color in ("#10372e", "#19785a", "#65ce9f", "#b5d3c7", "#f2fbf7"):
         assert color in svg
-    description = ET.parse(ROOT / "docs" / "architecture.svg").find("svg:desc", SVG_NS).text
+    description = ET.parse(ROOT / "docs" / "assets" / "architecture.svg").find("svg:desc", SVG_NS).text
     assert "Recipes select permitted targets, operators, and stages." in description
     assert "rewrite any stage" not in description
     readme = (ROOT / "README.md").read_text()
-    architecture_image = re.search(r'<img src="docs/architecture\.svg" alt="([^"]+)">', readme)
+    architecture_image = re.search(r'<img src="docs/assets/architecture\.svg" alt="([^"]+)">', readme)
     assert architecture_image is not None
     assert "The target and selected operators occupy a declared mutable surface." in architecture_image.group(1)
     assert "may rewrite any stage" not in readme
@@ -120,7 +111,7 @@ def test_selected_and_explored_graphics_have_three_to_one_contrast() -> None:
 
 def test_readme_labeled_figures_link_to_full_size_local_svgs() -> None:
     readme = (ROOT / "README.md").read_text()
-    for relative in ("docs/evolve-lineage.svg", "docs/architecture.svg"):
+    for relative in ("docs/evolve-lineage.svg", "docs/assets/architecture.svg"):
         linked_image = re.search(
             rf'<a href="{re.escape(relative)}">\s*'
             rf'<img src="{re.escape(relative)}" alt="([^"]+)">\s*</a>',
@@ -198,8 +189,7 @@ def test_readme_uses_approved_identity_and_information_architecture() -> None:
     assert unsupported_benchmark_placeholder not in readme
     assert "reproducible benchmark results" not in readme
     assert (
-        "Benchmark results will be added only with a reproducible evaluation setup and\n"
-        "supporting artifacts."
+        "Benchmark results will be added only with a reproducible evaluation setup and\nsupporting artifacts."
     ) in readme
 
 
@@ -208,9 +198,9 @@ def test_readme_keeps_supported_recipes_and_honest_quick_start() -> None:
     for recipe in ("`hill_climb`", "`aevolve`", "`ahe`", "`gepa`", "`hyperagents`"):
         assert recipe in readme
 
-    quick_start = readme.split("## Quick Start\n", maxsplit=1)[1].split(
-        "\n## Trustworthy by Construction", maxsplit=1
-    )[0]
+    quick_start = readme.split("## Quick Start\n", maxsplit=1)[1].split("\n## Trustworthy by Construction", maxsplit=1)[
+        0
+    ]
     assert _fenced_shell_blocks(quick_start) == [
         (
             "bash",

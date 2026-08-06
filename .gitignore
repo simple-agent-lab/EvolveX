@@ -17,6 +17,7 @@ ENV/
 # Build and packaging outputs
 build/
 dist/
+site/
 *.egg-info/
 .eggs/
 
@@ -50,7 +51,6 @@ archive.jsonl
 .superpowers/
 .worktrees/
 /docs/superpowers/
-/docs/guides/
 /handoff-*/
 doc/
 

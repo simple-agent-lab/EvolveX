@@ -1,7 +1,7 @@
 # Contributing
 
-Thank you for improving EvolveX. Read [DESIGN.md](DESIGN.md),
-[ARCHITECTURE.md](ARCHITECTURE.md), and [docs/coding-style.md](docs/coding-style.md)
+Thank you for improving EvolveX. Read [the design guide](docs/concepts/design.md),
+[ARCHITECTURE.md](ARCHITECTURE.md), and [the coding style](docs/development/coding-style.md)
 before making a non-trivial change.
 
 ## Setup and checks
@@ -55,8 +55,8 @@ previous behavior in the same commit.
 Keep commits focused and update the maintained documentation with behavior:
 
 - `README.md` explains supported public workflows.
-- `DESIGN.md` explains the system model and rationale.
+- `docs/` contains the public MkDocs guides, reference, and system design.
 - `ARCHITECTURE.md` maps executable modules.
-- [`docs/README.md`](docs/README.md) routes other documentation.
+- [`docs/development/documentation.md`](docs/development/documentation.md) defines documentation ownership.
 
 Avoid adding new prose files when one of these documents can be made clearer.

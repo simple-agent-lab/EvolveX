@@ -12,7 +12,7 @@ import html
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-OUTPUT = ROOT / "docs" / "architecture.svg"
+OUTPUT = ROOT / "docs" / "assets" / "architecture.svg"
 
 PALETTE = {
     "ink": "#18362b",
@@ -144,29 +144,29 @@ def style() -> str:
     return f"""  <style>
     text {{ font-family: {FONT}; fill: {p["ink"]}; }}
     .t {{ font-size: 16px; font-weight: 600; }}
-    .s {{ font-size: 13px; fill: {p['sub']}; }}
-    .t-guard {{ font-size: 16px; font-weight: 600; fill: {p['guard_text']}; }}
-    .s-guard {{ font-size: 13px; fill: {p['guard_text']}; }}
-    .cap {{ font-size: 13px; fill: {p['sub']}; }}
-    .cap-accent {{ font-size: 13px; fill: {p['accent_text']}; }}
-    .lbl {{ font-size: 13px; font-weight: 600; letter-spacing: 0.08em; fill: {p['sub']}; }}
-    .lbl-accent {{ font-size: 13px; font-weight: 600; letter-spacing: 0.08em; fill: {p['accent_text']}; }}
+    .s {{ font-size: 13px; fill: {p["sub"]}; }}
+    .t-guard {{ font-size: 16px; font-weight: 600; fill: {p["guard_text"]}; }}
+    .s-guard {{ font-size: 13px; fill: {p["guard_text"]}; }}
+    .cap {{ font-size: 13px; fill: {p["sub"]}; }}
+    .cap-accent {{ font-size: 13px; fill: {p["accent_text"]}; }}
+    .lbl {{ font-size: 13px; font-weight: 600; letter-spacing: 0.08em; fill: {p["sub"]}; }}
+    .lbl-accent {{ font-size: 13px; font-weight: 600; letter-spacing: 0.08em; fill: {p["accent_text"]}; }}
     .canvas {{ fill: #ffffff; }}
-    .knock {{ fill: {p['band_fill']}; }}
-    .band {{ fill: {p['band_fill']}; stroke: {p['band_line']}; stroke-width: 1.5; }}
-    .chip {{ fill: {p['chip_fill']}; stroke: {p['chip_line']}; stroke-width: 1.5; }}
-    .open {{ fill: #ffffff; stroke: {p['open_line']}; stroke-width: 1.5; stroke-dasharray: 6 5; }}
-    .stage {{ fill: #ffffff; stroke: {p['stage_line']}; stroke-width: 1.5; }}
-    .accent {{ fill: {p['accent_fill']}; stroke: {p['accent_line']}; stroke-width: 1.5; }}
-    .guard {{ fill: {p['guard_fill']}; stroke: {p['guard_line']}; stroke-width: 1.5; }}
-    .mutable {{ fill: {p['surface_fill']}; stroke: {p['accent_line']}; stroke-width: 1.5; stroke-dasharray: 7 6; }}
-    .flow {{ fill: none; stroke: {p['line']}; stroke-width: 1.8; }}
-    .soft {{ fill: none; stroke: {p['soft']}; stroke-width: 1.4; }}
-    .flow-accent {{ fill: none; stroke: {p['accent_line']}; stroke-width: 1.4; }}
-    .tick-accent {{ fill: none; stroke: {p['accent_line']}; stroke-width: 1.4; stroke-dasharray: 5 4; }}
-    .arrow-fill {{ fill: {p['line']}; }}
-    .arrow-accent {{ fill: {p['accent_line']}; }}
-    .dot-accent {{ fill: {p['accent_line']}; stroke: none; }}
+    .knock {{ fill: {p["band_fill"]}; }}
+    .band {{ fill: {p["band_fill"]}; stroke: {p["band_line"]}; stroke-width: 1.5; }}
+    .chip {{ fill: {p["chip_fill"]}; stroke: {p["chip_line"]}; stroke-width: 1.5; }}
+    .open {{ fill: #ffffff; stroke: {p["open_line"]}; stroke-width: 1.5; stroke-dasharray: 6 5; }}
+    .stage {{ fill: #ffffff; stroke: {p["stage_line"]}; stroke-width: 1.5; }}
+    .accent {{ fill: {p["accent_fill"]}; stroke: {p["accent_line"]}; stroke-width: 1.5; }}
+    .guard {{ fill: {p["guard_fill"]}; stroke: {p["guard_line"]}; stroke-width: 1.5; }}
+    .mutable {{ fill: {p["surface_fill"]}; stroke: {p["accent_line"]}; stroke-width: 1.5; stroke-dasharray: 7 6; }}
+    .flow {{ fill: none; stroke: {p["line"]}; stroke-width: 1.8; }}
+    .soft {{ fill: none; stroke: {p["soft"]}; stroke-width: 1.4; }}
+    .flow-accent {{ fill: none; stroke: {p["accent_line"]}; stroke-width: 1.4; }}
+    .tick-accent {{ fill: none; stroke: {p["accent_line"]}; stroke-width: 1.4; stroke-dasharray: 5 4; }}
+    .arrow-fill {{ fill: {p["line"]}; }}
+    .arrow-accent {{ fill: {p["accent_line"]}; }}
+    .dot-accent {{ fill: {p["accent_line"]}; stroke: none; }}
   </style>"""
 
 
@@ -284,7 +284,7 @@ def render() -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate the README architecture diagram.")
-    parser.add_argument("--check", action="store_true", help="Fail if docs/architecture.svg is not up to date.")
+    parser.add_argument("--check", action="store_true", help="Fail if docs/assets/architecture.svg is not up to date.")
     args = parser.parse_args()
     generated = render()
     if args.check:

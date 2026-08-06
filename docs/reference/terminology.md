@@ -20,6 +20,15 @@ _Avoid_: subject, candidate (a candidate is a snapshot, not the artifact)
 **Seed**:
 The initial content vendored into `target/` at initialization.
 
+**Scaffold**:
+Framework-owned files used to generate a workspace around the selected target
+and evaluator engine.
+
+**Integration**:
+Framework-owned runtime behavior for an external system. Harbor integrations
+live under `src/evolve/integrations/harbor/` and are vendored with the
+mechanism.
+
 **Evaluator**:
 The frozen scoring contract at `evaluator/`. Fixed from generation zero; the
 only source of scores.
@@ -33,6 +42,14 @@ _Avoid_: declared surface, mutation surface, mutation scope, write scope
 **Recipe**:
 An init-time template that scaffolds a workspace for one method
 (`aevolve`, `ahe`, `gepa`, `hill_climb`, `hyperagents`).
+
+**Supported recipe**:
+A public configuration under `recipes/`. Development-only configurations under
+`tests/fixtures/recipes/` are test fixtures, not supported recipes.
+
+**Test fixture**:
+Deterministic test-only data under `tests/fixtures/`; never part of the public
+recipe or seed inventory.
 
 **Method**:
 The evolution strategy a workspace runs (Hill Climb, A-Evolve, GEPA, AHE,

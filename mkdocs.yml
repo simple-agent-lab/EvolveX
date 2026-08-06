@@ -1,0 +1,72 @@
+site_name: EvolveX
+site_description: Build agents that improve — and keep the evidence.
+site_url: https://simple-agent-lab.github.io/simple-evolve-agent/
+repo_url: https://github.com/simple-agent-lab/simple-evolve-agent
+repo_name: simple-agent-lab/simple-evolve-agent
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.action.edit
+    - content.code.copy
+    - search.highlight
+    - search.suggest
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: blue grey
+      accent: amber
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: blue grey
+      accent: amber
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - Concepts:
+      - Framework design: concepts/design.md
+  - Guides:
+      - Running Evolve reliably: guides/operations.md
+      - Meta-agent execution: guides/meta-agents.md
+      - Local Harbor environment: guides/local-environment.md
+  - Reference:
+      - Terminology: reference/terminology.md
+      - Trace analyzer: reference/trace-analyzers.md
+  - Development:
+      - Documentation ownership: development/documentation.md
+      - Coding style: development/coding-style.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+plugins:
+  - search
+
+exclude_docs: |
+  designs/
+  plans/
+
+strict: true

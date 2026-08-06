@@ -58,8 +58,8 @@ Every recipe composes the same loop:
 **select → evaluate → analyze → mutate → gate → record**
 
 <p align="center">
-  <a href="docs/architecture.svg">
-    <img src="docs/architecture.svg" alt="EvolveX architecture: five built-in strategies and custom recipes compose a loop of select, rollout and evaluation, analyze, mutate, gate, and record. The target and selected operators occupy a declared mutable surface. The evaluator, runtime, surface check, and stamped evidence remain protected from candidate changes.">
+  <a href="docs/assets/architecture.svg">
+    <img src="docs/assets/architecture.svg" alt="EvolveX architecture: five built-in strategies and custom recipes compose a loop of select, rollout and evaluation, analyze, mutate, gate, and record. The target and selected operators occupy a declared mutable surface. The evaluator, runtime, surface check, and stamped evidence remain protected from candidate changes.">
   </a>
 </p>
 
@@ -181,7 +181,7 @@ EvolveX separates evolvable policy from the mechanism that judges it:
 4. **Evidence is durable.** Reports recompute results from stamped `archive.jsonl` records and Git generation tags.
 
 Operators run as subprocesses rather than being imported into the framework
-process. See [DESIGN.md](DESIGN.md) for the complete ownership model and invariants.
+process. See [the design guide](docs/concepts/design.md) for the complete ownership model and invariants.
 
 ## Project Status
 
@@ -205,14 +205,15 @@ supporting artifacts.
 
 | Document | Purpose |
 | --- | --- |
-| [Design](DESIGN.md) | System model, ownership boundaries, and invariants. |
+| [Documentation site](https://simple-agent-lab.github.io/simple-evolve-agent/) | Installation, operation, concepts, guides, and reference. |
+| [Design](docs/concepts/design.md) | System model, ownership boundaries, and invariants. |
 | [Architecture](ARCHITECTURE.md) | Enforced source-module map and line budgets. |
 | [Recipes](recipes/README.md) | Supported evolution strategies. |
 | [Evaluation assets](evals/README.md) | Skill behavior/routing evaluation cases and result snapshots. |
-| [Meta-agents](META_AGENTS.md) | Trusted-host and isolated meta-agent runners. |
-| [Trace analysis](TRACE_ANALYZER.md) | Trace retention and analyzer variants. |
-| [Local environment](LOCAL_ENVIRONMENT.md) | Docker-free trusted local execution. |
-| [Operations](docs/operations.md) | Doctor profiles, runtime setup, full-loop smoke, and recovery. |
+| [Meta-agents](docs/guides/meta-agents.md) | Trusted-host and isolated meta-agent runners. |
+| [Trace analysis](docs/reference/trace-analyzers.md) | Trace retention and analyzer variants. |
+| [Local environment](docs/guides/local-environment.md) | Docker-free trusted local execution. |
+| [Operations](docs/guides/operations.md) | Doctor profiles, runtime setup, full-loop smoke, and recovery. |
 | [Contributing](CONTRIBUTING.md) | Development setup and repository conventions. |
 | [Releasing](RELEASING.md) | Source, artifact, and publication checklist. |
 
