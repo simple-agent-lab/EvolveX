@@ -11,6 +11,8 @@ status, task_vector.json, evaluation_artifacts.json, and metrics.json; exits 0
 when every task passes, else 2 (partial).
 """
 
+from __future__ import annotations
+
 import hashlib
 import json
 import os
