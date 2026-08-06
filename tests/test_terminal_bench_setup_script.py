@@ -59,6 +59,9 @@ if name == "uv":
     raise SystemExit(2)
 
 if name == "git":
+    if args == ["--version"]:
+        print(f"git version {os.environ.get('FAKE_GIT_VERSION', '2.40.0')}")
+        raise SystemExit(0)
     raise SystemExit(0)
 raise SystemExit(2)
 '''
@@ -111,7 +114,45 @@ def test_setup_stops_before_download_when_docker_is_unavailable(tmp_path: Path) 
 
     assert result.returncode != 0
     assert "Docker daemon" in result.stderr
-    assert calls == [["docker", "info"]]
+    assert calls == [["git", "--version"], ["docker", "info"]]
+
+
+def test_setup_rejects_git_too_old_for_harbor_sparse_checkout(tmp_path: Path) -> None:
+    result, calls = _run(tmp_path, "gepa", FAKE_GIT_VERSION="2.20.1")
+
+    assert result.returncode != 0
+    assert "Git 2.25 or newer" in result.stderr
+    assert calls == [["git", "--version"]]
+
+
+def test_setup_resolves_relative_asset_root_from_the_callers_directory(tmp_path: Path) -> None:
+    environment, calls_path = _environment(tmp_path)
+    caller = tmp_path / "caller"
+    caller.mkdir()
+    environment["EVOLVE_ASSET_DIR"] = "assets"
+
+    result = subprocess.run(
+        ["bash", str(SCRIPT), "gepa"], cwd=caller, env=environment, text=True, capture_output=True, check=False
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert (caller / "assets" / "terminal-bench-2-30-v1" / "dataset-source.json").is_file()
+    assert _calls(calls_path)
+
+
+def test_setup_rejects_an_existing_incomplete_raw_directory(tmp_path: Path) -> None:
+    environment, calls_path = _environment(tmp_path)
+    raw = Path(environment["EVOLVE_ASSET_DIR"]) / "raw"
+    raw.mkdir(parents=True)
+    (raw / "partial-download").write_text("incomplete\n")
+
+    result = subprocess.run(
+        ["bash", str(SCRIPT), "gepa"], cwd=ROOT, env=environment, text=True, capture_output=True, check=False
+    )
+
+    assert result.returncode != 0
+    assert "incomplete raw dataset directory" in result.stderr
+    assert not any(call[0:5] == ["uv", "run", "--frozen", "harbor", "download"] for call in _calls(calls_path))
 
 
 def test_setup_downloads_once_and_builds_miniswe_image_for_ahe(tmp_path: Path) -> None:

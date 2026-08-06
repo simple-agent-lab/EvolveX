@@ -2,12 +2,16 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+CALLER=$PWD
 RECIPE=${1:-${RECIPE:-ahe}}
-WORKSPACE=${WORKSPACE:-./runs/${RECIPE}-demo}
+WORKSPACE=${WORKSPACE:-$ROOT/runs/${RECIPE}-demo}
 TASKS=${TASKS:-}
 GENERATIONS=${GENERATIONS:-1}
 ENV_FILE=${ENV_FILE:-$ROOT/.env}
 ASSET_ROOT=${EVOLVE_ASSET_DIR:-$ROOT/.evolve-assets/terminal-bench-2.0}
+[[ $WORKSPACE == /* ]] || WORKSPACE=$CALLER/$WORKSPACE
+[[ $ENV_FILE == /* ]] || ENV_FILE=$CALLER/$ENV_FILE
+[[ $ASSET_ROOT == /* ]] || ASSET_ROOT=$CALLER/$ASSET_ROOT
 DATASET=$ASSET_ROOT/terminal-bench-2-30-v1
 SUPPORTED=" aevolve ahe ahe_codex gepa hill_climb hill_climb_codex hyperagents hyperagents_codex "
 [[ $SUPPORTED == *" $RECIPE "* ]] || { echo "unsupported recipe '$RECIPE'; supported recipes:$SUPPORTED" >&2; exit 2; }

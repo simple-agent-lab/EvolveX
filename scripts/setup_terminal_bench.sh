@@ -3,7 +3,9 @@ set -euo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 RECIPE=${1:-}
+CALLER=$PWD
 ASSET_ROOT=${EVOLVE_ASSET_DIR:-$ROOT/.evolve-assets/terminal-bench-2.0}
+[[ $ASSET_ROOT == /* ]] || ASSET_ROOT=$CALLER/$ASSET_ROOT
 RAW_DATASET=$ASSET_ROOT/raw
 DATASET=$ASSET_ROOT/terminal-bench-2-30-v1
 RAW_PENDING=$ASSET_ROOT/.raw.pending
@@ -40,12 +42,22 @@ esac
 for tool in uv git docker; do
   command -v "$tool" >/dev/null || { echo "missing required tool: $tool" >&2; exit 2; }
 done
+GIT_VERSION=$(git --version)
+GIT_VERSION=${GIT_VERSION#git version }
+GIT_VERSION=${GIT_VERSION%% *}
+IFS=. read -r GIT_MAJOR GIT_MINOR _ <<<"$GIT_VERSION"
+if [[ ! $GIT_MAJOR =~ ^[0-9]+$ || ! $GIT_MINOR =~ ^[0-9]+$ ]] ||
+  ((GIT_MAJOR < 2 || (GIT_MAJOR == 2 && GIT_MINOR < 25))); then
+  echo "Git 2.25 or newer is required by Harbor (found $GIT_VERSION)" >&2
+  exit 2
+fi
 docker info >/dev/null 2>&1 || { echo "Docker daemon is unavailable" >&2; exit 2; }
 
 cd "$ROOT"
 uv sync --frozen
 mkdir -p "$ASSET_ROOT"
 if [[ ! -d "$RAW_DATASET/terminal-bench" ]]; then
+  [[ ! -e "$RAW_DATASET" ]] || { echo "incomplete raw dataset directory exists: $RAW_DATASET" >&2; exit 2; }
   [[ ! -e "$RAW_PENDING" ]] || { echo "incomplete setup directory exists: $RAW_PENDING" >&2; exit 2; }
   OWNS_PENDING=1
   uv run --frozen harbor download terminal-bench@2.0 --export -o "$RAW_PENDING"

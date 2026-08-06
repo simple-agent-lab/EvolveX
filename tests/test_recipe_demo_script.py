@@ -149,12 +149,37 @@ def test_recipe_demo_loads_the_optional_env_file(tmp_path: Path) -> None:
         str(env_file),
         "evolve",
         "init",
-        "./runs/ahe-demo",
+        str(ROOT / "runs" / "ahe-demo"),
         "--recipe",
         "ahe",
         "--dataset",
         str(assets / "terminal-bench-2-30-v1"),
     ]
+
+
+def test_recipe_demo_resolves_relative_overrides_from_the_callers_directory(tmp_path: Path) -> None:
+    fake_bin, calls_path = _fake_uv(tmp_path)
+    assets = _assets(tmp_path / "caller")
+    env_file = tmp_path / "caller" / "demo.env"
+    env_file.write_text("OPENAI_API_KEY=file-key\n")
+
+    subprocess.run(
+        ["bash", str(SCRIPT), "gepa"],
+        check=True,
+        cwd=tmp_path / "caller",
+        env=_environment(
+            fake_bin,
+            calls_path,
+            ENV_FILE="demo.env",
+            EVOLVE_ASSET_DIR="assets",
+            WORKSPACE="workspace",
+        ),
+    )
+
+    calls = _calls(calls_path)
+    assert calls[1][:4] == ["run", "--frozen", "--env-file", str(env_file)]
+    assert str(tmp_path / "caller" / "workspace") in calls[2]
+    assert str(assets / "terminal-bench-2-30-v1") in calls[2]
 
 
 def test_recipe_demo_rejects_missing_setup_assets_before_sync(tmp_path: Path) -> None:
@@ -197,4 +222,4 @@ def test_recipe_demo_remains_short_portable_bash() -> None:
     text = SCRIPT.read_text()
     for private in ("DevBox", "/data00", "proxy.env", "REPO_BUNDLE", "python -"):
         assert private not in text
-    assert len(text.splitlines()) <= 30
+    assert len(text.splitlines()) <= 35
