@@ -1,7 +1,16 @@
+<p align="center">
+  <img src="docs/evolve-mark.svg" width="112" alt="EvolveX selected lineage mark: a selected lineage rises past explored side branches to a verified generation.">
+</p>
+
 <h1 align="center">EvolveX</h1>
 
 <p align="center">
-  <strong>Traceable, evaluator-driven evolution for AI agents.</strong>
+  <strong>Build agents that improve — and keep the evidence.</strong>
+</p>
+
+<p align="center">
+  A file-based framework for evaluator-driven evolution, reproducible candidate
+  lineage, and controlled self-modification.
 </p>
 
 <p align="center">
@@ -17,70 +26,101 @@
 </p>
 
 <p align="center">
-  <a href="#overview">Overview</a> ·
-  <a href="#features">Features</a> ·
-  <a href="#quick-start">Quick Start</a> ·
-  <a href="#concepts">Concepts</a> ·
+  <a href="#what-evolvex-does">What EvolveX Does</a> ·
+  <a href="#how-evolvex-works">How It Works</a> ·
+  <a href="#what-can-evolve">What Can Evolve</a> ·
   <a href="#recipes">Recipes</a> ·
   <a href="#skill-evolution-showcase">Showcase</a> ·
+  <a href="#quick-start">Quick Start</a> ·
   <a href="#documentation">Documentation</a>
 </p>
 
-## Overview
-
-EvolveX is a file-based framework for running agent-evolution experiments without
-rebuilding the mechanics for candidate snapshots, evaluation, lineage, and
-reporting. It provides composable recipes inspired by systems such as A-Evolve,
-AHE, GEPA, and HyperAgents.
-
-Each experiment is a separate Git repository. Generation tags identify
-candidates, `archive.jsonl` records outcomes, and the evaluator stays outside the
-candidate's mutable surface. The project is an active prototype intended for
-research and controlled experimentation.
-
-## Features
-
-- **Composable loops:** select, rollout, trace analysis, editing, validation,
-  gating, and recording are independent operators.
-- **Reproducible workspaces:** generated projects include a locked Python runtime,
-  frozen evaluator configuration, and vendored framework mechanism.
-- **Controlled self-modification:** each recipe declares exactly which target and
-  operator paths may evolve.
-- **Traceable outcomes:** Git lineage, evaluation artifacts, and stamped archive
-  records connect every candidate to its evidence.
-- **Content-bound evaluation:** Local task trees, generation commits, candidate
-  runtimes, and replayed artifact bytes are bound into the evidence used for
-  parent selection.
-- **Certified evaluation:** Immutable contracts bind task identities,
-  repetitions, runtime, retry policy, and candidate commits to redacted receipts
-  and bounded diagnostics.
-
-## Structure
-
 <p align="center">
-  <img src="docs/architecture.svg" alt="EvolveX architecture: evolution methods such as Hill Climb, A-Evolve, AHE, GEPA and HyperAgents plug into one loop of select, rollout, analyze, mutate, gate and record. The loop and the agent it improves sit inside a declared mutable surface, so the meta-agent can rewrite any stage. Only the substrate below stays frozen: the evaluator, the runtime, the surface check and the stamped evidence.">
+  <a href="docs/evolve-lineage.svg">
+    <img src="docs/evolve-lineage.svg" alt="A baseline branches into evaluated candidates. The selected lineage rises through successive generations to a verified improvement, while unselected candidates remain visible as evidence.">
+  </a>
 </p>
 
-Every recipe runs the same loop: select a parent, run the tasks, analyze the
-traces, edit, gate, record. Each stage is an operator rather than a fixed step,
-and a recipe decides which of them the meta-agent may rewrite along with the
-target. The evaluator, runtime, surface check, and evidence stamps stay outside
-that surface.
+## What EvolveX Does
 
-## Repository layout
+EvolveX gives an agent a controlled way to improve itself. It runs candidates
+against a fixed evaluator, keeps the evidence for every generation, and carries
+verified improvements forward without letting candidate code rewrite the rules
+that score it.
 
-| Path | Role |
-| --- | --- |
-| `src/evolve/` | Framework implementation and CLI. |
-| `library/` | Composable evolution operators. |
-| `recipes/` | Runnable evolution configurations and method guides. |
-| `skills/` | Skill packages used by agents and workspaces. |
-| `evals/skills/` | Behavior and routing evaluations for those skills. |
-| `tests/` | Deterministic implementation and contract tests. |
-| `scaffolds/evaluators/` | Evaluator templates for generated workspaces. |
-| `runs/` | Local generated artifacts; ignored and not source documentation. |
+| For agent builders | For researchers | Evidence built in |
+| --- | --- | --- |
+| Improve prompts, skills, harnesses, and agent code in a reusable experiment workspace. | Compare evolution strategies under fixed evaluation and mutation boundaries. | Connect every candidate to scores, artifacts, archive records, and Git lineage. |
 
-The current evaluation assets are documented in [`evals/README.md`](evals/README.md).
+## How EvolveX Works
+
+Every recipe composes the same loop:
+
+**select → evaluate → analyze → mutate → gate → record**
+
+<p align="center">
+  <a href="docs/architecture.svg">
+    <img src="docs/architecture.svg" alt="EvolveX architecture: five built-in strategies and custom recipes compose a loop of select, rollout and evaluation, analyze, mutate, gate, and record. The target and selected operators occupy a declared mutable surface. The evaluator, runtime, surface check, and stamped evidence remain protected from candidate changes.">
+  </a>
+</p>
+
+A recipe decides how parents are selected, how traces are analyzed, what may be
+edited, and which evaluations admit a new generation. The framework owns the
+mechanism that makes those decisions inspectable: clean candidate snapshots,
+protected scoring, surface enforcement, Git tags, and stamped archive records.
+
+## What Can Evolve
+
+| Surface | Examples | Best fit |
+| --- | --- | --- |
+| prompts and skills | system prompts, task skills, reusable instructions | policy and behavior improvement |
+| harnesses and target code | tools, orchestration, agent implementation | agent engineering |
+| selected evolution operators | analysis or mutation policy chosen by a recipe | controlled co-evolution |
+
+Each recipe declares its mutable paths. Evaluators, archive stamps, and the
+vendored framework mechanism stay outside that surface.
+
+## Recipes
+
+| Choose this when you want to… | Recipe | Mutable surface |
+| --- | --- | --- |
+| improve one candidate from its current best parent | `hill_climb` | target |
+| evolve prompts and reusable agent skills | `aevolve` | prompt and target skills |
+| engineer the agent harness against evaluator feedback | `ahe` | target |
+| balance multiple objectives with minibatch validation | `gepa` | prompt and task skill |
+| co-evolve the target and selected evolution policy | `hyperagents` | target and selected operators |
+
+See [the recipe guide](recipes/README.md) for each strategy’s workflow and configuration.
+
+## Skill Evolution Showcase
+
+EvolveX can improve a Skill as a complete package: instructions, references,
+and validation scripts evolve together while a frozen evaluator keeps the
+comparison honest. In this local Paper2Poster run, the same Codex model and
+paper prompt produced both LoRA posters below.
+
+<table>
+  <tr>
+    <th width="50%">Gen 0 · minimal 12-line Skill</th>
+    <th width="50%">Gen 2 · evolved editorial Skill</th>
+  </tr>
+  <tr>
+    <td><img src="docs/assets/paper-poster-lora-gen0.png" alt="Generation zero LoRA research poster with a generic dashboard-style layout"></td>
+    <td><img src="docs/assets/paper-poster-lora-gen2.png" alt="Generation two LoRA research poster with a paper-specific editorial layout and low-rank matrix visualization"></td>
+  </tr>
+  <tr>
+    <td>Hard gate failed: 14 text elements overflowed the SVG viewBox.</td>
+    <td>Passed renderability, geometry, and paper-fidelity hard gates.</td>
+  </tr>
+</table>
+
+Across the four-paper showcase, the hard-gate pass rate moved from **1/4** at
+Gen 0 to **4/4** at Gen 2. The trials ran concurrently through Harbor's local
+environment without Docker and retained ATIF trajectories plus evaluator-owned
+visual feedback. This is a representative evolution run rather than a broad
+benchmark; see the [result snapshot](docs/results/paper-poster-skill-evolution.json),
+[frozen rubric](evals/skills/make-paper-poster/rubric.json), and
+[minimal seed Skill](evals/skills/make-paper-poster/seed/skills/make-paper-poster/SKILL.md).
 
 ## Quick Start
 
@@ -162,79 +202,23 @@ runtime configuration and evaluation contracts.
 Inspect a run with `evolve status`, `evolve report`, `git tag --list 'gen/*'`,
 and the generated `archive.jsonl`. Run `evolve --help` for the complete CLI.
 
-## Concepts
+## Trustworthy by Construction
 
-| Concept | Meaning |
-| --- | --- |
-| workspace | A generated experiment repository. |
-| target | The code or agent being improved. |
-| operator | One step in the evolution loop. |
-| evaluator | A pinned black-box scoring contract. |
-| archive | Stamped outcomes in `archive.jsonl` plus generation tags. |
-| mutable surface | The paths a proposal is allowed to change. |
+EvolveX separates evolvable policy from the mechanism that judges it:
 
-The generated `.evolve/` runtime and evaluator are protected from candidate
-edits. Operators run as subprocesses instead of being imported into the
-framework process.
+1. **The evaluator is frozen.** Candidates cannot change the scoring contract.
+2. **Mutation is bounded.** Each recipe declares which target and operator paths may change.
+3. **Evaluation is canonical.** New generations are scored from clean candidate snapshots.
+4. **Evidence is durable.** Reports recompute results from stamped `archive.jsonl` records and Git generation tags.
 
-## Recipes
+Operators run as subprocesses rather than being imported into the framework
+process. See [DESIGN.md](DESIGN.md) for the complete ownership model and invariants.
 
-| Recipe | Search shape | Mutable surface |
-| --- | --- | --- |
-| `hill_climb` | single-parent improvement | target |
-| `hill_climb_codex` | single-parent Codex prompt/skill improvement | target |
-| `aevolve` | prompt and skill evolution | prompt and target skills |
-| `ahe` | harness engineering | target |
-| `ahe_codex` | Codex harness engineering | target |
-| `gepa` (default) | Pareto selection with minibatch validation | prompt and task skill |
-| `gepa_local` | GEPA with local no-Docker Harbor trials | knowledge file |
-| `hyperagents` | target and meta-agent co-evolution | target and selected operators |
-| `hyperagents_codex` | Codex and operator co-evolution | target and selected operators |
+## Project Status
 
-See [the recipe guide](recipes/README.md) for the workflow and configuration of
-each recipe.
-
-## Trust Boundaries
-
-EvolveX enforces three core rules:
-
-1. Scores and statuses are written by the mechanism, not workspace operators.
-2. Canonical evaluation runs on clean candidate snapshots against a frozen
-   evaluator.
-3. Reports are recomputed from stamped archive records rather than mutable
-   operator claims.
-
-See [DESIGN.md](DESIGN.md) for the complete model and invariants.
-
-## Skill Evolution Showcase
-
-EvolveX can improve a Skill as a complete package: instructions, references,
-and validation scripts evolve together while a frozen evaluator keeps the
-comparison honest. In this local Paper2Poster run, the same Codex model and
-paper prompt produced both LoRA posters below.
-
-<table>
-  <tr>
-    <th width="50%">Gen 0 · minimal 12-line Skill</th>
-    <th width="50%">Gen 2 · evolved editorial Skill</th>
-  </tr>
-  <tr>
-    <td><img src="docs/assets/paper-poster-lora-gen0.png" alt="Generation zero LoRA research poster with a generic dashboard-style layout"></td>
-    <td><img src="docs/assets/paper-poster-lora-gen2.png" alt="Generation two LoRA research poster with a paper-specific editorial layout and low-rank matrix visualization"></td>
-  </tr>
-  <tr>
-    <td>Hard gate failed: 14 text elements overflowed the SVG viewBox.</td>
-    <td>Passed renderability, geometry, and paper-fidelity hard gates.</td>
-  </tr>
-</table>
-
-Across the four-paper showcase, the hard-gate pass rate moved from **1/4** at
-Gen 0 to **4/4** at Gen 2. The trials ran concurrently through Harbor's local
-environment without Docker and retained ATIF trajectories plus evaluator-owned
-visual feedback. This is a representative evolution run rather than a broad
-benchmark; see the [result snapshot](docs/results/paper-poster-skill-evolution.json),
-[frozen rubric](evals/skills/make-paper-poster/rubric.json), and
-[minimal seed Skill](evals/skills/make-paper-poster/seed/skills/make-paper-poster/SKILL.md).
+EvolveX is an active prototype for research and controlled experimentation. The
+current focus is reliable experiment mechanics, local-first workflows, and
+composable strategies for different agent-evolution scenarios.
 
 ## Roadmap
 
