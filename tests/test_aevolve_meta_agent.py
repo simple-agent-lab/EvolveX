@@ -109,11 +109,9 @@ def _case(tmp_path: Path):
         "prompt_path": "target/prompt.md",
         "skills_dir": "target/skills",
         "memory_dir": "target/memory",
-        "tools_dir": "target/tools",
         "evolve_prompts": True,
         "evolve_skills": True,
         "evolve_memory": False,
-        "evolve_tools": False,
         "history_cycles": 2,
         "max_observations": 30,
         "feedback_chars": 300,
@@ -212,6 +210,9 @@ def test_aevolve_prompt_path_is_a_component_location_not_a_permission_boundary(t
     assert "Runtime prompt/config: `target/prompt.md`" in prompt
     assert "Skills evolution: disabled" in prompt
     assert "Review draft skills" not in prompt
+    assert "Candidate-owned tools" not in prompt
+    assert "Tools evolution" not in prompt
+    assert "- Tools:" not in prompt
     assert "Do not add standalone files to a disabled context layer" in prompt
 
 

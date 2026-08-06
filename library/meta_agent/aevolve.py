@@ -208,8 +208,6 @@ def _instructions(config: dict[str, Any], template_rule: str, *, trajectory_only
         instructions.append("Update the runtime prompt only with concise, transferable instructions.")
     if _enabled(config, "evolve_memory", True):
         instructions.append("Add or prune long-term memory only when the lesson should apply across tasks.")
-    if _enabled(config, "evolve_tools", False):
-        instructions.append("Add or modify candidate-owned tools only when their runtime invocation is verified.")
     instructions.extend(
         [
             "Do not add standalone files to a disabled context layer unless the same change wires them into runtime.",
@@ -297,7 +295,6 @@ def build_prompt(
         raise ValueError(f"A-Evolve prompt_path must reference an existing file: {prompt_relative}")
     skills_dir, skills_relative = _relative_path(checkout, ctx.config.get("skills_dir"), "target/skills")
     _, memory_relative = _relative_path(checkout, ctx.config.get("memory_dir"), "target/memory")
-    _, tools_relative = _relative_path(checkout, ctx.config.get("tools_dir"), "target/tools")
     trajectory_only = _selected_variant(ctx) == TRAJECTORY_ONLY_VARIANT
     summaries = [] if trajectory_only else _case_summaries(ctx)
     tasks_analyzed = _selected_case_count(ctx) if trajectory_only else len(summaries)
@@ -313,14 +310,12 @@ def build_prompt(
         f"- Runtime prompt/config: `{prompt_relative}`\n"
         f"- Reusable skills: `{skills_relative}/*/SKILL.md`\n"
         f"- Draft skills: `{skills_relative}/_drafts/*.md`\n"
-        f"- Memory: `{memory_relative}/`\n"
-        f"- Tools: `{tools_relative}/`\n\n"
+        f"- Memory: `{memory_relative}/`\n\n"
         f"{workspace_contract(checkout, ctx.config)}\n\n"
         "### Managed Evolution Layers\n"
         f"- Prompt evolution: {_layer_status(ctx.config, 'evolve_prompts', True)}\n"
         f"- Skills evolution: {_layer_status(ctx.config, 'evolve_skills', True)}\n"
         f"- Memory evolution: {_layer_status(ctx.config, 'evolve_memory', True)}\n"
-        f"- Tools evolution: {_layer_status(ctx.config, 'evolve_tools', False)}\n"
         "These switches control which reusable context stores A-Evolve should manage; they are not filesystem permissions.\n\n"
         + (
             f"{_evidence_section(observation, ctx, trajectory_only=True)}\n\n"

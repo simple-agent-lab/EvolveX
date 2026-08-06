@@ -78,7 +78,6 @@ def workspace_contract(
     prompt = _detected_prompt(checkout, config)
     skills = _detected_directory(checkout, config, "skills_dir", "target/skills")
     memory = _detected_directory(checkout, config, "memory_dir", "target/memory")
-    tools = _detected_directory(checkout, config, "tools_dir", "target/tools")
     permissions = "\n".join(f"- You CAN modify any file under `{root}/`." for root in roots)
     scope = (
         "- This method further restricts the current proposal to: "
@@ -94,13 +93,12 @@ def workspace_contract(
         f"- Enforced surface include: {includes}\n"
         f"- Enforced surface exclude: {excludes}\n"
         f"{scope}\n\n"
-        "`prompt_path`, `skills_dir`, `memory_dir`, and `tools_dir` identify runtime components; "
+        "`prompt_path`, `skills_dir`, and `memory_dir` identify runtime components; "
         "they do not narrow the mutation permission above.\n\n"
         "## Runtime Context Locations\n\n"
         f"{_location('Runtime prompt/config', prompt)}\n"
         f"{_location('Reusable skills', skills)}\n"
-        f"{_location('Long-term memory', memory)}\n"
-        f"{_location('Candidate-owned tools', tools)}\n\n"
-        "A file in a skills, memory, or tools directory affects the deployed agent only if the candidate runtime "
+        f"{_location('Long-term memory', memory)}\n\n"
+        "A file in a skills or memory directory affects the deployed agent only if the candidate runtime "
         "loads or invokes it. When proposing such a file, verify or implement that runtime path in the same candidate."
     )
