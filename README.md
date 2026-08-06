@@ -129,13 +129,20 @@ novelty results are tied to the exact candidate tree, so editing afterward
 requires rerunning them. See the generated workspace's `program.md` and
 `skills/evolve-agent/SKILL.md` for the complete sequence and method guidance.
 
-For a real Terminal-Bench run, provide model credentials and use the portable
-public demo. Harbor resolves and downloads the selected dataset tasks:
+For a real run, provide `OPENAI_API_KEY` in the terminal or in `.env`, then use
+the portable public demo. It defaults to AHE and accepts any supported recipe:
 
 ```bash
 export OPENAI_API_KEY="..."
-./scripts/run_terminal_bench_demo.sh
+./scripts/run_recipe_demo.sh ahe
+
+DATASET=/absolute/path/to/tasks ./scripts/run_recipe_demo.sh gepa
 ```
+
+Common overrides are `WORKSPACE`, `TASKS`, `GENERATIONS`, `DATASET`, `SEED`,
+and `ENV_FILE`. Recipe-specific dataset preparation, images, seeds, and host
+services remain documented in each [recipe guide](recipes/README.md); the demo
+does not duplicate that setup in shell branches.
 
 Initialization resolves each recipe's inline runtime block into
 `evaluator/runtime.json` and generates the certified evaluation inputs.
