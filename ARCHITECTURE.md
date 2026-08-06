@@ -60,10 +60,11 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `preflight/runner.py` | 350 | ordered validation, typed domain-error mapping, redaction, and model-smoke delegation |
 | `report.py` | 250 | status/report rendering, best-ever recomputation, claim checklist, and certified evidence coverage |
 | `run_summary.py` | 200 | recipe-aware terminal-state assessment and machine-readable run assertion receipts |
-| `runtime.py` | 250 | generated-workspace runtime entrypoint helpers |
-| `runtime_auth.py` | 100 | explicit API-key or Codex auth-file selection without home-directory discovery |
-| `runtime_config.py` | 300 | inline runtime validation, endpoint identity, canonical resolution, and trusted loading |
-| `runtime_environment.py` | 450 | strict and legacy role-specific credential, endpoint, proxy, template, and redacted Harbor environment planning |
+| `runtime/__init__.py` | 25 | stable process and evaluation-attempt runtime facade |
+| `runtime/process.py` | 250 | generated-workspace owned-process and evaluation-attempt helpers |
+| `runtime/auth.py` | 100 | explicit API-key or Codex auth-file selection without home-directory discovery |
+| `runtime/config.py` | 300 | inline runtime validation, endpoint identity, canonical resolution, and trusted loading |
+| `runtime/environment.py` | 450 | strict and legacy role-specific credential, endpoint, proxy, template, and redacted Harbor environment planning |
 | `splits.py` | 400 | freeze content-backed train/gate/sealed task membership and materialize authoritative limited runtime selections |
 | `surface.py` | 150 | mutable-surface pattern matching and violation checks |
 | `trace_analysis.py` | 775 | deterministic shared transforms used by the independent trace-analyzer operator variants |
@@ -93,7 +94,7 @@ each workspace, immutable there because it sits outside the mutable surface
 | `frozen/interfaces.py` | 475 | operator ABCs, registry, result schemas, and strict diagnostics/operator payload validation |
 | `frozen/sdk.py` | 300 | Python operator entrypoint and file-contract IO; no library algorithm policy |
 
-Total `src/evolve/` budget: **16080 lines**. The budget admits the explicit content-backed
+Total `src/evolve/` budget: **16105 lines**. The budget admits the explicit content-backed
 evaluation-contract boundaries, the opt-in in-place Harbor runtime, and the redacted trace-analysis
 boundary between rollout and feedback assembly; if the mechanism wants to
 grow past that, something belongs in a workspace operator instead —
