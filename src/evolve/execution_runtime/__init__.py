@@ -1,4 +1,4 @@
-"""Resolve the host execution backend used by Evolve and Harbor."""
+"""Resolve the host execution backend used by EvolveX and Harbor."""
 
 from .config import execution_runtime_config
 from .environment import prepare_execution_environment

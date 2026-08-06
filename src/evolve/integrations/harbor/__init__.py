@@ -1,1 +1,1 @@
-"""Harbor agent integrations shipped with Evolve Framework."""
+"""Harbor agent integrations shipped with EvolveX."""

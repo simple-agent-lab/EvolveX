@@ -29,7 +29,7 @@ from .run_summary import assert_run_success, write_run_summary
 from .surface import check_paths, surface_patterns
 from .workspace import InitOptions, init_workspace
 
-app = typer.Typer(add_completion=False, no_args_is_help=True, help="evolve mechanism CLI")
+app = typer.Typer(add_completion=False, no_args_is_help=True, help="EvolveX mechanism CLI")
 DEFAULT_WORKSPACE = Path("~/.evolve-workspace")
 
 
@@ -94,7 +94,7 @@ def init(
     dataset: str | None = typer.Option(None, help="local Harbor task directory to split and freeze"),
     tasks: int | None = typer.Option(None, "--tasks", min=1, help="limit evaluator tasks per round"),
 ) -> None:
-    """Scaffold a new evolve workspace."""
+    """Scaffold a new EvolveX workspace."""
     workspace = (workspace or DEFAULT_WORKSPACE).expanduser()
     if recipe is not None and recipe_path is not None:
         raise typer.BadParameter(
@@ -117,7 +117,7 @@ def init(
             tasks_per_round=tasks,
         )
     )
-    print(f"Initialized evolve workspace at {workspace}")
+    print(f"Initialized EvolveX workspace at {workspace}")
 
 
 @app.command()
