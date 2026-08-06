@@ -191,7 +191,7 @@ def test_readme_uses_approved_identity_and_information_architecture() -> None:
     assert "### Benchmark results" in readme
     assert "#### Terminal Bench 2" in readme
     assert "#### Tau³ Banking" in readme
-    assert readme.count("<th>Target agent</th>") == 2
+    assert readme.count('<th width="14%">Target agent</th>') == 2
     assert readme.count('<td rowspan="4">MiniSWE Agent</td>') == 2
     assert readme.count('<td rowspan="4">Codex</td>') == 2
 
