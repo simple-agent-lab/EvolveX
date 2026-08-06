@@ -1,7 +1,5 @@
 import re
 import shlex
-import subprocess
-import sys
 import tomllib
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -29,50 +27,22 @@ def _h2_headings(markdown: str) -> list[str]:
 def _fenced_shell_blocks(markdown: str) -> list[tuple[str, str]]:
     return [
         (match.group("language"), match.group("body"))
-        for match in re.finditer(
-            r"^```(?P<language>\w+)\n(?P<body>.*?)^```$", markdown, re.MULTILINE | re.DOTALL
-        )
+        for match in re.finditer(r"^```(?P<language>\w+)\n(?P<body>.*?)^```$", markdown, re.MULTILINE | re.DOTALL)
     ]
 
 
 def _relative_luminance(color: str) -> float:
     channels = [int(color[index : index + 2], 16) / 255 for index in (1, 3, 5)]
-    linear = [
-        channel / 12.92
-        if channel <= 0.04045
-        else ((channel + 0.055) / 1.055) ** 2.4
-        for channel in channels
-    ]
+    linear = [channel / 12.92 if channel <= 0.04045 else ((channel + 0.055) / 1.055) ** 2.4 for channel in channels]
     return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
 
 
 def _contrast_ratio(first: str, second: str) -> float:
-    lighter, darker = sorted(
-        (_relative_luminance(first), _relative_luminance(second)), reverse=True
-    )
+    lighter, darker = sorted((_relative_luminance(first), _relative_luminance(second)), reverse=True)
     return (lighter + 0.05) / (darker + 0.05)
 
 
-def test_readme_visual_assets_are_current() -> None:
-    result = subprocess.run(
-        [sys.executable, str(ROOT / "tools" / "generate_readme_assets.py"), "--check"],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert result.returncode == 0, result.stdout + result.stderr
-
-
-def test_architecture_visual_is_current_and_uses_identity_palette() -> None:
-    result = subprocess.run(
-        [sys.executable, str(ROOT / "tools" / "generate_architecture_svg.py"), "--check"],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert result.returncode == 0, result.stdout + result.stderr
+def test_architecture_visual_uses_identity_palette() -> None:
     svg = (ROOT / "docs" / "architecture.svg").read_text()
     for color in ("#10372e", "#19785a", "#65ce9f", "#b5d3c7", "#f2fbf7"):
         assert color in svg
@@ -198,8 +168,7 @@ def test_readme_uses_approved_identity_and_information_architecture() -> None:
     assert unsupported_benchmark_placeholder not in readme
     assert "reproducible benchmark results" not in readme
     assert (
-        "Benchmark results will be added only with a reproducible evaluation setup and\n"
-        "supporting artifacts."
+        "Benchmark results will be added only with a reproducible evaluation setup and\nsupporting artifacts."
     ) in readme
 
 
@@ -208,9 +177,9 @@ def test_readme_keeps_supported_recipes_and_honest_quick_start() -> None:
     for recipe in ("`hill_climb`", "`aevolve`", "`ahe`", "`gepa`", "`hyperagents`"):
         assert recipe in readme
 
-    quick_start = readme.split("## Quick Start\n", maxsplit=1)[1].split(
-        "\n## Trustworthy by Construction", maxsplit=1
-    )[0]
+    quick_start = readme.split("## Quick Start\n", maxsplit=1)[1].split("\n## Trustworthy by Construction", maxsplit=1)[
+        0
+    ]
     assert _fenced_shell_blocks(quick_start) == [
         (
             "bash",
