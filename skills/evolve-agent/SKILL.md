@@ -45,7 +45,7 @@ boundary.
 | Observable condition | Method | Read |
 | --- | --- | --- |
 | A minimal attributable control is enough | Hill Climb | [hill-climb.md](references/hill-climb.md) |
-| Only behavioral traces should guide prompt or skill mutation | A-Evolve | [a-evolve.md](references/a-evolve.md) |
+| Behavioral traces or generated-artifact rubrics should guide prompt or skill mutation | A-Evolve | [a-evolve.md](references/a-evolve.md) |
 | The evaluator returns per-task results and the target splits into components | GEPA | [gepa.md](references/gepa.md) |
 | Failures are execution-shaped and justify harness changes | AHE | [ahe.md](references/ahe.md) |
 | The evolution process itself may also change | HyperAgents | [hyperagents.md](references/hyperagents.md) |
@@ -56,6 +56,11 @@ research claims.
 
 **Completion check:** State why the method matches both the evidence and the
 declared mutable surface. If it does not, choose again before running anything.
+
+For artifact-producing Skills, prefer replaying a selected parent's certified
+artifacts over executing that parent again. Re-execute the parent only when the
+current task set, evaluator identity, runtime identity, or required artifacts
+do not match the retained evidence. Execute every child freshly.
 
 ## 3. Prefer capabilities over source
 

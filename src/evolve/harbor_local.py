@@ -132,6 +132,12 @@ class LocalEnvironment(BaseEnvironment):
             path.mkdir(parents=True, exist_ok=True)
         if self._mounts:
             self.logger.warning("evolve-local ignores Harbor mount configuration")
+        # Container providers bake environment/ into an image when a Dockerfile
+        # is present and upload it only for prebuilt-image tasks. LocalEnvironment
+        # never builds an image, so it must stage environment/ for both forms.
+        # This is what makes task inputs such as /app/paper.pdf visible locally.
+        if self.environment_dir.is_dir():
+            await self.upload_dir(self.environment_dir, self._workdir)
 
     async def stop(self, delete: bool) -> None:
         del delete  # The current process environment is caller-owned.
@@ -157,9 +163,35 @@ class LocalEnvironment(BaseEnvironment):
         target = self._map_path(target_path)
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
+        self._rewrite_uploaded_test_file(target_path, target)
 
     async def upload_dir(self, source_dir: Path | str, target_dir: str) -> None:
-        self._copy_dir_contents(Path(source_dir), self._map_path(target_dir))
+        target = self._map_path(target_dir)
+        self._copy_dir_contents(Path(source_dir), target)
+        tests_dir = str(EnvironmentPaths.for_os(self.os).tests_dir).replace("\\", "/").rstrip("/")
+        normalized_target = target_dir.replace("\\", "/").rstrip("/")
+        if normalized_target == tests_dir or normalized_target.startswith(tests_dir + "/"):
+            for path in target.rglob("*"):
+                if path.is_file() and not path.is_symlink():
+                    self._rewrite_text_file(path)
+
+    def _rewrite_uploaded_test_file(self, virtual_path: str, local_path: Path) -> None:
+        tests_dir = str(EnvironmentPaths.for_os(self.os).tests_dir).replace("\\", "/").rstrip("/")
+        normalized = virtual_path.replace("\\", "/")
+        if normalized == tests_dir or normalized.startswith(tests_dir + "/"):
+            self._rewrite_text_file(local_path)
+
+    def _rewrite_text_file(self, path: Path) -> None:
+        try:
+            raw = path.read_bytes()
+            if b"\0" in raw:
+                return
+            text = raw.decode("utf-8")
+        except (OSError, UnicodeDecodeError):
+            return
+        rewritten = self._rewrite_command(text)
+        if rewritten != text:
+            path.write_text(rewritten)
 
     async def download_file(self, source_path: str, target_path: Path | str) -> None:
         target = Path(target_path)

@@ -1,0 +1,32 @@
+{
+  "backend": "local",
+  "runtime": {
+    "prepare": "evaluator/prepare-runtime.sh",
+    "required_environment": {
+      "EVOLVE_SVG_RENDERER": "executable",
+      "EVOLVE_SVG_RUNTIME_DIGEST": "nonempty"
+    },
+    "timeout_s": 180
+  },
+  "schema_version": 1,
+  "smoke": {
+    "command": [
+      "python3",
+      "evaluator/doctor_smoke.py"
+    ],
+    "timeout_s": 120
+  },
+  "tasks": {
+    "required_files": [
+      "environment/paper.pdf",
+      "environment/paper.txt"
+    ],
+    "sha256": {
+      "tests/evaluate.py": "sha256:6b74f871bc915f16af3a837808d7f93d0d48df5a4533d11bfb510237e215be3f",
+      "tests/judge_schema.json": "sha256:db409264445e7a54b7d667f4520ded30467f2d28f9ab178056a29bc2becaf218",
+      "tests/rubric.json": "sha256:7b1cb5060b89c60abb24890fe9f6889b228c09c814f50d3e8b11f03baa2b10b1",
+      "tests/svg_check.py": "sha256:e7cfba3e89239c0b1e615dac4901ca8dbffe50862056e082f22e4b17f4a188cc",
+      "tests/test.sh": "sha256:69da0ffcdbaf27d92fc93d698b8aa644da7c422895975174af6000acaf39989e"
+    }
+  }
+}

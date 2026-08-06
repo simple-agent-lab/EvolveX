@@ -48,7 +48,7 @@ See the [design guide](concepts/design.md) for the complete model and invariants
 
 ## Repository resources
 
-- [Supported recipes](https://github.com/simple-agent-lab/simple-evolve-agent/tree/main/recipes)
-- [Source architecture map](https://github.com/simple-agent-lab/simple-evolve-agent/blob/main/ARCHITECTURE.md)
-- [Contributing guide](https://github.com/simple-agent-lab/simple-evolve-agent/blob/main/CONTRIBUTING.md)
-- [GitHub repository](https://github.com/simple-agent-lab/simple-evolve-agent)
+- [Supported recipes](https://github.com/simple-agent-lab/EvolveX/tree/main/recipes)
+- [Source architecture map](https://github.com/simple-agent-lab/EvolveX/blob/main/ARCHITECTURE.md)
+- [Contributing guide](https://github.com/simple-agent-lab/EvolveX/blob/main/CONTRIBUTING.md)
+- [GitHub repository](https://github.com/simple-agent-lab/EvolveX)

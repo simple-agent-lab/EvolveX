@@ -95,6 +95,8 @@ def test_supported_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "rollout: {variant: harbor" in config
             assert "task_sampling: generation_shuffle" in config
             assert "variant: gepa" in config
+            assert "task_execution_skill: target/skills/task-execution\n" in config
+            assert "task_execution_skill: target/skills/task-execution/SKILL.md" not in config
             assert "expose_gate_data: false" in config
             assert "variant: minibatch_improvement" in config
             assert "criterion: strict" in config
@@ -109,9 +111,11 @@ def test_supported_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "variant: minibatch_improvement" in config
             assert "criterion: non_decreasing" in config
             assert "expose_gate_data: false" in config
+            assert "runner: harbor" in config
+            assert "agent: evolve.integrations.harbor.local_auto_agent:LocalAutoAgent" in config
             assert "agent: target.agent:HarborAgent" in config
             assert "record: {variant: gepa" in config
-            assert config.count('environment: "evolve.harbor_local:LocalEnvironment"') == 3
+            assert config.count('environment: "evolve.harbor_local:LocalEnvironment"') == 4
             assert "environment: docker" not in config
             assert "image:" not in config
         elif name == "ahe":

@@ -14,8 +14,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/simple-agent-lab/simple-evolve-agent/actions/workflows/test.yml">
-    <img alt="Tests" src="https://github.com/simple-agent-lab/simple-evolve-agent/actions/workflows/test.yml/badge.svg">
+  <a href="https://github.com/simple-agent-lab/EvolveX/actions/workflows/test.yml">
+    <img alt="Tests" src="https://github.com/simple-agent-lab/EvolveX/actions/workflows/test.yml/badge.svg">
   </a>
   <a href="https://www.python.org/">
     <img alt="Python 3.12+" src="https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&amp;logoColor=white">
@@ -23,7 +23,7 @@
   <a href="LICENSE">
     <img alt="Apache-2.0 License" src="https://img.shields.io/badge/License-Apache--2.0-blue.svg">
   </a>
-  <a href="https://simple-agent-lab.github.io/simple-evolve-agent/">
+  <a href="https://simple-agent-lab.github.io/EvolveX/">
     <img alt="Documentation" src="https://img.shields.io/badge/Documentation-EvolveX-0F766E?logo=materialformkdocs&amp;logoColor=white">
   </a>
 </p>
@@ -33,6 +33,7 @@
   <a href="#how-evolvex-works">How It Works</a> ·
   <a href="#what-can-evolve">What Can Evolve</a> ·
   <a href="#recipes">Recipes</a> ·
+  <a href="#skill-evolution-showcase">Showcase</a> ·
   <a href="#quick-start">Quick Start</a> ·
   <a href="#documentation">Documentation</a>
 </p>
@@ -102,6 +103,36 @@ vendored framework mechanism stay outside that surface.
 
 See [the recipe guide](recipes/README.md) for each strategy’s workflow and configuration.
 
+## Skill Evolution Showcase
+
+EvolveX can improve a Skill as a complete package: instructions, references,
+and validation scripts evolve together while a frozen evaluator keeps the
+comparison honest. In this local Paper2Poster run, the same Codex model and
+paper prompt produced both LoRA posters below.
+
+<table>
+  <tr>
+    <th width="50%">Gen 0 · minimal 12-line Skill</th>
+    <th width="50%">Gen 2 · evolved editorial Skill</th>
+  </tr>
+  <tr>
+    <td><img src="docs/assets/paper-poster-lora-gen0.png" alt="Generation zero LoRA research poster with a generic dashboard-style layout"></td>
+    <td><img src="docs/assets/paper-poster-lora-gen2.png" alt="Generation two LoRA research poster with a paper-specific editorial layout and low-rank matrix visualization"></td>
+  </tr>
+  <tr>
+    <td>Deterministic geometry gate failed: 14 text elements overflowed the SVG viewBox.</td>
+    <td>Passed deterministic renderability and geometry gates; paper fidelity remained advisory reviewer feedback.</td>
+  </tr>
+</table>
+
+Across the four-paper showcase, the deterministic completion pass rate moved
+from **1/4** at Gen 0 to **4/4** at Gen 2. The trials ran concurrently through Harbor's local
+environment without Docker and retained ATIF trajectories plus evaluator-owned
+visual feedback. This is a representative evolution run rather than a broad
+benchmark; see the [result snapshot](docs/results/paper-poster-skill-evolution.json),
+[frozen rubric](evals/skills/make-paper-poster/rubric.json), and
+[minimal seed Skill](evals/skills/make-paper-poster/seed/skills/make-paper-poster/SKILL.md).
+
 ## Quick Start
 
 Run one of the supported recipes against the shared, content-pinned
@@ -109,8 +140,8 @@ Terminal-Bench 2.0 subset. The launcher requires Bash, Python 3.12+,
 [`uv`](https://docs.astral.sh/uv/), Git 2.25+, and a running Docker daemon.
 
 ```bash
-git clone https://github.com/simple-agent-lab/simple-evolve-agent.git
-cd simple-evolve-agent
+git clone https://github.com/simple-agent-lab/EvolveX.git
+cd EvolveX
 
 # API authentication is the default. Keep credentials out of recipe YAML.
 cat > .env <<'EOF'
@@ -329,7 +360,7 @@ composable strategies for different agent-evolution scenarios.
 
 | Document | Purpose |
 | --- | --- |
-| [Documentation site](https://simple-agent-lab.github.io/simple-evolve-agent/) | Installation, operation, concepts, guides, and reference. |
+| [Documentation site](https://simple-agent-lab.github.io/EvolveX/) | Installation, operation, concepts, guides, and reference. |
 | [Design](docs/concepts/design.md) | System model, ownership boundaries, and invariants. |
 | [Architecture](ARCHITECTURE.md) | Enforced source-module map and line budgets. |
 | [Recipes](recipes/README.md) | Supported evolution strategies. |

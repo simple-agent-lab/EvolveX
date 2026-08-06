@@ -44,26 +44,7 @@ def _contrast_ratio(first: str, second: str) -> float:
     return (lighter + 0.05) / (darker + 0.05)
 
 
-def test_readme_visual_assets_are_current() -> None:
-    result = subprocess.run(
-        [sys.executable, str(ROOT / "tools" / "generate_readme_assets.py"), "--check"],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert result.returncode == 0, result.stdout + result.stderr
-
-
-def test_architecture_visual_is_current_and_uses_identity_palette() -> None:
-    result = subprocess.run(
-        [sys.executable, str(ROOT / "tools" / "generate_architecture_svg.py"), "--check"],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert result.returncode == 0, result.stdout + result.stderr
+def test_architecture_visual_uses_identity_palette() -> None:
     svg = (ROOT / "docs" / "assets" / "architecture.svg").read_text()
     for color in ("#10372e", "#19785a", "#65ce9f", "#b5d3c7", "#f2fbf7"):
         assert color in svg
@@ -76,7 +57,6 @@ def test_architecture_visual_is_current_and_uses_identity_palette() -> None:
     assert "The target and selected operators occupy a declared mutable surface." in architecture_image.group(1)
     assert "may rewrite any stage" not in readme
     assert "can rewrite any stage" not in readme
-
 
 def test_readme_visual_assets_have_accessible_svg_metadata() -> None:
     for relative in ("docs/evolve-mark.svg", "docs/evolve-lineage.svg"):
@@ -143,6 +123,7 @@ def test_readme_uses_approved_identity_and_information_architecture() -> None:
   <a href="#how-evolvex-works">How It Works</a> ·
   <a href="#what-can-evolve">What Can Evolve</a> ·
   <a href="#recipes">Recipes</a> ·
+  <a href="#skill-evolution-showcase">Showcase</a> ·
   <a href="#quick-start">Quick Start</a> ·
   <a href="#documentation">Documentation</a>
 </p>"""
@@ -157,6 +138,7 @@ def test_readme_uses_approved_identity_and_information_architecture() -> None:
         "How EvolveX Works",
         "What Can Evolve",
         "Recipes",
+        "Skill Evolution Showcase",
         "Quick Start",
         "Trustworthy by Construction",
         "Project Status",
@@ -171,6 +153,7 @@ def test_readme_uses_approved_identity_and_information_architecture() -> None:
         ("how-evolvex-works", "How It Works"),
         ("what-can-evolve", "What Can Evolve"),
         ("recipes", "Recipes"),
+        ("skill-evolution-showcase", "Showcase"),
         ("quick-start", "Quick Start"),
         ("documentation", "Documentation"),
     ]
@@ -181,6 +164,7 @@ def test_readme_uses_approved_identity_and_information_architecture() -> None:
             "How EvolveX Works",
             "What Can Evolve",
             "Recipes",
+            "Skill Evolution Showcase",
             "Quick Start",
             "Documentation",
         )
@@ -195,6 +179,8 @@ def test_readme_uses_approved_identity_and_information_architecture() -> None:
     assert readme.count('<th width="14%">Target agent</th>') == 2
     assert readme.count('<td rowspan="4">MiniSWE Agent</td>') == 2
     assert readme.count('<td rowspan="4">Codex</td>') == 2
+    assert "representative evolution run rather than a broad\nbenchmark" in readme
+    assert "docs/results/paper-poster-skill-evolution.json" in readme
 
 
 def test_readme_keeps_supported_recipes_and_honest_quick_start() -> None:
@@ -208,8 +194,8 @@ def test_readme_keeps_supported_recipes_and_honest_quick_start() -> None:
     assert _fenced_shell_blocks(quick_start) == [
         (
             "bash",
-            """git clone https://github.com/simple-agent-lab/simple-evolve-agent.git
-cd simple-evolve-agent
+            """git clone https://github.com/simple-agent-lab/EvolveX.git
+cd EvolveX
 
 # API authentication is the default. Keep credentials out of recipe YAML.
 cat > .env <<'EOF'

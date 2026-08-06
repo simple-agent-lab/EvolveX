@@ -29,6 +29,7 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `config.py` | 225 | read/render `evolve.yaml`, including evaluator repetition and inline runtime normalization |
 | `driver.py` | 1800 | the generation sequencer: orchestrates baseline eval, verbs + operators (incl. novelty, self-modification admission gates, sealed anchors); validates operator outputs; computes verified_fixes; audit quarantine; doctor repair |
 | `doctor.py` | 250 | read-only local/experiment preflight profiles and persisted diagnostic receipts |
+| `evaluator_doctor.py` | 275 | frozen evaluator contract checks for local runtime preparation, task assets, and model-free smoke probes |
 | `evaluation/__init__.py` | 75 | typed evaluation identity, contract, and result facade |
 | `evaluation/contract.py` | 500 | resolve, hash, persist, and project the single authoritative evaluation contract identity |
 | `evaluation/diagnostics.py` | 375 | materialize missing trials and own bounded diagnostic projection and validation |
@@ -73,6 +74,7 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `host_runtime.py` | 100 | host-side locked runtime process helpers |
 | `integrations/__init__.py` | 10 | external runtime integration package boundary |
 | `integrations/harbor/__init__.py` | 10 | Harbor integration package boundary |
+| `integrations/harbor/local_auto_agent.py` | 275 | local CLI discovery and delegation to Harbor installed-agent adapters with required ATIF output |
 | `integrations/harbor/_agent_roles.py` | 50 | canonical MiniSWE role names and narrow compatibility aliases |
 | `integrations/harbor/_candidate_source.py` | 75 | exact candidate-source validation and archive-copy boundary |
 | `integrations/harbor/codex_candidate.py` | 75 | Codex adapter for OpenAI-compatible Responses endpoints |
@@ -93,7 +95,7 @@ each workspace, immutable there because it sits outside the mutable surface
 | `frozen/interfaces.py` | 350 | operator ABCs, registry, result schemas, and strict operator payload validation |
 | `frozen/sdk.py` | 300 | Python operator entrypoint and file-contract IO; no library algorithm policy |
 
-Total `src/evolve/` budget: **16180 lines**. The budget admits the explicit content-backed
+Total `src/evolve/` budget: **16655 lines**. The budget admits the explicit content-backed
 evaluation-contract boundaries, the opt-in in-place Harbor runtime, and the redacted trace-analysis
 boundary between rollout and feedback assembly; if the mechanism wants to
 grow past that, something belongs in a workspace operator instead —

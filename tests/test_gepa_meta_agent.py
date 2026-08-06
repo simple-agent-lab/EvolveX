@@ -71,7 +71,7 @@ def _case(tmp_path: Path):
                     },
                     "skill": {
                         "file": "reflection/01-skill.json",
-                        "paths": ["target/skills/task-execution/SKILL.md"],
+                        "paths": ["target/skills/task-execution"],
                         "records": 1,
                     },
                 },
@@ -90,7 +90,7 @@ def _case(tmp_path: Path):
     _git(checkout, "tag", "gen/0")
     config = {
         "runner": "harbor",
-        "components": {"prompt": "target/prompt.md", "skill": "target/skills/task-execution/SKILL.md"},
+        "components": {"prompt": "target/prompt.md", "skill": "target/skills/task-execution"},
         "component_strategy": "round_robin",
     }
     ctx = OperatorContext(workspace, checkout, run_dir, "1", "0", None, 1, config, random.Random(0))
@@ -114,6 +114,8 @@ def test_gepa_meta_agent_reads_file_evidence_and_edits_live_target(
         assert "You CAN modify any file under `target/`" in prompt
         assert "This method does not impose a narrower per-proposal path scope." in prompt
         assert "Runtime prompt/config: `target/prompt.md`" in prompt
+        assert "Feedback.natural_language_feedback" in prompt
+        assert "a quality score and must not replace" in prompt
         assert "/app/task/workspace/runs/gen-1/trace_analyzer/evidence/manifest.json" in prompt
         assert "/app/task/workspace/runs/gen-1/trace_analyzer/evidence/reflection/00-prompt.json" in prompt
         assert '"task_id": "a"' not in prompt
@@ -145,6 +147,40 @@ def test_gepa_meta_agent_allows_changes_outside_focus_within_target(
     result = module.GepaMetaAgent().run(checkout, "unused", ctx)
 
     assert result.changed == ["target/skills/task-execution/SKILL.md"]
+
+
+def test_gepa_skill_component_can_add_bundled_resource(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _module()
+    checkout, run_dir, original = _case(tmp_path)
+    ctx = OperatorContext(
+        original.workspace,
+        checkout,
+        run_dir,
+        "2",
+        original.parent,
+        original.round,
+        original.fan_out,
+        original.config,
+        random.Random(0),
+    )
+
+    def fake_run(root: Path, prompt: str, _ctx: OperatorContext):
+        assert "`target/skills/task-execution`" in prompt
+        assert "component path is a skill directory" in prompt
+        assert "bundled behavior resources" in prompt
+        references = root / "target/skills/task-execution/references"
+        references.mkdir()
+        references.joinpath("verification.md").write_text("Run focused verification before submission.\n")
+        return SimpleNamespace(output="added reference", usage={"usd": 0})
+
+    monkeypatch.setattr(module, "run_agent", fake_run)
+    result = module.GepaMetaAgent().run(checkout, "unused", ctx)
+
+    assert result.changed == ["target/skills/task-execution/references/"]
+    assert (checkout / "target/skills/task-execution/references/verification.md").is_file()
+    proposal = json.loads((run_dir / "meta_agent/proposal.json").read_text())
+    assert proposal["components"] == ["skill"]
+    assert proposal["paths"] == ["target/skills/task-execution"]
 
 
 def test_gepa_meta_agent_rejects_changes_outside_mutable_surface(

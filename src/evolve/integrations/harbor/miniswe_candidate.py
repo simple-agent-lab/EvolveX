@@ -137,8 +137,9 @@ def _load_evolved_context(source_dir):
         lines = [
             "## Available Skills",
             "",
-            "Reusable procedures are available below. Before a relevant task, use the bash tool to read the "
-            "referenced `SKILL.md` file and follow its full procedure.",
+            "Reusable skill directories are available below. Before a relevant task, use the bash tool to read "
+            "the referenced `SKILL.md` entrypoint, follow its full procedure, and load or run bundled "
+            "references, scripts, and assets when the entrypoint directs you to them.",
         ]
         for skill in skills:
             description = f": {skill['description']}" if skill["description"] else ""

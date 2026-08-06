@@ -43,6 +43,15 @@ backend ignores its Dockerfile), and `tests/test.sh` writing
 `$HARBOR_LOGS_DIR/verifier/reward.txt`. `evolve preflight --dataset ...`
 checks every entry against the real discovery rule.
 
+Recipe-owned local evaluators can also ship `evaluator/doctor.json`. The
+contract declares required task assets, a local runtime hook, and a model-free
+smoke command. `./evolve doctor . --profile experiment` checks that contract;
+`run`, `eval`, and `retry` repeat it automatically before spending rollout or
+judge budget. A contract declaring `backend: local` must bind Harbor's
+`LocalEnvironment`, and the evaluator refuses to fall back to Docker when that
+binding is missing. Runtime caches are reused, so repeated checks validate the
+pinned local renderer without rebuilding it.
+
 Candidate agents must read candidate files through the
 `EVOLVE_CANDIDATE_SOURCE` environment variable (see
 `seeds/local-smoke/agent.py`), never relative to `__file__`: module import paths
@@ -63,7 +72,9 @@ CODEX_FORCE_AUTH_JSON=1 uv run harbor run \
 
 Harbor reuses the Codex executable and login already available on the host. A
 successful Codex run still produces `agent/trajectory.json`, so it can be
-inspected with `harbor view <jobs-dir>`.
+inspected with `harbor view <jobs-dir>`. Evolve's corresponding EvidenceCase
+keeps a workspace-relative path and SHA-256 digest for that ATIF rather than
+embedding another complete copy.
 
 The import path is available inside generated workspaces because the mechanism
 package is vendored under `.evolve/evolve` and installed by the locked workspace

@@ -50,6 +50,28 @@ def test_harbor_evaluator_uses_locked_workspace_runtime() -> None:
     assert '"$PWD/.evolve/launch_splits.py"' in text
 
 
+def test_local_execution_runtime_refuses_implicit_docker_fallback(tmp_path: Path) -> None:
+    evaluator = tmp_path / "evaluator"
+    run_dir = tmp_path / "run"
+    evaluator.mkdir()
+    run_dir.mkdir()
+    (evaluator / "eval.env").write_text("EVOLVE_EXECUTION_BACKEND=local\n")
+    script = evaluator / "eval.sh"
+    _write_executable(script, _eval_sh("harbor", "fixture"))
+
+    result = subprocess.run(
+        [str(script)],
+        cwd=tmp_path,
+        env={**os.environ, "EVOLVE_RUN_DIR": str(run_dir)},
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 3
+    assert "refusing Docker fallback" in result.stderr
+    assert (run_dir / "status").read_text() == "infra_failed\n"
+
+
 def test_harbor_evaluator_runs_resolved_tasks_from_the_verified_snapshot() -> None:
     text = _eval_sh("harbor", "fixture")
 

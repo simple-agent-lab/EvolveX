@@ -71,7 +71,11 @@ def _artifact(
                 }
             )
         )
+        trajectory = result.parent / "agent" / "trajectory.json"
+        trajectory.parent.mkdir()
+        trajectory.write_text(json.dumps({"steps": [{"source": "agent", "message": "done"}]}))
         payload = result.read_bytes()
+        trajectory_payload = trajectory.read_bytes()
         trials.append(
             {
                 "task_name": task_name,
@@ -82,7 +86,12 @@ def _artifact(
                         "path": result.relative_to(jobs).as_posix(),
                         "bytes": len(payload),
                         "sha256": hashlib.sha256(payload).hexdigest(),
-                    }
+                    },
+                    {
+                        "path": trajectory.relative_to(jobs).as_posix(),
+                        "bytes": len(trajectory_payload),
+                        "sha256": hashlib.sha256(trajectory_payload).hexdigest(),
+                    },
                 ],
             }
         )
@@ -139,6 +148,60 @@ def test_replay_uses_selected_parent_certified_evaluation(tmp_path: Path, monkey
     assert result.summary["tasks_observed"] == 1
     assert result.summary["trials_observed"] == 1
     assert result.summary["mean_observed_reward"] == 1.0
+
+
+def test_replay_keeps_certified_atif_as_workspace_relative_reference(tmp_path: Path, monkeypatch) -> None:
+    module = _replay_module()
+    workspace = tmp_path / "workspace"
+    _jobs, reference = _artifact(workspace)
+    rows = {"3": {"genid": "3", "artifacts": reference, "score": 1.0}}
+    vendored = workspace / "checkout" / "library" / "rollout" / "harbor.py"
+    vendored.parent.mkdir(parents=True, exist_ok=True)
+    vendored.write_text((ROOT / "library" / "rollout" / "harbor.py").read_text())
+    monkeypatch.setattr(module, "ArchiveView", lambda _workspace: _Archive(rows))
+    ctx = _context(workspace, parent="3")
+
+    module.EvaluationReplayRollout().rollout(ctx.checkout, ctx)
+
+    [case] = json.loads((ctx.run_dir / "rollout" / "cases.json").read_text())
+    trajectory = case["execution"]["trajectory"]
+    retained = workspace / trajectory["path"]
+    assert trajectory["status"] == "available"
+    assert trajectory["format"] == "atif"
+    assert retained.is_relative_to(ctx.run_dir / "rollout" / "certified-jobs")
+    assert hashlib.sha256(retained.read_bytes()).hexdigest() == trajectory["sha256"]
+
+
+def test_replay_rejects_trajectory_reference_digest_mismatch(tmp_path: Path) -> None:
+    module = _replay_module()
+    workspace = tmp_path / "workspace"
+    replay_jobs = workspace / "runs" / "gen-5" / "rollout" / "certified-jobs" / "snapshot" / "source"
+    trial = replay_jobs / "task-a"
+    result = trial / "evolve-replay.json"
+    trajectory = trial / "agent" / "trajectory.json"
+    trajectory.parent.mkdir(parents=True)
+    result.write_text("{}")
+    trajectory.write_text(json.dumps({"steps": []}))
+    certified = {
+        result.relative_to(replay_jobs).as_posix(): result.read_bytes(),
+        trajectory.relative_to(replay_jobs).as_posix(): trajectory.read_bytes(),
+    }
+    cases = [
+        {
+            "result_path": str(result),
+            "execution": {
+                "trajectory": {
+                    "format": "atif",
+                    "status": "available",
+                    "path": trajectory.relative_to(workspace).as_posix(),
+                    "sha256": "0" * 64,
+                }
+            },
+        }
+    ]
+
+    with pytest.raises(SystemExit, match="trajectory digest mismatch"):
+        module._certify_result_paths(cases, replay_jobs, certified, workspace=workspace)
 
 
 def test_replay_rejects_parent_outside_current_certified_population(tmp_path: Path, monkeypatch) -> None:
@@ -403,6 +466,7 @@ def test_replay_does_not_materialize_raw_verifier_reward(tmp_path: Path, monkeyp
     reward.parent.mkdir()
     reward.write_text("0\n")
     monkeypatch.setattr(module, "ArchiveView", lambda _workspace: _Archive({"3": {"artifacts": reference}}))
+
     def collect(selected_jobs: Path, **_kwargs):
         assert not list(selected_jobs.rglob("reward.txt"))
         return [{"task_name": "task-a", "trial_name": "task-a__trial-0", "reward": 1.0, "outcome": "passed"}]
@@ -459,8 +523,8 @@ def test_replay_collector_and_returned_paths_stay_in_persistent_certified_view(
 
     cases = json.loads((ctx.run_dir / "rollout" / "cases.json").read_text())
     certified_jobs = Path(replay.summary["jobs_dir"])
-    assert cases[0]["agent_messages"] == []
-    assert cases[0]["artifact_inventory"] == {"agent": [], "verifier": []}
+    assert cases[0]["agent_messages"] == ["done"]
+    assert cases[0]["artifact_inventory"] == {"agent": ["trajectory.json"], "verifier": []}
     assert certified_jobs.is_dir()
     assert certified_jobs != jobs
     assert certified_jobs.is_relative_to(ctx.run_dir / "rollout" / "certified-jobs")

@@ -107,9 +107,9 @@ def test_operator_registry_is_the_single_source() -> None:
     # Every *Operator ABC is registered exactly once, and sdk.py dispatches each —
     # so adding an operator is one registry entry that everything else derives from.
     defined = {
-        name
-        for name, obj in vars(interfaces).items()
-        if inspect.isclass(obj) and name.endswith("Operator") and obj is not object
+        obj.__name__
+        for _name, obj in vars(interfaces).items()
+        if inspect.isclass(obj) and _name.endswith("Operator") and obj is not object
     }
     registered = {spec.abc.__name__ for spec in interfaces.OPERATORS}
     assert defined == registered, f"unregistered operator ABCs: {defined ^ registered}"

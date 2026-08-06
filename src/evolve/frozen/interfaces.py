@@ -130,6 +130,12 @@ class TraceAnalyzerResult:
     artifacts: list[str]
 
 
+# Public, evidence-source-neutral names. The trace-specific names remain aliases
+# during the workspace/config migration so existing experiments can resume.
+AnalyzeOperator = TraceAnalyzerOperator
+AnalyzeResult = TraceAnalyzerResult
+
+
 @dataclass(frozen=True)
 class MetaAgentResult:
     changed: list[str]

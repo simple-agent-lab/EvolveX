@@ -14,3 +14,7 @@ def test_source_resources_have_one_owner() -> None:
 
 def test_obsolete_miniswe_template_is_absent() -> None:
     assert not (ROOT / "templates" / "target" / "harbor" / "miniswe_source_agent.py").exists()
+
+
+def test_legacy_root_tools_directory_is_absent() -> None:
+    assert not (ROOT / "tools").exists()

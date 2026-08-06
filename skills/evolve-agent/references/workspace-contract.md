@@ -46,15 +46,28 @@ workspace/
 | `artifacts/generations/` | current generation | Write only in that generation's namespace. |
 | `archive.jsonl`, `best_ever.json` | lineage mechanism | Never hand-edit; derive from stamped evidence. |
 
+When the target is a Skill, treat the complete Skill directory as the candidate
+artifact. `SKILL.md` is the required entrypoint, but referenced documentation,
+scripts, assets, and agent metadata under the same directory participate in
+mutation, snapshotting, rollout, validation, and lineage as one unit.
+
 Use the same stage vocabulary across methods:
 
 ```text
-select → rollout → trace_analyzer → meta_agent
+select → rollout → analyze → meta_agent
        → validate → novelty → gate → record
 ```
 
 A method may omit a stage, but method-specific evidence remains under
 `runs/gen-<id>/<stage>/` rather than creating another workspace layout.
+
+Harbor keeps each complete ATIF trajectory once under
+`runs/harbor-rollouts/gen-<id>/.../agent/trajectory.json`. The corresponding
+EvidenceCase in `runs/gen-<id>/rollout/cases.json` stores a workspace-relative
+path, SHA-256 digest, format, status, and step count instead of embedding a
+second copy. If an explicitly configured Harbor jobs directory is outside the
+workspace, rollout first retains the ATIF under
+`runs/gen-<id>/rollout/trajectories/` and references that retained copy.
 
 ## Create a workspace
 
@@ -70,6 +83,7 @@ evolve init <workspace-dir> --recipe <recipe> \
   --seed <local seed directory or git URL> \
   --dataset <local task directory>
 cd <workspace-dir>
+./evolve doctor . --profile experiment
 ```
 
 `preflight` takes the same arguments as `init`, writes nothing, and reports
@@ -85,6 +99,12 @@ every unmet precondition as one checklist. The preconditions it checks and
   loop. Smoke recipes are test fixtures, not experiment choices.
 - `--seed` needs a real local directory or git URL; built-in test seeds are
   rejected outside the test suite.
+- A recipe with `evaluator/doctor.json` opts into a frozen evaluator readiness
+  contract. `doctor` verifies task assets, runtime preparation, backend
+  binding, and a model-free smoke; `run`, `eval`, and `retry` enforce the same
+  check automatically before an expensive rollout. Local contracts never
+  require Docker. Add `--probe-model` only when live model access also needs to
+  be tested.
 
 Then certify generation zero before creating any child:
 
@@ -147,7 +167,7 @@ child_checkout="runs/worktrees/gen-$generation_id"
 ./evolve operator run . rollout --genid "$generation_id" \
   --parent "$parent_id" --checkout "$child_checkout"
 # Run only if operator list marks it configured with direct access:
-./evolve operator run . trace_analyzer --genid "$generation_id" \
+./evolve operator run . analyze --genid "$generation_id" \
   --parent "$parent_id" --checkout "$child_checkout"
 ```
 
@@ -191,7 +211,7 @@ Use the least context needed for the current decision:
    bounds need tuning:
 
    ```bash
-   ./evolve operator run . trace_analyzer --genid 1 \
+   ./evolve operator run . analyze --genid 1 \
      --parent "$parent_id" --checkout "$child_checkout" \
      --config '{"max_tasks":5,"max_concurrent":3}'
    ```

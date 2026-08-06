@@ -1,46 +1,55 @@
 # A-Evolve
 
-Use A-Evolve to improve prompts and reusable skills from behavioral execution
-traces while keeping direct labels, rewards, and verifier feedback out of the
-mutation context.
+Use A-Evolve to improve prompts and reusable skills from repeated observations.
+Choose one evidence mode: behavior-only trajectories when evaluator labels must
+stay hidden, or generated-artifact rubrics when the output itself is the object
+being improved.
 
 ## Use it when
 
 - The target exposes prompts or skills as meaningful mutable components.
-- Complete behavioral trajectories are available.
-- The meta agent or outer agent must infer failure patterns without seeing
-  privileged evaluator outputs.
+- Complete behavioral trajectories are available, or the evaluator retains
+  generated artifacts with structured rubric judgments.
+- The meta agent or outer agent can identify recurring, transferable failure
+  patterns from the selected evidence mode.
 - The evaluated agent actually consumes every component being evolved.
 
 ## Use the shipped capabilities
 
 Run `./evolve operator list . --json` and follow the live access metadata. The
 shipped A-Evolve profile normally provides task rollout, a `trajectory_only`
-trace_analyzer, and an `aevolve` meta agent. For an outer-agent edit, invoke
-the `rollout` and `trace_analyzer` stages directly, read their retained trajectory and
-inferred-verdict artifacts, then modify the prompt or skills yourself; the
-configured `meta_agent` remains available for an unattended driver or second
-opinion.
+trace_analyzer, and an `aevolve` meta agent. Artifact-oriented experiments may
+instead compose `library/rollout/evaluation_replay.py` with
+`library/trace_analyzer/artifact_rubric.py` and the same
+`library/meta_agent/aevolve.py` mutation strategy. For an outer-agent edit,
+invoke `rollout` and `analyze` directly, read their retained evidence, then
+modify the prompt or complete Skill directory yourself; the configured
+`meta_agent` remains available for an unattended driver or second opinion.
 
-Do not open source merely to obtain trajectories. Read
+Do not open source merely to obtain retained evidence. Read
 `operators/trace_analyzer.py` only if its evidence contract is unclear or its
 behavior needs diagnosis; consult `library/trace_analyzer/trajectory_only.py`
-and `library/meta_agent/aevolve.py` only when adapting the evolution process.
+or `library/trace_analyzer/artifact_rubric.py` and
+`library/meta_agent/aevolve.py` only when adapting the evolution process.
 
 ## Apply the method
 
-1. Run the current candidate and retain ordered behavioral events.
-2. Compress long trajectories into failure-focused behavioral evidence.
-3. Infer likely outcomes and failure categories through a read-only assessment
-   step that cannot edit the candidate.
-4. Group recurring patterns and review any proposed skill drafts.
-5. Mutate the prompt and reusable skills within the mutable surface.
-6. Evaluate the child with the frozen evaluator and a held-out gate.
-7. Preserve the trajectory evidence, inferred verdicts, patch, and decision.
+1. Obtain the selected parent's evidence. Replay certified artifacts when they
+   match the current fixed task and evaluator identity; otherwise run it.
+2. In trajectory mode, compress behavioral events and infer likely outcomes
+   without evaluator labels. In artifact mode, rank hard failures and weak
+   rubrics from retained outputs without requiring a trajectory.
+3. Group recurring patterns and review any proposed skill drafts.
+4. Mutate the prompt and reusable skills within the mutable surface.
+5. Execute the child freshly on the fixed optimization task set.
+6. Compare parent and child only when their task-set and evaluator identities
+   match; reserve held-out or sealed tasks for a later generalization claim.
+7. Preserve the selected evidence, patch, evaluation, and decision.
 
 ## Guard the claim
 
-Treat inferred verdicts as mutation guidance, not ground-truth evaluation.
+Treat inferred trajectory verdicts as mutation guidance, not ground-truth
+evaluation. Treat artifact rubrics as optimization evidence, not held-out proof.
 Do not claim memory, tool, or skill evolution when the evaluated target does not
 load those layers. Attribute improvement only to the frozen evaluation actually
 executed.
@@ -48,5 +57,6 @@ executed.
 ## Completion check
 
 Every changed prompt or skill is consumed by the evaluated target; its mutation
-is traceable to behavioral evidence and an inferred verdict; and the final
-claim relies on evaluator-stamped results rather than the inferred verdict.
+is traceable to the selected trajectory or artifact evidence; and the final
+claim relies on evaluator-stamped results from a partition not exposed during
+mutation.

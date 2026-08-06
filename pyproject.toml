@@ -26,10 +26,10 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/simple-agent-lab/simple-evolve-agent"
-Documentation = "https://simple-agent-lab.github.io/simple-evolve-agent/"
-Repository = "https://github.com/simple-agent-lab/simple-evolve-agent"
-Issues = "https://github.com/simple-agent-lab/simple-evolve-agent/issues"
+Homepage = "https://github.com/simple-agent-lab/EvolveX"
+Documentation = "https://simple-agent-lab.github.io/EvolveX/"
+Repository = "https://github.com/simple-agent-lab/EvolveX"
+Issues = "https://github.com/simple-agent-lab/EvolveX/issues"
 
 [project.scripts]
 evolve = "evolve.cli:main"
@@ -90,3 +90,6 @@ packages = ["src/evolve"]
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = ["-n", "8", "--dist", "worksteal"]
+markers = [
+    "slow: expensive integration or end-to-end test; skipped unless --run-slow is passed",
+]

@@ -30,10 +30,17 @@ operators:
     timeout_s: 600
   meta_agent:
     variant: gepa
-    runner: local
+    runner: harbor
+    agent: evolve.integrations.harbor.local_auto_agent:LocalAutoAgent
+    environment: "evolve.harbor_local:LocalEnvironment"
+    agent_kwargs:
+      model_by_agent:
+        codex: gpt-5.4
+    editable_roots: [target]
     expose_gate_data: false
     components:
       knowledge: target/knowledge.md
+    max_retries: 1
     timeout_s: 600
   validate:
     variant: minibatch_improvement

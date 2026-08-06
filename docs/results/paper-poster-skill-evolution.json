@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "case": "paper-poster-skill-evolution-showcase",
+  "recorded_at": "2026-08-06",
+  "model": "gpt-5.6-sol",
+  "execution": {
+    "attempts_per_task": 1,
+    "environment": "evolve.harbor_local:LocalEnvironment",
+    "isolation": "per-trial HOME with candidate-owned Skill",
+    "runtime": "local",
+    "used_docker": false
+  },
+  "evaluator": {
+    "hard_gates": [
+      "renderable_self_contained_svg",
+      "geometry_integrity"
+    ],
+    "advisory_review_focus": [
+      "aesthetic_quality",
+      "visual_communication",
+      "paper_fidelity"
+    ],
+    "rubric": "../../evals/skills/make-paper-poster/rubric.json"
+  },
+  "generations": {
+    "gen0": {
+      "hard_gate_passes": 1,
+      "tasks": {
+        "attention-is-all-you-need": {
+          "hard_failures": [
+            "geometry_integrity: 3 text elements overflow the SVG viewBox"
+          ],
+          "reward": 0.0
+        },
+        "clip": {
+          "hard_failures": [
+            "geometry_integrity: 3 text elements overflow the SVG viewBox"
+          ],
+          "reward": 0.0
+        },
+        "lora": {
+          "artifact": "../assets/paper-poster-lora-gen0.png",
+          "hard_failures": [
+            "geometry_integrity: 14 text elements overflow the SVG viewBox"
+          ],
+          "reward": 0.0
+        },
+        "segment-anything": {
+          "hard_failures": [],
+          "reward": 1.0
+        }
+      },
+      "total_tasks": 4,
+      "wall_time_seconds": 494
+    },
+    "gen2": {
+      "hard_gate_passes": 4,
+      "tasks": {
+        "attention-is-all-you-need": {
+          "hard_failures": [],
+          "reward": 1.0
+        },
+        "clip": {
+          "hard_failures": [],
+          "reward": 1.0
+        },
+        "lora": {
+          "artifact": "../assets/paper-poster-lora-gen2.png",
+          "hard_failures": [],
+          "reward": 1.0
+        },
+        "segment-anything": {
+          "hard_failures": [],
+          "reward": 1.0
+        }
+      },
+      "total_tasks": 4,
+      "wall_time_seconds": 638
+    }
+  },
+  "notes": [
+    "Binary reward records deterministic renderability and geometry completion; visual quality and paper fidelity remain prose feedback for outer-agent mutation.",
+    "The showcase was run on four human-selected papers and is not a general benchmark claim.",
+    "Sealed-case feedback from this showcase was not used for later mutation or champion selection."
+  ]
+}

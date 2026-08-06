@@ -27,6 +27,7 @@ from .archive import (
 )
 from .candidate.snapshot import build_candidate_snapshot, commit_candidate_snapshot
 from .config import evaluator_anchor, evaluator_sampling, experiment_id, operator_blocks
+from .doctor import ensure_evaluator_ready
 from .evaluation import (
     CANONICAL_OUTCOMES,
     EvaluationRecord,
@@ -126,6 +127,7 @@ def workspace_run_lock(workspace: Path) -> Iterator[None]:
 def run(options: RunOptions) -> None:
     workspace = options.workspace.resolve()
     with workspace_run_lock(workspace):
+        ensure_evaluator_ready(workspace)
         _run_locked(options, workspace)
 
 

@@ -997,6 +997,25 @@ def test_harbor_meta_agent_does_not_pass_run_only_timeout_multiplier(tmp_path: P
     assert "--agent-timeout-multiplier" not in command
 
 
+def test_harbor_meta_agent_serializes_structured_agent_kwargs_as_json(tmp_path: Path) -> None:
+    runner = _harbor_runner_module()
+    command = runner._base_command(
+        ["harbor"],
+        tmp_path / "task",
+        tmp_path / "prompt.md",
+        tmp_path / "jobs",
+        tmp_path / "tasks",
+        "job",
+        {
+            "agent": "evolve.integrations.harbor.local_auto_agent:LocalAutoAgent",
+            "agent_kwargs": {"model_by_agent": {"codex": "gpt-test"}},
+        },
+    )
+
+    encoded = command[command.index("--ak") + 1]
+    assert encoded == 'model_by_agent={"codex":"gpt-test"}'
+
+
 def test_readonly_artifact_output_rejects_missing_report(tmp_path: Path) -> None:
     trial_dir = tmp_path / "trial"
     artifacts = trial_dir / "artifacts"

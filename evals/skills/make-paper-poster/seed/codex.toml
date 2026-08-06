@@ -1,0 +1,14 @@
+[codex]
+version = "0.145.0"
+reasoning_effort = "high"
+reasoning_summary = "auto"
+web_search = "disabled"
+
+[skills]
+enabled = true
+
+[compaction]
+override_defaults = false
+auto_compact_token_limit = 100000
+auto_compact_token_limit_scope = "total"
+tool_output_token_limit = 12000

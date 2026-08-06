@@ -10,7 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "setup_terminal_bench.sh"
 
-FAKE_TOOL = r'''#!/usr/bin/env python3
+FAKE_TOOL = r"""#!/usr/bin/env python3
 import json
 import os
 import sys
@@ -64,7 +64,7 @@ if name == "git":
         raise SystemExit(0)
     raise SystemExit(0)
 raise SystemExit(2)
-'''
+"""
 
 
 def _environment(tmp_path: Path, **values: str) -> tuple[dict[str, str], Path]:
@@ -195,9 +195,7 @@ def test_setup_builds_codex_image_for_gepa(tmp_path: Path) -> None:
 
 def test_setup_rebuilds_a_stale_image_with_the_expected_tag(tmp_path: Path) -> None:
     environment, calls_path = _environment(tmp_path)
-    Path(environment["DOCKER_STATE"]).write_text(
-        json.dumps({"evolve-meta-agent-codex:20260805-codex0145": "stale"})
-    )
+    Path(environment["DOCKER_STATE"]).write_text(json.dumps({"evolve-meta-agent-codex:20260805-codex0145": "stale"}))
 
     result = subprocess.run(
         ["bash", str(SCRIPT), "gepa"], cwd=ROOT, env=environment, text=True, capture_output=True, check=False

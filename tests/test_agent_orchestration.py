@@ -50,7 +50,8 @@ def test_operator_list_exposes_configured_capabilities(tmp_path: Path) -> None:
         "script": str((workspace / "operators/select.py").resolve()),
         "variant": "greedy",
     }
-    assert entries["trace_analyzer"]["required"] is False
+    assert entries["analyze"]["required"] is False
+    assert entries["analyze"]["implementation"] == "trace_analyzer"
     assert entries["gate"]["access"] == "finalize"
     assert entries["reflect"]["access"] == "driver"
 
@@ -188,7 +189,7 @@ if __name__ == "__main__":
         "operator",
         "run",
         str(workspace),
-        "trace_analyzer",
+        "analyze",
         "--genid",
         "1",
         "--parent",
