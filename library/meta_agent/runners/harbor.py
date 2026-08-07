@@ -335,11 +335,11 @@ def _contains_private_task_name(
     return pattern.search(tail) is not None
 
 
-def _assert_private_tasks_absent(workspace: Path, prompt: str, private_names: tuple[str, ...]) -> None:
+def _private_task_pattern(private_names: tuple[str, ...]) -> re.Pattern[bytes] | None:
     if not private_names:
-        return
+        return None
     encoded_names = tuple(name.encode() for name in private_names)
-    pattern = re.compile(
+    return re.compile(
         rb"(?<!["
         + _TASK_IDENTIFIER_CHARACTERS
         + rb"])(?:"
@@ -348,9 +348,42 @@ def _assert_private_tasks_absent(workspace: Path, prompt: str, private_names: tu
         + _TASK_IDENTIFIER_CHARACTERS
         + rb"])"
     )
+
+
+def _redact_private_tasks_from_run_inputs(workspace: Path, private_names: tuple[str, ...]) -> None:
+    """Remove private split identifiers accidentally echoed by train trajectories.
+
+    Target agents can inspect resources outside the task checkout and may echo a
+    gate or sealed task name into their command output. The rollout remains
+    valid train evidence, but that incidental identifier must not be forwarded
+    to the meta-agent. Only the disposable copied ``runs`` evidence is rewritten;
+    candidate and durable artifact inputs remain protected by the strict check
+    below.
+    """
+
+    pattern = _private_task_pattern(private_names)
+    runs = workspace / "runs"
+    if pattern is None or not runs.is_dir():
+        return
+    for path in runs.rglob("*"):
+        if not path.is_file() or path.is_symlink():
+            continue
+        try:
+            content = path.read_bytes()
+        except OSError:
+            continue
+        redacted = pattern.sub(b"[PRIVATE_TASK]", content)
+        if redacted != content:
+            path.write_bytes(redacted)
+
+
+def _assert_private_tasks_absent(workspace: Path, prompt: str, private_names: tuple[str, ...]) -> None:
+    pattern = _private_task_pattern(private_names)
+    if pattern is None:
+        return
     if pattern.search(prompt.encode()):
         raise RuntimeError("Harbor meta-agent prompt contains a private gate/sealed task identifier")
-    overlap = max(len(name) for name in encoded_names) + 1
+    overlap = max(len(name.encode()) for name in private_names) + 1
     for path in workspace.rglob("*"):
         if not path.is_file() or ".git" in path.relative_to(workspace).parts:
             continue
@@ -427,7 +460,9 @@ def _prepare_bundle(
             _copy_visible_run_inputs(ctx, workspace)
         _copy_artifact_inputs(ctx, workspace)
         if not _expose_gate_data(ctx.config):
-            _assert_private_tasks_absent(workspace, prompt, _private_task_names(ctx.workspace))
+            private_names = _private_task_names(ctx.workspace)
+            _redact_private_tasks_from_run_inputs(workspace, private_names)
+            _assert_private_tasks_absent(workspace, prompt, private_names)
             _initialize_sanitized_git(workspace)
         return _WorkspaceBundle(staging, task_root, workspace, roots, _tree_manifest(workspace))
     except Exception:
