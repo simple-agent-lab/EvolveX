@@ -1,7 +1,5 @@
 import re
 import shlex
-import subprocess
-import sys
 import tomllib
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -57,6 +55,7 @@ def test_architecture_visual_uses_identity_palette() -> None:
     assert "The target and selected operators occupy a declared mutable surface." in architecture_image.group(1)
     assert "may rewrite any stage" not in readme
     assert "can rewrite any stage" not in readme
+
 
 def test_readme_visual_assets_have_accessible_svg_metadata() -> None:
     for relative in ("docs/evolve-mark.svg", "docs/evolve-lineage.svg"):

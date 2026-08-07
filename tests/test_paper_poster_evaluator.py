@@ -153,6 +153,7 @@ def test_visual_judge_inherits_rollout_model_but_allows_specific_override(monkey
 
 
 def test_successful_evaluation_uses_completion_reward_and_no_quality_score(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("HARBOR_WORKDIR", str(tmp_path))
     module = _load_evaluator()
     log_dir = tmp_path / "logs"
     log_dir.mkdir()
@@ -213,6 +214,7 @@ def test_geometry_checker_failures_are_evaluator_infrastructure_errors(monkeypat
 
 
 def test_text_overflow_is_a_deterministic_geometry_hard_failure(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("HARBOR_WORKDIR", str(tmp_path))
     module = _load_evaluator()
     log_dir = tmp_path / "logs"
     log_dir.mkdir()
@@ -234,6 +236,7 @@ def test_text_overflow_is_a_deterministic_geometry_hard_failure(monkeypatch, tmp
 
 
 def test_node_overflow_is_a_deterministic_geometry_hard_failure(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("HARBOR_WORKDIR", str(tmp_path))
     module = _load_evaluator()
     log_dir = tmp_path / "logs"
     log_dir.mkdir()
