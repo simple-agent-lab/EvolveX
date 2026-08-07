@@ -157,6 +157,7 @@ def test_successful_evaluation_uses_completion_reward_and_no_quality_score(monke
     log_dir = tmp_path / "logs"
     log_dir.mkdir()
     module.LOG_DIR = log_dir
+    module.POSTER = tmp_path / "poster.svg"
     monkeypatch.setattr(module, "static_check", lambda: ([], {"svg_bytes": 123}))
     monkeypatch.setattr(module, "render", lambda: None)
     monkeypatch.setattr(
@@ -217,6 +218,7 @@ def test_text_overflow_is_a_deterministic_geometry_hard_failure(monkeypatch, tmp
     log_dir = tmp_path / "logs"
     log_dir.mkdir()
     module.LOG_DIR = log_dir
+    module.POSTER = tmp_path / "poster.svg"
     monkeypatch.setattr(module, "static_check", lambda: ([], {"svg_bytes": 123}))
     monkeypatch.setattr(module, "render", lambda: None)
     monkeypatch.setattr(
@@ -238,6 +240,7 @@ def test_node_overflow_is_a_deterministic_geometry_hard_failure(monkeypatch, tmp
     log_dir = tmp_path / "logs"
     log_dir.mkdir()
     module.LOG_DIR = log_dir
+    module.POSTER = tmp_path / "poster.svg"
     monkeypatch.setattr(module, "static_check", lambda: ([], {"svg_bytes": 123}))
     monkeypatch.setattr(module, "render", lambda: None)
     monkeypatch.setattr(

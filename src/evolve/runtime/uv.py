@@ -51,21 +51,30 @@ def candidate_dependency_digest(checkout: Path, evaluator: dict[str, Any]) -> st
 _SECRET_ENV_NAME = re.compile(r"(?i)(?:secret|token|password|passwd|api[_-]?key|credential|authorization|proxy)")
 
 
-def _redact(message: str, environment: Mapping[str, str] | None = None) -> str:
-    # Structural redaction must run before environment-value replacement: a
-    # short secret-named value such as "http" would otherwise rewrite the URL
-    # scheme and stop the credential patterns from matching at all.
-    redacted = re.sub(r"(?i)(https?://)[^\s/@:]+:[^\s/@]+@", r"\1***:***@", message)
+def _redact_structural(text: str) -> str:
+    redacted = re.sub(r"(?i)(https?://)[^\s/@:]+:[^\s/@]+@", r"\1***:***@", text)
     redacted = re.sub(r"(?i)(https?://)[^\s/@]+@", r"\1***@", redacted)
     redacted = re.sub(
         r"(?i)([?&](?:access_token|api_key|key|password|token)=)[^\s&#]+",
         r"\1***",
         redacted,
     )
-    redacted = re.sub(r"(?i)(\bBearer\s+)[^\s]+", r"\1***", redacted)
+    return re.sub(r"(?i)(\bBearer\s+)[^\s]+", r"\1***", redacted)
+
+
+def _redact(message: str, environment: Mapping[str, str] | None = None) -> str:
+    # Structural redaction runs first: a short secret-named value such as
+    # "http" would otherwise rewrite the URL scheme and stop the credential
+    # patterns from matching at all. Each configured value is then masked in
+    # both its raw and structurally-transformed forms, so a secret that itself
+    # contains a credential-shaped URL still disappears after the first pass.
+    redacted = _redact_structural(message)
     values = {value for name, value in (environment or {}).items() if _SECRET_ENV_NAME.search(name) and len(value) >= 4}
     for value in sorted(values, key=len, reverse=True):
         redacted = redacted.replace(value, "***")
+        transformed = _redact_structural(value)
+        if transformed != value:
+            redacted = redacted.replace(transformed, "***")
     return redacted[:2000]
 
 

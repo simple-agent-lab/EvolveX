@@ -2,6 +2,7 @@ import copy
 import json
 import os
 import shlex
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -83,6 +84,26 @@ def _hermetic_ambient_environment() -> None:
     for name in _AMBIENT_ENV_VARS:
         os.environ.pop(name, None)
         os.environ.pop(name.lower(), None)
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _dependency_tool_shims(tmp_path_factory: pytest.TempPathFactory) -> None:
+    # Preflight requires docker and harbor on PATH for harbor-engine
+    # workspaces, but the default tier never invokes the real daemon (its
+    # evaluations run under EVAL_STUB). Provide inert shims for tools the host
+    # lacks — macOS CI runners have no Docker — appended after the real PATH
+    # so genuine installations always win.
+    shim_dir: Path | None = None
+    for tool in ("docker", "harbor"):
+        if shutil.which(tool) is not None:
+            continue
+        if shim_dir is None:
+            shim_dir = tmp_path_factory.mktemp("tool-shims")
+        shim = shim_dir / tool
+        shim.write_text("#!/bin/sh\nexit 0\n")
+        shim.chmod(0o755)
+    if shim_dir is not None:
+        os.environ["PATH"] = os.environ.get("PATH", "") + os.pathsep + str(shim_dir)
 
 
 def _uv_directory(*arguments: str) -> str:
@@ -183,6 +204,12 @@ def run_evolve(
     cwd: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
     merged_env = os.environ.copy()
+    # GitHub Actions makes rich force terminal rendering, which splits option
+    # names such as ``--tasks`` across style spans and breaks plain-text
+    # assertions on CLI output; pin help/output rendering to plain text.
+    for name in ("GITHUB_ACTIONS", "FORCE_COLOR"):
+        merged_env.pop(name, None)
+    merged_env.setdefault("TERM", "dumb")
     if env:
         for key, value in env.items():
             if value is None:

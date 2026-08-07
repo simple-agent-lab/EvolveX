@@ -51,19 +51,25 @@ jobs:
         id: warm-root-runtime
         run: uv sync --dev --locked --python 3.12
 
+      # The hermetic scaffold and offline probes exercise platform-independent
+      # resolution logic; run them once on the authoritative Linux leg. The
+      # macOS leg stays a portability smoke: lock check, sync, default tier.
       - name: Warm scaffold Python 3.12 runtime
+        if: matrix.os == 'ubuntu-latest'
         id: warm-scaffold-runtime
         env:
           UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}/evolve-scaffold-venv
         run: uv sync --project scaffolds/workspace --frozen --no-install-project --python 3.12
 
       - name: Check scaffold lock offline
+        if: matrix.os == 'ubuntu-latest'
         id: check-scaffold-lock
         env:
           UV_OFFLINE: "1"
         run: uv lock --project scaffolds/workspace --check --offline
 
       - name: Probe generated workspaces offline
+        if: matrix.os == 'ubuntu-latest'
         id: offline-workspace-probe
         env:
           UV_OFFLINE: "1"
@@ -84,6 +90,7 @@ jobs:
         run: uv run --frozen pytest -q
 
       - name: deterministic mechanism smoke (init → run → verify progress)
+        if: matrix.os == 'ubuntu-latest'
         env:
           EVOLVE_RUNTIME_DIGEST: sha256:ci-smoke-runtime
           EVOLVE_AGENT_COMMAND: >-
@@ -134,7 +141,9 @@ jobs:
           uv pip install --python .venv/bin/python --reinstall --no-deps "$wheel"
           cd "$RUNNER_TEMP"
           "$GITHUB_WORKSPACE/.venv/bin/python" -c 'from pathlib import Path; import sys, evolve; assert Path(evolve.__file__).resolve().is_relative_to(Path(sys.prefix).resolve()), evolve.__file__'
-          EVOLVE_HOME="$RUNNER_TEMP/wheel-smoke-home" EVOLVE_RUNTIME_DIGEST="sha256:release-artifact-smoke" "$GITHUB_WORKSPACE/.venv/bin/evolve" init "$RUNNER_TEMP/wheel-smoke" --recipe aevolve
+          # EVAL_STUB pins a stub dataset identity: the wheel smoke verifies
+          # packaging and workspace scaffolding, not registry connectivity.
+          EVAL_STUB=1 EVOLVE_HOME="$RUNNER_TEMP/wheel-smoke-home" EVOLVE_RUNTIME_DIGEST="sha256:release-artifact-smoke" "$GITHUB_WORKSPACE/.venv/bin/evolve" init "$RUNNER_TEMP/wheel-smoke" --recipe aevolve
           EVOLVE_HOME="$RUNNER_TEMP/wheel-smoke-home" "$GITHUB_WORKSPACE/.venv/bin/evolve" status "$RUNNER_TEMP/wheel-smoke"
           test -f "$RUNNER_TEMP/wheel-smoke/LICENSE.evolvex"
           test -f "$RUNNER_TEMP/wheel-smoke/NOTICE.evolvex"
