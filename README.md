@@ -139,7 +139,166 @@ Run one of the supported recipes against the shared, content-pinned
 Terminal-Bench 2.0 subset with `./scripts/setup_terminal_bench.sh` and
 `./scripts/run_recipe_demo.sh`. The
 [quick start guide](QUICKSTART.md) covers prerequisites, credential setup,
-supported recipe values, launcher overrides, and the full benchmark results.
+supported recipe values, and launcher overrides.
+
+## Benchmark Results
+
+Scores are shown as **seed → best**, with the absolute change underneath. All
+runs use a GPT-5.4-high target model and a GPT-5.4-xhigh Codex meta-agent.
+
+### Terminal Bench 2
+
+Split: **50 train / 19 gate / 20 sealed**.
+
+<table width="100%">
+  <thead>
+    <tr>
+      <th width="14%">Target agent</th>
+      <th width="14%">Method</th>
+      <th width="18%">Train</th>
+      <th width="18%">Gate</th>
+      <th width="18%">Sealed</th>
+      <th width="18%">Overall</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td rowspan="4">MiniSWE Agent</td>
+      <td>AHE</td>
+      <td>58.0% → 74.0%<br><strong>(+16.0%)</strong></td>
+      <td>57.9% → 68.4%<br><strong>(+10.5%)</strong></td>
+      <td>70.0% → 70.0%<br><strong>(+0.0%)</strong></td>
+      <td>60.7% → 71.9%<br><strong>(+11.2%)</strong></td>
+    </tr>
+    <tr>
+      <td>Hyperagents</td>
+      <td>58.0% → 68.0%<br><strong>(+10.0%)</strong></td>
+      <td>57.9% → 73.7%<br><strong>(+15.8%)</strong></td>
+      <td>70.0% → 70.0%<br><strong>(+0.0%)</strong></td>
+      <td>60.7% → 69.7%<br><strong>(+9.0%)</strong></td>
+    </tr>
+    <tr>
+      <td>A Evolve</td>
+      <td>58.0% → 68.0%<br><strong>(+10.0%)</strong></td>
+      <td>57.9% → 78.9%<br><strong>(+21.0%)</strong></td>
+      <td>70.0% → 65.0%<br><strong>(−5.0%)</strong></td>
+      <td>60.7% → 69.7%<br><strong>(+9.0%)</strong></td>
+    </tr>
+    <tr>
+      <td>GEPA</td>
+      <td>58.0% → 68.0%<br><strong>(+10.0%)</strong></td>
+      <td>57.9% → 68.4%<br><strong>(+10.5%)</strong></td>
+      <td>70.0% → 75.0%<br><strong>(+5.0%)</strong></td>
+      <td>60.7% → 69.7%<br><strong>(+9.0%)</strong></td>
+    </tr>
+    <tr>
+      <td rowspan="4">Codex</td>
+      <td>AHE</td>
+      <td>58.0% → 74.0%<br><strong>(+16.0%)</strong></td>
+      <td>52.6% → 47.4%<br><strong>(−5.2%)</strong></td>
+      <td>65.0% → 70.0%<br><strong>(+5.0%)</strong></td>
+      <td>58.4% → 67.4%<br><strong>(+9.0%)</strong></td>
+    </tr>
+    <tr>
+      <td>Hyperagents</td>
+      <td>58.0% → 72.0%<br><strong>(+14.0%)</strong></td>
+      <td>52.6% → 57.9%<br><strong>(+5.3%)</strong></td>
+      <td>65.0% → 75.0%<br><strong>(+10.0%)</strong></td>
+      <td>58.4% → 69.7%<br><strong>(+11.3%)</strong></td>
+    </tr>
+    <tr>
+      <td>A Evolve</td>
+      <td>58.0% → 58.0%<br><strong>(+0.0%)</strong></td>
+      <td>52.6% → 52.6%<br><strong>(+0.0%)</strong></td>
+      <td>65.0% → 65.0%<br><strong>(+0.0%)</strong></td>
+      <td>58.4% → 58.4%<br><strong>(+0.0%)</strong></td>
+    </tr>
+    <tr>
+      <td>GEPA</td>
+      <td>58.0% → 58.0%<br><strong>(+0.0%)</strong></td>
+      <td>52.6% → 52.6%<br><strong>(+0.0%)</strong></td>
+      <td>65.0% → 65.0%<br><strong>(+0.0%)</strong></td>
+      <td>58.4% → 58.4%<br><strong>(+0.0%)</strong></td>
+    </tr>
+  </tbody>
+</table>
+
+### Tau³ Banking
+
+Split: **50 train / 20 gate / 27 sealed**.
+
+<table width="100%">
+  <thead>
+    <tr>
+      <th width="14%">Target agent</th>
+      <th width="14%">Method</th>
+      <th width="18%">Train</th>
+      <th width="18%">Gate</th>
+      <th width="18%">Sealed</th>
+      <th width="18%">Overall</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td rowspan="4">MiniSWE Agent</td>
+      <td>AHE</td>
+      <td>30.0% → 36.0%<br><strong>(+6.0%)</strong></td>
+      <td>35.0% → 35.0%<br><strong>(+0.0%)</strong></td>
+      <td>18.5% → 25.9%<br><strong>(+7.4%)</strong></td>
+      <td>27.8% → 33.0%<br><strong>(+5.2%)</strong></td>
+    </tr>
+    <tr>
+      <td>Hyperagents</td>
+      <td>30.0% → 38.0%<br><strong>(+8.0%)</strong></td>
+      <td>35.0% → 45.0%<br><strong>(+10.0%)</strong></td>
+      <td>18.5% → 37.0%<br><strong>(+18.5%)</strong></td>
+      <td>27.8% → 39.2%<br><strong>(+11.4%)</strong></td>
+    </tr>
+    <tr>
+      <td>A Evolve</td>
+      <td>30.0% → 34.0%<br><strong>(+4.0%)</strong></td>
+      <td>35.0% → 45.0%<br><strong>(+10.0%)</strong></td>
+      <td>18.5% → 29.6%<br><strong>(+11.1%)</strong></td>
+      <td>27.8% → 35.1%<br><strong>(+7.3%)</strong></td>
+    </tr>
+    <tr>
+      <td>GEPA</td>
+      <td>30.0% → 32.0%<br><strong>(+2.0%)</strong></td>
+      <td>35.0% → 45.0%<br><strong>(+10.0%)</strong></td>
+      <td>18.5% → 25.9%<br><strong>(+7.4%)</strong></td>
+      <td>27.8% → 33.0%<br><strong>(+5.2%)</strong></td>
+    </tr>
+    <tr>
+      <td rowspan="4">Codex</td>
+      <td>AHE</td>
+      <td>30.0% → 36.0%<br><strong>(+6.0%)</strong></td>
+      <td>30.0% → 45.0%<br><strong>(+15.0%)</strong></td>
+      <td>7.4% → 14.8%<br><strong>(+7.4%)</strong></td>
+      <td>23.7% → 32.0%<br><strong>(+8.3%)</strong></td>
+    </tr>
+    <tr>
+      <td>Hyperagents</td>
+      <td>30.0% → 36.0%<br><strong>(+6.0%)</strong></td>
+      <td>30.0% → 50.0%<br><strong>(+20.0%)</strong></td>
+      <td>7.4% → 48.1%<br><strong>(+40.7%)</strong></td>
+      <td>23.7% → 42.3%<br><strong>(+18.6%)</strong></td>
+    </tr>
+    <tr>
+      <td>A Evolve</td>
+      <td>30.0% → 38.0%<br><strong>(+8.0%)</strong></td>
+      <td>30.0% → 45.0%<br><strong>(+15.0%)</strong></td>
+      <td>7.4% → 18.5%<br><strong>(+11.1%)</strong></td>
+      <td>23.7% → 34.0%<br><strong>(+10.3%)</strong></td>
+    </tr>
+    <tr>
+      <td>GEPA</td>
+      <td>30.0% → 36.0%<br><strong>(+6.0%)</strong></td>
+      <td>30.0% → 35.0%<br><strong>(+5.0%)</strong></td>
+      <td>7.4% → 14.8%<br><strong>(+7.4%)</strong></td>
+      <td>23.7% → 29.9%<br><strong>(+6.2%)</strong></td>
+    </tr>
+  </tbody>
+</table>
 
 ## Trustworthy by Construction
 
@@ -173,7 +332,7 @@ composable strategies for different agent-evolution scenarios.
 | Document | Purpose |
 | --- | --- |
 | [Documentation site](https://simple-agent-lab.github.io/EvolveX/) | Installation, operation, concepts, guides, and reference. |
-| [Quick start](QUICKSTART.md) | Recipe launcher setup and benchmark results. |
+| [Quick start](QUICKSTART.md) | Recipe launcher setup and configuration. |
 | [Design](docs/concepts/design.md) | System model, ownership boundaries, and invariants. |
 | [Architecture](ARCHITECTURE.md) | Enforced source-module map and line budgets. |
 | [Recipes](recipes/README.md) | Supported evolution strategies. |

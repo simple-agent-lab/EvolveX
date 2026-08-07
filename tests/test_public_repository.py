@@ -139,6 +139,7 @@ def test_readme_uses_approved_identity_and_information_architecture() -> None:
         "Recipes",
         "Skill Evolution Showcase",
         "Quick Start",
+        "Benchmark Results",
         "Trustworthy by Construction",
         "Project Status",
         "Roadmap",
@@ -172,14 +173,12 @@ def test_readme_uses_approved_identity_and_information_architecture() -> None:
     unsupported_benchmark_placeholder = """> **TODO:** Add reproducible benchmark results and supporting artifacts once
 > the evaluation setup and reporting protocol are finalized."""
     assert unsupported_benchmark_placeholder not in readme
-    quickstart = (ROOT / "QUICKSTART.md").read_text()
-    assert unsupported_benchmark_placeholder not in quickstart
-    assert "## Benchmark results" in quickstart
-    assert "### Terminal Bench 2" in quickstart
-    assert "### Tau³ Banking" in quickstart
-    assert quickstart.count('<th width="14%">Target agent</th>') == 2
-    assert quickstart.count('<td rowspan="4">MiniSWE Agent</td>') == 2
-    assert quickstart.count('<td rowspan="4">Codex</td>') == 2
+    assert "## Benchmark Results" in readme
+    assert "### Terminal Bench 2" in readme
+    assert "### Tau³ Banking" in readme
+    assert readme.count('<th width="14%">Target agent</th>') == 2
+    assert readme.count('<td rowspan="4">MiniSWE Agent</td>') == 2
+    assert readme.count('<td rowspan="4">Codex</td>') == 2
     assert "representative evolution run rather than a broad\nbenchmark" in readme
     assert "docs/results/paper-poster-skill-evolution.json" in readme
 
@@ -190,12 +189,12 @@ def test_readme_keeps_supported_recipes_and_honest_quick_start() -> None:
         assert recipe in readme
 
     readme_quick_start = readme.split("## Quick Start\n", maxsplit=1)[1].split(
-        "\n## Trustworthy by Construction", maxsplit=1
+        "\n## Benchmark Results", maxsplit=1
     )[0]
     assert "QUICKSTART.md" in readme_quick_start
     assert "Terminal-Bench 2.0" in readme_quick_start
 
-    quick_start = (ROOT / "QUICKSTART.md").read_text().split("\n## Benchmark results", maxsplit=1)[0]
+    quick_start = (ROOT / "QUICKSTART.md").read_text()
     assert _fenced_shell_blocks(quick_start) == [
         (
             "bash",
