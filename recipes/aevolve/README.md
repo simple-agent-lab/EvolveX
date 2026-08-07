@@ -28,10 +28,9 @@ The mapping is:
 | Git snapshots | generation tags |
 | holdout validation | disjoint gate split plus strict hill-climb gate |
 
-The full SkillForge orchestration still has optional capabilities that this
-recipe does not claim to reproduce:
+Differences from the A-Evolve reference implementation:
 
-- upstream's reference judge is hard-wired to a Bedrock model; this recipe
+- the reference implementation's judge is hard-wired to a Bedrock model; this recipe
   invokes the configured meta-agent model through Harbor with the same
   behavior-only input and verdict schema;
 - the solver cannot currently return newly proposed draft skills into

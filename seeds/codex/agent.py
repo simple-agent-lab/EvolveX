@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import shlex
 import tomllib
+import uuid
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -20,6 +22,7 @@ PLUGIN_NAME = "evolve-target"
 PLUGIN_MARKETPLACE = "evolve-target"
 AUTH_MODE_ENV = "EVOLVE_CODEX_AUTH_MODE"
 AUTH_MODES = ("auto", "api", "auth_json")
+AGENT_RUN_ENV = "EVOLVE_CODEX_AGENT_RUN_ID"
 
 
 def _target_root(extra_env: object) -> Path:
@@ -176,13 +179,62 @@ class HarborAgent(Codex):
         marker = "codex exec "
         if marker in command and "--dangerously-bypass-hook-trust" not in command:
             command = command.replace(marker, marker + "--dangerously-bypass-hook-trust ", 1)
-        return await super().exec_as_agent(
-            environment,
-            command=command,
-            env=env,
-            cwd=cwd,
-            timeout_sec=timeout_sec,
-        )
+        if marker not in command:
+            return await super().exec_as_agent(
+                environment,
+                command=command,
+                env=env,
+                cwd=cwd,
+                timeout_sec=timeout_sec,
+            )
+
+        run_id = uuid.uuid4().hex
+        command = f"export {AGENT_RUN_ENV}={run_id}; {command}"
+        try:
+            return await super().exec_as_agent(
+                environment,
+                command=command,
+                env=env,
+                cwd=cwd,
+                timeout_sec=timeout_sec,
+            )
+        except asyncio.CancelledError:
+            await self._cleanup_cancelled_run(environment, run_id)
+            raise
+
+    async def _cleanup_cancelled_run(
+        self,
+        environment: BaseEnvironment,
+        run_id: str,
+    ) -> None:
+        marker = shlex.quote(f"{AGENT_RUN_ENV}={run_id}")
+        command = f"""
+marker={marker}
+pids=
+for envfile in /proc/[0-9]*/environ; do
+  [ -r "$envfile" ] || continue
+  if tr '\\000' '\\n' <"$envfile" 2>/dev/null | grep -Fqx -- "$marker"; then
+    pid=${{envfile#/proc/}}
+    pid=${{pid%/environ}}
+    [ "$pid" = "$$" ] || pids="$pids $pid"
+  fi
+done
+if [ -n "$pids" ]; then
+  kill -TERM $pids 2>/dev/null || true
+  sleep 1
+  kill -KILL $pids 2>/dev/null || true
+fi
+""".strip()
+        try:
+            await asyncio.shield(
+                super().exec_as_agent(
+                    environment,
+                    command=command,
+                    timeout_sec=10,
+                )
+            )
+        except Exception:
+            pass
 
     async def setup(self, environment: BaseEnvironment) -> None:
         await super().setup(environment)

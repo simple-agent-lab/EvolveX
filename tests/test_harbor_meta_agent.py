@@ -174,6 +174,54 @@ def test_harbor_meta_agent_child_creates_private_files(tmp_path: Path) -> None:
     assert stat.S_IMODE(log.stat().st_mode) == 0o600
 
 
+def test_harbor_timeout_removes_only_its_compose_project(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _harbor_runner_module()
+    jobs = tmp_path / "jobs"
+    trial = jobs / "readonly-job" / "readonly-trial"
+    trial.mkdir(parents=True)
+    (trial / "config.json").write_text(json.dumps({"trial_name": "Readonly-Trial__AbC123"}))
+    docker_calls: list[list[str]] = []
+
+    def fake_run(command, **_kwargs):
+        docker_calls.append(command)
+        if command[1:3] == ["ps", "-aq"]:
+            return SimpleNamespace(returncode=0, stdout="container-id\n", stderr="")
+        return SimpleNamespace(returncode=0, stdout="container-id\n", stderr="")
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+    returncode, _wall_s = module._run_harbor(
+        [
+            "/bin/sh",
+            "-c",
+            "sleep 30",
+            "--jobs-dir",
+            str(jobs),
+            "--job-name",
+            "readonly-job",
+        ],
+        tmp_path,
+        tmp_path / "harbor.log",
+        dict(os.environ),
+        timeout_s=0.05,
+    )
+
+    assert returncode != 0
+    assert docker_calls == [
+        [
+            "docker",
+            "ps",
+            "-aq",
+            "--filter",
+            "label=com.docker.compose.project=readonly-trial__abc123__env",
+        ],
+        ["docker", "rm", "-f", "container-id"],
+    ]
+    assert "cleaned timed-out Harbor project readonly-trial__abc123__env" in (tmp_path / "harbor.log").read_text()
+
+
 def test_codex_harbor_process_cannot_fall_back_to_host_openai_environment(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1248,6 +1296,37 @@ def test_harbor_bundle_rejects_private_task_identifiers(tmp_path: Path, leak_sou
             surface,
             prompt=prompt,
         )
+
+
+def test_harbor_bundle_omits_trajectory_judge_workdirs(tmp_path: Path) -> None:
+    checkout, run_dir = _checkout(tmp_path)
+    evaluator = checkout / "evaluator"
+    evaluator.mkdir()
+    (evaluator / "splits.json").write_text(
+        json.dumps({"tasks": {"train": ["train-task"], "gate": ["gate-secret-task"], "sealed": []}})
+    )
+    evidence = run_dir / "trace_analyzer" / "evidence"
+    evidence.mkdir(parents=True, exist_ok=True)
+    (evidence / "trajectory_only.json").write_text('[{"task_id":"train-task"}]\n')
+    judge = run_dir / "trace_analyzer" / "judge" / "0000-task" / "attempt-1"
+    judge.mkdir(parents=True)
+    (judge / "agent-context.jsonl").write_text('{"unrelated_context":"gate-secret-task"}\n')
+    runner = _harbor_runner_module()
+    surface = runner.load_surface_policy(checkout)
+
+    bundle = runner._prepare_bundle(
+        checkout,
+        _ctx(checkout, run_dir),
+        ["target"],
+        surface,
+        prompt="analyze train-task",
+    )
+    try:
+        copied = bundle.workspace / "runs" / "gen-1" / "trace_analyzer"
+        assert (copied / "evidence" / "trajectory_only.json").is_file()
+        assert not (copied / "judge").exists()
+    finally:
+        shutil.rmtree(bundle.staging, ignore_errors=True)
 
 
 def test_harbor_bundle_allows_private_name_prefix_in_training_identifier(tmp_path: Path) -> None:
