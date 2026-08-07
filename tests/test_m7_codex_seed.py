@@ -155,7 +155,8 @@ def test_builtin_codex_wrapper_injects_skills_and_opt_in_compaction(tmp_path: Pa
     assert "codex plugin marketplace add /tmp/evolve-target-marketplace" in registration
     assert "codex plugin add evolve-target@evolve-target" in registration
     rewritten = asyncio.run(agent.exec_as_agent(environment, "codex exec --json -- task"))
-    assert rewritten == "codex exec --dangerously-bypass-hook-trust --json -- task"
+    assert rewritten.startswith("export EVOLVE_CODEX_AGENT_RUN_ID=")
+    assert rewritten.endswith("codex exec --dangerously-bypass-hook-trust --json -- task")
     unchanged = asyncio.run(agent.exec_as_agent(environment, "codex plugin list"))
     assert unchanged == "codex plugin list"
 
@@ -219,6 +220,53 @@ def test_builtin_codex_wrapper_injects_skills_and_opt_in_compaction(tmp_path: Pa
     assert compacting_agent.kwargs["auto_compact_token_limit"] == 100000
     assert compacting_agent.kwargs["auto_compact_token_limit_scope"] == "total"
     assert compacting_agent.kwargs["tool_output_token_limit"] == 12000
+
+
+def test_builtin_codex_wrapper_cleans_processes_after_cancellation(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _install_fake_harbor(monkeypatch)
+    module = _load_target_agent(Path(__file__).parents[1] / "seeds" / "codex" / "agent.py")
+    calls: list[tuple[str, int | None]] = []
+
+    async def cancelling_exec(
+        self,
+        environment: object,
+        command: str,
+        env: dict[str, str] | None = None,
+        cwd: str | None = None,
+        timeout_sec: int | None = None,
+    ) -> str:
+        del self, environment, env, cwd
+        calls.append((command, timeout_sec))
+        if len(calls) == 1:
+            try:
+                await asyncio.sleep(3600)
+            except asyncio.CancelledError:
+                await asyncio.sleep(0)
+                raise
+        return command
+
+    monkeypatch.setattr(FakeCodex, "exec_as_agent", cancelling_exec)
+    agent = module.HarborAgent(logs_dir=tmp_path / "logs")
+
+    with pytest.raises(TimeoutError):
+        asyncio.run(
+            asyncio.wait_for(
+                agent.exec_as_agent(object(), "codex exec --json -- task"),
+                timeout=0.01,
+            )
+        )
+
+    launch, cleanup = calls
+    assert launch[0].startswith("export EVOLVE_CODEX_AGENT_RUN_ID=")
+    run_id = launch[0].split(";", 1)[0].split("=", 1)[1]
+    assert f"marker=EVOLVE_CODEX_AGENT_RUN_ID={run_id}" in cleanup[0]
+    assert "/proc/[0-9]*/environ" in cleanup[0]
+    assert "kill -TERM $pids" in cleanup[0]
+    assert "kill -KILL $pids" in cleanup[0]
+    assert cleanup[1] == 10
 
 
 def test_builtin_codex_seed_contains_valid_plugin_layout() -> None:
