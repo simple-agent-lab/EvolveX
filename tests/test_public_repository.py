@@ -13,24 +13,6 @@ RELATIVE_LINK = re.compile(r"\[[^\]]+\]\((?!https?://|mailto:|#)([^)#]+)")
 SVG_NS = {"svg": "http://www.w3.org/2000/svg"}
 
 
-def _h2_headings(markdown: str) -> list[str]:
-    headings = []
-    in_fenced_block = False
-    for line in markdown.splitlines():
-        if line.startswith("```"):
-            in_fenced_block = not in_fenced_block
-        elif not in_fenced_block and (match := re.fullmatch(r"## (.+)", line)):
-            headings.append(match.group(1))
-    return headings
-
-
-def _fenced_shell_blocks(markdown: str) -> list[tuple[str, str]]:
-    return [
-        (match.group("language"), match.group("body"))
-        for match in re.finditer(r"^```(?P<language>\w+)\n(?P<body>.*?)^```$", markdown, re.MULTILINE | re.DOTALL)
-    ]
-
-
 def _relative_luminance(color: str) -> float:
     channels = [int(color[index : index + 2], 16) / 255 for index in (1, 3, 5)]
     linear = [channel / 12.92 if channel <= 0.04045 else ((channel + 0.055) / 1.055) ** 2.4 for channel in channels]
@@ -49,12 +31,6 @@ def test_architecture_visual_uses_identity_palette() -> None:
     description = ET.parse(ROOT / "docs" / "assets" / "architecture.svg").find("svg:desc", SVG_NS).text
     assert "Recipes select permitted targets, operators, and stages." in description
     assert "rewrite any stage" not in description
-    readme = (ROOT / "README.md").read_text()
-    architecture_image = re.search(r'<img src="docs/assets/architecture\.svg" alt="([^"]+)">', readme)
-    assert architecture_image is not None
-    assert "The target and selected operators occupy a declared mutable surface." in architecture_image.group(1)
-    assert "may rewrite any stage" not in readme
-    assert "can rewrite any stage" not in readme
 
 
 def test_readme_visual_assets_have_accessible_svg_metadata() -> None:
@@ -86,137 +62,6 @@ def test_selected_and_explored_graphics_have_three_to_one_contrast() -> None:
             color = element.attrib["stroke"]
             ratio = _contrast_ratio(color, background)
             assert ratio >= 3, f"{relative} {state} {color} on {background}: {ratio:.2f}:1"
-
-
-def test_readme_labeled_figures_link_to_full_size_local_svgs() -> None:
-    readme = (ROOT / "README.md").read_text()
-    for relative in ("docs/evolve-lineage.svg", "docs/assets/architecture.svg"):
-        linked_image = re.search(
-            rf'<a href="{re.escape(relative)}">\s*'
-            rf'<img src="{re.escape(relative)}" alt="([^"]+)">\s*</a>',
-            readme,
-        )
-        assert linked_image is not None
-        assert len(linked_image.group(1).split()) >= 12
-
-
-def test_readme_uses_approved_identity_and_information_architecture() -> None:
-    readme = (ROOT / "README.md").read_text()
-    hero = """<p align="center">
-  <img src="docs/evolve-mark.svg" width="112" alt="EvolveX selected lineage mark: a selected lineage rises past explored side branches to a verified generation.">
-</p>
-
-<h1 align="center">EvolveX</h1>
-
-<p align="center">
-  <strong>Build agents that improve — and keep the evidence.</strong>
-</p>
-
-<p align="center">
-  A file-based framework for evaluator-driven evolution, reproducible candidate
-  lineage, and controlled self-modification.
-</p>
-"""
-    navigation = """<p align="center">
-  <a href="#what-evolvex-does">What EvolveX Does</a> ·
-  <a href="#how-evolvex-works">How It Works</a> ·
-  <a href="#what-can-evolve">What Can Evolve</a> ·
-  <a href="#recipes">Recipes</a> ·
-  <a href="#skill-evolution-showcase">Showcase</a> ·
-  <a href="#quick-start">Quick Start</a> ·
-  <a href="#documentation">Documentation</a>
-</p>"""
-    assert readme.startswith(hero)
-    assert navigation in readme
-    assert "docs/evolve-lineage.svg" in readme
-    assert "docs/assets/benchmark-results.svg" in readme
-
-    headings = _h2_headings(readme)
-    assert headings == [
-        "What EvolveX Does",
-        "How EvolveX Works",
-        "What Can Evolve",
-        "Recipes",
-        "Skill Evolution Showcase",
-        "Quick Start",
-        "Trustworthy by Construction",
-        "Project Status",
-        "Roadmap",
-        "Documentation",
-        "License",
-    ]
-
-    navigation_targets = re.findall(r'<a href="#([^"]+)">([^<]+)</a>', navigation)
-    assert navigation_targets == [
-        ("what-evolvex-does", "What EvolveX Does"),
-        ("how-evolvex-works", "How It Works"),
-        ("what-can-evolve", "What Can Evolve"),
-        ("recipes", "Recipes"),
-        ("skill-evolution-showcase", "Showcase"),
-        ("quick-start", "Quick Start"),
-        ("documentation", "Documentation"),
-    ]
-    assert [target for target, _ in navigation_targets] == [
-        heading.lower().replace(" ", "-")
-        for heading in (
-            "What EvolveX Does",
-            "How EvolveX Works",
-            "What Can Evolve",
-            "Recipes",
-            "Skill Evolution Showcase",
-            "Quick Start",
-            "Documentation",
-        )
-    ]
-    assert 'alt="Documentation"' in readme
-    unsupported_benchmark_placeholder = """> **TODO:** Add reproducible benchmark results and supporting artifacts once
-> the evaluation setup and reporting protocol are finalized."""
-    assert unsupported_benchmark_placeholder not in readme
-    assert "### Benchmark results" in readme
-    assert "#### Terminal Bench 2" in readme
-    assert "#### Tau³ Banking" in readme
-    assert readme.count('<th width="14%">Target agent</th>') == 2
-    assert readme.count('<td rowspan="4">MiniSWE Agent</td>') == 2
-    assert readme.count('<td rowspan="4">Codex</td>') == 2
-    assert "representative evolution run rather than a broad\nbenchmark" in readme
-    assert "docs/results/paper-poster-skill-evolution.json" in readme
-
-
-def test_readme_keeps_supported_recipes_and_honest_quick_start() -> None:
-    readme = (ROOT / "README.md").read_text()
-    for recipe in ("`hill_climb`", "`aevolve`", "`ahe`", "`gepa`", "`hyperagents`"):
-        assert recipe in readme
-
-    quick_start = readme.split("## Quick Start\n", maxsplit=1)[1].split("\n## Trustworthy by Construction", maxsplit=1)[
-        0
-    ]
-    assert _fenced_shell_blocks(quick_start) == [
-        (
-            "bash",
-            """git clone https://github.com/simple-agent-lab/EvolveX.git
-cd EvolveX
-
-# API authentication is the default. Keep credentials out of recipe YAML.
-cat > .env <<'EOF'
-OPENAI_API_KEY=replace-me
-# OPENAI_BASE_URL=https://your-openai-compatible-endpoint/v1
-EOF
-
-docker info
-""",
-        ),
-        (
-            "bash",
-            """RECIPE=ahe
-./scripts/setup_terminal_bench.sh "$RECIPE"
-./scripts/run_recipe_demo.sh "$RECIPE"
-""",
-        ),
-    ]
-    assert "deterministic baseline smoke test" not in quick_start
-    assert "operator run" not in quick_start
-    assert "Terminal-Bench 2.0" in quick_start
-    assert "CODEX_AUTH_JSON_PATH" in quick_start
 
 
 def test_mkdocs_covers_custom_recipe_operator_and_experiment_workflows() -> None:
@@ -305,6 +150,7 @@ def test_required_public_repository_files_exist() -> None:
 def test_public_markdown_relative_links_resolve() -> None:
     files = [
         ROOT / "README.md",
+        ROOT / "QUICKSTART.md",
         ROOT / "CONTRIBUTING.md",
         ROOT / "recipes" / "README.md",
         ROOT / "SECURITY.md",

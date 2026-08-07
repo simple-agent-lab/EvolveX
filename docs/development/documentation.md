@@ -4,7 +4,8 @@ The maintained public documentation has distinct roles:
 
 | Document | Role |
 | --- | --- |
-| [Repository README](https://github.com/simple-agent-lab/EvolveX/blob/main/README.md) | concise repository overview and quick start |
+| [Repository README](https://github.com/simple-agent-lab/EvolveX/blob/main/README.md) | concise repository overview and benchmark results |
+| [Quick start guide](https://github.com/simple-agent-lab/EvolveX/blob/main/QUICKSTART.md) | recipe launcher quick start |
 | [`../index.md`](../index.md) | public documentation home |
 | [`../concepts/design.md`](../concepts/design.md) | framework model and ownership boundaries |
 | [Source architecture map](https://github.com/simple-agent-lab/EvolveX/blob/main/ARCHITECTURE.md) | enforced `src/evolve/` module map and budgets |
