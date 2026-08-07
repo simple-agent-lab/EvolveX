@@ -871,6 +871,63 @@ def _run_timeout() -> float | None:
     return max(0.1, outer - min(5.0, max(0.5, outer * 0.05)))
 
 
+def _harbor_compose_projects(command: list[str]) -> list[str]:
+    try:
+        jobs_root = Path(command[command.index("--jobs-dir") + 1])
+    except (ValueError, IndexError):
+        return []
+    try:
+        job_name = command[command.index("--job-name") + 1]
+    except (ValueError, IndexError):
+        job_name = ""
+    search_root = jobs_root / job_name if job_name else jobs_root
+    projects: set[str] = set()
+    for config_path in search_root.rglob("config.json"):
+        payload = _read_json(config_path)
+        trial_name = payload.get("trial_name") if isinstance(payload, dict) else None
+        if isinstance(trial_name, str) and trial_name:
+            projects.add(re.sub(r"[^a-z0-9_-]", "-", f"{trial_name}__env".lower()))
+    return sorted(projects)
+
+
+def _cleanup_harbor_containers(command: list[str], env: dict[str, str]) -> list[str]:
+    messages: list[str] = []
+    for project in _harbor_compose_projects(command):
+        try:
+            query = subprocess.run(
+                ["docker", "ps", "-aq", "--filter", f"label=com.docker.compose.project={project}"],
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        except OSError as exc:
+            messages.append(f"cleanup query failed for {project}: {exc.__class__.__name__}")
+            continue
+        if query.returncode != 0:
+            messages.append(f"cleanup query failed for {project}: exit {query.returncode}")
+            continue
+        container_ids = [line.strip() for line in query.stdout.splitlines() if line.strip()]
+        if not container_ids:
+            continue
+        try:
+            removed = subprocess.run(
+                ["docker", "rm", "-f", *container_ids],
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        except OSError as exc:
+            messages.append(f"cleanup remove failed for {project}: {exc.__class__.__name__}")
+            continue
+        if removed.returncode == 0:
+            messages.append(f"cleaned timed-out Harbor project {project}")
+        else:
+            messages.append(f"cleanup remove failed for {project}: exit {removed.returncode}")
+    return messages
+
+
 def _run_harbor(
     command: list[str],
     checkout: Path,
@@ -916,6 +973,9 @@ def _run_harbor(
                 process.kill()
             process.wait()
         chunks.append("\nharbor meta-agent timed out\n")
+        cleanup_messages = _cleanup_harbor_containers(command, env)
+        if cleanup_messages:
+            chunks.append("\n".join(cleanup_messages) + "\n")
     reader.join()
     wall_s = round(time.monotonic() - start, 6)
     log_path.parent.mkdir(parents=True, exist_ok=True)
