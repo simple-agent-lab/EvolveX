@@ -172,12 +172,14 @@ def test_readme_uses_approved_identity_and_information_architecture() -> None:
     unsupported_benchmark_placeholder = """> **TODO:** Add reproducible benchmark results and supporting artifacts once
 > the evaluation setup and reporting protocol are finalized."""
     assert unsupported_benchmark_placeholder not in readme
-    assert "### Benchmark results" in readme
-    assert "#### Terminal Bench 2" in readme
-    assert "#### Tau³ Banking" in readme
-    assert readme.count('<th width="14%">Target agent</th>') == 2
-    assert readme.count('<td rowspan="4">MiniSWE Agent</td>') == 2
-    assert readme.count('<td rowspan="4">Codex</td>') == 2
+    quickstart = (ROOT / "QUICKSTART.md").read_text()
+    assert unsupported_benchmark_placeholder not in quickstart
+    assert "## Benchmark results" in quickstart
+    assert "### Terminal Bench 2" in quickstart
+    assert "### Tau³ Banking" in quickstart
+    assert quickstart.count('<th width="14%">Target agent</th>') == 2
+    assert quickstart.count('<td rowspan="4">MiniSWE Agent</td>') == 2
+    assert quickstart.count('<td rowspan="4">Codex</td>') == 2
     assert "representative evolution run rather than a broad\nbenchmark" in readme
     assert "docs/results/paper-poster-skill-evolution.json" in readme
 
@@ -187,9 +189,13 @@ def test_readme_keeps_supported_recipes_and_honest_quick_start() -> None:
     for recipe in ("`hill_climb`", "`aevolve`", "`ahe`", "`gepa`", "`hyperagents`"):
         assert recipe in readme
 
-    quick_start = readme.split("## Quick Start\n", maxsplit=1)[1].split("\n## Trustworthy by Construction", maxsplit=1)[
-        0
-    ]
+    readme_quick_start = readme.split("## Quick Start\n", maxsplit=1)[1].split(
+        "\n## Trustworthy by Construction", maxsplit=1
+    )[0]
+    assert "QUICKSTART.md" in readme_quick_start
+    assert "Terminal-Bench 2.0" in readme_quick_start
+
+    quick_start = (ROOT / "QUICKSTART.md").read_text().split("\n## Benchmark results", maxsplit=1)[0]
     assert _fenced_shell_blocks(quick_start) == [
         (
             "bash",
@@ -305,6 +311,7 @@ def test_required_public_repository_files_exist() -> None:
 def test_public_markdown_relative_links_resolve() -> None:
     files = [
         ROOT / "README.md",
+        ROOT / "QUICKSTART.md",
         ROOT / "CONTRIBUTING.md",
         ROOT / "recipes" / "README.md",
         ROOT / "SECURITY.md",
