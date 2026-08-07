@@ -61,6 +61,30 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
             item.add_marker(skip_slow)
 
 
+# The suite asserts exact planned environments and redacted receipts, so a
+# contributor's ambient credentials, proxy settings, or model overrides must
+# never leak into test processes. Tests that need one of these set it
+# explicitly via monkeypatch.
+_AMBIENT_ENV_VARS = (
+    "ALL_PROXY",
+    "CODEX_AUTH_JSON_PATH",
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "NO_PROXY",
+    "OPENAI_API_KEY",
+    "OPENAI_AUTH_TOKEN",
+    "OPENAI_BASE_URL",
+    "OPENAI_MODEL",
+)
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _hermetic_ambient_environment() -> None:
+    for name in _AMBIENT_ENV_VARS:
+        os.environ.pop(name, None)
+        os.environ.pop(name.lower(), None)
+
+
 def _uv_directory(*arguments: str) -> str:
     result = subprocess.run(
         ["uv", *arguments],

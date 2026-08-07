@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 import uuid
 from dataclasses import asdict
 from pathlib import Path
@@ -118,11 +119,22 @@ def ensure_local_archive(workspace: Path, experiment_id: str) -> None:
             events.append(line)
             seen.add(line)
     text = "\n".join(events) + ("\n" if events else "")
-    local.parent.mkdir(parents=True, exist_ok=True)
-    local.write_text(text)
-    mirror.parent.mkdir(parents=True, exist_ok=True)
-    mirror.write_text(text)
+    for path in (local, mirror):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _atomic_write_text(path, text)
     _ensure_receipts(local, mirror)
+
+
+def _atomic_write_text(target: Path, text: str) -> None:
+    # A crash mid-rewrite must never truncate the archive of record; write to
+    # a sibling temporary file and rename over the target instead.
+    with tempfile.NamedTemporaryFile("w", dir=target.parent, prefix=f".{target.name}-", delete=False) as handle:
+        temporary = Path(handle.name)
+        handle.write(text)
+    try:
+        os.replace(temporary, target)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def _experiment_mirror_dir(experiment_id: str) -> Path:

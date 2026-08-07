@@ -52,11 +52,10 @@ _SECRET_ENV_NAME = re.compile(r"(?i)(?:secret|token|password|passwd|api[_-]?key|
 
 
 def _redact(message: str, environment: Mapping[str, str] | None = None) -> str:
-    redacted = message
-    for name, value in (environment or {}).items():
-        if _SECRET_ENV_NAME.search(name) and len(value) >= 4:
-            redacted = redacted.replace(value, "***")
-    redacted = re.sub(r"(?i)(https?://)[^\s/@:]+:[^\s/@]+@", r"\1***:***@", redacted)
+    # Structural redaction must run before environment-value replacement: a
+    # short secret-named value such as "http" would otherwise rewrite the URL
+    # scheme and stop the credential patterns from matching at all.
+    redacted = re.sub(r"(?i)(https?://)[^\s/@:]+:[^\s/@]+@", r"\1***:***@", message)
     redacted = re.sub(r"(?i)(https?://)[^\s/@]+@", r"\1***@", redacted)
     redacted = re.sub(
         r"(?i)([?&](?:access_token|api_key|key|password|token)=)[^\s&#]+",
@@ -64,6 +63,9 @@ def _redact(message: str, environment: Mapping[str, str] | None = None) -> str:
         redacted,
     )
     redacted = re.sub(r"(?i)(\bBearer\s+)[^\s]+", r"\1***", redacted)
+    values = {value for name, value in (environment or {}).items() if _SECRET_ENV_NAME.search(name) and len(value) >= 4}
+    for value in sorted(values, key=len, reverse=True):
+        redacted = redacted.replace(value, "***")
     return redacted[:2000]
 
 
