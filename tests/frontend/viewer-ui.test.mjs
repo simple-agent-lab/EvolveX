@@ -26,9 +26,11 @@ test('score chart has fixed score ticks and generation labels', () => {
   ], '10');
 
   assert.match(html, /Canonical score by generation/);
+  assert.match(html, /viewBox="0 0 480 180"/);
   assert.match(html, />1<.*>0\.5<.*>0</s);
   assert.match(html, />G0<.*>G1<.*>G10</s);
   assert.match(html, /Generation 10: 0\.36/);
+  assert.match(html, /x1="78\.8" x2="78\.8"/);
   assert.match(html, /trend-dot selected/);
   assert.match(html, /class="trend-point" tabindex="0" role="img"/);
   assert.match(html, /<rect class="trend-hit"[^>]+height="136"/);

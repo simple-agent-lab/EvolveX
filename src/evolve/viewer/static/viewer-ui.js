@@ -62,25 +62,33 @@ export function scoreTrend(generations, selectedId = null) {
     .toSorted((a, b) => compareGenerationIds(a.genid, b.genid));
   if (!points.length) return '<div class="empty">No scored generations yet.</div>';
 
-  const width = Math.max(480, points.length * 52);
+  const width = 480;
   const height = 180;
   const left = 36;
   const right = 16;
   const top = 14;
   const bottom = 30;
-  const x = (index) => points.length === 1
+  const generationNumbers = points.map((item) => generationKey(item.genid)[0]);
+  const generationMin = Math.min(...generationNumbers);
+  const generationMax = Math.max(...generationNumbers);
+  const useNumericAxis = generationMin >= 0
+    && generationMax > generationMin
+    && new Set(generationNumbers).size === generationNumbers.length;
+  const rounded = (value) => Math.round(value * 100) / 100;
+  const x = (index) => rounded(points.length === 1
     ? (left + width - right) / 2
-    : left + index * (width - left - right) / (points.length - 1);
-  const y = (score) => top
-    + (1 - Math.max(0, Math.min(1, Number(score)))) * (height - top - bottom);
+    : left + (useNumericAxis
+      ? (generationNumbers[index] - generationMin) / (generationMax - generationMin)
+      : index / (points.length - 1)) * (width - left - right));
+  const y = (score) => rounded(top
+    + (1 - Math.max(0, Math.min(1, Number(score)))) * (height - top - bottom));
   const ticks = [[1, top], [0.5, y(0.5)], [0, height - bottom]];
   const coordinates = points.map((item, index) => `${x(index)},${y(item.score)}`).join(' ');
   const tooltipWidth = 104;
   const tooltipHeight = 30;
   const plotHeight = height - top - bottom;
-  const pointSpacing = points.length === 1
-    ? width - left - right
-    : (width - left - right) / (points.length - 1);
+  const pointXs = points.map((_item, index) => x(index));
+  const labelEvery = Math.max(1, Math.ceil(points.length / 10));
   const displayScore = (score) => Number(score).toFixed(3).replace(/\.?0+$/, '');
 
   return `<div class="trend-scroll"><svg class="trend" viewBox="0 0 ${width} ${height}" role="img" aria-label="Canonical score by generation">
@@ -94,8 +102,8 @@ export function scoreTrend(generations, selectedId = null) {
       const pointY = y(item.score);
       const tooltipX = Math.max(left, Math.min(width - right - tooltipWidth, pointX - tooltipWidth / 2));
       const tooltipY = pointY < top + tooltipHeight + 8 ? pointY + 12 : pointY - tooltipHeight - 10;
-      const hitLeft = index === 0 ? left : pointX - pointSpacing / 2;
-      const hitRight = index === points.length - 1 ? width - right : pointX + pointSpacing / 2;
+      const hitLeft = index === 0 ? left : (pointXs[index - 1] + pointX) / 2;
+      const hitRight = index === points.length - 1 ? width - right : (pointX + pointXs[index + 1]) / 2;
       return `<g class="trend-point" tabindex="0" role="img" aria-label="Generation ${genid}: ${score}">
         <rect class="trend-hit" x="${hitLeft}" y="${top}" width="${hitRight - hitLeft}" height="${plotHeight}"/>
         <line class="trend-guide" x1="${pointX}" x2="${pointX}" y1="${top}" y2="${height - bottom}"/>
@@ -104,7 +112,7 @@ export function scoreTrend(generations, selectedId = null) {
           <rect width="${tooltipWidth}" height="${tooltipHeight}" rx="6"/>
           <text x="${tooltipWidth / 2}" y="19">G${genid}: ${score}</text>
         </g>
-        <text class="trend-x-label" x="${pointX}" y="${height - 9}">G${genid}</text>
+        ${index % labelEvery === 0 || index === points.length - 1 ? `<text class="trend-x-label" x="${pointX}" y="${height - 9}">G${genid}</text>` : ''}
       </g>`;
     }).join('')}
   </svg></div>`;
