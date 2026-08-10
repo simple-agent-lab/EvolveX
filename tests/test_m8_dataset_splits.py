@@ -240,7 +240,7 @@ def test_init_full_task_scope_freezes_every_task_without_partition(tmp_path: Pat
             "operators": {
                 "select": {"variant": "ahe_latest"},
                 "rollout": {"variant": "harbor"},
-                "meta_agent": {"variant": "ahe"},
+                "mutate": {"variant": "ahe"},
                 "gate": {"variant": "ahe_artifact_valid"},
                 "record": {"variant": "jsonl"},
             },

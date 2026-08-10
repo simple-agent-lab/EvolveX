@@ -38,8 +38,8 @@ Prepare and run it on the shared pinned Terminal-Bench 2.0 dataset:
 The most useful artifacts are:
 
 - `runs/gen-*/select/pareto.json`
-- `runs/gen-*/trace_analyzer/evidence/reflective_dataset.json`
-- `runs/gen-*/trace_analyzer/evidence/reflection/*.json`
-- `runs/gen-*/meta_agent/proposal.json`
+- `runs/gen-*/analyze/evidence/reflective_dataset.json`
+- `runs/gen-*/analyze/evidence/reflection/*.json`
+- `runs/gen-*/mutate/proposal.json`
 - `runs/gen-*/validate/comparison.json`
 - `runs/gen-*/record/gepa-experience.json`

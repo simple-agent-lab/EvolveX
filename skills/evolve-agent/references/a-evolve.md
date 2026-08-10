@@ -18,19 +18,19 @@ being improved.
 
 Run `./evolve operator list . --json` and follow the live access metadata. The
 shipped A-Evolve profile normally provides task rollout, a `trajectory_only`
-trace_analyzer, and an `aevolve` meta agent. Artifact-oriented experiments may
+analyze, and an `aevolve` meta agent. Artifact-oriented experiments may
 instead compose `library/rollout/evaluation_replay.py` with
-`library/trace_analyzer/artifact_rubric.py` and the same
-`library/meta_agent/aevolve.py` mutation strategy. For an outer-agent edit,
+`library/analyze/artifact_rubric.py` and the same
+`library/mutate/aevolve.py` mutation strategy. For an outer-agent edit,
 invoke `rollout` and `analyze` directly, read their retained evidence, then
 modify the prompt or complete Skill directory yourself; the configured
-`meta_agent` remains available for an unattended driver or second opinion.
+`mutate` remains available for an unattended driver or second opinion.
 
 Do not open source merely to obtain retained evidence. Read
-`operators/trace_analyzer.py` only if its evidence contract is unclear or its
-behavior needs diagnosis; consult `library/trace_analyzer/trajectory_only.py`
-or `library/trace_analyzer/artifact_rubric.py` and
-`library/meta_agent/aevolve.py` only when adapting the evolution process.
+`operators/analyze.py` only if its evidence contract is unclear or its
+behavior needs diagnosis; consult `library/analyze/trajectory_only.py`
+or `library/analyze/artifact_rubric.py` and
+`library/mutate/aevolve.py` only when adapting the evolution process.
 
 ## Apply the method
 

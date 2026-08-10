@@ -10,7 +10,7 @@ from typing import Any
 
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import OperatorContext, RecordOperator, RecordResult
-from library.gepa_support import read_json
+from library._shared.gepa import read_json
 
 
 def _relative(path: Path, workspace: Path) -> str | None:
@@ -19,9 +19,9 @@ def _relative(path: Path, workspace: Path) -> str | None:
 
 class GepaRecord(RecordOperator):
     def annotate(self, child: dict[str, Any], ctx: OperatorContext) -> RecordResult:
-        proposal_path = ctx.run_dir / "meta_agent" / "proposal.json"
+        proposal_path = ctx.run_dir / "mutate" / "proposal.json"
         comparison_path = ctx.run_dir / "validate" / "comparison.json"
-        dataset_path = ctx.run_dir / "trace_analyzer" / "evidence" / "reflective_dataset.json"
+        dataset_path = ctx.run_dir / "analyze" / "evidence" / "reflective_dataset.json"
         proposal = read_json(proposal_path)
         comparison = read_json(comparison_path)
         proposal = proposal if isinstance(proposal, dict) else {}

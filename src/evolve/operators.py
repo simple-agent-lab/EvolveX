@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from evolve.meta_agent_budget import harbor_meta_agent_budget, uses_harbor_per_attempt_timeout
+from evolve.mutate_budget import harbor_mutate_budget, uses_harbor_per_attempt_timeout
 
 from .config import load_config
 from .execution_runtime import (
@@ -54,13 +54,13 @@ def _progress(message: str) -> None:
 
 
 def _operator_deadline_s(name: str, config_block: dict[str, Any], timeout_s: float) -> float:
-    if name != "meta_agent" or not uses_harbor_per_attempt_timeout(config_block) or timeout_s <= 0:
+    if name != "mutate" or not uses_harbor_per_attempt_timeout(config_block) or timeout_s <= 0:
         return timeout_s
     try:
         max_retries = max(0, int(config_block.get("max_retries", 0)))
     except (TypeError, ValueError):
         max_retries = 0
-    return harbor_meta_agent_budget(timeout_s, max_retries).operator_s
+    return harbor_mutate_budget(timeout_s, max_retries).operator_s
 
 
 def run_operator(

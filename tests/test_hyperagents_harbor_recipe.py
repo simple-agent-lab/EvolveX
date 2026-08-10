@@ -27,7 +27,7 @@ def test_hyperagents_recipe_initializes_broad_harbor_bundle(tmp_path: Path) -> N
     assert "agent: evolve.integrations.harbor.miniswe_task_file:InstalledMiniSweAgent" in config
     assert "editable_roots:" in config
     assert "- target" in config and "- operators" in config
-    assert "agent_env" not in operator_blocks(workspace)["meta_agent"]
+    assert "agent_env" not in operator_blocks(workspace)["mutate"]
     assert json.loads((workspace / ".evolve-components.json").read_text())["integrations"] == [
         "evolve.integrations.harbor.miniswe_candidate",
         "evolve.integrations.harbor.miniswe_task_file",
@@ -41,8 +41,8 @@ def test_hyperagents_recipe_initializes_broad_harbor_bundle(tmp_path: Path) -> N
     assert "\n  split:" not in config
     assert "repetitions: 1" in config
     assert "n_concurrent: 10" in config
-    prompt = (workspace / "operators/meta_agent.py").read_text()
+    prompt = (workspace / "operators/mutate.py").read_text()
     assert "Strongly prefer a substantive `target/**`" in prompt
     assert "operator-only proposal is allowed" in prompt
     assert "`operators/**` remains editable" in prompt
-    assert "def _install_bundle(" in (workspace / "library/meta_agent/runners/harbor.py").read_text()
+    assert "def _install_bundle(" in (workspace / "library/mutate/_runners/harbor.py").read_text()

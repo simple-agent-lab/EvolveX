@@ -35,7 +35,7 @@ class AgentCommandError(RuntimeError):
         self.returncode = returncode if isinstance(returncode, int) and returncode else 1
 
 
-def run_meta_agent(
+def run_mutate(
     workspace: Path | str,
     prompt: str,
     config: dict[str, Any] | None = None,
@@ -65,7 +65,7 @@ def run_meta_agent(
     stderr = ""
     try:
         if timeout is not None and timeout <= 0.01:
-            raise AgentCommandError(f"meta-agent timeout after {timeout}s", usage=_usage(start))
+            raise AgentCommandError(f"mutation timeout after {timeout}s", usage=_usage(start))
 
         proc: subprocess.Popen[str] = subprocess.Popen(
             ["sh", "-c", command],
@@ -86,7 +86,7 @@ def run_meta_agent(
                 _kill_process_group(proc, signal.SIGKILL)
                 stdout, stderr = proc.communicate()
             raise AgentCommandError(
-                f"meta-agent timeout after {timeout}s",
+                f"mutation timeout after {timeout}s",
                 output=_combined_output(stdout or "", stderr or ""),
                 usage=_usage(start),
                 returncode=1,
@@ -100,7 +100,7 @@ def run_meta_agent(
     usage = _usage(start)
     if proc.returncode != 0:
         raise AgentCommandError(
-            stderr.strip() or stdout.strip() or "meta-agent command failed",
+            stderr.strip() or stdout.strip() or "mutation command failed",
             output=output,
             usage=usage,
             returncode=proc.returncode,
@@ -117,16 +117,16 @@ def _resolve_command(config: dict[str, Any]) -> str:
 
     operators = config.get("operators")
     if isinstance(operators, dict):
-        meta_agent = operators.get("meta_agent")
-        if isinstance(meta_agent, dict) and meta_agent.get("command"):
-            return str(meta_agent["command"])
+        mutate = operators.get("mutate")
+        if isinstance(mutate, dict) and mutate.get("command"):
+            return str(mutate["command"])
 
     env_command = os.environ.get("EVOLVE_AGENT_COMMAND")
     if env_command:
         return env_command
 
     raise AgentCommandError(
-        "missing meta-agent command; set EVOLVE_AGENT_COMMAND or operators.meta_agent.command",
+        "missing mutation command; set EVOLVE_AGENT_COMMAND or operators.mutate.command",
         returncode=2,
     )
 

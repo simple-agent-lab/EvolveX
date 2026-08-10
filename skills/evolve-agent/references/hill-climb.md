@@ -17,7 +17,7 @@ process evolution is essential to the research question.
 
 Run `./evolve operator list . --json` rather than inferring activation from
 files. The shipped Hill Climb profile normally composes `greedy` selection,
-task rollout, a `failure_patterns` trace_analyzer, and a `hillclimb` gate. Invoke
+task rollout, a `failure_patterns` analyze, and a `hillclimb` gate. Invoke
 the configured direct stages and inspect their `runs/gen-<id>/` artifacts before
 forming the child hypothesis; let `finalize` apply the gate and record.
 

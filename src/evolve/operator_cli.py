@@ -11,11 +11,11 @@ from .orchestration import finalize_child, invoke_operator
 
 
 def _public_operator_name(name: str) -> str:
-    return "analyze" if name == "trace_analyzer" else name
+    return "analyze" if name == "analyze" else name
 
 
 def _internal_operator_name(name: str) -> str:
-    return "trace_analyzer" if name == "analyze" else name
+    return "analyze" if name == "analyze" else name
 
 
 def _operator_variant(script: Path, block: dict[str, object]) -> str | None:
@@ -65,7 +65,7 @@ def build_operator_app(guard, workspace_environment, enable_live_output) -> type
                 "variant": _operator_variant(script, block) if enabled else None,
                 "script": str(script.resolve()),
             }
-            if spec.kind == "trace_analyzer":
+            if spec.kind == "analyze":
                 entry["implementation"] = spec.kind
             entries.append(entry)
         if json_output:

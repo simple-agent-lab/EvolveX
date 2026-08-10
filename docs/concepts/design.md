@@ -21,7 +21,7 @@ subprocesses, so the mechanism never imports workspace operator code in-process.
 
 `evolve init` reads one supported recipe YAML and validates its selected
 `target.seed`, `evaluator.engine`, `evaluator.agent`, and
-`operators.meta_agent.agent`. The recipe is the selection authority; there is
+`operators.mutate.agent`. The recipe is the selection authority; there is
 no second runtime component registry.
 
 ```text

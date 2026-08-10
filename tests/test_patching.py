@@ -28,7 +28,7 @@ def _repo(tmp_path: Path) -> Path:
         "experiment:\n  id: test\n"
         "target:\n  seed: builtin-dummy\n"
         "surface:\n  include:\n    - target/**\n  exclude:\n    - target/tmp/**\n"
-        "operators:\n  meta_agent: {timeout_s: 30}\n"
+        "operators:\n  mutate: {timeout_s: 30}\n"
         "evaluator:\n  engine: harbor\n  dataset: pass@k\n"
         "  agent: evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent\n"
     )

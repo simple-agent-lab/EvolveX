@@ -1,7 +1,7 @@
 # Reflect
 
 `reflect` derives reusable insights from verified archive history. It is
-optional and is distinct from `trace_analyzer`: trace analysis prepares
+optional and is distinct from `analyze`: trace analysis prepares
 generation-local mutation feedback, while reflection backfills knowledge from
 outcomes that have already been verified.
 

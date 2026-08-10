@@ -153,7 +153,7 @@ def test_gepa_validation_cannot_accept_apparent_improvement_with_parent_infra(tm
 def test_gepa_record_points_to_evidence_and_comparison(tmp_path: Path) -> None:
     module = _module("gepa_record_under_test", ROOT / "library/record/gepa.py")
     ctx = _ctx(tmp_path)
-    proposal = ctx.run_dir / "meta_agent/proposal.json"
+    proposal = ctx.run_dir / "mutate/proposal.json"
     proposal.parent.mkdir(parents=True)
     proposal.write_text(json.dumps({"components": ["prompt"], "paths": ["target/prompt.md"]}))
     comparison = ctx.run_dir / "validate/comparison.json"
@@ -161,7 +161,7 @@ def test_gepa_record_points_to_evidence_and_comparison(tmp_path: Path) -> None:
     comparison.write_text(
         json.dumps({"criterion": "strict", "parent_total": 1, "child_total": 2, "delta": 1, "accepted": True})
     )
-    dataset = ctx.run_dir / "trace_analyzer/evidence/reflective_dataset.json"
+    dataset = ctx.run_dir / "analyze/evidence/reflective_dataset.json"
     dataset.parent.mkdir(parents=True)
     dataset.write_text("{}\n")
 

@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _module():
-    path = ROOT / "library" / "trace_analyzer" / "artifact_rubric.py"
+    path = ROOT / "library" / "analyze" / "artifact_rubric.py"
     spec = importlib.util.spec_from_file_location("evolve_test_artifact_rubric", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -55,13 +55,13 @@ def test_artifact_rubric_analyzer_uses_artifacts_without_trajectory(tmp_path: Pa
 
     assert result.summary["variant"] == "artifact_rubric"
     assert result.summary["weak_rubric_counts"] == {"authored_visual_language": 1}
-    dataset = json.loads((run_dir / "trace_analyzer/evidence/reflective_dataset.json").read_text())
+    dataset = json.loads((run_dir / "analyze/evidence/reflective_dataset.json").read_text())
     assert dataset["skill"][0]["Generated Artifacts"]["artifacts"][0]["kind"] == "svg"
     assert dataset["skill"][0]["Rubric Feedback"]["feedback"]["message"] == ("Use a restrained palette.")
-    manifest = json.loads((run_dir / "trace_analyzer/evidence/manifest.json").read_text())
+    manifest = json.loads((run_dir / "analyze/evidence/manifest.json").read_text())
     assert manifest["selected_variant"] == "artifact_rubric"
     assert manifest["cases"] == 1
-    selected = (run_dir / "trace_analyzer/evidence/selected.md").read_text()
+    selected = (run_dir / "analyze/evidence/selected.md").read_text()
     assert "### paper-a" in selected
     assert "`authored_visual_language` (score 1)" in selected
     assert "Judge feedback: Use a restrained palette." in selected

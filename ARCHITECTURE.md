@@ -46,7 +46,7 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `execution_runtime/probes.py` | 275 | daemon, Compose, disk, and bind-mount preflight probes |
 | `execution_runtime/resolve.py` | 175 | explicit/env/Linux/macOS Docker endpoint resolution |
 | `experiment_smoke.py` | 200 | isolated one-task gen0-to-gen1 full-loop canary |
-| `feedback.py` | 250 | assemble current and historical rollout evidence plus ledger-derived feedback for the meta-agent |
+| `feedback.py` | 250 | assemble current and historical rollout evidence plus ledger-derived feedback for mutation |
 | `operators.py` | 200 | subprocess runner for workspace operator scripts (contract: env vars, --config, timeout) |
 | `operator_cli.py` | 150 | agent-facing operator discovery and one-stage invocation command group |
 | `orchestration.py` | 400 | safe outer-agent composition of driver verbs, stage handoffs, retries, and admission receipts |
@@ -67,7 +67,7 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `runtime/uv.py` | 550 | locked uv candidate-runtime construction and command execution |
 | `splits.py` | 650 | freeze content-backed task identity/membership and materialize authoritative limited runtime selections |
 | `surface.py` | 150 | mutable-surface pattern matching and violation checks |
-| `trace_analysis.py` | 775 | deterministic shared transforms used by the independent trace-analyzer operator variants |
+| `trace_analysis.py` | 775 | deterministic shared transforms used by the independent analyze operator variants |
 | `workspace.py` | 1100 | `evolve init` scaffolding: file copies, operator binding, deterministic dataset and Harbor runtime config, generated operator palette, protocol stamping, safe seed + mechanism vendoring, inner-skill copy |
 | `git.py` | 150 | thin git subprocess helpers — nothing evolve-specific |
 | `harbor_local.py` | 250 | minimal in-place Harbor environment for fast trials against a pre-configured local agent runtime |
@@ -80,7 +80,7 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `integrations/harbor/codex_candidate.py` | 75 | Codex adapter for OpenAI-compatible Responses endpoints |
 | `integrations/harbor/miniswe_candidate.py` | 550 | exact-candidate MiniSWE Harbor evaluator agent |
 | `integrations/harbor/miniswe_task_file.py` | 130 | large-task MiniSWE meta-agent transport |
-| `meta_agent_budget.py` | 150 | shared Harbor meta-agent retry and timeout budget calculations |
+| `mutate_budget.py` | 150 | shared Harbor mutation retry and timeout budget calculations |
 
 ### The frozen ring (`src/evolve/frozen/`)
 

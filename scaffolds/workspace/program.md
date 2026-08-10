@@ -4,11 +4,11 @@ Use either `./evolve run .` to run the driver or let the outer agent
 orchestrate one generation. In the latter mode, run `operator list`, then
 invoke configured select, rollout, and trace-analyzer capabilities with
 `operator run`. Read their files under `runs/gen-<id>/`, form a hypothesis, and
-edit the child worktree directly. `meta_agent` is optional when the outer agent
+edit the child worktree directly. `mutate` is optional when the outer agent
 owns the mutation.
 
 When an evaluator returns natural-language feedback, read
-`trace_analyzer/feedback.md` and the `Feedback.natural_language_feedback` fields
+`analyze/feedback.md` and the `Feedback.natural_language_feedback` fields
 in the reflective evidence before forming the hypothesis. Treat the protocol's
 binary completion reward as execution bookkeeping, not as the quality judgment.
 

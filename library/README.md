@@ -22,8 +22,8 @@ See [`docs/concepts/design.md`](../docs/concepts/design.md) §7 for the full rat
 library/
 ├─ select/   greedy · newest · pareto · random · score_weighted
 ├─ rollout/  failure_focused · harbor · noop
-├─ trace_analyzer/ failure_patterns · failed_traces · trace_browser · trajectory_only · execution_records · gepa · utility_metrics
-├─ meta_agent/ aevolve · ahe · gepa · hyperagents
+├─ analyze/ failure_patterns · failed_traces · trace_browser · trajectory_only · execution_records · gepa · utility_metrics
+├─ mutate/ aevolve · ahe · gepa · hyperagents
 │  ├─ support/  shared evidence loading
 │  └─ runners/ local · harbor
 ├─ validate/ hyperagents · minibatch_improvement
@@ -34,16 +34,16 @@ library/
 
 ## Canonical verb set
 
-Required: `select · rollout · meta_agent · gate · record`. Optional:
-`trace_analyzer · validate · novelty · reflect`.
+Required: `select · rollout · mutate · gate · record`. Optional:
+`analyze · validate · novelty · reflect`.
 The authority is `src/evolve/frozen/interfaces.py`.
 
 ## Harbor rollout
 
 `rollout/harbor.py` is an opt-in live variant. It runs the current candidate
 through the frozen Harbor train split and normalizes results into
-`rollout/cases.json`. A separate `trace_analyzer` operator chooses and renders
-bounded meta-agent evidence under `trace_analyzer/evidence/`.
+`rollout/cases.json`. A separate `analyze` operator chooses and renders
+bounded meta-agent evidence under `analyze/evidence/`.
 
 Select it in a recipe before `evolve init`:
 
@@ -83,7 +83,7 @@ transactionally imports configured roots from the validated artifact:
 
 ```yaml
 operators:
-  meta_agent:
+  mutate:
     variant: hyperagents
     runner: harbor
     agent: mini-swe-agent

@@ -78,14 +78,16 @@ class RolloutOperator(ABC):
     def rollout(self, checkout: Path, ctx) -> RolloutResult: ...
 
 
-class TraceAnalyzerOperator(ABC):
+class AnalyzeOperator(ABC):
     @abstractmethod
-    def analyze(self, checkout: Path, ctx) -> TraceAnalyzerResult: ...
+    def analyze(self, checkout: Path, ctx: OperatorContext) -> AnalyzeResult:
+        raise NotImplementedError
 
 
-class MetaAgentOperator(ABC):
+class MutateOperator(ABC):
     @abstractmethod
-    def run(self, checkout: Path, observation: str, ctx) -> MetaAgentResult: ...
+    def mutate(self, checkout: Path, observation: str, ctx: OperatorContext) -> MutateResult:
+        raise NotImplementedError
 
 
 class ValidateOperator(ABC):
@@ -125,19 +127,13 @@ class RolloutResult:
 
 
 @dataclass(frozen=True)
-class TraceAnalyzerResult:
+class AnalyzeResult:
     summary: dict[str, Any]
     artifacts: list[str]
 
 
-# Public, evidence-source-neutral names. The trace-specific names remain aliases
-# during the workspace/config migration so existing experiments can resume.
-AnalyzeOperator = TraceAnalyzerOperator
-AnalyzeResult = TraceAnalyzerResult
-
-
 @dataclass(frozen=True)
-class MetaAgentResult:
+class MutateResult:
     changed: list[str]
     notes: list[str]
     usage: dict[str, Any]
@@ -187,19 +183,19 @@ def validate_rollout_payload(payload: RolloutResult | dict[str, Any]) -> dict[st
     return {"summary": data["summary"], "artifacts": [str(artifact) for artifact in data["artifacts"]]}
 
 
-def validate_trace_analyzer_payload(payload: TraceAnalyzerResult | dict[str, Any]) -> dict[str, Any]:
+def validate_analyze_payload(payload: AnalyzeResult | dict[str, Any]) -> dict[str, Any]:
     data = _payload_dict(payload)
     _require_type(data, "summary", dict, "summary must be a dict")
     _require_type(data, "artifacts", list, "artifacts must be a list")
     return {"summary": data["summary"], "artifacts": [str(artifact) for artifact in data["artifacts"]]}
 
 
-def validate_meta_agent_payload(payload: MetaAgentResult | dict[str, Any]) -> dict[str, Any]:
+def validate_mutate_payload(payload: MutateResult | dict[str, Any]) -> dict[str, Any]:
     data = _payload_dict(payload)
     _require_type(data, "changed", list, "changed must be a list")
     _require_type(data, "notes", list, "notes must be a list")
     _require_type(data, "usage", dict, "usage must be a dict")
-    usage = validate_meta_agent_usage_payload(data["usage"])
+    usage = validate_mutate_usage_payload(data["usage"])
     return {
         "changed": [str(path) for path in data["changed"]],
         "notes": [str(note) for note in data["notes"]],
@@ -256,7 +252,7 @@ def validate_rollout_artifacts_payload(payload: object) -> list[str]:
     return [str(item) for item in payload]
 
 
-def validate_meta_agent_usage_payload(payload: object) -> dict[str, Any]:
+def validate_mutate_usage_payload(payload: object) -> dict[str, Any]:
     data = _json_object(payload, "usage", "usage must be a JSON object")
     usd = data.get("usd")
     if usd is not None and (
@@ -331,8 +327,8 @@ class OperatorSpec:
 OPERATORS: tuple[OperatorSpec, ...] = (
     OperatorSpec("select", SelectOperator, SelectResult, "pick", True),
     OperatorSpec("rollout", RolloutOperator, RolloutResult, "rollout", True),
-    OperatorSpec("trace_analyzer", TraceAnalyzerOperator, TraceAnalyzerResult, "analyze", False),
-    OperatorSpec("meta_agent", MetaAgentOperator, MetaAgentResult, "run", True),
+    OperatorSpec("analyze", AnalyzeOperator, AnalyzeResult, "analyze", False),
+    OperatorSpec("mutate", MutateOperator, MutateResult, "mutate", True),
     OperatorSpec("validate", ValidateOperator, ValidateResult, "validate", False),
     OperatorSpec("novelty", NoveltyOperator, NoveltyResult, "assess", False),
     OperatorSpec("gate", GateOperator, GateResult, "decide", True),

@@ -517,7 +517,7 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
         "NOTICE.evolvex",
         "operators/select.py",
         "operators/rollout.py",
-        "operators/meta_agent.py",
+        "operators/mutate.py",
         "operators/gate.py",
         "operators/record.py",
         "operators/engines/local.sh",
@@ -551,15 +551,15 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
     for method_card in ("a-evolve.md", "gepa.md", "ahe.md", "hyperagents.md"):
         assert (workspace / "skills/evolve-agent/references" / method_card).is_file()
     for capability in (
-        "library/trace_analyzer/ahe.py",
-        "library/trace_analyzer/gepa.py",
+        "library/analyze/ahe.py",
+        "library/analyze/gepa.py",
         "library/validate/minibatch_improvement.py",
     ):
         assert (workspace / capability).is_file(), capability
     assert "artifacts/" in (workspace / ".gitignore").read_text().splitlines()
-    assert not (workspace / "operators" / "mutate.py").exists()
-    assert not (workspace / "operators" / "mutate.md").exists()
-    assert not (workspace / "operators" / "mutation_brief.md").exists()
+    assert not (workspace / "operators" / "meta_agent.py").exists()
+    assert not (workspace / "operators" / "meta_agent.md").exists()
+    assert not (workspace / "operators" / "meta_agent_brief.md").exists()
     assert not (workspace / "evolve_harbor_adapter").exists()
     assert not (workspace / "evolve_harbor_agent").exists()
     assert not (workspace / "operators" / "meta_agent.md").exists()
@@ -577,8 +577,8 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
     assert "tests/fixtures/seeds/dummy" in config
     assert "variant:" not in config
     assert "script:" not in config
-    assert "meta_agent:\n    runner: local\n    timeout_s: 3600" in config
-    assert "mutate:" not in config
+    assert "mutate:\n    runner: local\n    timeout_s: 3600" in config
+    assert "meta_agent:" not in config
     assert "- target/**" in config
     assert (workspace / ".evolve-protocol-version").read_text() == "1\n"
     upstream = json.loads((workspace / "target" / "UPSTREAM.json").read_text())
@@ -653,9 +653,9 @@ def test_init_binds_real_hyperagents_method_surface_and_operators(tmp_path: Path
     assert "score_child_prop" in (workspace / "operators/select.py").read_text()
     assert "ParentEvaluationRollout" in (workspace / "operators/rollout.py").read_text()
     assert (workspace / "library/rollout/harbor.py").is_file()
-    assert "class TraceBrowser" in (workspace / "operators/trace_analyzer.py").read_text()
-    assert "variant: hyperagents" in (workspace / "operators/meta_agent.py").read_text()
-    assert "HyperAgents Self-Improvement" in (workspace / "operators/meta_agent.py").read_text()
+    assert "class TraceBrowser" in (workspace / "operators/analyze.py").read_text()
+    assert "variant: hyperagents" in (workspace / "operators/mutate.py").read_text()
+    assert "HyperAgents Self-Improvement" in (workspace / "operators/mutate.py").read_text()
     assert "HyperAgentsValidate" in (workspace / "operators/validate.py").read_text()
     assert "HyperAgentsRecord" in (workspace / "operators/record.py").read_text()
     assert surface_lists(workspace) == (["target/**", "operators/**"], [])

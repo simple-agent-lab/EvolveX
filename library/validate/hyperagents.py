@@ -10,7 +10,7 @@ from evolve.frozen.interfaces import ValidateOperator, ValidateResult
 
 class HyperAgentsValidate(ValidateOperator):
     def validate(self, checkout: Path, ctx) -> ValidateResult:
-        files = [checkout / "operators" / "meta_agent.py", *sorted((checkout / "target").rglob("*.py"))]
+        files = [checkout / "operators" / "mutate.py", *sorted((checkout / "target").rglob("*.py"))]
         log = ctx.run_dir / "validate" / "compile.log"
         log.parent.mkdir(parents=True, exist_ok=True)
         checked = []

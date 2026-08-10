@@ -20,9 +20,10 @@ from ..git import head_tag, working_tree_changed_paths
 from ..surface import check_paths, surface_patterns
 from .interfaces import (
     PROTOCOL_VERSION,
+    AnalyzeOperator,
     ArchiveView,
     GateOperator,
-    MetaAgentOperator,
+    MutateOperator,
     NoveltyOperator,
     OperatorContext,
     RecordOperator,
@@ -30,16 +31,15 @@ from .interfaces import (
     RolloutOperator,
     Row,
     SelectOperator,
-    TraceAnalyzerOperator,
     ValidateOperator,
+    validate_analyze_payload,
     validate_gate_payload,
-    validate_meta_agent_payload,
+    validate_mutate_payload,
     validate_novelty_payload,
     validate_record_payload,
     validate_reflect_payload,
     validate_rollout_payload,
     validate_select_payload,
-    validate_trace_analyzer_payload,
     validate_validate_payload,
 )
 
@@ -114,19 +114,19 @@ def main(operator_cls: type[object]) -> None:
         payload = validate_rollout_payload(operator.rollout(ctx.checkout, ctx))
         _write_json(ctx.run_dir / "rollout" / "summary.json", payload["summary"])
         _write_json(ctx.run_dir / "rollout" / "artifacts.json", payload["artifacts"])
-    elif issubclass(operator_cls, TraceAnalyzerOperator):
-        payload = validate_trace_analyzer_payload(operator.analyze(ctx.checkout, ctx))
-        root = ctx.run_dir / "trace_analyzer"
+    elif issubclass(operator_cls, AnalyzeOperator):
+        payload = validate_analyze_payload(operator.analyze(ctx.checkout, ctx))
+        root = ctx.run_dir / "analyze"
         _write_json(root / "summary.json", payload["summary"])
         _write_json(root / "artifacts.json", payload["artifacts"])
-    elif issubclass(operator_cls, MetaAgentOperator):
-        payload = validate_meta_agent_payload(operator.run(ctx.checkout, _observation(ctx.run_dir), ctx))
-        meta_agent_dir = ctx.run_dir / "meta_agent"
-        _write_json(meta_agent_dir / "changed.json", payload["changed"])
-        if payload["notes"] and not (meta_agent_dir / "rationale.md").exists():
-            (meta_agent_dir / "rationale.md").write_text("\n".join(payload["notes"]) + "\n")
-        if not (meta_agent_dir / "usage.json").exists():
-            _write_json(meta_agent_dir / "usage.json", payload["usage"])
+    elif issubclass(operator_cls, MutateOperator):
+        payload = validate_mutate_payload(operator.mutate(ctx.checkout, _observation(ctx.run_dir), ctx))
+        mutate_dir = ctx.run_dir / "mutate"
+        _write_json(mutate_dir / "changed.json", payload["changed"])
+        if payload["notes"] and not (mutate_dir / "rationale.md").exists():
+            (mutate_dir / "rationale.md").write_text("\n".join(payload["notes"]) + "\n")
+        if not (mutate_dir / "usage.json").exists():
+            _write_json(mutate_dir / "usage.json", payload["usage"])
     elif issubclass(operator_cls, ValidateOperator):
         payload = validate_validate_payload(operator.validate(ctx.checkout, ctx))
         _write_json(ctx.run_dir / "validate" / "result.json", payload)

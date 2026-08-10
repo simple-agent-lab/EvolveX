@@ -7,8 +7,8 @@ this reference are identical to the keys used under `operators:` in
 ```text
 select
   → rollout
-  → trace_analyzer
-  → meta_agent
+  → analyze
+  → mutate
   → validate
   → novelty
   → canonical evaluation
@@ -24,8 +24,8 @@ Canonical evaluation is framework-owned and is not an operator.
 | --- | --- | --- |
 | [`select`](operators/select.md) | yes | choose valid parent generations |
 | [`rollout`](operators/rollout.md) | yes | produce training behavior and execution evidence |
-| [`trace_analyzer`](operators/trace_analyzer.md) | no | transform rollout cases into bounded mutation feedback |
-| [`meta_agent`](operators/meta_agent.md) | yes | edit the candidate inside the declared surface |
+| [`analyze`](operators/analyze.md) | no | transform rollout cases into bounded mutation feedback |
+| [`mutate`](operators/mutate.md) | yes | edit the candidate inside the declared surface |
 | [`validate`](operators/validate.md) | no | run method-specific checks before canonical evaluation |
 | [`novelty`](operators/novelty.md) | no | reject candidate edits that duplicate prior work |
 | [`gate`](operators/gate.md) | yes | decide whether a canonical evaluation is parent-eligible |

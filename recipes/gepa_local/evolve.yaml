@@ -21,14 +21,14 @@ operators:
     n_concurrent: 2
     max_retries: 1
     timeout_s: 600
-  trace_analyzer:
+  analyze:
     variant: gepa
     components:
       knowledge: target/knowledge.md
     max_cases: 8
     field_limit: 2000
     timeout_s: 600
-  meta_agent:
+  mutate:
     variant: gepa
     runner: harbor
     agent: evolve.integrations.harbor.local_auto_agent:LocalAutoAgent

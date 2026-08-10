@@ -50,8 +50,8 @@ nav:
       - Operators:
           - Select: reference/operators/select.md
           - Rollout: reference/operators/rollout.md
-          - Trace Analyzer: reference/operators/trace_analyzer.md
-          - Meta Agent: reference/operators/meta_agent.md
+          - Analyze: reference/operators/analyze.md
+          - Mutate: reference/operators/mutate.md
           - Validate: reference/operators/validate.md
           - Novelty: reference/operators/novelty.md
           - Gate: reference/operators/gate.md

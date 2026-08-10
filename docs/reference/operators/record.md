@@ -38,9 +38,9 @@ runs/gen-N/record/experience.json
 `jsonl` reads standard contract artifacts such as:
 
 ```text
-runs/gen-N/meta_agent/predicted_fixes.json
-runs/gen-N/meta_agent/rationale.md
-runs/gen-N/meta_agent/usage.json
+runs/gen-N/mutate/predicted_fixes.json
+runs/gen-N/mutate/rationale.md
+runs/gen-N/mutate/usage.json
 runs/gen-N/gate.json
 ```
 

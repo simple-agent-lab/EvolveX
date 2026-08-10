@@ -83,8 +83,8 @@ def test_jsonl_record_omits_verified_fixes_when_prediction_artifact_is_missing(t
 def test_jsonl_record_allows_terminal_attempt_without_gate(tmp_path: Path) -> None:
     workspace, _evolve_home = init_workspace(tmp_path)
     run_dir = workspace / "runs" / "record-no-proposal"
-    (run_dir / "meta_agent").mkdir(parents=True)
-    (run_dir / "meta_agent" / "rationale.md").write_text("No source change was needed.\n")
+    (run_dir / "mutate").mkdir(parents=True)
+    (run_dir / "mutate" / "rationale.md").write_text("No source change was needed.\n")
     ctx = OperatorContext(
         workspace=workspace,
         checkout=workspace,
@@ -110,11 +110,11 @@ def test_jsonl_record_allows_terminal_attempt_without_gate(tmp_path: Path) -> No
 def test_jsonl_record_preserves_explicit_optional_predictions(tmp_path: Path) -> None:
     workspace, _evolve_home = init_workspace(tmp_path)
     run_dir = workspace / "runs" / "record-with-predictions"
-    (run_dir / "meta_agent").mkdir(parents=True)
+    (run_dir / "mutate").mkdir(parents=True)
     (run_dir / "gate.json").write_text(
         json.dumps({"valid_parent": True, "verdict": "keep", "reason": "explicit predictions"}) + "\n"
     )
-    (run_dir / "meta_agent" / "predicted_fixes.json").write_text('["task-0"]\n')
+    (run_dir / "mutate" / "predicted_fixes.json").write_text('["task-0"]\n')
     ctx = OperatorContext(
         workspace=workspace,
         checkout=workspace,
@@ -159,8 +159,8 @@ def test_jsonl_record_tolerates_missing_gate_after_earlier_operator_failure(tmp_
 def test_jsonl_record_without_gate_preserves_terminal_annotation(tmp_path: Path) -> None:
     workspace, _evolve_home = init_workspace(tmp_path)
     run_dir = workspace / "runs" / "operator-failed"
-    (run_dir / "meta_agent").mkdir(parents=True)
-    (run_dir / "meta_agent" / "rationale.md").write_text("meta-agent failed before gate\n")
+    (run_dir / "mutate").mkdir(parents=True)
+    (run_dir / "mutate" / "rationale.md").write_text("meta-agent failed before gate\n")
     ctx = OperatorContext(
         workspace=workspace,
         checkout=workspace,

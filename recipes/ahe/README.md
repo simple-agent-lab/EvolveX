@@ -60,14 +60,14 @@ and call the AHE capabilities individually:
 ./evolve fork . "$PARENT" runs/worktrees/gen-1
 ./evolve operator run . rollout --genid 1 --parent "$PARENT" \
   --checkout runs/worktrees/gen-1
-./evolve operator run . trace_analyzer --genid 1 --parent "$PARENT" \
+./evolve operator run . analyze --genid 1 --parent "$PARENT" \
   --checkout runs/worktrees/gen-1 \
   --config '{"max_tasks":5,"max_concurrent":3}'
 ```
 
-The outer agent reads `runs/gen-1/trace_analyzer/`, edits the harness, and
+The outer agent reads `runs/gen-1/analyze/`, edits the harness, and
 finishes through `surface-check`, `commit`, `eval`, and `finalize`. Omit the
-temporary limits for the canonical full analysis. The `meta_agent` stage is
+temporary limits for the canonical full analysis. The `mutate` stage is
 optional on this path and remains the mutation stage for `evolve run`.
 
 Live runs need Docker, Harbor, model credentials, and an immutable evaluator

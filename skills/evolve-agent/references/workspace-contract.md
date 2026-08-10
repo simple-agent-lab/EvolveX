@@ -54,7 +54,7 @@ mutation, snapshotting, rollout, validation, and lineage as one unit.
 Use the same stage vocabulary across methods:
 
 ```text
-select → rollout → analyze → meta_agent
+select → rollout → analyze → mutate
        → validate → novelty → gate → record
 ```
 
@@ -173,7 +173,7 @@ child_checkout="runs/worktrees/gen-$generation_id"
 
 Read retained rollout and analysis artifacts. Before editing, name the source
 artifacts, observed failure pattern, proposed change, and predicted effect. A
-configured `meta_agent` is optional when the outer agent owns the mutation.
+configured `mutate` is optional when the outer agent owns the mutation.
 
 Edit only the mutable surface. To sanity-check the child against the
 evaluator's smoke before spending evaluation budget, run

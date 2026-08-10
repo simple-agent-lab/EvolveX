@@ -114,10 +114,10 @@ The coding agent operating a workspace from outside during an agent-led
 generation.
 _Avoid_: mutation agent, meta-agent (for the outer agent)
 
-**Meta agent** (`meta_agent`):
+**Meta agent** (`mutate`):
 The configured stage that edits the child from inside the loop during a
 driver-led generation. The outer agent plays this same mutating role from
-outside during an agent-led generation; the name `meta_agent` stays with the
+outside during an agent-led generation; the name `mutate` stays with the
 stage and its files.
 _Avoid_: meta-agent (for the outer agent)
 
@@ -126,7 +126,7 @@ The unattended loop started by `evolve run`.
 _Avoid_: built-in loop, unattended loop (as a name)
 
 **Control path**:
-Who owns producing a generation: driver-led (the configured `meta_agent`
+Who owns producing a generation: driver-led (the configured `mutate`
 stage) or agent-led (the outer agent). Both are the same role — an agent
 mutating the target — which is why exactly one may own a generation.
 
@@ -134,7 +134,7 @@ mutating the target — which is why exactly one may own a generation.
 
 **Stage**:
 One step of a generation, named exactly as registered: `select`, `rollout`,
-`trace_analyzer`, `meta_agent`, `validate`, `novelty`, `gate`, `record`,
+`analyze`, `mutate`, `validate`, `novelty`, `gate`, `record`,
 `reflect`.
 _Avoid_: feedback, mutation, trace analysis, validation (as stage names)
 

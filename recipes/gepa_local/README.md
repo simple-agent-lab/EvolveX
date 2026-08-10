@@ -31,8 +31,8 @@ cd ws && ./evolve run . --max-generations 0
 ```
 
 Codex defaults to `gpt-5.4` in this recipe. For another CLI that requires an
-explicit model, set `operators.meta_agent.model` in `evolve.yaml`, or provide a
-per-agent entry under `operators.meta_agent.agent_kwargs.model_by_agent`.
+explicit model, set `operators.mutate.model` in `evolve.yaml`, or provide a
+per-agent entry under `operators.mutate.agent_kwargs.model_by_agent`.
 
 ## Task directory checklist
 

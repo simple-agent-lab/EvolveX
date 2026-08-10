@@ -30,7 +30,7 @@ def _write_newest_select(workspace: Path) -> None:
     )
 
 
-def test_hyperagents_meta_agent_change_affects_later_generation_not_current_one(tmp_path: Path, monkeypatch) -> None:
+def test_hyperagents_mutate_change_affects_later_generation_not_current_one(tmp_path: Path, monkeypatch) -> None:
     workspace, evolve_home = _init_hyperagents_smoke(tmp_path)
     monkeypatch.setenv("EVAL_STUB", "1")
     monkeypatch.setenv("EVOLVE_HOME", str(evolve_home))
@@ -47,16 +47,16 @@ def test_hyperagents_meta_agent_change_affects_later_generation_not_current_one(
         "if __name__ == '__main__':\n"
         "    sdk.main(S)\n"
     )
-    (workspace / "operators" / "meta_agent.py").write_text(
+    (workspace / "operators" / "mutate.py").write_text(
         "from evolve.frozen import sdk\n"
-        "from evolve.frozen.interfaces import MetaAgentOperator, MetaAgentResult\n"
-        "class M(MetaAgentOperator):\n"
-        "    def run(self, checkout, observation, ctx):\n"
-        "        script = checkout / 'operators' / 'meta_agent.py'\n"
+        "from evolve.frozen.interfaces import MutateOperator, MutateResult\n"
+        "class M(MutateOperator):\n"
+        "    def mutate(self, checkout, observation, ctx):\n"
+        "        script = checkout / 'operators' / 'mutate.py'\n"
         "        script.write_text(script.read_text().replace('first-child', 'later-child'))\n"
         "        agent = checkout / 'target' / 'agent.py'\n"
         f"        agent.write_text(agent.read_text() + '\\n# first-child\\n# FAIL {failed_task}\\n')\n"
-        "        return MetaAgentResult(changed=['operators/meta_agent.py', 'target/agent.py'], notes=['self changed'], usage={'usd': 0})\n"
+        "        return MutateResult(changed=['operators/mutate.py', 'target/agent.py'], notes=['self changed'], usage={'usd': 0})\n"
         "if __name__ == '__main__':\n"
         "    sdk.main(M)\n"
     )

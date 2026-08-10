@@ -41,7 +41,7 @@ def _local_dataset(root: Path, count: int = 10) -> Path:
 def test_supported_recipe_initializes_only_selected_components(
     tmp_path: Path, recipe: str, expected: tuple[str, str, str]
 ) -> None:
-    target_kind, evaluator_agent, meta_agent = expected
+    target_kind, evaluator_agent, mutate = expected
     workspace = tmp_path / recipe
     seed = None
     if target_kind == "external":
@@ -51,12 +51,12 @@ def test_supported_recipe_initializes_only_selected_components(
     rendered = load_config(workspace / "evolve.yaml")
     components = json.loads((workspace / ".evolve-components.json").read_text())
     assert rendered["evaluator"]["agent"] == evaluator_agent
-    assert rendered["operators"]["meta_agent"]["agent"] == meta_agent
+    assert rendered["operators"]["mutate"]["agent"] == mutate
     assert components["recipe"] == recipe
     assert components["target_seed"] == rendered["target"]["seed"]
     assert components["evaluator_engine"] == "harbor"
     assert components["integrations"] == sorted(
-        {ref.split(":", 1)[0] for ref in (evaluator_agent, meta_agent) if ref.startswith("evolve.integrations.")}
+        {ref.split(":", 1)[0] for ref in (evaluator_agent, mutate) if ref.startswith("evolve.integrations.")}
     )
     assert (workspace / "target" / "codex.toml").is_file() is (target_kind == "codex")
     assert (workspace / "evaluator" / "cleanup_harbor.py").is_file()
@@ -213,7 +213,7 @@ def test_dataset_override_preserves_recipe_target_and_integrations(
     )
 
     rendered = load_config(workspace / "evolve.yaml")
-    target_kind, evaluator_agent, meta_agent = CASES[recipe]
+    target_kind, evaluator_agent, mutate = CASES[recipe]
     expected_target = (
         {
             "seed": "https://github.com/SWE-agent/mini-swe-agent.git",
@@ -225,11 +225,11 @@ def test_dataset_override_preserves_recipe_target_and_integrations(
     )
     assert rendered["target"] == expected_target
     assert rendered["evaluator"]["agent"] == evaluator_agent
-    assert rendered["operators"]["meta_agent"]["agent"] == meta_agent
+    assert rendered["operators"]["mutate"]["agent"] == mutate
     assert json.loads((workspace / ".evolve-components.json").read_text())["integrations"] == sorted(
         {
             reference.split(":", 1)[0]
-            for reference in (evaluator_agent, meta_agent)
+            for reference in (evaluator_agent, mutate)
             if reference.startswith("evolve.integrations.")
         }
     )
@@ -244,7 +244,7 @@ def test_every_production_resource_has_a_supported_consumer() -> None:
         if str(config["target"].get("seed", "")).startswith("builtin-")
     }
     agent_refs = {str(config["evaluator"].get("agent", "")) for config in configs} | {
-        str(config["operators"]["meta_agent"].get("agent", "")) for config in configs
+        str(config["operators"]["mutate"].get("agent", "")) for config in configs
     }
 
     evaluator_scaffolds = {path.name for path in (scaffold_root() / "evaluators").iterdir() if path.is_dir()}

@@ -15,8 +15,8 @@ workspace initialization generates and freezes it explicitly.
 `surface.include` exposes `target/**` plus `operators/**`.
 `select.variant: score_child_prop` balances score with child-proposal behavior.
 `rollout.variant: parent_evaluation` exposes the selected parent's sanitized, certified gate evaluation without launching another task run.
-`trace_analyzer.variant: trace_browser` exposes current traces, metrics, and history through the normalized feedback bundle.
-`meta_agent.variant: hyperagents` consumes that bundle through Harbor's installed MiniSWE agent while retaining self-referential editing.
+`analyze.variant: trace_browser` exposes current traces, metrics, and history through the normalized feedback bundle.
+`mutate.variant: hyperagents` consumes that bundle through Harbor's installed MiniSWE agent while retaining self-referential editing.
 The mutation agent uses `high` reasoning with an explicit 64k output budget.
 The explicit `max_tokens` value is required because mini-swe-agent otherwise
 uses its 1,000-token default.
@@ -49,8 +49,8 @@ docker build --build-arg MINISWE_VERSION=2.4.5 \
 
 `select: {variant: score_child_prop}` resolves to [`library/select/score_child_prop.py`](../../library/select/score_child_prop.py).
 `rollout: {variant: parent_evaluation}` resolves to [`library/rollout/parent_evaluation.py`](../../library/rollout/parent_evaluation.py) and uses the normalized collector vendored from [`library/rollout/harbor.py`](../../library/rollout/harbor.py).
-`trace_analyzer: {variant: trace_browser}` resolves to [`library/trace_analyzer/trace_browser.py`](../../library/trace_analyzer/trace_browser.py).
-`meta_agent: {variant: hyperagents}` resolves to [`library/meta_agent/hyperagents.py`](../../library/meta_agent/hyperagents.py).
+`analyze: {variant: trace_browser}` resolves to [`library/analyze/trace_browser.py`](../../library/analyze/trace_browser.py).
+`mutate: {variant: hyperagents}` resolves to [`library/mutate/hyperagents.py`](../../library/mutate/hyperagents.py).
 `validate: {variant: hyperagents}` resolves to [`library/validate/hyperagents.py`](../../library/validate/hyperagents.py).
 `gate: {variant: parent_eligible}` resolves to [`library/gate/parent_eligible.py`](../../library/gate/parent_eligible.py).
 `record: {variant: hyperagents}` resolves to [`library/record/hyperagents.py`](../../library/record/hyperagents.py).

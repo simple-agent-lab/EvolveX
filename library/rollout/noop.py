@@ -1,6 +1,6 @@
 """No-op rollout emits an empty rollout summary without running tasks.
 
-It is the baseline recipe for pipelines that skip rollout before meta_agent.
+It is the baseline recipe for pipelines that skip rollout before mutate.
 """
 
 from pathlib import Path

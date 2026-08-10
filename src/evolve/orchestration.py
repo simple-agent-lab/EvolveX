@@ -105,7 +105,7 @@ def invoke_operator(
                 raise RuntimeError(f"operator {name} produced invalid output: {_operator_output_note(output_error)}")
             if name in {"validate", "novelty"}:
                 _write_candidate_receipt(workspace, selected_checkout, run_dir, name, str(parent))
-            if name == "trace_analyzer":
+            if name == "analyze":
                 write_feedback_bundle(workspace=workspace, run_dir=run_dir)
     return OperatorInvocation(result=result, run_dir=run_dir, config=config)
 
@@ -135,9 +135,9 @@ def _invocation_timeout(
 
 
 def _assert_operator_prerequisites(name: str, run_dir: Path, configured: dict[str, Any]) -> None:
-    prerequisites = ["rollout"] if name in {"trace_analyzer", "meta_agent"} else []
-    if name == "meta_agent" and _operator_present(configured, "trace_analyzer"):
-        prerequisites.append("trace_analyzer")
+    prerequisites = ["rollout"] if name in {"analyze", "mutate"} else []
+    if name == "mutate" and _operator_present(configured, "analyze"):
+        prerequisites.append("analyze")
     for prerequisite in prerequisites:
         error = _operator_output_error(prerequisite, run_dir)
         if error is not None:
@@ -176,12 +176,12 @@ def _invocation_checkout(
 _STAGE_OUTPUTS: dict[str, tuple[Path, ...]] = {
     "select": (Path("parents.json"),),
     "rollout": (Path("rollout"),),
-    "trace_analyzer": (Path("trace_analyzer"), Path("feedback")),
-    "meta_agent": (Path("meta_agent"),),
+    "analyze": (Path("analyze"), Path("feedback")),
+    "mutate": (Path("mutate"),),
     "validate": (Path("validate"),),
     "novelty": (Path("novelty.json"), Path("novelty")),
 }
-_STAGE_ORDER = ("select", "rollout", "trace_analyzer", "meta_agent", "validate", "novelty")
+_STAGE_ORDER = ("select", "rollout", "analyze", "mutate", "validate", "novelty")
 
 
 def _archive_active_outputs(name: str, run_dir: Path) -> None:

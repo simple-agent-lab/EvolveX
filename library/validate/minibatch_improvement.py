@@ -12,7 +12,7 @@ from typing import Any
 
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import OperatorContext, ValidateOperator, ValidateResult
-from library.gepa_support import read_json
+from library._shared.gepa import read_json
 from library.rollout.harbor import HarborRollout
 
 

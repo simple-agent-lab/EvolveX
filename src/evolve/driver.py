@@ -40,7 +40,7 @@ from .frozen.interfaces import (
     ArchiveView,
     PayloadValidationError,
     validate_gate_file_payload,
-    validate_meta_agent_usage_payload,
+    validate_mutate_usage_payload,
     validate_novelty_file_payload,
     validate_record_fields_payload,
     validate_rollout_artifacts_payload,
@@ -301,11 +301,11 @@ def _run_child(
             return
 
         stages = ["rollout"]
-        if _operator_present(operators_config, "trace_analyzer"):
-            stages.append("trace_analyzer")
-        stages.append("meta_agent")
+        if _operator_present(operators_config, "analyze"):
+            stages.append("analyze")
+        stages.append("mutate")
         for name in stages:
-            if name == "meta_agent" and _operator_present(operators_config, "trace_analyzer"):
+            if name == "mutate" and _operator_present(operators_config, "analyze"):
                 write_feedback_bundle(workspace=workspace, run_dir=_run_dir(workspace, genid))
             if not _run_operator_or_fail(
                 name=name,
@@ -1150,13 +1150,13 @@ def _operator_output_error(name: str, run_dir: Path) -> OperatorOutputError | No
             (Path("rollout") / "summary.json", "summary", validate_rollout_summary_payload),
             (Path("rollout") / "artifacts.json", "artifacts", validate_rollout_artifacts_payload),
         )
-    elif name == "trace_analyzer":
+    elif name == "analyze":
         checks = (
-            (Path("trace_analyzer") / "summary.json", "summary", validate_rollout_summary_payload),
-            (Path("trace_analyzer") / "artifacts.json", "artifacts", validate_rollout_artifacts_payload),
+            (Path("analyze") / "summary.json", "summary", validate_rollout_summary_payload),
+            (Path("analyze") / "artifacts.json", "artifacts", validate_rollout_artifacts_payload),
         )
-    elif name == "meta_agent":
-        checks = ((Path("meta_agent") / "usage.json", "usage", validate_meta_agent_usage_payload),)
+    elif name == "mutate":
+        checks = ((Path("mutate") / "usage.json", "usage", validate_mutate_usage_payload),)
     elif name == "validate":
         checks = ((Path("validate") / "result.json", "accept", validate_validate_file_payload),)
     elif name == "novelty":

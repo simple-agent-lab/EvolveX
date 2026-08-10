@@ -81,9 +81,9 @@ def test_run_operator_success_env_and_config(tmp_path):
 
 def test_run_operator_nonzero_and_timeout(tmp_path):
     checkout = tmp_path / "checkout"
-    _write_operator(checkout, "meta_agent", "raise SystemExit(7)\n")
+    _write_operator(checkout, "mutate", "raise SystemExit(7)\n")
     failed = run_operator(
-        name="meta_agent",
+        name="mutate",
         checkout=checkout,
         workspace=tmp_path,
         genid="1",
@@ -116,12 +116,12 @@ def test_run_operator_nonzero_and_timeout(tmp_path):
         "evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent",
     ],
 )
-def test_installed_miniswe_meta_agent_outer_timeout_budgets_every_retry(
+def test_installed_miniswe_mutate_outer_timeout_budgets_every_retry(
     agent: str,
 ) -> None:
     assert (
         _operator_deadline_s(
-            "meta_agent",
+            "mutate",
             {
                 "runner": "harbor",
                 "agent": agent,
@@ -146,7 +146,7 @@ def test_installed_miniswe_meta_agent_outer_timeout_budgets_every_retry(
 def test_non_installed_agents_keep_whole_process_timeout(agent: str) -> None:
     assert (
         _operator_deadline_s(
-            "meta_agent",
+            "mutate",
             {"runner": "harbor", "agent": agent, "max_retries": 1, "timeout_s": 3600},
             3600,
         )
@@ -154,10 +154,10 @@ def test_non_installed_agents_keep_whole_process_timeout(agent: str) -> None:
     )
 
 
-def test_codex_harbor_meta_agent_keeps_whole_process_timeout() -> None:
+def test_codex_harbor_mutate_keeps_whole_process_timeout() -> None:
     assert (
         _operator_deadline_s(
-            "meta_agent",
+            "mutate",
             {
                 "runner": "harbor",
                 "agent": "codex",

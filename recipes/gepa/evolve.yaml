@@ -15,7 +15,7 @@ surface:
 operators:
   select: {variant: pareto, seed: 0, timeout_s: 600}
   rollout: {variant: harbor, budget_tasks: 10, task_sampling: generation_shuffle, n_concurrent: 4, agent_setup_timeout_multiplier: 1, max_retries: 1, timeout_s: 3600}
-  trace_analyzer:
+  analyze:
     variant: gepa
     components:
       system_prompt: target/prompt.md
@@ -23,7 +23,7 @@ operators:
     max_cases: 10
     field_limit: 4000
     timeout_s: 600
-  meta_agent:
+  mutate:
     variant: gepa
     expose_gate_data: false
     runner: harbor

@@ -35,5 +35,5 @@ def test_ahe_codex_recipe_uses_the_pinned_manifest_identity() -> None:
     assert recipe["evaluator"]["dataset"] == manifest["name"]
     assert recipe["evaluator"]["tasks_per_round"] == manifest["selection"]["count"]
     assert recipe["evaluator"]["agent"] == "target.agent:HarborAgent"
-    assert recipe["operators"]["meta_agent"]["agent"] == "codex"
-    assert recipe["operators"]["meta_agent"]["editable_roots"] == ["target"]
+    assert recipe["operators"]["mutate"]["agent"] == "codex"
+    assert recipe["operators"]["mutate"]["editable_roots"] == ["target"]

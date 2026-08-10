@@ -107,13 +107,13 @@ Most recipes should mutate only `target/**`. A method that intentionally
 co-evolves operator policy, such as HyperAgents, may include selected
 `operators/**` paths as well.
 
-`operators.meta_agent.editable_roots` controls what the meta-agent receives
+`operators.mutate.editable_roots` controls what the meta-agent receives
 permission to edit, but it does not expand the recipe surface. Keep it equal to
 or narrower than the surface:
 
 ```yaml
 operators:
-  meta_agent:
+  mutate:
     variant: gepa
     editable_roots: [target]
 ```
@@ -182,7 +182,7 @@ content identities into `evaluator/splits.json`.
 - **sealed** data is an evaluation anchor and must not be exposed as mutation
   feedback.
 
-Keep `operators.meta_agent.expose_gate_data: false` unless the experiment
+Keep `operators.mutate.expose_gate_data: false` unless the experiment
 explicitly intends to expose protected evaluation history.
 
 ## Prepare images and authentication
@@ -200,7 +200,7 @@ Then reference that exact image:
 
 ```yaml
 operators:
-  meta_agent:
+  mutate:
     runner: harbor
     environment: docker
     image: my-meta-agent:latest

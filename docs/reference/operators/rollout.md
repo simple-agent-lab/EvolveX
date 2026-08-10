@@ -59,7 +59,7 @@ runs/gen-N/rollout/cases.json
 runs/harbor-rollouts/gen-N/
 ```
 
-`cases.json` is the method-neutral input to `trace_analyzer`. It includes task
+`cases.json` is the method-neutral input to `analyze`. It includes task
 identity, ordered model/tool events, verifier evidence, outcome, exception,
 usage, timing, and artifact inventory.
 

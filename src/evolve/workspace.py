@@ -469,7 +469,13 @@ def _operator_assets(
                 for relative, text in _text_files(directory):
                     if relative.suffix != ".py" or len(relative.parts) > 1:
                         assets.setdefault(f"library/{kind}/{relative.as_posix()}", text)
-    return assets | {f"library/{name}": text for name, text in _root_python_helpers(library_root())}
+    shared = library_root() / "_shared"
+    shared_assets = (
+        {}
+        if not shared.is_dir()
+        else {f"library/_shared/{relative.as_posix()}": text for relative, text in _text_files(shared)}
+    )
+    return assets | shared_assets | {f"library/{name}": text for name, text in _root_python_helpers(library_root())}
 
 
 def _recipe_evaluator_assets(
@@ -619,8 +625,8 @@ def _dataset_pin(dataset: str, manifest: dict[str, Any]) -> str:
 def _component_manifest(recipe: str, config: dict[str, object]) -> dict[str, object]:
     evaluator = cast("dict[str, Any]", config["evaluator"])
     operators = cast("dict[str, Any]", config["operators"])
-    meta_agent = cast("dict[str, Any]", operators["meta_agent"])
-    references = (str(evaluator.get("agent") or ""), str(meta_agent.get("agent") or ""))
+    mutate = cast("dict[str, Any]", operators["mutate"])
+    references = (str(evaluator.get("agent") or ""), str(mutate.get("agent") or ""))
     return {
         "recipe": recipe,
         "target_seed": cast("dict[str, Any]", config["target"]).get("seed"),

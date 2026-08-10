@@ -16,7 +16,7 @@ operators:
     variant: harbor
     environment: evolve.harbor_local:LocalEnvironment
     environment_kwargs: {workdir: /app}
-  meta_agent:
+  mutate:
     variant: hyperagents
     runner: harbor
     environment: evolve.harbor_local:LocalEnvironment

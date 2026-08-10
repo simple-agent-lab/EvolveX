@@ -74,24 +74,24 @@ def test_method_cards_route_to_shipped_capabilities() -> None:
         "hill-climb.md": ("operator list . --json", "library/select/", "library/gate/"),
         "a-evolve.md": (
             "operator list . --json",
-            "library/trace_analyzer/trajectory_only.py",
-            "library/trace_analyzer/artifact_rubric.py",
-            "library/meta_agent/aevolve.py",
+            "library/analyze/trajectory_only.py",
+            "library/analyze/artifact_rubric.py",
+            "library/mutate/aevolve.py",
         ),
         "gepa.md": (
             "operator list . --json",
             "library/select/pareto.py",
-            "library/trace_analyzer/gepa.py",
+            "library/analyze/gepa.py",
             "library/validate/minibatch_improvement.py",
         ),
         "ahe.md": (
             "operator list . --json",
-            "operators/trace_analyzer.py",
-            "library/trace_analyzer/ahe.py",
+            "operators/analyze.py",
+            "library/analyze/ahe.py",
         ),
         "hyperagents.md": (
             "operator list . --json",
-            "library/meta_agent/hyperagents.py",
+            "library/mutate/hyperagents.py",
             "library/validate/hyperagents.py",
         ),
     }

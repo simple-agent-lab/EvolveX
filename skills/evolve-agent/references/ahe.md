@@ -18,13 +18,13 @@ shipped AHE profile normally exposes `ahe_latest` selection,
 `parent_evaluation` rollout, and the `ahe` trace analyzer. Invoke these direct
 operators, inspect the retained task trajectories and debugger findings under
 `runs/gen-<id>/`, and let the outer coding agent implement the harness change.
-The configured AHE `meta_agent` is optional for a second opinion or unattended
+The configured AHE `mutate` is optional for a second opinion or unattended
 driver run.
 
 Start by running the analyzer with a bounded `--config` override if cost or
-latency matters. Read `operators/trace_analyzer.py` only when the analyzer's
+latency matters. Read `operators/analyze.py` only when the analyzer's
 artifacts are insufficient or its execution needs diagnosis. Read
-`library/trace_analyzer/ahe.py` or `library/meta_agent/ahe.py` only when the
+`library/analyze/ahe.py` or `library/mutate/ahe.py` only when the
 evolution process itself must be adapted; these references are not the active
 runtime implementation.
 

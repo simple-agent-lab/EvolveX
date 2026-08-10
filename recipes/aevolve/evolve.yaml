@@ -15,8 +15,8 @@ surface:
 operators:
   select: {variant: greedy, timeout_s: 600}
   rollout: {variant: harbor, budget_tasks: 10, n_concurrent: 4, agent_setup_timeout_multiplier: 1, max_retries: 1, timeout_s: 3600}
-  trace_analyzer: {variant: trajectory_only, history_cycles: 2, max_observations: 30, max_chars: 30000, judge_max_concurrent: 4, judge_retry_attempts: 1, judge_timeout_s: 600, timeout_s: 3600}
-  meta_agent:
+  analyze: {variant: trajectory_only, history_cycles: 2, max_observations: 30, max_chars: 30000, judge_max_concurrent: 4, judge_retry_attempts: 1, judge_timeout_s: 600, timeout_s: 3600}
+  mutate:
     variant: aevolve
     trajectory_only: true
     expose_gate_data: false

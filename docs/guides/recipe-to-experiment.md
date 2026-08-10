@@ -170,8 +170,8 @@ Useful evidence locations include:
 ```text
 runs/gen-N/select/
 runs/gen-N/rollout/
-runs/gen-N/trace_analyzer/
-runs/gen-N/meta_agent/
+runs/gen-N/analyze/
+runs/gen-N/mutate/
 runs/gen-N/validate/
 runs/gen-N/gate/
 runs/gen-N/record/

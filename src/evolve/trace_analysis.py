@@ -8,7 +8,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
-from evolve.frozen.interfaces import OperatorContext, TraceAnalyzerOperator, TraceAnalyzerResult
+from evolve.frozen.interfaces import AnalyzeOperator, AnalyzeResult, OperatorContext
 
 Case = dict[str, Any]
 
@@ -568,7 +568,7 @@ def _render_selected(
         "",
         _VARIANT_GUIDANCE[variant],
         "",
-        "The full redacted evidence is under `$EVOLVE_RUN_DIR/trace_analyzer/evidence/`; use filesystem tools to inspect it when the selected view calls for raw or historical evidence.",
+        "The full redacted evidence is under `$EVOLVE_RUN_DIR/analyze/evidence/`; use filesystem tools to inspect it when the selected view calls for raw or historical evidence.",
         "",
         "## Aggregate metrics",
         "",
@@ -624,7 +624,7 @@ def write_evidence_bundle(
 ) -> tuple[str, list[str]]:
     """Persist method-neutral evidence once and render a bounded selected view."""
     selected = normalize_variant(variant)
-    root = run_dir / "trace_analyzer" / "evidence"
+    root = run_dir / "analyze" / "evidence"
     records = failure_records(cases)
     patterns = cluster_failure_patterns(records)
     passes = passing_behaviors(cases)
@@ -658,9 +658,9 @@ def write_evidence_bundle(
         )
         (root / "selected.md").write_text(selected_md)
         return selected_md, [
-            "trace_analyzer/evidence/manifest.json",
-            "trace_analyzer/evidence/trajectory_only.json",
-            "trace_analyzer/evidence/selected.md",
+            "analyze/evidence/manifest.json",
+            "analyze/evidence/trajectory_only.json",
+            "analyze/evidence/selected.md",
         ]
 
     _write_jsonl(root / "raw_traces.jsonl", cases)
@@ -683,14 +683,14 @@ def write_evidence_bundle(
     selected_md = _render_selected(selected, metrics, patterns, passes, reflections, max_chars)
     (root / "selected.md").write_text(selected_md)
     artifacts = [
-        "trace_analyzer/evidence/manifest.json",
-        "trace_analyzer/evidence/raw_traces.jsonl",
-        "trace_analyzer/evidence/failure_records.json",
-        "trace_analyzer/evidence/failure_patterns.json",
-        "trace_analyzer/evidence/passing_behaviors.json",
-        "trace_analyzer/evidence/reflective_records.jsonl",
-        "trace_analyzer/evidence/metrics.json",
-        "trace_analyzer/evidence/selected.md",
+        "analyze/evidence/manifest.json",
+        "analyze/evidence/raw_traces.jsonl",
+        "analyze/evidence/failure_records.json",
+        "analyze/evidence/failure_patterns.json",
+        "analyze/evidence/passing_behaviors.json",
+        "analyze/evidence/reflective_records.jsonl",
+        "analyze/evidence/metrics.json",
+        "analyze/evidence/selected.md",
     ]
     return selected_md, artifacts
 
@@ -738,10 +738,10 @@ def _trajectory_only_cases(ctx: OperatorContext, current: list[Case]) -> list[Ca
     return combined[-maximum:]
 
 
-class TraceAnalyzerBase(TraceAnalyzerOperator):
+class AnalyzeBase(AnalyzeOperator):
     variant = "failure_patterns"
 
-    def analyze(self, checkout: Path, ctx: OperatorContext) -> TraceAnalyzerResult:
+    def analyze(self, checkout: Path, ctx: OperatorContext) -> AnalyzeResult:
         del checkout
         selected = normalize_variant(self.variant)
         cases_path = ctx.run_dir / "rollout" / "cases.json"
@@ -754,8 +754,8 @@ class TraceAnalyzerBase(TraceAnalyzerOperator):
             variant=selected,
             max_chars=max_chars,
         )
-        (ctx.run_dir / "trace_analyzer" / "feedback.md").write_text(feedback)
-        return TraceAnalyzerResult(
+        (ctx.run_dir / "analyze" / "feedback.md").write_text(feedback)
+        return AnalyzeResult(
             summary={"variant": selected, "cases": len(analysis_cases), "source": str(cases_path)},
-            artifacts=["trace_analyzer/feedback.md", *artifacts],
+            artifacts=["analyze/feedback.md", *artifacts],
         )

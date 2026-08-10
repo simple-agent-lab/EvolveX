@@ -442,18 +442,18 @@ def test_harbor_rollout_bounds_trajectory_events_to_the_latest_trace_window(tmp_
 def test_feedback_bundle_exposes_current_rollout_to_mutator(tmp_path: Path) -> None:
     workspace, _ = init_workspace(tmp_path)
     run_dir = workspace / "runs" / "gen-1"
-    (run_dir / "trace_analyzer").mkdir(parents=True)
-    (run_dir / "trace_analyzer" / "feedback.md").write_text("# Trace Analysis Feedback\n\nfailed task evidence\n")
+    (run_dir / "analyze").mkdir(parents=True)
+    (run_dir / "analyze" / "feedback.md").write_text("# Trace Analysis Feedback\n\nfailed task evidence\n")
 
     manifest = write_feedback_bundle(workspace=workspace, run_dir=run_dir)
 
-    copied = run_dir / "feedback" / "failures" / "trace_analyzer.md"
+    copied = run_dir / "feedback" / "failures" / "analyze.md"
     assert copied.read_text().endswith("failed task evidence\n")
-    assert "[current trace analysis](failures/trace_analyzer.md)" in (run_dir / "feedback" / "index.md").read_text()
-    assert "feedback/failures/trace_analyzer.md" in manifest
+    assert "[current trace analysis](failures/analyze.md)" in (run_dir / "feedback" / "index.md").read_text()
+    assert "feedback/failures/analyze.md" in manifest
 
 
-def test_trace_analyzer_variants_share_raw_harbor_facts(tmp_path: Path) -> None:
+def test_analyze_variants_share_raw_harbor_facts(tmp_path: Path) -> None:
     module = _harbor_rollout_module()
     jobs = tmp_path / "jobs"
     _write_trial(jobs, name="missing-output-a", reward=0)
@@ -471,20 +471,20 @@ def test_trace_analyzer_variants_share_raw_harbor_facts(tmp_path: Path) -> None:
         )
         if variant == "trajectory_only":
             assert "Agent Behavior Analysis" in selected
-            assert "trace_analyzer/evidence/raw_traces.jsonl" not in artifacts
-            assert "trace_analyzer/evidence/trajectory_only.json" in artifacts
+            assert "analyze/evidence/raw_traces.jsonl" not in artifacts
+            assert "analyze/evidence/trajectory_only.json" in artifacts
         else:
             assert f"Variant: {variant}" in selected
-            assert "trace_analyzer/evidence/raw_traces.jsonl" in artifacts
-        assert (run_dir / "trace_analyzer" / "evidence" / "manifest.json").is_file()
+            assert "analyze/evidence/raw_traces.jsonl" in artifacts
+        assert (run_dir / "analyze" / "evidence" / "manifest.json").is_file()
 
     patterns = json.loads(
-        (tmp_path / "failure_patterns" / "trace_analyzer" / "evidence" / "failure_patterns.json").read_text()
+        (tmp_path / "failure_patterns" / "analyze" / "evidence" / "failure_patterns.json").read_text()
     )
     assert patterns[0]["support"] == 2
     assert patterns[0]["signature"]["terminal_cause"] == "missing_artifact"
     passing = json.loads(
-        (tmp_path / "failure_patterns" / "trace_analyzer" / "evidence" / "passing_behaviors.json").read_text()
+        (tmp_path / "failure_patterns" / "analyze" / "evidence" / "passing_behaviors.json").read_text()
     )
     assert passing[0]["task_name"] == "harbor/passing"
 
@@ -540,7 +540,7 @@ def test_trajectory_only_matches_aevolve_behavior_only_evidence(tmp_path: Path) 
         ],
     )
 
-    evidence = tmp_path / "trace_analyzer" / "evidence"
+    evidence = tmp_path / "analyze" / "evidence"
     records = json.loads((evidence / "trajectory_only.json").read_text())
     manifest = json.loads((evidence / "manifest.json").read_text())
     assert records[0]["task_id"] == "terminal/task-a"
@@ -564,9 +564,9 @@ def test_trajectory_only_matches_aevolve_behavior_only_evidence(tmp_path: Path) 
     assert manifest["ground_truth_exposed"] is False
     assert not (evidence / "raw_traces.jsonl").exists()
     assert artifacts == [
-        "trace_analyzer/evidence/manifest.json",
-        "trace_analyzer/evidence/trajectory_only.json",
-        "trace_analyzer/evidence/selected.md",
+        "analyze/evidence/manifest.json",
+        "analyze/evidence/trajectory_only.json",
+        "analyze/evidence/selected.md",
     ]
 
 
@@ -640,13 +640,13 @@ def test_trajectory_only_does_not_treat_pre_tool_commentary_as_final_response() 
 
 def test_feedback_bundle_copies_selected_evidence_and_history(tmp_path: Path) -> None:
     workspace, _ = init_workspace(tmp_path)
-    historical = workspace / "runs" / "gen-0" / "trace_analyzer" / "evidence"
+    historical = workspace / "runs" / "gen-0" / "analyze" / "evidence"
     historical.mkdir(parents=True)
     (historical / "metrics.json").write_text(json.dumps({"trials": 2}))
     run_dir = workspace / "runs" / "gen-1"
-    evidence = run_dir / "trace_analyzer" / "evidence"
+    evidence = run_dir / "analyze" / "evidence"
     evidence.mkdir(parents=True)
-    (run_dir / "trace_analyzer" / "feedback.md").write_text("duplicate selected view\n")
+    (run_dir / "analyze" / "feedback.md").write_text("duplicate selected view\n")
     (evidence / "selected.md").write_text("# selected profile evidence\n")
     (evidence / "manifest.json").write_text(json.dumps({"selected_variant": "failure_patterns"}))
     (evidence / "metrics.json").write_text(json.dumps({"trials": 1}))
@@ -656,7 +656,7 @@ def test_feedback_bundle_copies_selected_evidence_and_history(tmp_path: Path) ->
     assert (run_dir / "feedback" / "evidence" / "selected.md").read_text().startswith("# selected")
     assert "feedback/evidence/history.json" in manifest
     history = json.loads((run_dir / "feedback" / "evidence" / "history.json").read_text())
-    assert history[0]["raw_evidence_dir"] == "runs/gen-0/trace_analyzer/evidence"
+    assert history[0]["raw_evidence_dir"] == "runs/gen-0/analyze/evidence"
     index = (run_dir / "feedback" / "index.md").read_text()
     assert "[selected trace evidence](evidence/selected.md)" in index
     assert "[current trace analysis]" not in index

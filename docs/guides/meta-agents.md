@@ -13,7 +13,7 @@ file named by `EVOLVE_PROMPT_FILE`.
 
 Resolution order is:
 
-1. `operators.meta_agent.command`;
+1. `operators.mutate.command`;
 2. `EVOLVE_AGENT_COMMAND`;
 3. otherwise the operator fails because no concrete agent was selected.
 
@@ -21,7 +21,7 @@ Examples:
 
 ```yaml
 # Codex
-meta_agent:
+mutate:
   variant: hyperagents
   runner: local
   command: codex exec --full-auto - < "$EVOLVE_PROMPT_FILE"
@@ -30,7 +30,7 @@ meta_agent:
 
 ```yaml
 # Claude Code; permission policy should be chosen deliberately for the host.
-meta_agent:
+mutate:
   variant: hyperagents
   runner: local
   command: claude -p --dangerously-skip-permissions "Implement the task supplied on stdin." < "$EVOLVE_PROMPT_FILE"
@@ -39,7 +39,7 @@ meta_agent:
 
 ```yaml
 # Any custom executable or script
-meta_agent:
+mutate:
   variant: hyperagents
   runner: local
   command: /absolute/path/to/my-agent --prompt-file "$EVOLVE_PROMPT_FILE"
@@ -58,13 +58,13 @@ the editing agent must not be able to mutate the framework environment.
 
 The Harbor runner builds a disposable writable experiment workspace at
 `/app/task/workspace`. Gate visibility is controlled by
-`operators.meta_agent.expose_gate_data`, which must be a boolean and defaults to
+`operators.mutate.expose_gate_data`, which must be a boolean and defaults to
 `false`. Git-ignored host state, including nested `.venv` directories and
 caches, is omitted from the disposable copy. A meta-agent may create new
 ignored paths inside the task, but they are not imported into the host checkout.
 
 With `expose_gate_data: false`, the task receives the selected parent,
-configuration, a clean Git baseline, and the `rollout`, `trace_analyzer`, and
+configuration, a clean Git baseline, and the `rollout`, `analyze`, and
 `feedback` inputs from current and prior generations. Evaluator files, task
 partitions, archive/receipt records, selection artifacts, gate/record
 directories, and gate/sealed evaluations are not copied. The clean Git baseline
@@ -109,7 +109,7 @@ parent, when present, as orientation rather than proof. A missing handoff is
 normal and non-fatal. Artifact files never become part of a candidate patch.
 
 ```yaml
-meta_agent:
+mutate:
   variant: hyperagents
   runner: harbor
   expose_gate_data: false
@@ -148,7 +148,7 @@ git add pyproject.toml uv.lock
 ```
 
 ```yaml
-meta_agent:
+mutate:
   variant: hyperagents
   runner: harbor
   agent: my_agent.harbor_adapter:MyAgent
@@ -181,16 +181,16 @@ certified role-specific runtime inputs, with the model endpoint bypassed.
 Each Harbor meta-agent run retains:
 
 ```text
-runs/gen-N/meta_agent/harbor/prompt.md
-runs/gen-N/meta_agent/harbor/command.json
-runs/gen-N/meta_agent/harbor/exec-config.json  # config-driven adapters
-runs/gen-N/meta_agent/harbor/harbor.log
-runs/gen-N/meta_agent/harbor/trial.json
-runs/gen-N/meta_agent/harbor/artifact-manifest.json
-runs/gen-N/meta_agent/harbor/jobs/
-runs/gen-N/meta_agent/harbor/tasks/
+runs/gen-N/mutate/harbor/prompt.md
+runs/gen-N/mutate/harbor/command.json
+runs/gen-N/mutate/harbor/exec-config.json  # config-driven adapters
+runs/gen-N/mutate/harbor/harbor.log
+runs/gen-N/mutate/harbor/trial.json
+runs/gen-N/mutate/harbor/artifact-manifest.json
+runs/gen-N/mutate/harbor/jobs/
+runs/gen-N/mutate/harbor/tasks/
 ```
 
-On success the active strategy writes the standard `meta_agent/changed.json`,
+On success the active strategy writes the standard `mutate/changed.json`,
 `patch.diff`, `surface-check.json`, `rationale.md`, and `usage.json` regardless
 of the selected runner. AHE may additionally preserve `ahe-report.json`.

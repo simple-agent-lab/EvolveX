@@ -51,7 +51,7 @@ def test_operator_list_exposes_configured_capabilities(tmp_path: Path) -> None:
         "variant": "greedy",
     }
     assert entries["analyze"]["required"] is False
-    assert entries["analyze"]["implementation"] == "trace_analyzer"
+    assert entries["analyze"]["implementation"] == "analyze"
     assert entries["gate"]["access"] == "finalize"
     assert entries["reflect"]["access"] == "driver"
 
@@ -151,22 +151,22 @@ def test_operator_run_binds_candidate_checkout_to_parent(tmp_path: Path) -> None
     assert "git" in result.stderr.lower() or "workspace repository" in result.stderr
 
 
-def test_trace_analyzer_run_materializes_driver_equivalent_feedback(tmp_path: Path) -> None:
+def test_analyze_run_materializes_driver_equivalent_feedback(tmp_path: Path) -> None:
     workspace, evolve_home = init_workspace(tmp_path)
     _certify_baseline(workspace, evolve_home)
-    _set_operator_config(workspace, "trace_analyzer", {})
-    (workspace / "operators/trace_analyzer.py").write_text(
+    _set_operator_config(workspace, "analyze", {})
+    (workspace / "operators/analyze.py").write_text(
         """
 from evolve.frozen import sdk
-from evolve.frozen.interfaces import TraceAnalyzerOperator, TraceAnalyzerResult
+from evolve.frozen.interfaces import AnalyzeOperator, AnalyzeResult
 
-class TestAnalyzer(TraceAnalyzerOperator):
+class TestAnalyzer(AnalyzeOperator):
     def analyze(self, checkout, ctx):
-        root = ctx.run_dir / "trace_analyzer"
+        root = ctx.run_dir / "analyze"
         (root / "evidence").mkdir(parents=True, exist_ok=True)
         (root / "feedback.md").write_text("failure-focused advice\\n")
         (root / "evidence" / "selected.md").write_text("selected trace\\n")
-        return TraceAnalyzerResult({"cases": 1}, ["trace_analyzer/evidence/selected.md"])
+        return AnalyzeResult({"cases": 1}, ["analyze/evidence/selected.md"])
 
 if __name__ == "__main__":
     sdk.main(TestAnalyzer)
@@ -534,7 +534,7 @@ def test_rerunning_a_stage_archives_downstream_outputs(tmp_path: Path) -> None:
     )
     assert first.returncode == 0, first.stderr
 
-    stale_analysis = workspace / "runs/gen-1/trace_analyzer"
+    stale_analysis = workspace / "runs/gen-1/analyze"
     stale_analysis.mkdir()
     (stale_analysis / "summary.json").write_text("{}\n")
     stale_feedback = workspace / "runs/gen-1/feedback"
@@ -558,6 +558,6 @@ def test_rerunning_a_stage_archives_downstream_outputs(tmp_path: Path) -> None:
     assert not stale_feedback.exists()
     attempts = workspace / "runs/gen-1/operator-attempts"
     assert (attempts / "rollout/attempt-1/rollout/summary.json").is_file()
-    assert (attempts / "trace_analyzer/attempt-1/trace_analyzer/summary.json").is_file()
-    assert (attempts / "trace_analyzer/attempt-1/feedback/index.md").is_file()
+    assert (attempts / "analyze/attempt-1/analyze/summary.json").is_file()
+    assert (attempts / "analyze/attempt-1/feedback/index.md").is_file()
     assert (workspace / "runs/gen-1/rollout/summary.json").is_file()

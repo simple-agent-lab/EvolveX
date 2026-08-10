@@ -1,9 +1,9 @@
-"""The feedback bundle the meta-agent reads — mechanism-owned assembly.
+"""The feedback bundle the mutation operator reads — mechanism-owned assembly.
 
 Folded out of the retired `observe` operator (DESIGN §7: the canonical verb set
-is select/rollout/trace_analyzer/meta_agent/…/gate/record). The bundle is derived
-from the archive + workspace, plus bounded evidence emitted by trace_analyzer. The driver calls
-`write_feedback_bundle` after trace_analyzer and before meta_agent, which reads
+is select/rollout/analyze/mutate/…/gate/record). The bundle is derived
+from the archive + workspace, plus bounded evidence emitted by analyze. The driver calls
+`write_feedback_bundle` after analyze and before mutate, which reads
 `runs/gen-<id>/feedback/`. It therefore exists even when rollout is a noop
 variant. This is the one home for the logic — `library/observe/*` is deleted.
 """
@@ -62,16 +62,16 @@ def _surface_rule_lists(workspace: Path) -> tuple[list[str], list[str]]:
 
 
 def _copy_trace_feedback(run_dir: Path, failures: Path) -> str | None:
-    for source in (run_dir / "trace_analyzer" / "feedback.md", run_dir / "rollout" / "feedback.md"):
+    for source in (run_dir / "analyze" / "feedback.md", run_dir / "rollout" / "feedback.md"):
         if source.is_file():
-            destination = failures / "trace_analyzer.md"
+            destination = failures / "analyze.md"
             destination.write_text(source.read_text())
-            return "feedback/failures/trace_analyzer.md"
+            return "feedback/failures/analyze.md"
     return None
 
 
 def _copy_trace_evidence(run_dir: Path, destination: Path) -> list[str]:
-    source = run_dir / "trace_analyzer" / "evidence"
+    source = run_dir / "analyze" / "evidence"
     if not source.is_dir():
         source = run_dir / "rollout" / "evidence"
     if not source.is_dir():
@@ -103,7 +103,7 @@ def _rollout_history(workspace: Path, rows: list[Row], history_k: int) -> list[R
     history: list[Row] = []
     for row in rows[-int(history_k) :]:
         genid = str(row.get("genid") or "")
-        evidence_root = workspace / "runs" / f"gen-{genid}" / "trace_analyzer" / "evidence"
+        evidence_root = workspace / "runs" / f"gen-{genid}" / "analyze" / "evidence"
         if not evidence_root.is_dir():
             evidence_root = workspace / "runs" / f"gen-{genid}" / "rollout" / "evidence"
         manifest: dict[str, Any] = {}
@@ -125,7 +125,7 @@ def _rollout_history(workspace: Path, rows: list[Row], history_k: int) -> list[R
                 "verdict": row.get("verdict"),
                 "reason": row.get("reason"),
                 "mutated": row.get("mutated"),
-                "trace_analyzer_variant": manifest.get("selected_variant"),
+                "analyze_variant": manifest.get("selected_variant"),
                 "rollout_metrics": metrics,
                 "raw_evidence_dir": evidence_root.relative_to(workspace).as_posix() if evidence_root.is_dir() else None,
                 "source_tag": row.get("tag"),
@@ -190,9 +190,7 @@ def write_feedback_bundle(*, workspace: Path, run_dir: Path, history_k: int = 8)
     )
     has_selected_evidence = "feedback/evidence/selected.md" in evidence_files
     trace_link = (
-        "- [current trace analysis](failures/trace_analyzer.md)\n"
-        if trace_feedback and not has_selected_evidence
-        else ""
+        "- [current trace analysis](failures/analyze.md)\n" if trace_feedback and not has_selected_evidence else ""
     )
     evidence_link = "- [selected trace evidence](evidence/selected.md)\n" if has_selected_evidence else ""
     history_link = "- [rollout and edit history](evidence/history.json)\n"

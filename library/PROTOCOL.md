@@ -7,9 +7,9 @@ path, but the file contract is the protocol.
 
 ## Subprocess Contract
 
-The mechanism invokes required operator files for select, rollout, meta_agent,
+The mechanism invokes required operator files for select, rollout, mutate,
 gate, and record, plus recipe-selected optional operators such as
-trace_analyzer, validate, novelty, and reflect. A copied file may be a library
+analyze, validate, novelty, and reflect. A copied file may be a library
 variant, a recipe-local operator, or a user-provided `script:`. Python variants
 normally end with `sdk.main(VariantClass)`, but any executable file that honors
 the same files is valid.
@@ -78,18 +78,18 @@ artifact paths or labels.
 ABC signature:
 
 ```python
-def analyze(self, checkout: Path, ctx) -> TraceAnalyzerResult:
+def analyze(self, checkout: Path, ctx) -> AnalyzeResult:
 ```
 
 Implement `analyze`. Read method-neutral rollout artifacts such as
 `rollout/cases.json`, then write the selected and raw trace views under
-`trace_analyzer/`. Return `TraceAnalyzerResult` with `summary` and `artifacts`;
-the subprocess writes `trace_analyzer/summary.json` and
-`trace_analyzer/artifacts.json`.
+`analyze/`. Return `AnalyzeResult` with `summary` and `artifacts`;
+the subprocess writes `analyze/summary.json` and
+`analyze/artifacts.json`.
 
 After trace analysis, the mechanism writes the normalized feedback bundle under
 `runs/gen-<id>/feedback/` for the meta-agent to read. If the analyzer writes
-`trace_analyzer/feedback.md` and `trace_analyzer/evidence/selected.md`, the
+`analyze/feedback.md` and `analyze/evidence/selected.md`, the
 mechanism copies the bounded selection into the feedback bundle.
 
 ### Meta-Agent
@@ -97,12 +97,12 @@ mechanism copies the bounded selection into the feedback bundle.
 ABC signature:
 
 ```python
-def run(self, checkout: Path, observation: str, ctx) -> MetaAgentResult:
+def run(self, checkout: Path, observation: str, ctx) -> MutateResult:
 ```
 
-Implement `run`. Return `MetaAgentResult` with fields `changed`, `notes`, and
-`usage`. The subprocess writes `meta_agent/changed.json`, may write
-`meta_agent/rationale.md`, and writes `meta_agent/usage.json`. `usage` is a JSON
+Implement `run`. Return `MutateResult` with fields `changed`, `notes`, and
+`usage`. The subprocess writes `mutate/changed.json`, may write
+`mutate/rationale.md`, and writes `mutate/usage.json`. `usage` is a JSON
 object, commonly including `usd`.
 
 The workspace also exposes gitignored durable storage under `artifacts/`.
@@ -232,8 +232,8 @@ may appear in recipe prose, but `variant:` values point to these files:
 
 - select: `greedy`, `random`, `score_weighted`, `newest`, `pareto`
 - rollout: `failure_focused`, `harbor`, `noop`
-- trace_analyzer: `failure_patterns`, `failed_traces`, `trace_browser`, `trajectory_only`, `execution_records`, `gepa`, `utility_metrics`
-- meta_agent: `aevolve`, `ahe`, `gepa`, `hyperagents` (`runner`: `local` or `harbor`)
+- analyze: `failure_patterns`, `failed_traces`, `trace_browser`, `trajectory_only`, `execution_records`, `gepa`, `utility_metrics`
+- mutate: `aevolve`, `ahe`, `gepa`, `hyperagents` (`runner`: `local` or `harbor`)
 - validate: `hyperagents`, `minibatch_improvement`
 - gate: `hillclimb`, `parent_eligible`
 - record: `gepa`, `jsonl`
@@ -268,8 +268,8 @@ Agent-facing commit refuses missing, rejected, or stale admission results.
 
 Files, not classes, are normative. The mechanism runs subprocess files and
 consumes `parents.json`, `rollout/summary.json`, `rollout/artifacts.json`,
-`trace_analyzer/summary.json`, `trace_analyzer/artifacts.json`,
-`meta_agent/usage.json`, `gate.json`,
+`analyze/summary.json`, `analyze/artifacts.json`,
+`mutate/usage.json`, `gate.json`,
 `record/fields.json`, and the other artifacts listed above. Non-Python
 operators are valid when they honor those files, environment variables, exit
 behavior, and protocol version expectations.

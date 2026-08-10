@@ -20,9 +20,9 @@ The mapping is:
 | A-Evolve responsibility | EvolveX implementation |
 | --- | --- |
 | solve tasks and retain observations | Harbor rollout |
-| behavior-only observation view | `trace_analyzer: trajectory_only` |
-| infer likely outcomes | read-only per-task judge inside `trace_analyzer: trajectory_only` |
-| group patterns and review drafts | `meta_agent: aevolve` |
+| behavior-only observation view | `analyze: trajectory_only` |
+| infer likely outcomes | read-only per-task judge inside `analyze: trajectory_only` |
+| group patterns and review drafts | `mutate: aevolve` |
 | LLM with workspace shell access | Harbor meta-agent runner |
 | mutate prompt and complete skill directories | `target/prompt.md`, `target/skills/**` |
 | Git snapshots | generation tags |

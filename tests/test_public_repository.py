@@ -105,8 +105,8 @@ def test_mkdocs_covers_custom_recipe_operator_and_experiment_workflows() -> None
     stages = {
         "select": "Select",
         "rollout": "Rollout",
-        "trace_analyzer": "Trace Analyzer",
-        "meta_agent": "Meta Agent",
+        "analyze": "Analyze",
+        "mutate": "Mutate",
         "validate": "Validate",
         "novelty": "Novelty",
         "gate": "Gate",

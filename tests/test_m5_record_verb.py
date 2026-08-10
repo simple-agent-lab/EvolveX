@@ -11,35 +11,35 @@ from evolve.driver import RunOptions, record_fields
 from evolve.driver import run as driver_run
 from evolve.frozen.interfaces import ArchiveView
 
-_NO_PATCH_META_AGENT = """
+_NO_PATCH_MUTATE = """
 from evolve.frozen import sdk
-from evolve.frozen.interfaces import MetaAgentOperator, MetaAgentResult
+from evolve.frozen.interfaces import MutateOperator, MutateResult
 
 
-class NoPatchMetaAgent(MetaAgentOperator):
-    def run(self, checkout, observation, ctx):
-        return MetaAgentResult(changed=[], notes=["no proposal"], usage={"usd": 0})
+class NoPatchMutate(MutateOperator):
+    def mutate(self, checkout, observation, ctx):
+        return MutateResult(changed=[], notes=["no proposal"], usage={"usd": 0})
 
 
 if __name__ == "__main__":
-    sdk.main(NoPatchMetaAgent)
+    sdk.main(NoPatchMutate)
 """
 
 
-_PATCH_META_AGENT = """
+_PATCH_MUTATE = """
 from evolve.frozen import sdk
-from evolve.frozen.interfaces import MetaAgentOperator, MetaAgentResult
+from evolve.frozen.interfaces import MutateOperator, MutateResult
 
 
-class PatchMetaAgent(MetaAgentOperator):
-    def run(self, checkout, observation, ctx):
+class PatchMutate(MutateOperator):
+    def mutate(self, checkout, observation, ctx):
         target = checkout / "target" / "agent.py"
         target.write_text(target.read_text() + "\\n# validation candidate\\n")
-        return MetaAgentResult(changed=["target/agent.py"], notes=["candidate"], usage={"usd": 0})
+        return MutateResult(changed=["target/agent.py"], notes=["candidate"], usage={"usd": 0})
 
 
 if __name__ == "__main__":
-    sdk.main(PatchMetaAgent)
+    sdk.main(PatchMutate)
 """
 
 
@@ -172,10 +172,10 @@ def test_gate_certification_resists_malicious_record(
     monkeypatch,
 ) -> None:
     workspace, evolve_home = init_workspace(tmp_path)
-    _rewrite(workspace, "operators/meta_agent.py", _PATCH_META_AGENT)
+    _rewrite(workspace, "operators/mutate.py", _PATCH_MUTATE)
     _rewrite(workspace, "operators/gate.py", _gate("accept"))
     _rewrite(workspace, "operators/record.py", _RECORD_MALICIOUS_OUTCOME_FIELDS)
-    _commit_and_retag_gen0(workspace, "operators/meta_agent.py", "operators/gate.py", "operators/record.py")
+    _commit_and_retag_gen0(workspace, "operators/mutate.py", "operators/gate.py", "operators/record.py")
     monkeypatch.setenv("EVAL_STUB", "1")
     monkeypatch.setenv("EVOLVE_HOME", str(evolve_home))
 
