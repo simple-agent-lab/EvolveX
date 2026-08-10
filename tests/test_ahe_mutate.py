@@ -41,7 +41,7 @@ def _case(tmp_path: Path, *, genid: str = "1", parent: str = "0"):
     (checkout / "evolve.yaml").write_text(
         "experiment:\n  id: ahe\n"
         "surface:\n  include:\n    - target/**\n  exclude: []\n"
-        "operators:\n  mutate: {variant: ahe, runner: harbor}\n"
+        "operators:\n  mutate: {operator: ahe, timeout_s: 600, config: {runner: harbor}}\n"
         "evaluator:\n  engine: harbor\n  dataset: test\n"
     )
     feedback = run_dir / "feedback"

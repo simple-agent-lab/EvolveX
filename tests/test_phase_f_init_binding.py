@@ -24,8 +24,8 @@ def test_real_recipe_binds_harbor_rollout_analyze_and_hyperagents_mutate() -> No
     assert '"target": "/opt/evolve/uv/cache"' in harbor_runtime
     assert '"target": "/installed-agent/uv-cache"' not in harbor_runtime
     assert "library/mutate/_config.py" in materialized.files
-    assert "library/mutate/_runners/local.py" in materialized.files
-    assert "library/mutate/_runners/harbor.py" in materialized.files
+    assert "library/_shared/runners/local.py" in materialized.files
+    assert "library/_shared/runners/harbor.py" in materialized.files
     assert "library/mutate/_support/workspace.py" in materialized.files
     assert "library/mutate/aevolve.py" not in materialized.files
     assert "library/mutate/ahe.py" not in materialized.files
@@ -50,9 +50,9 @@ def test_materialization_preserves_binary_stage_helper_assets(tmp_path: Path) ->
     source = library / "mutate" / "hyperagents.py"
     source.write_text('"""Selected mutate."""\n')
     (library / "mutate" / "prompts" / "strategy.md").write_text("Strategy prompt\n")
-    (library / "mutate" / "_runners").mkdir()
-    (library / "mutate" / "_runners" / "backend.py").write_text("RUNNER = True\n")
-    (library / "mutate" / "_runners" / "strategy.bin").write_bytes(b"\x86\x00")
+    (library / "mutate" / "_support").mkdir()
+    (library / "mutate" / "_support" / "backend.py").write_text("SUPPORT = True\n")
+    (library / "mutate" / "_support" / "strategy.bin").write_bytes(b"\x86\x00")
     (library / "mutate" / "_skeleton.py").write_text("MUST_NOT_COPY = True\n")
     (library / "mutate" / "__pycache__").mkdir()
     (library / "mutate" / "__pycache__" / "strategy.cpython-314.pyc").write_bytes(b"\x86\x00")
@@ -69,8 +69,8 @@ def test_materialization_preserves_binary_stage_helper_assets(tmp_path: Path) ->
 
     materialized = materialize_operators({"mutate": binding}, library=library)
 
-    assert materialized.files["library/mutate/_runners/backend.py"] == "RUNNER = True\n"
-    assert materialized.files["library/mutate/_runners/strategy.bin"] == b"\x86\x00"
+    assert materialized.files["library/mutate/_support/backend.py"] == "SUPPORT = True\n"
+    assert materialized.files["library/mutate/_support/strategy.bin"] == b"\x86\x00"
     assert "library/mutate/prompts/strategy.md" not in materialized.files
     assert "library/mutate/_skeleton.py" not in materialized.files
     assert not any("__pycache__" in path or path.endswith(".pyc") for path in materialized.files)

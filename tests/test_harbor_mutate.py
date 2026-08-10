@@ -32,7 +32,7 @@ LEGACY_CANDIDATE_AGENT = "evolve.integrations.harbor.miniswe_candidate:MiniSweSo
 def _harbor_runner_module():
     spec = importlib.util.spec_from_file_location(
         "harbor_mutate_runner_under_test",
-        ROOT / "library" / "mutate" / "_runners" / "harbor.py",
+        ROOT / "library" / "_shared" / "runners" / "harbor.py",
     )
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -366,7 +366,7 @@ def _checkout(tmp_path: Path) -> tuple[Path, Path]:
         "experiment:\n  id: test\n"
         "target:\n  seed: builtin-dummy\n"
         "surface:\n  include:\n    - target/**\n    - operators/**\n  exclude: []\n"
-        "operators:\n  mutate: {variant: hyperagents, runner: harbor, timeout_s: 30}\n"
+        "operators:\n  mutate: {operator: hyperagents, timeout_s: 30, config: {runner: harbor}}\n"
         "evaluator:\n  engine: harbor\n  dataset: pass@k\n"
         f"  agent: {CANDIDATE_AGENT}\n"
     )
@@ -398,7 +398,6 @@ def _ctx(checkout: Path, run_dir: Path) -> OperatorContext:
         round=None,
         fan_out=1,
         config={
-            "variant": "hyperagents",
             "runner": "harbor",
             "agent": "mini-swe-agent",
             "model": "gpt-test",

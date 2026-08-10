@@ -2,11 +2,15 @@ import hashlib
 import subprocess
 import sys
 import zipfile
+from pathlib import Path
 
 import pytest
 
-from evolve.composition import ResolvedOperator, resolve_builtin_recipe
+from evolve.composition import ResolvedOperator, resolve_builtin_recipe, resolve_recipe
 from evolve.composition.materialize import materialize_operators
+from evolve.config import load_config, render_yaml
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_materialization_contains_selected_operators_and_runtime_helpers_only() -> None:
@@ -20,7 +24,7 @@ def test_materialization_contains_selected_operators_and_runtime_helpers_only() 
     assert "library/__init__.py" in materialized.files
     assert "library/_shared/config.py" in materialized.files
     assert "library/mutate/_config.py" in materialized.files
-    assert "library/mutate/_runners/local.py" in materialized.files
+    assert "library/_shared/runners/local.py" in materialized.files
     assert "library/mutate/_support/workspace.py" in materialized.files
     assert "library/mutate/_skeleton.py" not in materialized.files
     assert all(
@@ -54,6 +58,62 @@ def test_script_binding_does_not_copy_a_stage_helper_bundle(tmp_path) -> None:
 
     assert "operators/select.py" in materialized.files
     assert not any(path.startswith("library/select/") for path in materialized.files)
+
+
+def test_named_analyze_with_script_mutate_imports_from_root_shared_helpers(tmp_path) -> None:
+    script = tmp_path / "custom_mutate.py"
+    script.write_text(
+        '"""Standalone custom mutate operator."""\n\n'
+        "from evolve.frozen import sdk\n"
+        "from evolve.frozen.interfaces import MutateOperator, MutateResult\n"
+        "from library._shared.config import config_object, reject_unknown\n\n"
+        "def validate_config(raw):\n"
+        "    config = config_object(raw)\n"
+        "    reject_unknown(config, set())\n"
+        "    return config\n\n"
+        "class CustomMutate(MutateOperator):\n"
+        "    def mutate(self, checkout, observation, ctx):\n"
+        "        return MutateResult(changed=[], notes=[], usage={'usd': 0})\n\n"
+        "if __name__ == '__main__':\n"
+        "    sdk.main(CustomMutate, validate_config=validate_config)\n"
+    )
+    recipe = tmp_path / "recipe"
+    recipe.mkdir()
+    config = load_config(ROOT / "recipes" / "ahe" / "evolve.yaml")
+    config["operators"]["mutate"] = {
+        "script": str(script),
+        "timeout_s": 10,
+        "config": {},
+    }
+    (recipe / "evolve.yaml").write_text(render_yaml(config))
+    resolved = resolve_recipe(recipe)
+    assert resolved.operators["mutate"].source_kind == "script"
+
+    materialized = materialize_operators(resolved.operators)
+    for relative, content in materialized.files.items():
+        destination = tmp_path / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if isinstance(content, bytes):
+            destination.write_bytes(content)
+        else:
+            destination.write_text(content)
+
+    assert not any(path.startswith("library/mutate/") for path in materialized.files)
+    for stage in ("mutate", "analyze"):
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import runpy, sys; sys.argv = [sys.argv[1], '--describe']; "
+                "runpy.run_path(sys.argv[0], run_name='__main__')",
+                str(tmp_path / f"operators/{stage}.py"),
+            ],
+            cwd=tmp_path,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
 
 
 def test_materialization_supports_packaged_traversables(tmp_path) -> None:

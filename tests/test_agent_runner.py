@@ -94,8 +94,9 @@ def test_run_mutate_uses_env_command_and_reports_missing_command(
     monkeypatch.delenv("EVOLVE_AGENT_COMMAND")
     with pytest.raises(AgentCommandError) as excinfo:
         run_mutate(workspace=workspace, prompt="x", config={})
-    assert "EVOLVE_AGENT_COMMAND" in str(excinfo.value)
-    assert "operators.mutate.command" in str(excinfo.value)
+    assert str(excinfo.value) == (
+        "missing mutation command; set EVOLVE_AGENT_COMMAND or operators.mutate.config.command"
+    )
     assert excinfo.value.returncode == 2
 
 

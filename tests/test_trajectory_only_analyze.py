@@ -4,6 +4,7 @@ import random
 from pathlib import Path
 from types import SimpleNamespace
 
+from evolve.config import load_config
 from evolve.frozen.interfaces import OperatorContext
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -131,9 +132,13 @@ def test_trajectory_judge_can_use_a_separate_modelhub_environment(tmp_path: Path
         "operator_blocks",
         lambda _checkout: {
             "mutate": {
-                "agent": "codex",
-                "model": "gpt-5.4",
-                "agent_kwargs": {"reasoning_effort": "xhigh"},
+                "operator": "aevolve",
+                "timeout_s": 3600,
+                "config": {
+                    "agent": "codex",
+                    "model": "gpt-5.4",
+                    "agent_kwargs": {"reasoning_effort": "xhigh"},
+                },
             }
         },
     )
@@ -161,6 +166,51 @@ def test_trajectory_judge_can_use_a_separate_modelhub_environment(tmp_path: Path
         "OPENAI_BASE_URL": "http://judge.example/v1",
         "OPENAI_API_BASE": "http://judge.example/v1",
     }
+
+
+def test_aevolve_production_recipe_reaches_trajectory_judge_with_nested_mutate_config(
+    tmp_path: Path, monkeypatch
+) -> None:
+    module = _module()
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    recipe_path = ROOT / "recipes" / "aevolve" / "evolve.yaml"
+    production = load_config(recipe_path)
+    (checkout / "evolve.yaml").write_bytes(recipe_path.read_bytes())
+    analyze = production["operators"]["analyze"]
+    assert isinstance(analyze, dict)
+    ctx = OperatorContext(
+        workspace=checkout,
+        checkout=checkout,
+        run_dir=checkout / "runs" / "gen-1",
+        genid="1",
+        parent=None,
+        round=None,
+        fan_out=1,
+        config=dict(analyze["config"]),
+        rng=random.Random(0),
+    )
+    observed: list[dict[str, object]] = []
+
+    def capture_runner(_checkout, _prompt, runner_ctx, **_kwargs):
+        observed.append(dict(runner_ctx.config))
+        return SimpleNamespace(
+            output='{"score": 8, "category": "software-engineering", "outcome": "fixed", "failure_reason": ""}',
+            usage={},
+        )
+
+    monkeypatch.setattr(module, "run_readonly_agent", capture_runner)
+
+    verdicts = module._judge_records(
+        checkout,
+        ctx,
+        [{"task_id": "task-a", "compressed_trajectory": "ran tests"}],
+    )
+
+    assert verdicts[0]["score"] == 8
+    assert len(observed) == 1
+    assert observed[0]["agent"] == "codex"
+    assert observed[0]["model"] == "gpt-5.4"
 
 
 def test_trajectory_only_passes_runtime_failure_observation_to_judge(tmp_path: Path, monkeypatch) -> None:

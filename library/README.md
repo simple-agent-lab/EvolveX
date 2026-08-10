@@ -4,18 +4,19 @@ The source catalog is organized by fixed lifecycle stage. Every public Python
 entry at `library/<stage>/<name>.py` is a named operator; adding a valid file
 makes it discoverable without a registry edit. Recipes contain no operator
 code. They select a name and provide configuration, and initialization freezes
-the selected bytes into `operators/<stage>.py` while copying the catalog and
-helper assets into the workspace for controlled process evolution.
+only the recipe-selected active scripts into `operators/`. The generated
+`library/` contains only the shared runtime helpers imported by those selected
+scripts.
 
 ```text
 library/
 ├─ _shared/     shared underscore-prefixed helpers
+│  └─ runners/ local · harbor
 ├─ select/      greedy · newest · pareto · random · score_weighted
 ├─ rollout/     failure_focused · harbor · noop · parent_evaluation
 ├─ analyze/     failure_patterns · trace_browser · trajectory_only · …
 ├─ mutate/      aevolve · ahe · gepa · hyperagents
-│  ├─ _support/ shared evidence loading
-│  └─ _runners/ local · harbor
+│  └─ _support/ shared evidence loading
 ├─ validate/    hyperagents · minibatch_improvement
 ├─ novelty/     accept_all · diff_similarity
 ├─ gate/        hillclimb · parent_eligible · ahe_artifact_valid

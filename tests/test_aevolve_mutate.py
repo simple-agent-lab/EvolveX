@@ -43,7 +43,7 @@ def _case(tmp_path: Path):
     (checkout / "evolve.yaml").write_text(
         "experiment:\n  id: aevolve\n"
         "surface:\n  include:\n    - target/**\n  exclude: []\n"
-        "operators:\n  mutate: {variant: aevolve, runner: harbor}\n"
+        "operators:\n  mutate: {operator: aevolve, timeout_s: 600, config: {runner: harbor}}\n"
         "evaluator:\n  engine: harbor\n  dataset: test\n"
     )
     prior = workspace / "runs" / "gen-1" / "rollout"

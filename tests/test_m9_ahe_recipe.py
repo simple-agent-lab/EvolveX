@@ -41,9 +41,9 @@ def test_ahe_recipe_initializes_harbor_miniswe_composition(tmp_path: Path) -> No
     assert "source=library/select/ahe_latest.py" in (workspace / "operators/select.py").read_text()
     assert "source=library/gate/ahe_artifact_valid.py" in (workspace / "operators/gate.py").read_text()
     for relative in (
-        "library/mutate/_runners/__init__.py",
-        "library/mutate/_runners/local.py",
-        "library/mutate/_runners/harbor.py",
+        "library/_shared/runners/__init__.py",
+        "library/_shared/runners/local.py",
+        "library/_shared/runners/harbor.py",
         "library/mutate/_support/evidence.py",
     ):
         assert (workspace / relative).is_file(), relative

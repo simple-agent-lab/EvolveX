@@ -8,6 +8,7 @@ import pytest
 
 from evolve.agent import AgentCommandError, AgentRunResult
 from evolve.composition.catalog import resolve_operator, validate_operator_config
+from evolve.config import load_config
 from evolve.frozen.interfaces import OperatorContext
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -31,12 +32,14 @@ def _ctx(tmp_path: Path, *, genid: str = "1", parent: str = "0") -> OperatorCont
     (checkout / "evolve.yaml").write_text(
         "operators:\n"
         "  mutate:\n"
-        "    variant: ahe\n"
-        "    runner: harbor\n"
-        "    agent: evolve.integrations.harbor.miniswe_task_file:InstalledMiniSweAgent\n"
-        "    model: gpt-test\n"
-        "    environment: docker\n"
-        "    editable_roots: [target]\n"
+        "    operator: ahe\n"
+        "    timeout_s: 3600\n"
+        "    config:\n"
+        "      runner: harbor\n"
+        "      agent: evolve.integrations.harbor.miniswe_task_file:InstalledMiniSweAgent\n"
+        "      model: gpt-test\n"
+        "      environment: docker\n"
+        "      editable_roots: [target]\n"
     )
     return OperatorContext(
         workspace=workspace,
@@ -178,6 +181,50 @@ def test_ahe_debugger_reuses_only_allowlisted_mutate_config(tmp_path: Path) -> N
         "max_retries": 0,
     }
     assert "editable_roots" not in config
+
+
+@pytest.mark.parametrize(
+    ("recipe", "expected_agent", "expected_model"),
+    [
+        (
+            "ahe",
+            "evolve.integrations.harbor.miniswe_task_file:InstalledMiniSweAgent",
+            "openai/gpt-5.4-2026-03-05",
+        ),
+        ("ahe_codex", "codex", "gpt-5.4"),
+    ],
+)
+def test_ahe_production_recipes_reach_debugger_runner_with_nested_mutate_config(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    recipe: str,
+    expected_agent: str,
+    expected_model: str,
+) -> None:
+    module = _module()
+    ctx = _ctx(tmp_path)
+    recipe_path = ROOT / "recipes" / recipe / "evolve.yaml"
+    production = load_config(recipe_path)
+    (ctx.checkout / "evolve.yaml").write_bytes(recipe_path.read_bytes())
+    analyze = production["operators"]["analyze"]
+    assert isinstance(analyze, dict)
+    ctx.config.clear()
+    ctx.config.update(analyze["config"])
+    observed: list[dict[str, object]] = []
+
+    def capture_runner(checkout, prompt, runner_ctx, **kwargs):
+        observed.append(dict(runner_ctx.config))
+        return _fake_debugger(checkout, prompt, runner_ctx, **kwargs)
+
+    monkeypatch.setattr(module, "run_readonly_agent", capture_runner)
+    job = module._build_jobs([_case("task-a", "failed", 0)], 90)[0]
+
+    module._run_debugger_job(ctx.checkout, ctx, job)
+
+    assert len(observed) == 1
+    assert observed[0]["runner"] == "harbor"
+    assert observed[0]["agent"] == expected_agent
+    assert observed[0]["model"] == expected_model
 
 
 def test_ahe_debugger_can_be_configured_without_mutate(tmp_path: Path) -> None:

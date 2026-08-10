@@ -14,7 +14,7 @@ from typing import Any
 
 from evolve.agent import AgentCommandError
 from evolve.archive import archive_path, merged_rows
-from evolve.config import operator_blocks
+from evolve.config import operator_blocks, operator_runtime_config
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import AnalyzeOperator, AnalyzeResult, OperatorContext
 from evolve.integrations.harbor._agent_roles import uses_miniswe_submission
@@ -27,7 +27,7 @@ from library._shared.config import (
     reject_unknown,
     string,
 )
-from library.mutate._runners import run_readonly_agent
+from library._shared.runners import run_readonly_agent
 
 _CONFIG_KEYS = {
     "max_tasks",
@@ -453,12 +453,12 @@ def _debugger_runner_config(checkout: Path, analyzer_config: dict[str, Any]) -> 
         raise RuntimeError("AHE debugger configuration must be a mapping")
     source = debugger
     if source is None:
-        meta = operator_blocks(checkout).get("mutate")
-        if not isinstance(meta, dict):
+        try:
+            source = operator_runtime_config(operator_blocks(checkout), "mutate")
+        except ValueError as exc:
             raise RuntimeError(
-                "AHE debugger requires analyze.debugger configuration (or legacy operators.mutate configuration)"
-            )
-        source = meta
+                "AHE debugger requires analyze.debugger configuration (or operators.mutate.config configuration)"
+            ) from exc
     config = {key: source[key] for key in _DEBUGGER_RUNNER_KEYS if key in source}
     debugger_agent_kwargs = analyzer_config.get("debugger_agent_kwargs")
     if debugger_agent_kwargs is not None:

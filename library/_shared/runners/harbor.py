@@ -31,7 +31,7 @@ from evolve.mutate_budget import (
 )
 from evolve.patching import SurfacePolicy, load_surface_policy, patch_parent_ref
 from evolve.surface import check_paths
-from library.mutate._support.artifacts import ensure_artifact_layout
+from library._shared.artifacts import ensure_artifact_layout
 
 _HARBOR_WORKDIR = "/app"
 _ARTIFACT_SOURCE = "/app/task/workspace"

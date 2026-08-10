@@ -22,6 +22,6 @@ population memory, but the population has only one active frontier.
 `select: {operator: greedy, config: {}}` resolves to [`library/select/greedy.py`](../../library/select/greedy.py).
 `rollout: {operator: harbor, config: {...}}` resolves to [`library/rollout/harbor.py`](../../library/rollout/harbor.py).
 `analyze: {operator: failure_patterns, config: {...}}` resolves to [`library/analyze/failure_patterns.py`](../../library/analyze/failure_patterns.py).
-`mutate: {operator: hyperagents, config: {runner: harbor, ...}}` resolves to [`library/mutate/hyperagents.py`](../../library/mutate/hyperagents.py), which imports [`library/mutate/_runners/harbor.py`](../../library/mutate/_runners/harbor.py).
+`mutate: {operator: hyperagents, config: {runner: harbor, ...}}` resolves to [`library/mutate/hyperagents.py`](../../library/mutate/hyperagents.py), which imports [`library/_shared/runners/harbor.py`](../../library/_shared/runners/harbor.py).
 `gate: {operator: hillclimb, config: {}}` resolves to [`library/gate/hillclimb.py`](../../library/gate/hillclimb.py).
 `record: {operator: jsonl, config: {}}` resolves to [`library/record/jsonl.py`](../../library/record/jsonl.py).

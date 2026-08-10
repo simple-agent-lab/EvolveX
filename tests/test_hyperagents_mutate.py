@@ -41,7 +41,7 @@ def _checkout(tmp_path: Path) -> tuple[Path, Path]:
         "experiment:\n  id: test\n  max_generations: 4\n"
         "target:\n  seed: builtin-dummy\n"
         "surface:\n  include:\n    - target/**\n    - operators/**\n  exclude: []\n"
-        "operators:\n  mutate: {timeout_s: 30}\n"
+        "operators:\n  mutate: {operator: hyperagents, timeout_s: 30, config: {}}\n"
         "evaluator:\n  engine: harbor\n  dataset: pass@k\n"
         "  agent: evolve.integrations.harbor.miniswe_candidate:MiniSweSourceAgent\n"
     )

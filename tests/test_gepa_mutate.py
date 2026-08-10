@@ -38,7 +38,7 @@ def _case(tmp_path: Path):
     (checkout / "evolve.yaml").write_text(
         "experiment:\n  id: gepa\n"
         "surface:\n  include:\n    - target/**\n  exclude: []\n"
-        "operators:\n  mutate: {variant: gepa}\n"
+        "operators:\n  mutate: {operator: gepa, timeout_s: 600, config: {}}\n"
         "evaluator:\n  engine: harbor\n  dataset: test\n"
     )
     evidence = run_dir / "analyze/evidence"

@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from evolve.agent import AgentCommandError
-from evolve.config import operator_blocks
+from evolve.config import operator_blocks, operator_runtime_config
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import AnalyzeOperator, AnalyzeResult, OperatorContext
 from evolve.integrations.harbor._agent_roles import uses_miniswe_submission
@@ -33,7 +33,7 @@ from library._shared.config import (
     reject_unknown,
     string,
 )
-from library.mutate._runners import run_readonly_agent
+from library._shared.runners import run_readonly_agent
 
 _CONFIG_KEYS = {
     "history_cycles",
@@ -119,9 +119,10 @@ _JUDGE_CREDENTIAL_ENV = (
 
 
 def _runner_config(checkout: Path, analyzer_config: dict[str, Any]) -> dict[str, Any]:
-    meta = operator_blocks(checkout).get("mutate")
-    if not isinstance(meta, dict):
-        raise RuntimeError("trajectory_only judge requires operators.mutate configuration")
+    try:
+        meta = operator_runtime_config(operator_blocks(checkout), "mutate")
+    except ValueError as exc:
+        raise RuntimeError("trajectory_only judge requires operators.mutate.config configuration") from exc
     config = {key: meta[key] for key in _RUNNER_KEYS if key in meta}
     judge_agent = str(analyzer_config.get("judge_agent") or "").strip()
     if judge_agent:

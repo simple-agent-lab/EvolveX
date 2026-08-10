@@ -126,7 +126,7 @@ def _resolve_command(config: dict[str, Any]) -> str:
         return env_command
 
     raise AgentCommandError(
-        "missing mutation command; set EVOLVE_AGENT_COMMAND or operators.mutate.command",
+        "missing mutation command; set EVOLVE_AGENT_COMMAND or operators.mutate.config.command",
         returncode=2,
     )
 

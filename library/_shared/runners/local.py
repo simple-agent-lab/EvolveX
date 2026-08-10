@@ -1,4 +1,4 @@
-"""Run a configured local command as the editing-agent backend."""
+"""Run a configured local command as the shared editing-agent backend."""
 
 from __future__ import annotations
 

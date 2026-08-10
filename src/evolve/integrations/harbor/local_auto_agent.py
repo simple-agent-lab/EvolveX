@@ -177,7 +177,8 @@ class LocalAutoAgent(BaseAgent):
         model_name = self._model_for(spec)
         if spec.requires_model and not model_name:
             raise ValueError(
-                f"local agent {spec.name!r} requires a model; set operators.mutate.model or agent_kwargs.model_by_agent"
+                f"local agent {spec.name!r} requires a model; set operators.mutate.config.model "
+                "or agent_kwargs.model_by_agent"
             )
         agent_class = _import_agent_class(spec.import_path)
         delegate_kwargs = dict(self._agent_kwargs_by_agent.get(spec.name) or {})

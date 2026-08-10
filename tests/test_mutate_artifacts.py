@@ -9,8 +9,8 @@ import pytest
 from evolve.agent import AgentRunResult
 from evolve.composition.catalog import resolve_operator, validate_operator_config
 from evolve.frozen.interfaces import OperatorContext
-from library.mutate import _runners as runners
-from library.mutate._support.artifacts import (
+from library._shared import runners
+from library._shared.artifacts import (
     artifact_generation_relative,
     render_artifact_guidance,
 )

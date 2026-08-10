@@ -145,6 +145,18 @@ def test_reports_all_missing_local_agents(tmp_path: Path, monkeypatch: pytest.Mo
         asyncio.run(agent.setup(FakeEnvironment()))
 
 
+def test_missing_model_reports_canonical_mutate_config_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(adapter, "discover_local_agent", lambda preferred_agents=None: adapter._spec_by_name("codex"))
+    agent = adapter.LocalAutoAgent(logs_dir=tmp_path)
+
+    with pytest.raises(ValueError) as excinfo:
+        asyncio.run(agent.setup(FakeEnvironment({"codex"})))
+
+    assert str(excinfo.value) == (
+        "local agent 'codex' requires a model; set operators.mutate.config.model or agent_kwargs.model_by_agent"
+    )
+
+
 def test_rejects_missing_atif_trajectory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(adapter, "discover_local_agent", lambda preferred_agents=None: adapter._spec_by_name("codex"))
     monkeypatch.setattr(adapter, "_import_agent_class", lambda import_path: FakeDelegate)

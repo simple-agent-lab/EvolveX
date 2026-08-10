@@ -563,7 +563,7 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
         "library/__init__.py",
         "library/_shared/config.py",
         "library/mutate/_config.py",
-        "library/mutate/_runners/local.py",
+        "library/_shared/runners/local.py",
         "library/mutate/_support/workspace.py",
     ):
         assert (workspace / helper).is_file(), helper

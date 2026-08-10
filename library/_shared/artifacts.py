@@ -1,4 +1,4 @@
-"""Shared durable-artifact paths and prompt guidance for meta-agents."""
+"""Shared durable-artifact paths, layout, and prompt guidance."""
 
 from __future__ import annotations
 

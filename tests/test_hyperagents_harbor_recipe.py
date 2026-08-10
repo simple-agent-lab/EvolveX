@@ -45,4 +45,4 @@ def test_hyperagents_recipe_initializes_broad_harbor_bundle(tmp_path: Path) -> N
     assert "Strongly prefer a substantive `target/**`" in prompt
     assert "operator-only proposal is allowed" in prompt
     assert "`operators/**` remains editable" in prompt
-    assert "def _install_bundle(" in (workspace / "library/mutate/_runners/harbor.py").read_text()
+    assert "def _install_bundle(" in (workspace / "library/_shared/runners/harbor.py").read_text()

@@ -21,10 +21,10 @@ README.md                     this workspace guide
 archive.jsonl                 append-only lineage record
 evolve                        workspace console
 evolve.yaml                   rendered recipe configuration
-library/                      frozen operator catalog and imported helpers
+library/                      only shared runtime helpers imported by selected scripts
 LICENSE.evolvex               license for the vendored framework and operator library
 NOTICE.evolvex                framework and third-party attribution notices
-operators/                    active operator scripts, supporting Markdown, and index
+operators/                    recipe-selected active scripts, supporting Markdown, and index
 program.md                    loop orchestration guidance
 pyproject.toml, uv.lock       locked workspace runtime
 runs/                         generated per-generation state

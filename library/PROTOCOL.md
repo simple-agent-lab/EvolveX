@@ -234,8 +234,9 @@ genid)`, and reports render coverage and certification independently from score.
    `evolve recipe check` before initialization.
 
 Underscore-prefixed modules such as `library/_shared/` and
-`library/mutate/_runners/` are shared helpers. Discovery excludes them, so
-helper refactors do not create accidental public operators.
+`library/mutate/_support/` are shared helpers. Discovery excludes them, so
+helper refactors do not create accidental public operators. Shared local and
+Harbor runners live under `library/_shared/runners/`.
 
 ## Shipped Operators
 

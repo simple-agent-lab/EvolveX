@@ -11,6 +11,7 @@ from evolve.agent import AgentCommandError
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import MutateOperator, MutateResult, OperatorContext
 from evolve.patching import create_candidate_patch, load_surface_policy, patch_parent_ref
+from library._shared.artifacts import render_artifact_guidance
 from library._shared.config import (
     boolean,
     config_object,
@@ -19,9 +20,8 @@ from library._shared.config import (
     string,
     string_list,
 )
+from library._shared.runners import run_agent, runner_name
 from library.mutate._config import RUNNER_KEYS, normalize_runner_config
-from library.mutate._runners import run_agent, runner_name
-from library.mutate._support.artifacts import render_artifact_guidance
 from library.mutate._support.workspace import workspace_contract
 
 MANIFEST_START = "<AHE_CHANGE_MANIFEST>"
