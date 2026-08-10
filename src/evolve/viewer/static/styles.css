@@ -124,7 +124,9 @@ main { width: min(1280px, 100%); margin: 0 auto; padding: 34px clamp(22px, 4vw, 
 .performance-page-button { display: grid; place-items: center; width: 25px; height: 25px; padding: 0; color: var(--ink); background: white; border: 1px solid var(--line-strong); border-radius: 7px; font-size: 18px; line-height: 1; cursor: pointer; }
 .performance-page-button:hover:not(:disabled) { color: white; background: var(--accent); border-color: var(--accent); }
 .performance-page-button:disabled { color: #b8c0bc; background: #f5f7f6; cursor: default; }
-[data-performance-page][hidden] { display: none; }
+.performance-pages { display: grid; }
+.performance-page { grid-area: 1 / 1; visibility: hidden; opacity: 0; pointer-events: none; }
+.performance-page.is-active { visibility: visible; opacity: 1; pointer-events: auto; }
 .train-score-change { min-height: 150px; display: grid; grid-template-columns: minmax(90px, 1fr) auto minmax(90px, 1fr); align-items: center; gap: 16px; padding: 16px 8px; }
 .train-score-node { padding: 18px 12px; background: var(--canvas); border: 1px solid var(--line); border-radius: 10px; text-align: center; }
 .train-score-node span, .train-score-arrow span { display: block; color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }

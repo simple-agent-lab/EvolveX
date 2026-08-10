@@ -238,15 +238,17 @@ function performanceCard(detail, generations, globalResult = false) {
     : 'Canonical evaluation only';
   return `<section class="card performance-card" data-performance-card data-page="1">
     <div class="card-header"><div><h3>${globalResult ? 'Final performance' : 'Performance'}</h3><p data-performance-subtitle data-canonical-label="${canonicalSubtitle}">${canonicalSubtitle}</p></div><div class="performance-header-actions">${performance.contract_certified == null ? '' : badge(performance.contract_certified ? 'certified' : 'uncertified')}${showTrainPage ? '<div class="performance-pager" aria-label="Performance pages"><button class="performance-page-button" type="button" data-performance-previous aria-label="Previous performance page" disabled>‹</button><span><strong data-performance-page-number>1</strong> / 2</span><button class="performance-page-button" type="button" data-performance-next aria-label="Next performance page">›</button></div>' : ''}</div></div>
-    <div data-performance-page="1">
-      <div class="score-value">${number(performance.score)}${delta == null ? '' : `<span class="score-delta ${delta >= 0 ? 'plus' : 'minus'}">${delta >= 0 ? '+' : ''}${number(delta)}</span>`}</div>
-      ${scoreTrend(generations, detail?.summary?.genid)}
-      <div class="legend"><span><strong>${performance.observed_trials ?? '—'}</strong> observed trials</span><span><strong>${performance.expected_trials ?? '—'}</strong> expected</span><span>${performance.comparable ? 'Parent delta comparable' : 'Parent delta not comparable'}</span></div>
+    <div class="performance-pages">
+      <div class="performance-page is-active" data-performance-page="1" aria-hidden="false">
+        <div class="score-value">${number(performance.score)}${delta == null ? '' : `<span class="score-delta ${delta >= 0 ? 'plus' : 'minus'}">${delta >= 0 ? '+' : ''}${number(delta)}</span>`}</div>
+        ${scoreTrend(generations, detail?.summary?.genid)}
+        <div class="legend"><span><strong>${performance.observed_trials ?? '—'}</strong> observed trials</span><span><strong>${performance.expected_trials ?? '—'}</strong> expected</span><span>${performance.comparable ? 'Parent delta comparable' : 'Parent delta not comparable'}</span></div>
+      </div>
+      ${showTrainPage ? `<div class="performance-page" data-performance-page="2" aria-hidden="true">
+        ${trainScoreChange(performance.train_score_before, performance.train_score_after, performance.train_delta)}
+        <div class="train-score-note"><strong>GEPA validation minibatch</strong><span>This train comparison decides whether the proposal proceeds to canonical evaluation.</span></div>
+      </div>` : ''}
     </div>
-    ${showTrainPage ? `<div data-performance-page="2" hidden>
-      ${trainScoreChange(performance.train_score_before, performance.train_score_after, performance.train_delta)}
-      <div class="train-score-note"><strong>GEPA validation minibatch</strong><span>This train comparison decides whether the proposal proceeds to canonical evaluation.</span></div>
-    </div>` : ''}
   </section>`;
 }
 
@@ -254,7 +256,9 @@ function setPerformancePage(card, page) {
   const selected = Math.max(1, Math.min(2, Number(page) || 1));
   card.dataset.page = String(selected);
   card.querySelectorAll('[data-performance-page]').forEach((panel) => {
-    panel.hidden = Number(panel.dataset.performancePage) !== selected;
+    const active = Number(panel.dataset.performancePage) === selected;
+    panel.classList.toggle('is-active', active);
+    panel.setAttribute('aria-hidden', String(!active));
   });
   const numberLabel = card.querySelector('[data-performance-page-number]');
   const subtitle = card.querySelector('[data-performance-subtitle]');

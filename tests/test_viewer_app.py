@@ -164,6 +164,8 @@ def test_frontend_has_required_navigation_and_refresh_contract() -> None:
     assert "Champion agent ·" in javascript
     assert "hasTrainScore && !globalResult" in javascript
     assert "overviewPlaceholderCard" in javascript
+    assert "performance-pages" in javascript
+    assert "panel.classList.toggle('is-active', active)" in javascript
     assert all(
         label in javascript
         for label in (
