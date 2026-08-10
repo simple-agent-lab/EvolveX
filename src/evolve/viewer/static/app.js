@@ -1,7 +1,6 @@
 import {
   artifactHref,
   artifactPresentation,
-  diffMiniature,
   finalResultGeneration,
   generationsThrough,
   scoreTrend,
@@ -9,14 +8,7 @@ import {
   trainScoreChange,
 } from './viewer-ui.js';
 
-const state = {
-  snapshot: null,
-  revision: '',
-  timer: null,
-  refreshing: false,
-  artifactCache: new Map(),
-  evolutionTimer: null,
-};
+const state = { snapshot: null, revision: '', timer: null, refreshing: false, artifactCache: new Map() };
 const content = document.querySelector('#viewer-content');
 const experimentName = document.querySelector('#experiment-name');
 const healthPill = document.querySelector('#health-pill');
@@ -148,8 +140,6 @@ function activateNavigation(name) {
 
 async function renderRoute(pathname, params) {
   if (!state.snapshot) return;
-  stopEvolutionPlayback();
-  content.classList.remove('evolution-mode');
   if (pathname.startsWith('/artifacts/')) {
     activateNavigation(null);
     await renderArtifact(decodeURIComponent(pathname.slice('/artifacts/'.length)));
@@ -349,174 +339,58 @@ async function renderArtifact(artifactId) {
   }
   const {metadata, text} = loaded;
   const generationMatch = metadata.relative_path.match(/^runs\/gen-([^/]+)\//);
-  const backHref = generationMatch ? `/generations/${encodeURIComponent(generationMatch[1])}` : '/';
+  const genid = generationMatch?.[1] || null;
+  const generation = genid ? state.snapshot.generations.find((item) => item.genid === genid) : null;
+  const backHref = genid ? `/generations/${encodeURIComponent(genid)}` : '/';
   const presentation = artifactPresentation(metadata, text);
-  if (generationMatch && presentation.mode === 'diff') {
-    const evolution = await loadDiffEvolution(artifactId);
-    if (evolution.length > 1) {
-      renderDiffEvolution(evolution, artifactId);
-      return;
-    }
-  }
+  const isDiff = presentation.mode === 'diff';
+  const title = isDiff && genid ? `Generation ${genid} diff` : metadata.label;
   content.innerHTML = `
     <div class="page-heading artifact-heading">
-      <div><p class="eyebrow">Artifact preview</p><h2>${escapeHtml(metadata.label)}</h2><p class="artifact-path">${escapeHtml(metadata.relative_path)}</p></div>
-      <div class="page-actions"><a class="button" data-evolve-link href="${backHref}">← ${generationMatch ? 'Generation' : 'Overview'}</a><a class="button" target="_blank" href="${escapeHtml(metadata.content_url)}">Raw</a><button class="button" id="artifact-wrap" type="button" aria-pressed="false">Wrap lines</button></div>
-    </div>
-    ${metadata.truncated ? '<div class="artifact-notice">Preview limited to the first 1 MiB of this artifact.</div>' : ''}
-    <section class="card artifact-card"><div class="artifact-meta"><span>${escapeHtml(metadata.kind || 'text')}</span><span>${formatBytes(metadata.size)}</span></div><div id="artifact-preview" class="artifact-preview no-wrap"></div></section>`;
-
-  const preview = document.querySelector('#artifact-preview');
-  const wrapButton = document.querySelector('#artifact-wrap');
-  wrapButton.addEventListener('click', () => {
-    const wrapping = preview.classList.toggle('wrap');
-    preview.classList.toggle('no-wrap', !wrapping);
-    wrapButton.setAttribute('aria-pressed', String(wrapping));
-    wrapButton.textContent = wrapping ? 'Do not wrap' : 'Wrap lines';
-  });
-  renderArtifactPresentation(preview, presentation);
-}
-
-async function loadDiffEvolution(selectedArtifactId) {
-  const entries = await Promise.all(state.snapshot.generations.filter((generation) => generation.patch_artifact_id).map(async (generation) => {
-    try {
-      const loaded = await loadArtifact(generation.patch_artifact_id);
-      if (artifactPresentation(loaded.metadata, loaded.text).mode !== 'diff') return null;
-      return {
-        artifactId: generation.patch_artifact_id,
-        genid: generation.genid,
-        parent: generation.parent,
-        status: generation.status,
-        score: generation.score,
-        insertions: generation.insertions,
-        deletions: generation.deletions,
-        metadata: loaded.metadata,
-        text: loaded.text,
-      };
-    } catch { return null; }
-  }));
-  const available = entries.filter(Boolean);
-  return available.some((entry) => entry.artifactId === selectedArtifactId) ? available : [];
-}
-
-function renderDiffEvolution(entries, selectedArtifactId) {
-  const selectedIndex = Math.max(0, entries.findIndex((entry) => entry.artifactId === selectedArtifactId));
-  content.classList.add('evolution-mode');
-  content.innerHTML = `
-    <div class="page-heading artifact-heading evolution-heading">
-      <div><p class="eyebrow">Diff evolution</p><h2 id="artifact-title"></h2><p id="artifact-path" class="artifact-path"></p></div>
+      <div><p class="eyebrow">${isDiff ? 'Generation comparison' : 'Artifact preview'}</p><h2>${escapeHtml(title)}</h2><p class="artifact-path">${escapeHtml(metadata.relative_path)}</p></div>
       <div class="page-actions">
-        <a id="artifact-back" class="button" data-evolve-link></a>
-        <button class="button evolution-control" id="evolution-previous" type="button" aria-label="Previous generation">← Previous</button>
-        <button class="button evolution-control" id="evolution-play" type="button" aria-pressed="false">▶ Play</button>
-        <button class="button evolution-control" id="evolution-next" type="button" aria-label="Next generation">Next →</button>
-        <a class="button" id="artifact-raw" target="_blank">Raw</a>
+        <a class="button" data-evolve-link href="${backHref}">← ${genid ? `Generation ${escapeHtml(genid)}` : 'Overview'}</a>
+        ${isDiff ? '<button class="button diff-layout-button primary" type="button" data-diff-layout="side-by-side" aria-pressed="true">Split</button><button class="button diff-layout-button" type="button" data-diff-layout="line-by-line" aria-pressed="false">Unified</button>' : ''}
+        <a class="button" target="_blank" href="${escapeHtml(metadata.content_url)}">Raw</a>
         <button class="button" id="artifact-wrap" type="button" aria-pressed="false">Wrap lines</button>
       </div>
     </div>
-    <div class="evolution-diff-layout" data-evolution-selected="${selectedIndex}">
-      <section class="card artifact-card evolution-preview-card">
-        <div class="evolution-preview-meta">
-          <div><span id="evolution-iteration"></span><strong id="evolution-parent"></strong></div>
-          <div><span id="evolution-score"></span><strong id="evolution-diff-stat"></strong></div>
-        </div>
-        <div id="artifact-preview" class="artifact-preview no-wrap"></div>
-      </section>
-      <aside class="card evolution-map-card" aria-label="Diff history">
-        <div class="card-header"><div><h3>Evolution history</h3><p>Choose a generation to inspect its mutation</p></div><span class="muted">${entries.length} diffs</span></div>
-        <div class="evolution-map" role="listbox" aria-label="Generation diffs">
-          ${entries.map((entry, index) => `<button class="evolution-node" type="button" role="option" data-evolution-index="${index}" aria-selected="${index === selectedIndex}">
-            <span class="evolution-node-parent">${entry.parent == null ? 'Initial mutation' : `From G${escapeHtml(entry.parent)}`}</span>
-            <span class="mini-diff" aria-hidden="true">${diffMiniature(entry.text)}</span>
-            <span class="evolution-node-footer"><strong>Generation ${escapeHtml(entry.genid)}</strong><span><i class="plus">+${entry.insertions}</i> <i class="minus">−${entry.deletions}</i></span></span>
-          </button>`).join('')}
-        </div>
-      </aside>
-    </div>`;
+    ${metadata.truncated ? '<div class="artifact-notice">Preview limited to the first 1 MiB of this artifact.</div>' : ''}
+    <section class="card artifact-card">
+      <div class="artifact-meta"><span>${escapeHtml(metadata.kind || 'text')}</span><span>${formatBytes(metadata.size)}</span></div>
+      ${isDiff && genid ? `<div id="diff-comparison-labels" class="diff-comparison-labels">
+        <div><span>Original</span><strong>${generation?.parent == null ? 'Parent version' : `Generation ${escapeHtml(generation.parent)}`}</strong></div>
+        <div><span>Modified</span><strong>Generation ${escapeHtml(genid)}</strong></div>
+      </div>` : ''}
+      <div id="artifact-preview" class="artifact-preview no-wrap"></div>
+    </section>`;
 
-  const layout = document.querySelector('.evolution-diff-layout');
   const preview = document.querySelector('#artifact-preview');
   const wrapButton = document.querySelector('#artifact-wrap');
-  const select = (index, updateUrl = true) => {
-    const bounded = Math.max(0, Math.min(entries.length - 1, index));
-    const entry = entries[bounded];
-    layout.dataset.evolutionSelected = String(bounded);
-    document.querySelector('#artifact-title').textContent = `Generation ${entry.genid} mutation`;
-    document.querySelector('#artifact-path').textContent = entry.metadata.relative_path;
-    const back = document.querySelector('#artifact-back');
-    back.href = `/generations/${encodeURIComponent(entry.genid)}`;
-    back.textContent = `← Generation ${entry.genid}`;
-    document.querySelector('#artifact-raw').href = entry.metadata.content_url;
-    document.querySelector('#evolution-iteration').textContent = `Generation ${entry.genid}`;
-    document.querySelector('#evolution-parent').textContent = entry.parent == null ? 'No parent recorded' : `Parent generation ${entry.parent}`;
-    document.querySelector('#evolution-score').textContent = `Canonical score ${number(entry.score)}`;
-    document.querySelector('#evolution-diff-stat').innerHTML = `<span class="plus">+${entry.insertions}</span> <span class="minus">−${entry.deletions}</span>`;
-    preview.replaceChildren();
-    preview.classList.remove('diff-preview');
-    renderArtifactPresentation(preview, artifactPresentation(entry.metadata, entry.text));
-    document.querySelectorAll('[data-evolution-index]').forEach((node, nodeIndex) => {
-      const active = nodeIndex === bounded;
-      node.classList.toggle('is-active', active);
-      node.setAttribute('aria-selected', String(active));
-      if (active) node.scrollIntoView({block: 'nearest', inline: 'nearest'});
-    });
-    document.querySelector('#evolution-previous').disabled = bounded === 0;
-    document.querySelector('#evolution-next').disabled = bounded === entries.length - 1;
-    if (updateUrl) history.replaceState({}, '', artifactHref(entry.artifactId));
-  };
-  document.querySelectorAll('[data-evolution-index]').forEach((node) => {
-    node.addEventListener('click', () => select(Number(node.dataset.evolutionIndex)));
-    node.addEventListener('keydown', (event) => {
-      if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
-      event.preventDefault();
-      const change = event.key === 'ArrowRight' ? 1 : -1;
-      const next = Math.max(0, Math.min(entries.length - 1, Number(layout.dataset.evolutionSelected) + change));
-      select(next);
-      document.querySelector(`[data-evolution-index="${next}"]`)?.focus();
-    });
-  });
-  document.querySelector('#evolution-previous').addEventListener('click', () => select(Number(layout.dataset.evolutionSelected) - 1));
-  document.querySelector('#evolution-next').addEventListener('click', () => select(Number(layout.dataset.evolutionSelected) + 1));
-  document.querySelector('#evolution-play').addEventListener('click', () => toggleEvolutionPlayback(entries.length, layout, select));
   wrapButton.addEventListener('click', () => {
     const wrapping = preview.classList.toggle('wrap');
     preview.classList.toggle('no-wrap', !wrapping);
     wrapButton.setAttribute('aria-pressed', String(wrapping));
     wrapButton.textContent = wrapping ? 'Do not wrap' : 'Wrap lines';
   });
-  select(selectedIndex, false);
+  const renderLayout = (outputFormat) => {
+    preview.replaceChildren();
+    preview.classList.remove('diff-preview');
+    renderArtifactPresentation(preview, presentation, {outputFormat});
+    document.querySelector('#diff-comparison-labels')?.toggleAttribute('hidden', outputFormat !== 'side-by-side');
+    document.querySelectorAll('[data-diff-layout]').forEach((button) => {
+      const active = button.dataset.diffLayout === outputFormat;
+      button.classList.toggle('primary', active);
+      button.setAttribute('aria-pressed', String(active));
+    });
+  };
+  document.querySelectorAll('[data-diff-layout]').forEach((button) => {
+    button.addEventListener('click', () => renderLayout(button.dataset.diffLayout));
+  });
+  renderLayout(isDiff ? 'side-by-side' : 'line-by-line');
 }
 
-function toggleEvolutionPlayback(length, layout, select) {
-  const button = document.querySelector('#evolution-play');
-  if (state.evolutionTimer) {
-    stopEvolutionPlayback();
-    return;
-  }
-  if (Number(layout.dataset.evolutionSelected) >= length - 1) select(0);
-  button.textContent = 'Ⅱ Pause';
-  button.setAttribute('aria-pressed', 'true');
-  state.evolutionTimer = window.setInterval(() => {
-    const next = Number(layout.dataset.evolutionSelected) + 1;
-    if (next >= length) {
-      stopEvolutionPlayback();
-      return;
-    }
-    select(next);
-  }, 1400);
-}
-
-function stopEvolutionPlayback() {
-  if (state.evolutionTimer) window.clearInterval(state.evolutionTimer);
-  state.evolutionTimer = null;
-  const button = document.querySelector('#evolution-play');
-  if (button) {
-    button.textContent = '▶ Play';
-    button.setAttribute('aria-pressed', 'false');
-  }
-}
-
-function renderArtifactPresentation(container, presentation) {
+function renderArtifactPresentation(container, presentation, options = {}) {
   try {
     if (presentation.mode === 'diff') {
       if (!globalThis.Diff2Html) throw new Error('Diff renderer is unavailable');
@@ -524,7 +398,7 @@ function renderArtifactPresentation(container, presentation) {
       container.innerHTML = globalThis.Diff2Html.html(presentation.text, {
         drawFileList: true,
         matching: 'none',
-        outputFormat: 'line-by-line',
+        outputFormat: options.outputFormat || 'side-by-side',
         diffMaxChanges: 5000,
       });
       return;

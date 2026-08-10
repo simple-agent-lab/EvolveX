@@ -5,7 +5,6 @@ import {
   artifactHref,
   artifactPresentation,
   compareGenerationIds,
-  diffMiniature,
   finalResultGeneration,
   generationsThrough,
   scoreAxis,
@@ -69,16 +68,6 @@ test('artifact presentation prettifies JSON and selects mature diff rendering', 
     artifactPresentation({kind: 'diff', label: 'model_patch.diff'}, 'diff --git a/a b/a\n').mode,
     'diff',
   );
-});
-
-test('diff miniature samples code changes without exposing source text', () => {
-  const html = diffMiniature('diff --git a/a.py b/a.py\n--- a/a.py\n+++ b/a.py\n@@ -1 +1 @@\n-old secret\n+new secret\n context');
-
-  assert.match(html, /mini-diff-line hunk/);
-  assert.match(html, /mini-diff-line deletion/);
-  assert.match(html, /mini-diff-line addition/);
-  assert.match(html, /mini-diff-line context/);
-  assert.doesNotMatch(html, /secret|diff --git/);
 });
 
 test('malformed JSON falls back to plain text mode', () => {
