@@ -7,6 +7,7 @@ import {
   compareGenerationIds,
   finalResultGeneration,
   generationsThrough,
+  scoreAxis,
   scoreTrend,
   snapshotRevision,
   trainScoreChange,
@@ -31,7 +32,7 @@ test('overview final result uses the best eligible canonical generation, not the
   assert.equal(result.genid, '4');
 });
 
-test('score chart has fixed score ticks and generation labels', () => {
+test('score chart crops its score axis and keeps generation labels', () => {
   const html = scoreTrend([
     {genid: '0', score: 0.32},
     {genid: '1', score: 0.28},
@@ -40,7 +41,8 @@ test('score chart has fixed score ticks and generation labels', () => {
 
   assert.match(html, /Canonical score by generation/);
   assert.match(html, /viewBox="0 0 480 180"/);
-  assert.match(html, />1<.*>0\.5<.*>0</s);
+  assert.match(html, />0\.4<.*>0\.35<.*>0\.3<.*>0\.25</s);
+  assert.doesNotMatch(html, />0</);
   assert.match(html, />G0<.*>G1<.*>G10</s);
   assert.match(html, /Generation 10: 0\.36/);
   assert.match(html, /x1="78\.8" x2="78\.8"/);
@@ -50,6 +52,11 @@ test('score chart has fixed score ticks and generation labels', () => {
   assert.match(html, /<line class="trend-guide"/);
   assert.match(html, /class="trend-tooltip"/);
   assert.match(html, />G10: 0\.36</);
+});
+
+test('score axis retains zero only when observed values need it', () => {
+  assert.deepEqual(scoreAxis([0.28, 0.32, 0.36]), {min: 0.25, max: 0.4, ticks: [0.4, 0.35, 0.3, 0.25]});
+  assert.equal(scoreAxis([0, 0.1]).min, 0);
 });
 
 test('artifact presentation prettifies JSON and selects mature diff rendering', () => {

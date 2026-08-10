@@ -56,6 +56,30 @@ export function trainScoreChange(before, after, delta = null) {
   </div>`;
 }
 
+export function scoreAxis(scores) {
+  const values = scores.map(Number).filter(Number.isFinite).map((value) => Math.max(0, Math.min(1, value)));
+  if (!values.length) return {min: 0, max: 1, ticks: [1, 0.5, 0]};
+  const low = Math.min(...values);
+  const high = Math.max(...values);
+  const padding = Math.max(0.03, (high - low) * 0.2);
+  const rawMin = Math.max(0, low - padding);
+  const rawMax = Math.min(1, high + padding);
+  const targetStep = Math.max(0.01, (rawMax - rawMin) / 5);
+  const steps = [0.01, 0.02, 0.025, 0.05, 0.1, 0.2, 0.25, 0.5, 1];
+  const step = steps.find((candidate) => candidate >= targetStep) || 1;
+  let min = Math.max(0, Math.floor(rawMin / step) * step);
+  let max = Math.min(1, Math.ceil(rawMax / step) * step);
+  if (max <= min) {
+    min = Math.max(0, min - step);
+    max = Math.min(1, max + step);
+  }
+  min = Number(min.toFixed(4));
+  max = Number(max.toFixed(4));
+  const ticks = [];
+  for (let value = max; value >= min - step / 2; value -= step) ticks.push(Number(value.toFixed(4)));
+  return {min, max, ticks};
+}
+
 export function artifactPresentation(metadata, text) {
   const kind = String(metadata.kind || '').toLowerCase();
   if (kind === 'diff' || kind === 'patch') return {mode: 'diff', language: 'diff', text};
@@ -91,6 +115,7 @@ export function scoreTrend(generations, selectedId = null) {
   const right = 16;
   const top = 14;
   const bottom = 30;
+  const axis = scoreAxis(points.map((item) => item.score));
   const generationNumbers = points.map((item) => generationKey(item.genid)[0]);
   const generationMin = Math.min(...generationNumbers);
   const generationMax = Math.max(...generationNumbers);
@@ -104,8 +129,9 @@ export function scoreTrend(generations, selectedId = null) {
       ? (generationNumbers[index] - generationMin) / (generationMax - generationMin)
       : index / (points.length - 1)) * (width - left - right));
   const y = (score) => rounded(top
-    + (1 - Math.max(0, Math.min(1, Number(score)))) * (height - top - bottom));
-  const ticks = [[1, top], [0.5, y(0.5)], [0, height - bottom]];
+    + (axis.max - Math.max(axis.min, Math.min(axis.max, Number(score))))
+      / (axis.max - axis.min) * (height - top - bottom));
+  const ticks = axis.ticks.map((tick) => [tick, y(tick)]);
   const coordinates = points.map((item, index) => `${x(index)},${y(item.score)}`).join(' ');
   const tooltipWidth = 104;
   const tooltipHeight = 30;
@@ -115,7 +141,7 @@ export function scoreTrend(generations, selectedId = null) {
   const displayScore = (score) => Number(score).toFixed(3).replace(/\.?0+$/, '');
 
   return `<div class="trend-scroll"><svg class="trend" viewBox="0 0 ${width} ${height}" role="img" aria-label="Canonical score by generation">
-    ${ticks.map(([tick, cy]) => `<line class="trend-grid" x1="${left}" x2="${width - right}" y1="${cy}" y2="${cy}"/><text class="trend-axis-label" x="${left - 7}" y="${cy + 3}">${tick}</text>`).join('')}
+    ${ticks.map(([tick, cy]) => `<line class="trend-grid" x1="${left}" x2="${width - right}" y1="${cy}" y2="${cy}"/><text class="trend-axis-label" x="${left - 7}" y="${cy + 3}">${displayScore(tick)}</text>`).join('')}
     <polyline class="trend-line" points="${coordinates}"/>
     ${points.map((item, index) => {
       const genid = escapeSvg(item.genid);
