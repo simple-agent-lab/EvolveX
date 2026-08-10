@@ -172,6 +172,7 @@ def test_change_summary_uses_rationale_paths_and_patch_stats(tmp_path: Path) -> 
     assert change.deletions == 1
     assert "retry" in (change.rationale or "").lower()
     assert change.patch_artifact_id is not None
+    assert build_snapshot(sources).generation_details["3"].summary.patch_artifact_id == change.patch_artifact_id
 
 
 def test_parent_delta_requires_matching_task_identity(tmp_path: Path) -> None:

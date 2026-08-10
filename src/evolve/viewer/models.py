@@ -91,6 +91,7 @@ class GenerationSummary(BaseModel):
     change_files: int = 0
     insertions: int = 0
     deletions: int = 0
+    patch_artifact_id: str | None = None
     warnings: list[ViewerWarning] = Field(default_factory=list)
 
 

@@ -159,6 +159,7 @@ def _generation_detail(
         change_files=len(change.changed_paths),
         insertions=change.insertions,
         deletions=change.deletions,
+        patch_artifact_id=change.patch_artifact_id,
     )
     return GenerationDetail(
         summary=summary,

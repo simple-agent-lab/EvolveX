@@ -103,6 +103,28 @@ export function artifactPresentation(metadata, text) {
     : {mode: 'plain', language: 'plaintext', text};
 }
 
+export function diffMiniature(text, maxLines = 24) {
+  const lines = String(text || '').split('\n')
+    .map((line, index) => ({line, index}))
+    .filter(({line}) => !line.startsWith('diff --git ') && !line.startsWith('index ')
+      && !line.startsWith('--- ') && !line.startsWith('+++ '));
+  if (!lines.length) return '<span class="mini-diff-empty">No diff</span>';
+  const changed = lines.filter(({line}) => line.startsWith('+') || line.startsWith('-') || line.startsWith('@@'));
+  const selected = new Map();
+  const sample = (items, limit) => {
+    if (items.length <= limit) return items;
+    return Array.from({length: limit}, (_, index) => items[Math.floor(index * (items.length - 1) / (limit - 1))]);
+  };
+  for (const item of sample(changed, maxLines)) selected.set(item.index, item);
+  const remaining = Math.max(0, maxLines - selected.size);
+  for (const item of sample(lines.filter((item) => !selected.has(item.index)), remaining)) selected.set(item.index, item);
+  return [...selected.values()].sort((left, right) => left.index - right.index).map(({line}) => {
+    const tone = line.startsWith('+') ? 'addition' : line.startsWith('-') ? 'deletion' : line.startsWith('@@') ? 'hunk' : 'context';
+    const width = Math.max(18, Math.min(96, 16 + line.trim().length * 1.35));
+    return `<span class="mini-diff-line ${tone}" style="--mini-line-width:${width.toFixed(1)}%"></span>`;
+  }).join('');
+}
+
 export function scoreTrend(generations, selectedId = null) {
   const points = generations
     .filter((item) => item.score != null)
