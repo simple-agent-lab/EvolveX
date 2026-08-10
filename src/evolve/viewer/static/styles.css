@@ -81,7 +81,7 @@ main { width: min(1280px, 100%); margin: 0 auto; padding: 34px clamp(22px, 4vw, 
 .metric-big { text-align: right; }
 .metric-big strong { display: block; font-size: 22px; font-variant-numeric: tabular-nums; }
 .metric-big span { color: var(--muted); font-size: 11px; }
-.stage-strip { display: grid; grid-template-columns: repeat(8, minmax(70px, 1fr)); gap: 0; padding: 18px 20px 20px; overflow-x: auto; }
+.stage-strip { display: grid; grid-template-columns: repeat(var(--stage-count, 10), minmax(70px, 1fr)); gap: 0; padding: 18px 20px 20px; overflow-x: auto; }
 .stage { position: relative; min-width: 70px; padding-top: 18px; color: var(--subtle); font-size: 10px; text-align: center; text-transform: capitalize; }
 .stage::before { content: ""; position: absolute; z-index: 1; top: 3px; left: 50%; width: 9px; height: 9px; background: #d6ddd9; border: 2px solid white; border-radius: 50%; transform: translateX(-50%); }
 .stage::after { content: ""; position: absolute; top: 8px; left: 0; right: 0; height: 2px; background: #e0e6e2; }

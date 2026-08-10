@@ -23,6 +23,18 @@ const time = (value) => value ? new Intl.DateTimeFormat(undefined, { dateStyle: 
 const compactTime = (value) => value ? new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' }).format(
   Math.round((new Date(value).getTime() - Date.now()) / 60000), 'minute'
 ) : 'unknown';
+const stageLabel = (value) => ({
+  select: 'Select',
+  rollout: 'Rollout',
+  trace_analyzer: 'Trace Analyzer',
+  meta_agent: 'Meta Agent',
+  validate: 'Validate',
+  novelty: 'Novelty',
+  canonical_evaluation: 'Canonical Evaluation',
+  gate: 'Gate',
+  record: 'Record',
+  reflect: 'Reflect',
+})[value] || label(value);
 const badge = (value) => `<span class="badge ${escapeHtml(value || 'unknown')}">${escapeHtml(label(value))}</span>`;
 
 async function getJson(url) {
@@ -182,7 +194,7 @@ function healthCard(experiment, detail, globalResult = false) {
   const displayHealth = globalResult ? detail?.summary?.status || 'unknown' : experiment.health;
   const description = globalResult
     ? 'Global champion from canonical evaluation'
-    : experiment.current_stage ? `Current stage: ${label(experiment.current_stage)}` : time(experiment.last_activity_at);
+    : experiment.current_stage ? `Current stage: ${stageLabel(experiment.current_stage)}` : time(experiment.last_activity_at);
   return `<section class="card health-card">
     <div class="health-banner">
       <div>
@@ -192,7 +204,7 @@ function healthCard(experiment, detail, globalResult = false) {
       </div>
       <div class="metric-big"><strong>${number(experiment.best_score)}</strong><span>Best canonical score</span></div>
     </div>
-    ${stages.length ? `<div class="stage-strip" aria-label="Generation stages">${stages.map(stageItem).join('')}</div>` : ''}
+    ${stages.length ? `<div class="stage-strip" style="--stage-count:${stages.length}" aria-label="Generation stages">${stages.map(stageItem).join('')}</div>` : ''}
     ${warnings.length ? `<ul class="warning-list">${warnings.map((warning) => `<li><strong>${escapeHtml(label(warning.code))}:</strong> ${escapeHtml(warning.message)}</li>`).join('')}</ul>` : ''}
   </section>`;
 }
@@ -200,7 +212,7 @@ function healthCard(experiment, detail, globalResult = false) {
 function stageItem(stage) {
   const progress = stage.progress_completed != null
     ? `${stage.progress_completed}${stage.progress_total != null ? ` / ${stage.progress_total}` : ''}` : label(stage.state);
-  return `<div class="stage ${escapeHtml(stage.state)}"><strong>${escapeHtml(label(stage.name))}</strong>${escapeHtml(progress)}</div>`;
+  return `<div class="stage ${escapeHtml(stage.state)}"><strong>${escapeHtml(stageLabel(stage.name))}</strong>${escapeHtml(progress)}</div>`;
 }
 
 function changeCard(detail) {
@@ -284,7 +296,7 @@ async function renderGeneration(genid) {
   content.innerHTML = `
     <div class="page-heading"><div><p class="eyebrow">Generation detail</p><h2>Generation ${escapeHtml(summary.genid)}</h2><div class="detail-meta"><span>Status ${badge(summary.status)}</span><span>Parent <strong>${escapeHtml(summary.parent || '—')}</strong></span><span>Score <strong>${number(summary.score)}</strong></span></div></div><div class="page-actions"><a class="button" data-evolve-link href="/generations">← Generations</a><a class="button" data-evolve-link href="/trials?generation=${encodeURIComponent(summary.genid)}">View trials</a></div></div>
     <div class="stack">
-      <section class="card"><div class="card-header"><div><h3>Stage progress</h3><p>Evidence inferred from this generation's artifacts</p></div></div><div class="stage-strip">${detail.stages.map(stageItem).join('')}</div></section>
+      <section class="card"><div class="card-header"><div><h3>Stage progress</h3><p>Evidence inferred from this generation's artifacts</p></div></div><div class="stage-strip" style="--stage-count:${detail.stages.length}">${detail.stages.map(stageItem).join('')}</div></section>
       <div class="grid-two">${changeCard(detail)}${performanceCard(detail, generationsThrough(state.snapshot.generations, summary.genid))}</div>
       ${artifactCard(detail.artifacts)}
     </div>`;

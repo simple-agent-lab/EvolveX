@@ -28,22 +28,36 @@ from .models import (
     WorkspaceSources,
 )
 
-STAGE_ORDER = ("select", "rollout", "trace_analysis", "modify", "validate", "evaluate", "gate", "record")
+STAGE_ORDER = (
+    "select",
+    "rollout",
+    "trace_analyzer",
+    "meta_agent",
+    "validate",
+    "novelty",
+    "canonical_evaluation",
+    "gate",
+    "record",
+    "reflect",
+)
 _OPERATOR_FOR_STAGE = {
     "select": "select",
     "rollout": "rollout",
-    "trace_analysis": "trace_analyzer",
-    "modify": "meta_agent",
+    "trace_analyzer": "trace_analyzer",
+    "meta_agent": "meta_agent",
     "validate": "validate",
+    "novelty": "novelty",
     "gate": "gate",
     "record": "record",
+    "reflect": "reflect",
 }
 _STAGE_FILES = {
     "select": ("select/parents.json",),
     "rollout": ("rollout/summary.json",),
-    "trace_analysis": ("trace_analyzer/summary.json",),
-    "modify": ("meta_agent/changed.json", "meta_agent/patch.diff"),
+    "trace_analyzer": ("trace_analyzer/summary.json",),
+    "meta_agent": ("meta_agent/changed.json", "meta_agent/patch.diff"),
     "validate": ("validate/result.json",),
+    "novelty": ("novelty.json",),
     "gate": ("gate.json",),
     "record": ("record/fields.json",),
 }
@@ -169,7 +183,10 @@ def _stages(sources: WorkspaceSources, row: dict[str, Any], trials: list[TrialSu
         completed = total = None
         if name == "select" and row.get("parent") is not None:
             state = "complete"
-        elif name == "evaluate" and str(row.get("status") or "pending") in _TERMINAL_SUCCESS | _TERMINAL_FAILURES:
+        elif (
+            name == "canonical_evaluation"
+            and str(row.get("status") or "pending") in _TERMINAL_SUCCESS | _TERMINAL_FAILURES
+        ):
             state = "failed" if str(row.get("status")) in _TERMINAL_FAILURES else "complete"
         else:
             evidence = [
@@ -184,7 +201,7 @@ def _stages(sources: WorkspaceSources, row: dict[str, Any], trials: list[TrialSu
             if summary is not None and isinstance(summary.value, dict):
                 completed = _integer(summary.value.get("trials_observed") or summary.value.get("tasks_observed"))
                 total = _integer(summary.value.get("tasks_requested"))
-        if name == "evaluate" and trials:
+        if name == "canonical_evaluation" and trials:
             completed = len([trial for trial in trials if trial.purpose != "rollout"])
             total = _integer(row.get("expected_trials"))
         result.append(StageSummary(name=name, state=state, progress_completed=completed, progress_total=total))

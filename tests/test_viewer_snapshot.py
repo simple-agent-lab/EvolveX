@@ -95,8 +95,8 @@ def test_stage_evidence_is_recipe_aware(tmp_path: Path) -> None:
 
     assert _stage(bundle, "1", "rollout").state == "complete"
     assert _stage(bundle, "1", "rollout").progress_completed == 7
-    assert _stage(bundle, "1", "trace_analysis").state == "not_applicable"
-    assert _stage(bundle, "1", "modify").state == "waiting"
+    assert _stage(bundle, "1", "trace_analyzer").state == "not_applicable"
+    assert _stage(bundle, "1", "meta_agent").state == "waiting"
 
 
 def test_change_summary_uses_rationale_paths_and_patch_stats(tmp_path: Path) -> None:
@@ -222,8 +222,8 @@ def test_rollout_and_evaluation_trials_keep_distinct_purposes(tmp_path: Path) ->
     trials = bundle.trials
 
     assert {(trial.purpose, trial.task) for trial in trials} == {("rollout", "task-a"), ("candidate", "task-a")}
-    assert _stage(bundle, "1", "evaluate").progress_completed == 1
-    assert _stage(bundle, "1", "evaluate").progress_total == 1
+    assert _stage(bundle, "1", "canonical_evaluation").progress_completed == 1
+    assert _stage(bundle, "1", "canonical_evaluation").progress_total == 1
 
 
 def test_rollout_repetitions_are_counted_per_task(tmp_path: Path) -> None:
