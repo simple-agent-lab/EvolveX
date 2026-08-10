@@ -15,7 +15,6 @@ from evolve.patching import create_candidate_patch, load_surface_policy, patch_p
 from library._shared.config import (
     boolean,
     config_object,
-    mapping,
     nonnegative_int,
     positive_int,
     reject_unknown,
@@ -23,25 +22,12 @@ from library._shared.config import (
     string_list,
 )
 from library._shared.gepa import component_paths, path_in_scopes, read_json, selected_component_names
+from library.mutate._config import RUNNER_KEYS, normalize_runner_config
 from library.mutate._runners import run_agent, runner_name
 from library.mutate._support.artifacts import render_artifact_guidance
 from library.mutate._support.workspace import workspace_contract
 
-_RUNNER_KEYS = {
-    "runner",
-    "command",
-    "agent",
-    "model",
-    "environment",
-    "environment_kwargs",
-    "image",
-    "workdir",
-    "agent_kwargs",
-    "agent_env",
-    "agent_pythonpath",
-    "jobs_dir",
-}
-_CONFIG_KEYS = _RUNNER_KEYS | {
+_CONFIG_KEYS = RUNNER_KEYS | {
     "expose_gate_data",
     "editable_roots",
     "components",
@@ -58,7 +44,7 @@ def validate_config(raw: dict[str, object]) -> dict[str, object]:
     strategy = string(config, "component_strategy", "round_robin")
     if strategy not in {"round_robin", "all"}:
         raise ValueError("component_strategy must be 'round_robin' or 'all'")
-    normalized = _runner_config(config)
+    normalized = normalize_runner_config(config)
     normalized.update(
         {
             "expose_gate_data": boolean(config, "expose_gate_data", False),
@@ -70,20 +56,6 @@ def validate_config(raw: dict[str, object]) -> dict[str, object]:
             "max_retries": nonnegative_int(config, "max_retries", 0),
         }
     )
-    return normalized
-
-
-def _runner_config(config: dict[str, object]) -> dict[str, object]:
-    runner = string(config, "runner", "local")
-    if runner not in {"local", "harbor"}:
-        raise ValueError("runner must be 'local' or 'harbor'")
-    normalized: dict[str, object] = {"runner": runner}
-    for key in ("command", "agent", "model", "environment", "image", "workdir", "agent_pythonpath", "jobs_dir"):
-        if key in config:
-            normalized[key] = string(config, key, "")
-    for key in ("environment_kwargs", "agent_kwargs", "agent_env"):
-        if key in config:
-            normalized[key] = mapping(config, key, {})
     return normalized
 
 

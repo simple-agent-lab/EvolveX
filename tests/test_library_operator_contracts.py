@@ -60,6 +60,27 @@ def test_mutate_validators_normalize_command_as_a_strict_string(name: str) -> No
         )
 
 
+@pytest.mark.parametrize("name", ["aevolve", "ahe", "gepa", "hyperagents"])
+def test_mutate_operators_share_runner_normalization(name: str) -> None:
+    operator_config: dict[str, object] = {
+        "runner": "harbor",
+        "command": "printf accepted",
+        "environment_kwargs": {"network": "host"},
+        "agent_kwargs": {"reasoning": "high"},
+        "agent_env": {"TOKEN": "configured"},
+    }
+    if name == "gepa":
+        operator_config["components"] = {"prompt": "target/prompt.md"}
+
+    normalized = validate_operator_config(resolve_operator("mutate", name), operator_config)
+
+    assert normalized["runner"] == "harbor"
+    assert normalized["command"] == "printf accepted"
+    assert normalized["environment_kwargs"] == {"network": "host"}
+    assert normalized["agent_kwargs"] == {"reasoning": "high"}
+    assert normalized["agent_env"] == {"TOKEN": "configured"}
+
+
 @pytest.mark.parametrize("recipe_path", repository_recipe_paths(), ids=lambda path: path.parent.name)
 def test_every_recipe_selected_config_is_accepted(recipe_path: Path) -> None:
     resolved = resolve_recipe(recipe_path)

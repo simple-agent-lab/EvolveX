@@ -16,13 +16,13 @@ from evolve.patching import create_candidate_patch, load_surface_policy, patch_p
 from library._shared.config import (
     boolean,
     config_object,
-    mapping,
     nonnegative_int,
     positive_int,
     reject_unknown,
     string,
     string_list,
 )
+from library.mutate._config import RUNNER_KEYS, normalize_runner_config
 from library.mutate._runners import run_agent, runner_name
 from library.mutate._support.artifacts import render_artifact_guidance
 from library.mutate._support.evidence import load_feedback
@@ -30,21 +30,7 @@ from library.mutate._support.workspace import workspace_contract
 
 DEFAULT_INLINE_EVIDENCE_CHARS = 50_000
 TRAJECTORY_ONLY_OPERATOR = "trajectory_only"
-_RUNNER_KEYS = {
-    "runner",
-    "command",
-    "agent",
-    "model",
-    "environment",
-    "environment_kwargs",
-    "image",
-    "workdir",
-    "agent_kwargs",
-    "agent_env",
-    "agent_pythonpath",
-    "jobs_dir",
-}
-_CONFIG_KEYS = _RUNNER_KEYS | {
+_CONFIG_KEYS = RUNNER_KEYS | {
     "trajectory_only",
     "expose_gate_data",
     "editable_roots",
@@ -66,7 +52,7 @@ _CONFIG_KEYS = _RUNNER_KEYS | {
 def validate_config(raw: dict[str, object]) -> dict[str, object]:
     config = config_object(raw)
     reject_unknown(config, _CONFIG_KEYS)
-    normalized = _runner_config(config)
+    normalized = normalize_runner_config(config)
     normalized.update(
         {
             "trajectory_only": boolean(config, "trajectory_only", False),
@@ -87,20 +73,6 @@ def validate_config(raw: dict[str, object]) -> dict[str, object]:
             normalized[key] = string(config, key, "")
     if "required_placeholders" in config:
         normalized["required_placeholders"] = string_list(config, "required_placeholders", [])
-    return normalized
-
-
-def _runner_config(config: dict[str, object]) -> dict[str, object]:
-    runner = string(config, "runner", "local")
-    if runner not in {"local", "harbor"}:
-        raise ValueError("runner must be 'local' or 'harbor'")
-    normalized: dict[str, object] = {"runner": runner}
-    for key in ("command", "agent", "model", "environment", "image", "workdir", "agent_pythonpath", "jobs_dir"):
-        if key in config:
-            normalized[key] = string(config, key, "")
-    for key in ("environment_kwargs", "agent_kwargs", "agent_env"):
-        if key in config:
-            normalized[key] = mapping(config, key, {})
     return normalized
 
 
