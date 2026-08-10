@@ -185,12 +185,16 @@ def test_frontend_shell_and_assets_are_not_cached_across_deployments(viewer_work
 
 
 def test_frontend_has_required_navigation_and_refresh_contract() -> None:
-    static = Path(__file__).parents[1] / "src/evolve/viewer/static"
+    repository = Path(__file__).parents[1]
+    static = repository / "src/evolve/viewer/static"
     html = (static / "index.html").read_text()
     javascript = (static / "app.js").read_text()
     styles = (static / "styles.css").read_text()
 
     assert all(label in html for label in ("Overview", "Generations", "Trials"))
+    assert "<strong>EvolveX</strong>" in html
+    assert 'src="/evolve-assets/evolve-mark.svg"' in html
+    assert (static / "evolve-mark.svg").read_bytes() == (repository / "docs/evolve-mark.svg").read_bytes()
     assert "3000" in javascript
     assert "/api/evolve/snapshot" in javascript
     assert "Full Harbor inspection" in javascript

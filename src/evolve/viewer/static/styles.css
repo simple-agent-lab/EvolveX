@@ -33,7 +33,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .app-shell { min-height: 100vh; display: grid; grid-template-columns: 228px minmax(0, 1fr); }
 .rail { position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; padding: 24px 16px; color: white; background: var(--rail); }
 .brand { display: flex; gap: 11px; align-items: center; padding: 0 8px 27px; text-decoration: none; border-bottom: 1px solid rgb(255 255 255 / 9%); }
-.brand-mark { display: grid; place-items: center; width: 34px; height: 34px; color: #143a2b; background: #90e2bd; border-radius: 9px; font: 800 18px/1 ui-monospace, monospace; }
+.brand-logo { flex: none; width: 36px; height: 36px; border-radius: 9px; }
 .brand strong, .brand small { display: block; }
 .brand strong { font-size: 15px; letter-spacing: .01em; }
 .brand small { margin-top: 2px; color: var(--rail-muted); font-size: 11px; }
