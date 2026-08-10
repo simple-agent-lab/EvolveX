@@ -185,7 +185,7 @@ def _stages(sources: WorkspaceSources, row: dict[str, Any], trials: list[TrialSu
                 completed = _integer(summary.value.get("trials_observed") or summary.value.get("tasks_observed"))
                 total = _integer(summary.value.get("tasks_requested"))
         if name == "evaluate" and trials:
-            completed = len(trials)
+            completed = len([trial for trial in trials if trial.purpose != "rollout"])
             total = _integer(row.get("expected_trials"))
         result.append(StageSummary(name=name, state=state, progress_completed=completed, progress_total=total))
     return result

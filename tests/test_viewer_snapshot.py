@@ -206,6 +206,7 @@ def test_rollout_and_evaluation_trials_keep_distinct_purposes(tmp_path: Path) ->
                 "genid": "1",
                 "purpose": "candidate",
                 "status": "complete",
+                "expected_trials": 1,
                 "task_vector": {
                     "schema_version": 1,
                     "tasks": {"task-a": {"trials": [{"trial": 0, "status": "benchmark_complete", "reward": 1.0}]}},
@@ -217,9 +218,12 @@ def test_rollout_and_evaluation_trials_keep_distinct_purposes(tmp_path: Path) ->
         },
     )
 
-    trials = build_snapshot(sources).trials
+    bundle = build_snapshot(sources)
+    trials = bundle.trials
 
     assert {(trial.purpose, trial.task) for trial in trials} == {("rollout", "task-a"), ("candidate", "task-a")}
+    assert _stage(bundle, "1", "evaluate").progress_completed == 1
+    assert _stage(bundle, "1", "evaluate").progress_total == 1
 
 
 def test_rollout_repetitions_are_counted_per_task(tmp_path: Path) -> None:
