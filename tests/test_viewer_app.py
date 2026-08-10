@@ -96,12 +96,12 @@ def test_artifact_metadata_and_bounded_headers(viewer_workspace: Path) -> None:
         detail = client.get("/api/evolve/generations/1").json()
         rationale = next(item for item in detail["artifacts"] if item["label"] == "rationale.md")
         model_patch = next(item for item in detail["artifacts"] if item["label"] == "model_patch.diff")
-        metadata = client.get(f'/api/evolve/artifacts/{rationale["id"]}/metadata')
-        patch_metadata = client.get(f'/api/evolve/artifacts/{model_patch["id"]}/metadata')
-        content = client.get(f'/api/evolve/artifacts/{model_patch["id"]}')
+        metadata = client.get(f"/api/evolve/artifacts/{rationale['id']}/metadata")
+        patch_metadata = client.get(f"/api/evolve/artifacts/{model_patch['id']}/metadata")
+        content = client.get(f"/api/evolve/artifacts/{model_patch['id']}")
 
     assert metadata.json()["relative_path"] == "runs/gen-1/meta_agent/rationale.md"
-    assert metadata.json()["content_url"] == f'/api/evolve/artifacts/{rationale["id"]}'
+    assert metadata.json()["content_url"] == f"/api/evolve/artifacts/{rationale['id']}"
     assert metadata.json()["truncated"] is False
     assert patch_metadata.json()["truncated"] is True
     assert content.headers["x-evolve-artifact-truncated"] == "true"
@@ -155,6 +155,10 @@ def test_frontend_has_required_navigation_and_refresh_contract() -> None:
     assert "/api/evolve/snapshot" in javascript
     assert "Full Harbor inspection" in javascript
     assert all(label in javascript for label in ("← Overview", "← Generations", "← Generation"))
+    assert all(
+        label in javascript
+        for label in ("Previous performance page", "Next performance page", "GEPA train score change")
+    )
 
 
 @pytest.mark.parametrize(
@@ -166,9 +170,7 @@ def test_frontend_has_required_navigation_and_refresh_contract() -> None:
         ("highlight-github.min.css", "text/css"),
     ],
 )
-def test_vendored_preview_assets_are_served(
-    viewer_workspace: Path, path: str, media_type: str
-) -> None:
+def test_vendored_preview_assets_are_served(viewer_workspace: Path, path: str, media_type: str) -> None:
     with TestClient(create_viewer_app(viewer_workspace)) as client:
         response = client.get(f"/evolve-assets/vendor/{path}")
 

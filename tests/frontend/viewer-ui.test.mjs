@@ -8,6 +8,7 @@ import {
   generationsThrough,
   scoreTrend,
   snapshotRevision,
+  trainScoreChange,
 } from '../../src/evolve/viewer/static/viewer-ui.js';
 
 test('generation ordering treats 10 as newer than 2', () => {
@@ -68,4 +69,13 @@ test('snapshot revision ignores refresh timestamps but detects experiment change
 
   assert.equal(snapshotRevision(first), snapshotRevision(refreshed));
   assert.notEqual(snapshotRevision(first), snapshotRevision(changed));
+});
+
+test('GEPA train score comparison remains distinct from canonical performance', () => {
+  const html = trainScoreChange(29, 34, 5);
+
+  assert.match(html, /Before<\/span><strong>29/);
+  assert.match(html, /After<\/span><strong>34/);
+  assert.match(html, /\+5/);
+  assert.match(html, /GEPA train score changed from 29 to 34/);
 });

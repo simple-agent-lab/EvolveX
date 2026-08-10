@@ -129,7 +129,9 @@ def _generation_detail(
     stages = _stages(sources, row, trials)
     change = _change_summary(sources, genid, artifacts_by_path)
     performance = _performance_summary(row, rows_by_id, trials)
-    generation_artifacts = [artifact for artifact in artifacts if artifact.relative_path.startswith(f"runs/gen-{genid}/")]
+    generation_artifacts = [
+        artifact for artifact in artifacts if artifact.relative_path.startswith(f"runs/gen-{genid}/")
+    ]
     status = str(row.get("status") or "pending")
     current_stage = next((stage.name for stage in stages if stage.state in {"waiting", "active", "unknown"}), None)
     summary = GenerationSummary(
@@ -225,6 +227,7 @@ def _performance_summary(
     parent_hash = str(parent["task_set_hash"]) if parent and parent.get("task_set_hash") is not None else None
     comparable = task_hash is not None and task_hash == parent_hash and score is not None and parent_score is not None
     outcomes = Counter(trial.status for trial in trials if trial.purpose != "rollout")
+    gepa = cast(dict[str, Any], row.get("gepa")) if isinstance(row.get("gepa"), dict) else {}
     return PerformanceSummary(
         score=score,
         parent_score=parent_score,
@@ -237,6 +240,9 @@ def _performance_summary(
         contract_certified=row.get("contract_certified") if isinstance(row.get("contract_certified"), bool) else None,
         cost_usd=_number(row.get("cost_usd")),
         wall_s=_number(row.get("wall_s")),
+        train_score_before=_number(gepa.get("train_score_before")),
+        train_score_after=_number(gepa.get("train_score_after")),
+        train_delta=_number(gepa.get("train_delta")),
     )
 
 
@@ -257,9 +263,7 @@ def _canonical_trials(
                 continue
             for index, entry in enumerate(entries):
                 if isinstance(entry, dict):
-                    trials.append(
-                        _trial(genid, purpose, str(task), index, cast(dict[str, Any], entry), harbor_links)
-                    )
+                    trials.append(_trial(genid, purpose, str(task), index, cast(dict[str, Any], entry), harbor_links))
     for relative, document in sorted(sources.documents.items()):
         if not relative.endswith("/rollout/cases.json") or not isinstance(document.value, list):
             continue
@@ -273,7 +277,9 @@ def _canonical_trials(
             repetition = repetitions[task]
             repetitions[task] += 1
             trials.append(_trial(genid, "rollout", task, repetition, cast(dict[str, Any], entry), harbor_links))
-    return sorted(trials, key=lambda trial: (_generation_sort_key(trial.generation), trial.purpose, trial.task, trial.repetition))
+    return sorted(
+        trials, key=lambda trial: (_generation_sort_key(trial.generation), trial.purpose, trial.task, trial.repetition)
+    )
 
 
 def _trial(
@@ -310,7 +316,9 @@ def _trial(
         status=status,
         owner=str(entry["owner"]) if entry.get("owner") is not None else None,
         failure_category=str(entry["failure_category"]) if entry.get("failure_category") is not None else None,
-        duration_ms=link.duration_ms if link and link.duration_ms is not None else (timing_s * 1000 if timing_s else None),
+        duration_ms=link.duration_ms
+        if link and link.duration_ms is not None
+        else (timing_s * 1000 if timing_s else None),
         harbor_url=link.url if link else None,
         warnings=warnings,
     )

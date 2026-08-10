@@ -4,6 +4,7 @@ import {
   generationsThrough,
   scoreTrend,
   snapshotRevision,
+  trainScoreChange,
 } from './viewer-ui.js';
 
 const state = { snapshot: null, revision: '', timer: null, refreshing: false, artifactCache: new Map() };
@@ -74,6 +75,7 @@ function captureViewState() {
     windowY: window.scrollY,
     focusedId: content.contains(document.activeElement) ? document.activeElement.id : null,
     artifactWrap: document.querySelector('#artifact-preview')?.classList.contains('wrap') || false,
+    performancePages: [...content.querySelectorAll('[data-performance-card]')].map((card) => Number(card.dataset.page) || 1),
   };
 }
 
@@ -99,6 +101,9 @@ function restoreViewState(saved) {
     button?.setAttribute('aria-pressed', 'true');
     if (button) button.textContent = 'Do not wrap';
   }
+  content.querySelectorAll('[data-performance-card]').forEach((card, index) => {
+    setPerformancePage(card, saved.performancePages[index] || 1);
+  });
   document.getElementById(saved.focusedId)?.focus({preventScroll: true});
   window.scrollTo(saved.windowX, saved.windowY);
 }
@@ -159,6 +164,7 @@ async function renderOverview() {
       </div>
       ${generationTable(recent, 'Recent generations')}
     </div>`;
+  bindPerformancePagers();
 }
 
 function healthCard(experiment, detail) {
@@ -200,12 +206,42 @@ function changeCard(detail) {
 function performanceCard(detail, generations) {
   const performance = detail?.performance || {};
   const delta = performance.delta;
-  return `<section class="card">
-    <div class="card-header"><div><h3>Performance</h3><p>Canonical evaluation only</p></div>${performance.contract_certified == null ? '' : badge(performance.contract_certified ? 'certified' : 'uncertified')}</div>
-    <div class="score-value">${number(performance.score)}${delta == null ? '' : `<span class="score-delta ${delta >= 0 ? 'plus' : 'minus'}">${delta >= 0 ? '+' : ''}${number(delta)}</span>`}</div>
-    ${scoreTrend(generations, detail?.summary?.genid)}
-    <div class="legend"><span><strong>${performance.observed_trials ?? '—'}</strong> observed trials</span><span><strong>${performance.expected_trials ?? '—'}</strong> expected</span><span>${performance.comparable ? 'Parent delta comparable' : 'Parent delta not comparable'}</span></div>
+  const hasTrainScore = performance.train_score_before != null && performance.train_score_after != null;
+  return `<section class="card performance-card" data-performance-card data-page="1">
+    <div class="card-header"><div><h3>Performance</h3><p data-performance-subtitle>Canonical evaluation only</p></div><div class="performance-header-actions">${performance.contract_certified == null ? '' : badge(performance.contract_certified ? 'certified' : 'uncertified')}${hasTrainScore ? '<div class="performance-pager" aria-label="Performance pages"><button class="performance-page-button" type="button" data-performance-previous aria-label="Previous performance page" disabled>‹</button><span><strong data-performance-page-number>1</strong> / 2</span><button class="performance-page-button" type="button" data-performance-next aria-label="Next performance page">›</button></div>' : ''}</div></div>
+    <div data-performance-page="1">
+      <div class="score-value">${number(performance.score)}${delta == null ? '' : `<span class="score-delta ${delta >= 0 ? 'plus' : 'minus'}">${delta >= 0 ? '+' : ''}${number(delta)}</span>`}</div>
+      ${scoreTrend(generations, detail?.summary?.genid)}
+      <div class="legend"><span><strong>${performance.observed_trials ?? '—'}</strong> observed trials</span><span><strong>${performance.expected_trials ?? '—'}</strong> expected</span><span>${performance.comparable ? 'Parent delta comparable' : 'Parent delta not comparable'}</span></div>
+    </div>
+    ${hasTrainScore ? `<div data-performance-page="2" hidden>
+      ${trainScoreChange(performance.train_score_before, performance.train_score_after, performance.train_delta)}
+      <div class="train-score-note"><strong>GEPA validation minibatch</strong><span>This train comparison decides whether the proposal proceeds to canonical evaluation.</span></div>
+    </div>` : ''}
   </section>`;
+}
+
+function setPerformancePage(card, page) {
+  const selected = Math.max(1, Math.min(2, Number(page) || 1));
+  card.dataset.page = String(selected);
+  card.querySelectorAll('[data-performance-page]').forEach((panel) => {
+    panel.hidden = Number(panel.dataset.performancePage) !== selected;
+  });
+  const numberLabel = card.querySelector('[data-performance-page-number]');
+  const subtitle = card.querySelector('[data-performance-subtitle]');
+  if (numberLabel) numberLabel.textContent = String(selected);
+  if (subtitle) subtitle.textContent = selected === 1 ? 'Canonical evaluation only' : 'GEPA train score change';
+  const previous = card.querySelector('[data-performance-previous]');
+  const next = card.querySelector('[data-performance-next]');
+  if (previous) previous.disabled = selected === 1;
+  if (next) next.disabled = selected === 2;
+}
+
+function bindPerformancePagers() {
+  document.querySelectorAll('[data-performance-card]').forEach((card) => {
+    card.querySelector('[data-performance-previous]')?.addEventListener('click', () => setPerformancePage(card, 1));
+    card.querySelector('[data-performance-next]')?.addEventListener('click', () => setPerformancePage(card, 2));
+  });
 }
 
 function renderGenerations() {
@@ -235,6 +271,7 @@ async function renderGeneration(genid) {
       <div class="grid-two">${changeCard(detail)}${performanceCard(detail, generationsThrough(state.snapshot.generations, summary.genid))}</div>
       ${artifactCard(detail.artifacts)}
     </div>`;
+  bindPerformancePagers();
 }
 
 function artifactCard(artifacts) {

@@ -60,6 +60,9 @@ class PerformanceSummary(BaseModel):
     contract_certified: bool | None = None
     cost_usd: float | None = None
     wall_s: float | None = None
+    train_score_before: float | None = None
+    train_score_after: float | None = None
+    train_delta: float | None = None
 
 
 class TrialSummary(BaseModel):

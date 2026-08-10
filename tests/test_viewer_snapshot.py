@@ -32,7 +32,15 @@ def _sources(
         "target": {},
         "surface": {},
         "operators": operators
-        or {"select": {}, "rollout": {}, "trace_analyzer": {}, "meta_agent": {}, "validate": {}, "gate": {}, "record": {}},
+        or {
+            "select": {},
+            "rollout": {},
+            "trace_analyzer": {},
+            "meta_agent": {},
+            "validate": {},
+            "gate": {},
+            "record": {},
+        },
         "evaluator": {},
     }
     return WorkspaceSources(
@@ -131,6 +139,31 @@ def test_parent_delta_requires_matching_task_identity(tmp_path: Path) -> None:
     assert performance.comparable is False
 
 
+def test_gepa_train_score_change_is_kept_separate_from_canonical_score(tmp_path: Path) -> None:
+    sources = _sources(
+        tmp_path,
+        rows=[
+            {
+                "genid": "4",
+                "status": "complete",
+                "score": 0.68,
+                "gepa": {
+                    "train_score_before": 29,
+                    "train_score_after": 34,
+                    "train_delta": 5,
+                },
+            }
+        ],
+    )
+
+    performance = build_snapshot(sources).generation_details["4"].performance
+
+    assert performance.score == 0.68
+    assert performance.train_score_before == 29
+    assert performance.train_score_after == 34
+    assert performance.train_delta == 5
+
+
 def test_harbor_never_overrides_canonical_reward(tmp_path: Path) -> None:
     """Raw Harbor disagreement must remain a warning instead of changing the benchmark receipt."""
     task = "dataset__task-a"
@@ -143,7 +176,13 @@ def test_harbor_never_overrides_canonical_reward(tmp_path: Path) -> None:
                 "status": "complete",
                 "task_vector": {
                     "schema_version": 1,
-                    "tasks": {task: {"trials": [{"trial": 0, "status": "benchmark_complete", "reward": 0.0, "owner": "benchmark"}]}},
+                    "tasks": {
+                        task: {
+                            "trials": [
+                                {"trial": 0, "status": "benchmark_complete", "reward": 0.0, "owner": "benchmark"}
+                            ]
+                        }
+                    },
                 },
             }
         ],
@@ -167,7 +206,10 @@ def test_rollout_and_evaluation_trials_keep_distinct_purposes(tmp_path: Path) ->
                 "genid": "1",
                 "purpose": "candidate",
                 "status": "complete",
-                "task_vector": {"schema_version": 1, "tasks": {"task-a": {"trials": [{"trial": 0, "status": "benchmark_complete", "reward": 1.0}]}}},
+                "task_vector": {
+                    "schema_version": 1,
+                    "tasks": {"task-a": {"trials": [{"trial": 0, "status": "benchmark_complete", "reward": 1.0}]}},
+                },
             }
         ],
         documents={

@@ -33,6 +33,21 @@ export function snapshotRevision(snapshot) {
   return JSON.stringify({...snapshot, experiment});
 }
 
+export function trainScoreChange(before, after, delta = null) {
+  if (before == null || after == null) return '<div class="empty">No GEPA train comparison was recorded.</div>';
+  const start = Number(before);
+  const end = Number(after);
+  const change = delta == null ? end - start : Number(delta);
+  const format = (value) => Number(value).toFixed(3).replace(/\.?0+$/, '');
+  const tone = change > 0 ? 'plus' : change < 0 ? 'minus' : 'muted';
+  const sign = change > 0 ? '+' : '';
+  return `<div class="train-score-change" aria-label="GEPA train score changed from ${format(start)} to ${format(end)}">
+    <div class="train-score-node"><span>Before</span><strong>${format(start)}</strong></div>
+    <div class="train-score-arrow ${tone}"><span aria-hidden="true">→</span><strong>${sign}${format(change)}</strong></div>
+    <div class="train-score-node"><span>After</span><strong>${format(end)}</strong></div>
+  </div>`;
+}
+
 export function artifactPresentation(metadata, text) {
   const kind = String(metadata.kind || '').toLowerCase();
   if (kind === 'diff' || kind === 'patch') return {mode: 'diff', language: 'diff', text};
