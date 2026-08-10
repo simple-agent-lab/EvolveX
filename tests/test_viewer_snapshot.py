@@ -82,6 +82,39 @@ def test_newest_candidate_controls_overview_health(tmp_path: Path) -> None:
     assert bundle.snapshot.experiment.best_score == 0.6
 
 
+def test_passed_run_summary_keeps_normal_final_rejection_from_failing_experiment(tmp_path: Path) -> None:
+    sources = _sources(
+        tmp_path,
+        rows=[{"genid": "10", "status": "rejected_validation"}],
+        documents={"runs/run-summary.json": {"status": "passed", "requested_through": 10}},
+    )
+
+    experiment = build_snapshot(sources).snapshot.experiment
+
+    assert experiment.health == "complete"
+
+
+def test_legacy_run_at_configured_limit_treats_validation_rejection_as_completion(tmp_path: Path) -> None:
+    sources = _sources(tmp_path, rows=[{"genid": "10", "status": "rejected_validation"}])
+    sources.config["experiment"]["max_generations"] = 10
+
+    experiment = build_snapshot(sources).snapshot.experiment
+
+    assert experiment.health == "complete"
+
+
+def test_failed_run_summary_remains_authoritative(tmp_path: Path) -> None:
+    sources = _sources(
+        tmp_path,
+        rows=[{"genid": "10", "status": "complete", "score": 0.7}],
+        documents={"runs/run-summary.json": {"status": "failed", "requested_through": 10}},
+    )
+
+    experiment = build_snapshot(sources).snapshot.experiment
+
+    assert experiment.health == "failed"
+
+
 def test_stage_evidence_is_recipe_aware(tmp_path: Path) -> None:
     """Treating an omitted operator as pending would leave valid recipes permanently unhealthy."""
     sources = _sources(

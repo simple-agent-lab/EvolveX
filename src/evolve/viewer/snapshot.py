@@ -406,7 +406,15 @@ def _experiment_summary(
     ]
     last_activity = max((document.mtime_ns for document in generation_documents), default=None)
     last_activity_at = datetime.fromtimestamp(last_activity / 1_000_000_000, UTC) if last_activity else None
-    if status in _TERMINAL_SUCCESS:
+    run_summary = _value(sources, "runs/run-summary.json")
+    run_status = str(run_summary.get("status")) if isinstance(run_summary, dict) else None
+    if run_status == "passed":
+        health = "complete"
+    elif run_status == "failed":
+        health = "failed"
+    elif _legacy_run_completed(sources, focus):
+        health = "complete"
+    elif status in _TERMINAL_SUCCESS:
         health = "complete"
     elif status in _TERMINAL_FAILURES:
         health = "failed"
@@ -431,6 +439,21 @@ def _experiment_summary(
         updated_at=sources.refreshed_at,
         last_activity_at=last_activity_at,
         warnings=list(sources.warnings),
+    )
+
+
+def _legacy_run_completed(sources: WorkspaceSources, focus: dict[str, Any] | None) -> bool:
+    if focus is None:
+        return False
+    raw_experiment = sources.config.get("experiment")
+    experiment = cast(dict[str, Any], raw_experiment) if isinstance(raw_experiment, dict) else {}
+    max_generations = _integer(experiment.get("max_generations"))
+    generation = generation_number(str(focus.get("genid") or ""))
+    return (
+        max_generations is not None
+        and generation is not None
+        and generation >= max_generations
+        and focus.get("status") in {"complete", "rejected_validation"}
     )
 
 

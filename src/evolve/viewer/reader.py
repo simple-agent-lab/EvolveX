@@ -104,7 +104,7 @@ class WorkspaceReader:
         return events, warnings
 
     def _read_known_documents(self) -> dict[str, SourceDocument]:
-        paths: set[Path] = set()
+        paths: set[Path] = {self.workspace / "runs/run-summary.json"}
         runs = self.workspace / "runs"
         if runs.is_dir():
             for generation_dir in runs.glob("gen-*"):

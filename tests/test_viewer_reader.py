@@ -84,6 +84,17 @@ def test_reader_reuses_unchanged_document_instances(tmp_path: Path) -> None:
     assert first.value == {"verdict": "keep"}
 
 
+def test_reader_includes_run_summary_as_experiment_level_evidence(tmp_path: Path) -> None:
+    workspace = _workspace(tmp_path)
+    summary = workspace / "runs/run-summary.json"
+    summary.parent.mkdir(parents=True)
+    summary.write_text(json.dumps({"status": "passed", "requested_through": 2}) + "\n")
+
+    sources = WorkspaceReader(workspace).refresh()
+
+    assert sources.documents["runs/run-summary.json"].value["status"] == "passed"
+
+
 def test_reader_localizes_malformed_document_errors(tmp_path: Path) -> None:
     """One malformed stage artifact must not discard valid ledger rows."""
     workspace = _workspace(tmp_path)
@@ -120,8 +131,7 @@ def test_large_snapshot_uses_summaries_without_reading_raw_trajectories(
                     "tasks": {
                         f"suite__task-{generation}": {
                             "trials": [
-                                {"trial": repetition, "status": "complete", "reward": 1.0}
-                                for repetition in range(100)
+                                {"trial": repetition, "status": "complete", "reward": 1.0} for repetition in range(100)
                             ]
                         }
                     }
@@ -129,10 +139,7 @@ def test_large_snapshot_uses_summaries_without_reading_raw_trajectories(
             }
         )
     (workspace / "archive.jsonl").write_text("".join(json.dumps(row) + "\n" for row in rows))
-    raw = (
-        workspace
-        / "runs/evaluations/candidate/gen-10/candidate-a/attempt-1/jobs/job/trial/agent/trajectory.json"
-    )
+    raw = workspace / "runs/evaluations/candidate/gen-10/candidate-a/attempt-1/jobs/job/trial/agent/trajectory.json"
     raw.parent.mkdir(parents=True)
     raw.write_text("[]")
     (raw.parents[2] / "config.json").write_text("{}\n")
