@@ -45,8 +45,8 @@
 </p>
 
 <p align="center">
-  <a href="docs/assets/benchmark-results.svg">
-    <img src="docs/assets/benchmark-results.svg" alt="Terminal Bench 2 and Tau cubed Banking results for AHE, Hyperagents, A-Evolve, and GEPA with MiniSWE and Codex target agents. Each stacked bar labels the seed score inside the dark section and the best score plus improvement above the light section.">
+  <a href="docs/assets/benchmark-results.svg?v=17c2721">
+    <img src="docs/assets/benchmark-results.svg?v=17c2721" alt="Terminal Bench 2 and Tau cubed Banking results for AHE, Hyperagents, A-Evolve, and GEPA with MiniSWE and Codex target agents. Each stacked bar labels the seed score inside the dark section and the best score plus improvement above the light section.">
   </a>
 </p>
 
@@ -157,11 +157,11 @@ Split: **50 train / 19 gate / 20 sealed**.
 <table width="100%">
   <thead>
     <tr>
-      <th width="12%">Target agent</th>
-      <th width="13%">Method</th>
-      <th width="25%">Train (n=50)</th>
-      <th width="25%">Gate (n=19)</th>
-      <th width="25%">Sealed (n=20)</th>
+      <th width="12%">Target agent<br><img src="docs/assets/benchmark-column-spacer.svg" alt="" width="120" height="1"></th>
+      <th width="13%">Method<br><img src="docs/assets/benchmark-column-spacer.svg" alt="" width="120" height="1"></th>
+      <th width="25%">Train (n=50)<br><img src="docs/assets/benchmark-column-spacer.svg" alt="" width="220" height="1"></th>
+      <th width="25%">Gate (n=19)<br><img src="docs/assets/benchmark-column-spacer.svg" alt="" width="220" height="1"></th>
+      <th width="25%">Sealed (n=20)<br><img src="docs/assets/benchmark-column-spacer.svg" alt="" width="220" height="1"></th>
     </tr>
   </thead>
   <tbody>
@@ -225,11 +225,11 @@ Split: **50 train / 20 gate / 27 sealed**.
 <table width="100%">
   <thead>
     <tr>
-      <th width="12%">Target agent</th>
-      <th width="13%">Method</th>
-      <th width="25%">Train (n=50)</th>
-      <th width="25%">Gate (n=20)</th>
-      <th width="25%">Sealed (n=27)</th>
+      <th width="12%">Target agent<br><img src="docs/assets/benchmark-column-spacer.svg" alt="" width="120" height="1"></th>
+      <th width="13%">Method<br><img src="docs/assets/benchmark-column-spacer.svg" alt="" width="120" height="1"></th>
+      <th width="25%">Train (n=50)<br><img src="docs/assets/benchmark-column-spacer.svg" alt="" width="220" height="1"></th>
+      <th width="25%">Gate (n=20)<br><img src="docs/assets/benchmark-column-spacer.svg" alt="" width="220" height="1"></th>
+      <th width="25%">Sealed (n=27)<br><img src="docs/assets/benchmark-column-spacer.svg" alt="" width="220" height="1"></th>
     </tr>
   </thead>
   <tbody>
