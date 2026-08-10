@@ -53,6 +53,23 @@ def discover_operators(root: Resource | None = None) -> dict[tuple[str, str], Li
     return discovered
 
 
+def list_operators(stage: str | None = None, root: Resource | None = None) -> list[LibraryOperator]:
+    if stage is not None and stage not in OPERATOR_BY_KIND:
+        raise OperatorLibraryError(f"unknown operator stage: {stage}")
+    return [
+        operator
+        for operator in sorted(discover_operators(root).values(), key=lambda item: (item.stage, item.name))
+        if stage is None or operator.stage == stage
+    ]
+
+
+def parse_operator_identity(identity: str) -> tuple[str, str]:
+    stage, separator, name = identity.partition("/")
+    if separator != "/" or "/" in name or stage not in OPERATOR_BY_KIND or not OPERATOR_NAME.fullmatch(name):
+        raise OperatorLibraryError(f"invalid operator identity: {identity}")
+    return stage, name
+
+
 def _discover_stage(
     stage_root: Resource, library: Resource, discovered: dict[tuple[str, str], LibraryOperator]
 ) -> None:

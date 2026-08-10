@@ -49,7 +49,7 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `feedback.py` | 250 | assemble current and historical rollout evidence plus ledger-derived feedback for mutation |
 | `operators.py` | 200 | subprocess runner for workspace operator scripts (contract: env vars, --config, timeout) |
 | `operator_library.py` | 250 | filesystem-only operator library discovery and subprocess inspection protocol |
-| `operator_cli.py` | 150 | agent-facing operator discovery and one-stage invocation command group |
+| `operator_cli.py` | 325 | agent-facing library authoring/discovery, active inspection, and one-stage invocation commands |
 | `orchestration.py` | 400 | safe outer-agent composition of driver verbs, stage handoffs, retries, and admission receipts |
 | `patching.py` | 150 | mutable-surface patch creation and parent-reference selection |
 | `population.py` | 100 | genid/lineage bookkeeping for fan-out generations |
@@ -98,7 +98,7 @@ each workspace, immutable there because it sits outside the mutable surface
 | `frozen/interfaces.py` | 350 | operator ABCs, registry, result schemas, and strict operator payload validation |
 | `frozen/sdk.py` | 350 | Python operator entrypoint and file-contract IO; no library algorithm policy |
 
-Total `src/evolve/` budget: **17430 lines**. The budget admits the explicit content-backed
+Total `src/evolve/` budget: **17605 lines**. The budget admits the explicit content-backed
 evaluation-contract boundaries, the opt-in in-place Harbor runtime, and the redacted trace-analysis
 boundary between rollout and feedback assembly; if the mechanism wants to
 grow past that, something belongs in a workspace operator instead —

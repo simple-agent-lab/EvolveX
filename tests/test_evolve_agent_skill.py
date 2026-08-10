@@ -61,12 +61,27 @@ def test_top_level_skill_is_backend_neutral_and_operator_first() -> None:
     forbidden = ("harbor", "docker", "recipes/", "src/evolve/", "evolve_runtime_digest")
 
     assert [term for term in forbidden if term in body] == []
-    assert "./evolve operator list . --json" in body
+    assert "./evolve operator active . --json" in body
+    assert "uv run --frozen evolve operator list [stage]" in body
+    assert "uv run --frozen evolve operator new mutate <name>" in body
+    assert "uv run --frozen evolve operator check mutate/<name>" in body
+    assert "uv run --frozen evolve recipe check <recipe-path>" in body
+    assert "library/mutate/<name>.py" in body
+    assert "operator:" in body
+    assert "config:" in body
     assert "./evolve operator run . <stage>" in body
-    assert body.index("./evolve operator list . --json") < body.index("operators/<stage>.py")
+    assert body.index("./evolve operator active . --json") < body.index("operators/<stage>.py")
     assert body.index("operators/<stage>.py") < body.index("library/<stage>/")
     assert "do not read implementation source merely to invoke" in body
     assert not (SKILL / "scripts").exists()
+
+
+def test_top_level_skill_marks_legacy_operator_terms_as_historical() -> None:
+    body = (SKILL / "SKILL.md").read_text().lower()
+    current, historical = body.split("## historical-workspace note", maxsplit=1)
+
+    assert not any(term in current for term in ("meta_agent", "trace_analyzer", "variant:"))
+    assert all(term in historical for term in ("meta_agent", "trace_analyzer", "variant:"))
 
 
 def test_method_cards_route_to_shipped_capabilities() -> None:

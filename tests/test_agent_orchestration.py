@@ -36,10 +36,10 @@ def _set_operator_config(workspace: Path, name: str, block: dict | None) -> None
     path.write_text(yaml.safe_dump(config, sort_keys=False))
 
 
-def test_operator_list_exposes_configured_capabilities(tmp_path: Path) -> None:
+def test_operator_active_exposes_configured_capabilities(tmp_path: Path) -> None:
     workspace, _evolve_home = init_workspace(tmp_path)
 
-    result = run_evolve("operator", "list", str(workspace), "--json")
+    result = run_evolve("operator", "active", str(workspace), "--json")
 
     assert result.returncode == 0, result.stderr
     entries = {entry["name"]: entry for entry in json.loads(result.stdout)}
@@ -49,7 +49,7 @@ def test_operator_list_exposes_configured_capabilities(tmp_path: Path) -> None:
         "name": "select",
         "required": True,
         "script": str((workspace / "operators/select.py").resolve()),
-        "variant": "greedy",
+        "operator": "greedy",
     }
     assert entries["analyze"]["required"] is False
     assert entries["analyze"]["implementation"] == "analyze"

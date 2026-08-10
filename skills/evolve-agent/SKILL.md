@@ -62,16 +62,53 @@ artifacts over executing that parent again. Re-execute the parent only when the
 current task set, evaluator identity, runtime identity, or required artifacts
 do not match the retained evidence. Execute every child freshly.
 
-## 3. Prefer capabilities over source
+## 3. Author reusable operators in a source checkout
+
+Use the library when creating a reusable policy, not an edit to one already
+initialized workspace. Discover available entries, then scaffold and verify one
+operator before selecting it from a recipe:
+
+```bash
+uv run --frozen evolve operator list [stage]
+uv run --frozen evolve operator new mutate <name>
+uv run --frozen evolve operator describe mutate/<name>
+uv run --frozen evolve operator check mutate/<name> --config '{"attempts": 3}'
+uv run --frozen evolve recipe check <recipe-path>
+```
+
+`new` writes exactly one entry at `library/mutate/<name>.py`. Implement the
+generated `MutateOperator`, keep `validate_config`, and use
+`sdk.main(..., validate_config=validate_config)`. A recipe selects it with an
+`operator:` value and nested `config:` mapping:
+
+```yaml
+operators:
+  mutate:
+    operator: critic_editor
+    timeout_s: 3600
+    config:
+      attempts: 3
+```
+
+Do not put a reusable implementation beside a recipe or alter a library entry
+to change a running workspace. Run recipe check before initialization; a new
+workspace freezes the selected source. Existing workspaces retain their own
+frozen active operators.
+
+**Completion check:** The operator is in the central library, its configuration
+passes `operator check`, the recipe passes `recipe check`, and the source change
+is separated from any initialized workspace it does not retroactively alter.
+
+## 4. Prefer capabilities over source
 
 For agent-led evolution, start from the stable workspace interface:
 
 ```bash
-./evolve operator list . --json
+./evolve operator active . --json
 ./evolve operator run . <stage> --genid <id> [stage arguments]
 ```
 
-Treat `operator list --json` as the live authority for which stages are
+Treat `operator active --json` as the live authority for which stages are
 configured and whether their access is `direct`, `driver`, or `finalize`.
 Invoke configured direct operators, read their retained artifacts under
 `runs/gen-<id>/`, and make the candidate change yourself.
@@ -104,7 +141,7 @@ not run them concurrently or replace an existing driver with a custom loop.
 For agent-led evolution, name the configured direct operators and the artifacts
 that will justify the edit; source inspection must have a concrete reason.
 
-## 4. Close the loop
+## 5. Close the loop
 
 1. Establish and inspect the certified baseline.
 2. Select a parent and retain the method's required evidence.
@@ -118,7 +155,7 @@ that will justify the edit; source inspection must have a concrete reason.
 admission decisions and evaluator-stamped results exist; lineage verification
 passes; accepted and rejected outcomes remain auditable.
 
-## 5. Report only what the chain proves
+## 6. Report only what the chain proves
 
 Start from `./evolve report .`, which writes the experiment report and
 research-claim checklist from stamped records. Around it, report the baseline,
@@ -142,3 +179,10 @@ partition.
 - Match the execution boundary to candidate trust.
 - Keep credentials out of prompts, artifacts, and reports.
 - Spend live evaluation budget only when the request authorizes execution.
+
+## Historical-workspace note
+
+Older workspaces can contain `meta_agent`, `trace_analyzer`, or `variant:`
+configuration. Treat those as historical metadata only; current authoring uses
+the canonical `mutate` and `analyze` stages with `operator:` and nested
+`config:`.
