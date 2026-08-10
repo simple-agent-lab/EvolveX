@@ -8,7 +8,7 @@ from typer.testing import CliRunner
 
 from evolve import operator_cli
 from evolve.cli import app
-from evolve.operator_library import describe_operator, resolve_operator, validate_operator_config
+from evolve.composition.catalog import describe_operator, resolve_operator, validate_operator_config
 
 runner = CliRunner()
 

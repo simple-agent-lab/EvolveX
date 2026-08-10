@@ -19,6 +19,7 @@ from typing import Any, cast
 
 from . import __version__ as _EVOLVE_VERSION
 from .archive import append_event
+from .composition import ResolvedOperator, ResolvedRecipe, resolve_builtin_recipe, resolve_recipe
 from .config import (
     DEFAULT_RECIPE,
     OPERATOR_KINDS,
@@ -34,7 +35,6 @@ from .config import (
 )
 from .host_runtime import uv_executable
 from .integrations.harbor._agent_roles import is_candidate_miniswe_agent
-from .recipe import ResolvedOperator, ResolvedRecipe, resolve_builtin_recipe, resolve_recipe
 from .runtime.config import resolve_runtime
 from .splits import build_manifest
 

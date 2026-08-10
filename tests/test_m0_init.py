@@ -86,7 +86,7 @@ def _versioned_candidate_seed(path: Path, *, locked: bool) -> Path:
 
 def _override_hill_target(monkeypatch, target: dict[str, object]) -> None:
     from evolve import workspace as workspace_module
-    from evolve.recipe import ResolvedRecipe
+    from evolve.composition import ResolvedRecipe
 
     resolve_builtin_recipe = workspace_module.resolve_builtin_recipe
 

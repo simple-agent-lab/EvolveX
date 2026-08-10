@@ -13,8 +13,8 @@ from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import IO, Literal, cast, overload
 
-from .config import Resource, library_root
-from .frozen.interfaces import OPERATOR_BY_KIND
+from ..config import Resource, library_root
+from ..frozen.interfaces import OPERATOR_BY_KIND
 
 OPERATOR_NAME = re.compile(r"^[a-z][a-z0-9_]*$")
 

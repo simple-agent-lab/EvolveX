@@ -193,8 +193,8 @@ def test_init_copies_frozen_library_helpers_and_active_provenance(tmp_path: Path
 def test_init_copies_binary_shared_and_stage_local_helper_assets(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from evolve import recipe as recipe_module
     from evolve import workspace as workspace_module
+    from evolve.composition import recipe as recipe_module
 
     library = tmp_path / "library"
     shutil.copytree(Path(library_root()), library, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))

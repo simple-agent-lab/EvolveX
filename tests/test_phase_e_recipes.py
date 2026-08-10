@@ -1,7 +1,7 @@
 from pathlib import Path
 
+from evolve.composition import resolve_builtin_recipe
 from evolve.config import RECIPE_NAMES, load_config
-from evolve.recipe import resolve_builtin_recipe
 
 ROOT = Path(__file__).resolve().parents[1]
 RECIPES = ROOT / "recipes"

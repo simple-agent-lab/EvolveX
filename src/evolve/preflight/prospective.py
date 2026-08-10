@@ -13,8 +13,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ..composition import RecipeResolutionError, render_recipe_problems, resolve_builtin_recipe, resolve_recipe
 from ..config import DEFAULT_RECIPE
-from ..recipe import RecipeResolutionError, render_recipe_problems, resolve_builtin_recipe, resolve_recipe
 from ..splits import build_manifest
 
 _TEST_ONLY_SEEDS = frozenset({"builtin-dummy"})

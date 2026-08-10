@@ -3,8 +3,8 @@ import json
 import random
 from pathlib import Path
 
+from evolve.composition.catalog import resolve_operator, validate_operator_config
 from evolve.frozen.interfaces import OperatorContext, RolloutResult
-from evolve.operator_library import resolve_operator, validate_operator_config
 
 ROOT = Path(__file__).resolve().parents[1]
 

@@ -5,7 +5,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_real_recipe_binds_harbor_rollout_analyze_and_hyperagents_mutate(tmp_path: Path) -> None:
     from evolve import workspace as workspace_module
-    from evolve.recipe import resolve_builtin_recipe
+    from evolve.composition import resolve_builtin_recipe
 
     bindings = resolve_builtin_recipe("hill_climb").operators
     rollout = bindings["rollout"]
@@ -32,7 +32,7 @@ def test_real_recipe_binds_harbor_rollout_analyze_and_hyperagents_mutate(tmp_pat
 
 
 def test_mutate_runners_are_not_operator_variants(tmp_path: Path) -> None:
-    from evolve.operator_library import discover_operators
+    from evolve.composition.catalog import discover_operators
 
     variants = sorted(name for stage, name in discover_operators() if stage == "mutate")
     assert variants == ["aevolve", "ahe", "gepa", "hyperagents"]

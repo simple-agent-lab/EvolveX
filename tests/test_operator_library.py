@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from evolve.operator_library import (
+from evolve.composition.catalog import (
     OperatorLibraryError,
     describe_operator,
     discover_operators,

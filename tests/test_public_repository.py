@@ -147,7 +147,7 @@ def test_maintained_public_material_uses_canonical_stage_identifiers() -> None:
     # recipe.py names retired stages only so rejected legacy recipes receive a
     # precise migration diagnostic; tests/test_recipe_resolution.py exercises
     # that negative compatibility boundary.
-    rejection_diagnostic = ROOT / "src" / "evolve" / "recipe.py"
+    rejection_diagnostic = ROOT / "src" / "evolve" / "composition" / "recipe.py"
     for path in maintained_current_files():
         text = path.read_text()
         if path == rejection_diagnostic:

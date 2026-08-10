@@ -99,7 +99,7 @@ DEFAULT_RECIPE = "gepa"
 
 
 def default_config(recipe: str, experiment_id: str) -> dict[str, Any]:
-    from .recipe import resolve_builtin_recipe
+    from .composition import resolve_builtin_recipe
 
     config = copy.deepcopy(resolve_builtin_recipe(recipe).config)
     experiment = cast("dict[str, Any]", config["experiment"])

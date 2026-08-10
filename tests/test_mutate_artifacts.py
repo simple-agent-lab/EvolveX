@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 
 from evolve.agent import AgentRunResult
+from evolve.composition.catalog import resolve_operator, validate_operator_config
 from evolve.frozen.interfaces import OperatorContext
-from evolve.operator_library import resolve_operator, validate_operator_config
 from library.mutate import _runners as runners
 from library.mutate._support.artifacts import (
     artifact_generation_relative,

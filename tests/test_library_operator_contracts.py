@@ -2,7 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from evolve.operator_library import (
+from evolve.composition import resolve_recipe
+from evolve.composition.catalog import (
     LibraryOperator,
     OperatorLibraryError,
     describe_operator,
@@ -10,7 +11,6 @@ from evolve.operator_library import (
     resolve_operator,
     validate_operator_config,
 )
-from evolve.recipe import resolve_recipe
 
 ROOT = Path(__file__).resolve().parents[1]
 

@@ -5,9 +5,7 @@ from pathlib import Path
 
 import typer
 
-from .config import Resource, library_root, operator_blocks
-from .frozen.interfaces import OPERATORS
-from .operator_library import (
+from .composition.catalog import (
     OPERATOR_NAME,
     OperatorLibraryError,
     describe_operator,
@@ -16,6 +14,8 @@ from .operator_library import (
     resolve_operator,
     validate_operator_config,
 )
+from .config import Resource, library_root, operator_blocks
+from .frozen.interfaces import OPERATORS
 from .orchestration import finalize_child, invoke_operator
 
 

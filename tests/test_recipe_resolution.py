@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from evolve.recipe import RecipeResolutionError, resolve_builtin_recipe, resolve_recipe
+from evolve.composition import RecipeResolutionError, resolve_builtin_recipe, resolve_recipe
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -270,7 +270,7 @@ def test_packaged_recipe_rejects_script_without_stable_filesystem_base(
     with zipfile.ZipFile(archive, "w") as package:
         package.writestr("gepa/evolve.yaml", yaml.safe_dump(config, sort_keys=False))
     packaged_root = zipfile.Path(archive)
-    monkeypatch.setattr("evolve.recipe.recipe_root", lambda: packaged_root)
+    monkeypatch.setattr("evolve.composition.recipe.recipe_root", lambda: packaged_root)
 
     with pytest.raises(RecipeResolutionError) as caught:
         resolve_builtin_recipe("gepa")

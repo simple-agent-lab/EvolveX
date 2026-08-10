@@ -26,6 +26,10 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `candidate/smoke.py` | 225 | run install or one-request model smoke against an exact candidate snapshot and persist redacted evidence |
 | `candidate/snapshot.py` | 100 | exact candidate Git tree construction, temporary materialization, and reviewed-tree commit verification |
 | `cli.py` | 450 | argument parsing and verb dispatch only — no logic |
+| `composition/__init__.py` | 25 | stable recipe-resolution facade without CLI dependencies |
+| `composition/catalog.py` | 250 | filesystem-only operator library discovery and subprocess inspection protocol |
+| `composition/cli.py` | 100 | recipe check command rendering human and machine-readable resolved bindings |
+| `composition/recipe.py` | 300 | strict built-in and path recipe resolution, operator binding validation, and aggregated diagnostics |
 | `config.py` | 225 | read/render `evolve.yaml`, including evaluator repetition and inline runtime normalization |
 | `driver.py` | 1800 | the generation sequencer: orchestrates baseline eval, verbs + operators (incl. novelty, self-modification admission gates, sealed anchors); validates operator outputs; computes verified_fixes; audit quarantine; doctor repair |
 | `doctor.py` | 250 | read-only local/experiment preflight profiles and persisted diagnostic receipts |
@@ -48,13 +52,10 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `experiment_smoke.py` | 200 | isolated one-task gen0-to-gen1 full-loop canary |
 | `feedback.py` | 250 | assemble current and historical rollout evidence plus ledger-derived feedback for mutation |
 | `operators.py` | 200 | subprocess runner for workspace operator scripts (contract: env vars, --config, timeout) |
-| `operator_library.py` | 250 | filesystem-only operator library discovery and subprocess inspection protocol |
 | `operator_cli.py` | 325 | agent-facing library authoring/discovery, active inspection, and one-stage invocation commands |
 | `orchestration.py` | 400 | safe outer-agent composition of driver verbs, stage handoffs, retries, and admission receipts |
 | `patching.py` | 150 | mutable-surface patch creation and parent-reference selection |
 | `population.py` | 100 | genid/lineage bookkeeping for fan-out generations |
-| `recipe.py` | 300 | strict built-in and path recipe resolution, operator binding validation, and aggregated diagnostics |
-| `recipe_cli.py` | 100 | recipe check command rendering human and machine-readable resolved bindings |
 | `preflight/__init__.py` | 50 | stable public preflight facade and prospective-check exports |
 | `preflight/checks.py` | 100 | exact-environment host tool and candidate dependency-lock probes |
 | `preflight/models.py` | 150 | typed checks, failure categories, and atomic receipt serialization |
@@ -98,7 +99,7 @@ each workspace, immutable there because it sits outside the mutable surface
 | `frozen/interfaces.py` | 350 | operator ABCs, registry, result schemas, and strict operator payload validation |
 | `frozen/sdk.py` | 350 | Python operator entrypoint and file-contract IO; no library algorithm policy |
 
-Total `src/evolve/` budget: **17605 lines**. The budget admits the explicit content-backed
+Total `src/evolve/` budget: **17630 lines**. The budget admits the explicit content-backed
 evaluation-contract boundaries, the opt-in in-place Harbor runtime, and the redacted trace-analysis
 boundary between rollout and feedback assembly; if the mechanism wants to
 grow past that, something belongs in a workspace operator instead —

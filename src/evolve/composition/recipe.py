@@ -11,9 +11,9 @@ from typing import Literal, cast
 
 import yaml
 
-from .config import RECIPE_NAMES, Resource, library_root, load_config, recipe_root
-from .frozen.interfaces import OPERATOR_BY_KIND, REQUIRED_OPERATOR_KINDS
-from .operator_library import OPERATOR_NAME, OperatorLibraryError, resolve_operator, validate_operator_config
+from ..config import RECIPE_NAMES, Resource, library_root, load_config, recipe_root
+from ..frozen.interfaces import OPERATOR_BY_KIND, REQUIRED_OPERATOR_KINDS
+from .catalog import OPERATOR_NAME, OperatorLibraryError, resolve_operator, validate_operator_config
 
 _STAGE_KEYS = frozenset({"operator", "script", "timeout_s", "config"})
 _OLD_STAGES = {"trace_analyzer": "analyze", "meta_agent": "mutate"}
