@@ -4,6 +4,7 @@ import {
   finalResultGeneration,
   generationsThrough,
   scoreTrend,
+  splitDiffFiles,
   snapshotRevision,
   trainScoreChange,
 } from './viewer-ui.js';
@@ -89,6 +90,8 @@ function captureViewState() {
     focusedId: content.contains(document.activeElement) ? document.activeElement.id : null,
     artifactWrap: document.querySelector('#artifact-preview')?.classList.contains('wrap') || false,
     performancePages: [...content.querySelectorAll('[data-performance-card]')].map((card) => Number(card.dataset.page) || 1),
+    diffFile: content.querySelector('[data-diff-file][aria-selected="true"]')?.dataset.diffFile ?? null,
+    diffLayout: content.querySelector('[data-diff-layout][aria-pressed="true"]')?.dataset.diffLayout ?? null,
   };
 }
 
@@ -117,6 +120,8 @@ function restoreViewState(saved) {
   content.querySelectorAll('[data-performance-card]').forEach((card, index) => {
     setPerformancePage(card, saved.performancePages[index] || 1);
   });
+  if (saved.diffFile != null) content.querySelector(`[data-diff-file="${saved.diffFile}"]`)?.click();
+  if (saved.diffLayout != null) content.querySelector(`[data-diff-layout="${saved.diffLayout}"]`)?.click();
   document.getElementById(saved.focusedId)?.focus({preventScroll: true});
   window.scrollTo(saved.windowX, saved.windowY);
 }
@@ -345,6 +350,7 @@ async function renderArtifact(artifactId) {
   const backHref = genid ? `/generations/${encodeURIComponent(genid)}` : '/';
   const presentation = artifactPresentation(metadata, text);
   const isDiff = presentation.mode === 'diff';
+  const diffFiles = isDiff ? splitDiffFiles(text) : [];
   const title = isDiff && genid ? `Generation ${genid} diff` : metadata.label;
   content.classList.toggle('diff-mode', isDiff);
   content.innerHTML = `
@@ -377,6 +383,11 @@ async function renderArtifact(artifactId) {
           <button class="button" id="artifact-wrap" type="button" aria-pressed="false">Wrap lines</button>
         </div>
       </div>` : `<div class="artifact-meta"><span>${escapeHtml(metadata.kind || 'text')}</span><span>${formatBytes(metadata.size)}</span></div>`}
+      ${diffFiles.length > 1 ? `<div class="diff-file-tabs" role="tablist" aria-label="Modified files">
+        ${diffFiles.map((file, index) => `<button type="button" role="tab" data-diff-file="${index}" aria-selected="${index === 0}" tabindex="${index === 0 ? 0 : -1}">
+          <span>${escapeHtml(file.path)}</span><small><i class="plus">+${file.additions}</i><i class="minus">−${file.deletions}</i></small>
+        </button>`).join('')}
+      </div>` : ''}
       ${isDiff && genid ? `<div id="diff-comparison-labels" class="diff-comparison-labels">
         <div><span>Original</span><strong>${generation?.parent == null ? 'Parent version' : `Generation ${escapeHtml(generation.parent)}`}</strong></div>
         <div><span>Modified</span><strong>Generation ${escapeHtml(genid)}</strong></div>
@@ -392,22 +403,47 @@ async function renderArtifact(artifactId) {
     wrapButton.setAttribute('aria-pressed', String(wrapping));
     wrapButton.textContent = wrapping ? 'Do not wrap' : 'Wrap lines';
   });
-  const renderLayout = (outputFormat) => {
-    document.querySelector('.artifact-card').dataset.diffLayout = outputFormat;
+  let selectedFile = 0;
+  let selectedLayout = isDiff ? 'side-by-side' : 'line-by-line';
+  const renderSelection = () => {
+    document.querySelector('.artifact-card').dataset.diffLayout = selectedLayout;
     preview.replaceChildren();
     preview.classList.remove('diff-preview');
-    renderArtifactPresentation(preview, presentation, {outputFormat});
-    document.querySelector('#diff-comparison-labels')?.toggleAttribute('hidden', outputFormat !== 'side-by-side');
+    const selectedPresentation = diffFiles.length ? {...presentation, text: diffFiles[selectedFile].text} : presentation;
+    renderArtifactPresentation(preview, selectedPresentation, {outputFormat: selectedLayout, drawFileList: false});
+    document.querySelector('#diff-comparison-labels')?.toggleAttribute('hidden', selectedLayout !== 'side-by-side');
     document.querySelectorAll('[data-diff-layout]').forEach((button) => {
-      const active = button.dataset.diffLayout === outputFormat;
+      const active = button.dataset.diffLayout === selectedLayout;
       button.classList.toggle('primary', active);
       button.setAttribute('aria-pressed', String(active));
     });
+    document.querySelectorAll('[data-diff-file]').forEach((button, index) => {
+      const active = index === selectedFile;
+      button.setAttribute('aria-selected', String(active));
+      button.tabIndex = active ? 0 : -1;
+    });
+  };
+  const selectFile = (index, focus = false) => {
+    selectedFile = Math.max(0, Math.min(diffFiles.length - 1, index));
+    renderSelection();
+    if (focus) document.querySelector(`[data-diff-file="${selectedFile}"]`)?.focus();
   };
   document.querySelectorAll('[data-diff-layout]').forEach((button) => {
-    button.addEventListener('click', () => renderLayout(button.dataset.diffLayout));
+    button.addEventListener('click', () => {
+      selectedLayout = button.dataset.diffLayout;
+      renderSelection();
+    });
   });
-  renderLayout(isDiff ? 'side-by-side' : 'line-by-line');
+  document.querySelectorAll('[data-diff-file]').forEach((button) => {
+    button.addEventListener('click', () => selectFile(Number(button.dataset.diffFile)));
+    button.addEventListener('keydown', (event) => {
+      if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+      event.preventDefault();
+      const offset = event.key === 'ArrowRight' ? 1 : -1;
+      selectFile((selectedFile + offset + diffFiles.length) % diffFiles.length, true);
+    });
+  });
+  renderSelection();
 }
 
 function renderArtifactPresentation(container, presentation, options = {}) {
@@ -416,7 +452,7 @@ function renderArtifactPresentation(container, presentation, options = {}) {
       if (!globalThis.Diff2Html) throw new Error('Diff renderer is unavailable');
       container.classList.add('diff-preview');
       container.innerHTML = globalThis.Diff2Html.html(presentation.text, {
-        drawFileList: true,
+        drawFileList: options.drawFileList ?? true,
         matching: 'none',
         outputFormat: options.outputFormat || 'side-by-side',
         diffMaxChanges: 5000,

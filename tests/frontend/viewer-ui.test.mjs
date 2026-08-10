@@ -9,6 +9,7 @@ import {
   generationsThrough,
   scoreAxis,
   scoreTrend,
+  splitDiffFiles,
   snapshotRevision,
   trainScoreChange,
 } from '../../src/evolve/viewer/static/viewer-ui.js';
@@ -75,6 +76,30 @@ test('malformed JSON falls back to plain text mode', () => {
     artifactPresentation({kind: 'json', label: 'broken.json'}, '{oops'),
     {mode: 'plain', language: 'plaintext', text: '{oops'},
   );
+});
+
+test('diff files are split into independently selectable patches', () => {
+  const files = splitDiffFiles([
+    'diff --git a/a.py b/a.py',
+    '--- a/a.py',
+    '+++ b/a.py',
+    '@@ -1 +1 @@',
+    '-old',
+    '+new',
+    'diff --git a/b.py b/b.py',
+    '--- a/b.py',
+    '+++ b/b.py',
+    '@@ -0,0 +1,2 @@',
+    '+one',
+    '+two',
+  ].join('\n'));
+
+  assert.deepEqual(files.map(({path, additions, deletions}) => ({path, additions, deletions})), [
+    {path: 'a.py', additions: 1, deletions: 1},
+    {path: 'b.py', additions: 2, deletions: 0},
+  ]);
+  assert.doesNotMatch(files[0].text, /b\.py/);
+  assert.doesNotMatch(files[1].text, /a\.py/);
 });
 
 test('artifact links stay inside the evolve preview', () => {

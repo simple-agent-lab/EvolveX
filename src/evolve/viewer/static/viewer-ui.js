@@ -103,6 +103,26 @@ export function artifactPresentation(metadata, text) {
     : {mode: 'plain', language: 'plaintext', text};
 }
 
+export function splitDiffFiles(text) {
+  const source = String(text || '');
+  const starts = [...source.matchAll(/^diff --git /gm)].map((match) => match.index);
+  const chunks = starts.length
+    ? starts.map((start, index) => source.slice(start, starts[index + 1] ?? source.length))
+    : source.trim() ? [source] : [];
+  return chunks.map((chunk, index) => {
+    const modified = chunk.match(/^\+\+\+ (?:b\/)?(.+)$/m)?.[1];
+    const header = chunk.match(/^diff --git (?:"?a\/)?(.+?)"? (?:"?b\/)?(.+?)"?$/m);
+    const path = modified && modified !== '/dev/null' ? modified : header?.[2] || header?.[1] || `File ${index + 1}`;
+    const lines = chunk.split('\n');
+    return {
+      path,
+      text: chunk,
+      additions: lines.filter((line) => line.startsWith('+') && !line.startsWith('+++')).length,
+      deletions: lines.filter((line) => line.startsWith('-') && !line.startsWith('---')).length,
+    };
+  });
+}
+
 export function scoreTrend(generations, selectedId = null) {
   const points = generations
     .filter((item) => item.score != null)
