@@ -3,12 +3,20 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 from conftest import fixture_recipe_config, generated_workspace_uv_env, run_evolve, write_locked_miniswe_seed
 
-from evolve.config import RECIPE_NAMES, default_config, load_config, recipe_root, scaffold_root, seed_root
+from evolve.config import (
+    RECIPE_NAMES,
+    default_config,
+    library_root,
+    load_config,
+    recipe_root,
+    render_yaml,
+    scaffold_root,
+    seed_root,
+)
 from evolve.workspace import InitOptions, _write_target, init_workspace
 
 CANDIDATE = "evolve.integrations.harbor.miniswe_candidate:CandidateMiniSweAgent"
@@ -37,6 +45,48 @@ def _local_dataset(root: Path, count: int = 10) -> Path:
     return root
 
 
+def init_custom_recipe(
+    tmp_path: Path,
+    *,
+    mutate_operator: str,
+    mutate_config: dict[str, object],
+) -> Path:
+    recipe = tmp_path / "custom-recipe"
+    recipe.mkdir()
+    config = fixture_recipe_config("hill_climb-smoke", "custom-recipe")
+    config["operators"]["mutate"] = {
+        "operator": mutate_operator,
+        "config": mutate_config,
+    }
+    (recipe / "evolve.yaml").write_text(render_yaml(config))
+    workspace = tmp_path / "custom-workspace"
+    init_workspace(InitOptions(workspace=workspace, recipe_path=recipe))
+    return workspace
+
+
+def test_init_freezes_resolved_operator_identity_and_nested_config(tmp_path: Path) -> None:
+    workspace = init_custom_recipe(
+        tmp_path,
+        mutate_operator="hyperagents",
+        mutate_config={"runner": "local"},
+    )
+
+    rendered = load_config(workspace / "evolve.yaml")
+    assert rendered["operators"]["mutate"] == {
+        "operator": "hyperagents",
+        "timeout_s": 600.0,
+        "config": {
+            "runner": "local",
+            "editable_roots": ["target"],
+            "expose_gate_data": False,
+            "max_retries": 0,
+        },
+    }
+    manifest = json.loads((workspace / ".evolve-components.json").read_text())
+    assert manifest["operators"]["mutate"]["name"] == "hyperagents"
+    assert len(manifest["operators"]["mutate"]["sha256"]) == 64
+
+
 @pytest.mark.parametrize(("recipe", "expected"), sorted(CASES.items()))
 def test_supported_recipe_initializes_only_selected_components(
     tmp_path: Path, recipe: str, expected: tuple[str, str, str]
@@ -51,7 +101,7 @@ def test_supported_recipe_initializes_only_selected_components(
     rendered = load_config(workspace / "evolve.yaml")
     components = json.loads((workspace / ".evolve-components.json").read_text())
     assert rendered["evaluator"]["agent"] == evaluator_agent
-    assert rendered["operators"]["mutate"]["agent"] == mutate
+    assert rendered["operators"]["mutate"]["config"]["agent"] == mutate
     assert components["recipe"] == recipe
     assert components["target_seed"] == rendered["target"]["seed"]
     assert components["evaluator_engine"] == "harbor"
@@ -94,16 +144,13 @@ def test_supported_recipe_initializes_only_selected_components(
         assert probe.returncode == 0, probe.stderr
 
 
-def test_recipe_path_preserves_recipe_local_operators_and_assets(tmp_path: Path) -> None:
+def test_recipe_path_rejects_recipe_local_operators_before_workspace_writes(tmp_path: Path) -> None:
     recipe = tmp_path / "custom-path-recipe"
     shutil.copytree(Path(recipe_root()) / "hill_climb", recipe)
     local_select = recipe / "operators" / "select"
     (local_select / "prompts").mkdir(parents=True)
     (local_select / "greedy.py").write_text('"""Recipe-local select."""\nLOCAL_RECIPE_OPERATOR = True\n')
     (local_select / "prompts" / "decision.md").write_text("LOCAL RECIPE PROMPT\n")
-    (recipe / "evaluator" / "tasks").mkdir(parents=True)
-    (recipe / "evaluator" / "tasks" / "train.txt").write_text("task-a\n")
-    seed = write_locked_miniswe_seed(tmp_path / "recipe-path-seed")
     workspace = tmp_path / "recipe-path-workspace"
 
     result = run_evolve(
@@ -111,16 +158,63 @@ def test_recipe_path_preserves_recipe_local_operators_and_assets(tmp_path: Path)
         str(workspace),
         "--recipe-path",
         str(recipe / "evolve.yaml"),
-        "--seed",
-        str(seed),
-        "--dataset",
-        str(_local_dataset(tmp_path / "custom-tasks")),
     )
 
-    assert result.returncode == 0, result.stderr
-    assert "LOCAL_RECIPE_OPERATOR = True" in (workspace / "operators" / "select.py").read_text()
-    assert (workspace / "library" / "select" / "prompts" / "decision.md").read_text() == "LOCAL RECIPE PROMPT\n"
-    assert (workspace / "evaluator" / "tasks" / "train.txt").read_text() == "task-a\n"
+    assert result.returncode == 1
+    assert "recipe-local operator libraries are not supported" in result.stderr
+    assert not workspace.exists()
+
+
+def test_init_copies_frozen_library_helpers_and_active_provenance(tmp_path: Path) -> None:
+    workspace = init_custom_recipe(
+        tmp_path,
+        mutate_operator="hyperagents",
+        mutate_config={"runner": "local"},
+    )
+
+    assert (workspace / "library/_shared/config.py").read_bytes() == (
+        Path(library_root()) / "_shared/config.py"
+    ).read_bytes()
+    assert (workspace / "library/mutate/_runners/harbor.py").read_bytes() == (
+        Path(library_root()) / "mutate/_runners/harbor.py"
+    ).read_bytes()
+    assert (workspace / "library/mutate/_skeleton.py").read_bytes() == (
+        Path(library_root()) / "mutate/_skeleton.py"
+    ).read_bytes()
+    first_line = (workspace / "operators/mutate.py").read_text().splitlines()[0]
+    assert "kind=mutate source=library/mutate/hyperagents.py" in first_line
+    assert str(Path(library_root()).resolve()) not in first_line
+
+
+def test_init_freezes_script_with_redacted_nonportable_provenance(tmp_path: Path) -> None:
+    recipe = tmp_path / "credentials-should-not-appear" / "script-recipe"
+    recipe.mkdir(parents=True)
+    source = recipe / "private-select.py"
+    source.write_text("print('private select')\n")
+    config = fixture_recipe_config("hill_climb-smoke", "script-recipe")
+    config["operators"]["select"] = {
+        "script": str(source),
+        "timeout_s": 17,
+        "config": {"opaque": True},
+    }
+    (recipe / "evolve.yaml").write_text(render_yaml(config))
+    workspace = tmp_path / "script-workspace"
+
+    init_workspace(InitOptions(workspace=workspace, recipe_path=recipe))
+
+    active = (workspace / "operators/select.py").read_text()
+    manifest_text = (workspace / ".evolve-components.json").read_text()
+    manifest = json.loads(manifest_text)
+    assert "source=script/private-select.py" in active.splitlines()[0]
+    assert "credentials-should-not-appear" not in active.splitlines()[0]
+    assert manifest["operators"]["select"] == {
+        "stage": "select",
+        "source": "script",
+        "name": "private-select.py",
+        "sha256": __import__("hashlib").sha256(source.read_bytes()).hexdigest(),
+        "portable": False,
+    }
+    assert "credentials-should-not-appear" not in manifest_text
 
 
 def test_recipe_name_and_path_are_mutually_exclusive(tmp_path: Path) -> None:
@@ -225,7 +319,7 @@ def test_dataset_override_preserves_recipe_target_and_integrations(
     )
     assert rendered["target"] == expected_target
     assert rendered["evaluator"]["agent"] == evaluator_agent
-    assert rendered["operators"]["mutate"]["agent"] == mutate
+    assert rendered["operators"]["mutate"]["config"]["agent"] == mutate
     assert json.loads((workspace / ".evolve-components.json").read_text())["integrations"] == sorted(
         {
             reference.split(":", 1)[0]
@@ -244,7 +338,7 @@ def test_every_production_resource_has_a_supported_consumer() -> None:
         if str(config["target"].get("seed", "")).startswith("builtin-")
     }
     agent_refs = {str(config["evaluator"].get("agent", "")) for config in configs} | {
-        str(config["operators"]["mutate"].get("agent", "")) for config in configs
+        str(config["operators"]["mutate"].get("config", {}).get("agent", "")) for config in configs
     }
 
     evaluator_scaffolds = {path.name for path in (scaffold_root() / "evaluators").iterdir() if path.is_dir()}
@@ -312,20 +406,24 @@ def test_every_scaffold_resource_is_rendered_into_a_workspace(tmp_path: Path) ->
 
 
 def test_initialization_reports_selecting_configuration_fields(tmp_path: Path) -> None:
+    def init_config(config: dict[str, object], destination: Path) -> None:
+        recipe = tmp_path / f"{destination.name}-recipe"
+        recipe.mkdir()
+        (recipe / "evolve.yaml").write_text(render_yaml(config))
+        init_workspace(InitOptions(workspace=destination, recipe_path=recipe))
+
     with pytest.raises(ValueError, match=r"unsupported recipe: unknown"):
         default_config("unknown", "experiment")
 
     missing_agent = fixture_recipe_config("hill_climb-smoke", "missing-agent")
     missing_agent["evaluator"].pop("agent")
-    with patch("evolve.workspace.default_config", return_value=missing_agent):
-        with pytest.raises(ValueError, match=r"evaluator\.agent is required"):
-            init_workspace(InitOptions(workspace=tmp_path / "missing-agent", recipe="hill_climb-smoke"))
+    with pytest.raises(ValueError, match=r"evaluator\.agent is required"):
+        init_config(missing_agent, tmp_path / "missing-agent")
 
     missing_engine = fixture_recipe_config("hill_climb-smoke", "missing-engine")
     missing_engine["evaluator"]["engine"] = "missing"
-    with patch("evolve.workspace.default_config", return_value=missing_engine):
-        with pytest.raises(ValueError, match=r"unsupported evaluator\.engine: missing"):
-            init_workspace(InitOptions(workspace=tmp_path / "missing-engine", recipe="hill_climb-smoke"))
+    with pytest.raises(ValueError, match=r"unsupported evaluator\.engine: missing"):
+        init_config(missing_engine, tmp_path / "missing-engine")
 
     with pytest.raises(ValueError, match=r"seed is not a local directory or git URL"):
         _write_target(tmp_path / "missing-seed", {"seed": str(tmp_path / "absent")})
@@ -333,7 +431,6 @@ def test_initialization_reports_selecting_configuration_fields(tmp_path: Path) -
     missing_seed = fixture_recipe_config("hill_climb-smoke", "required-seed")
     missing_seed["target"].pop("seed")
     destination = tmp_path / "required-seed"
-    with patch("evolve.workspace.default_config", return_value=missing_seed):
-        with pytest.raises(ValueError, match=r"target\.seed is required"):
-            init_workspace(InitOptions(workspace=destination, recipe="hill_climb-smoke"))
+    with pytest.raises(ValueError, match=r"target\.seed is required"):
+        init_config(missing_seed, destination)
     assert not destination.exists()

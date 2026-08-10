@@ -70,11 +70,11 @@ def invoke_operator(
     configured = operator_blocks(workspace)
     if not _operator_present(configured, name):
         raise RuntimeError(f"operator is not configured: {name}")
-    reserved_overrides = sorted({"variant", "script"} & set(config_override or {}))
+    reserved_overrides = sorted({"operator", "script", "timeout_s", "config"} & set(config_override or {}))
     if reserved_overrides:
         raise RuntimeError("operator invocation cannot replace implementation keys: " + ", ".join(reserved_overrides))
     config = _merge_config(_operator_config_block(configured, name), config_override or {})
-    effective_timeout = _invocation_timeout(configured, name, config, timeout_s)
+    effective_timeout = _invocation_timeout(configured, name, timeout_s)
     run_dir = workspace / "runs" / f"gen-{genid}"
     exp_id = experiment_id(workspace)
     ensure_local_archive(workspace, exp_id)
@@ -125,10 +125,9 @@ def _assert_invocation_route(name: str, parent: str | None) -> None:
 def _invocation_timeout(
     configured: dict[str, Any],
     name: str,
-    config: dict[str, Any],
     explicit: float | None,
 ) -> float:
-    candidate = explicit if explicit is not None else config.get("timeout_s", operator_timeout(configured, name))
+    candidate = explicit if explicit is not None else operator_timeout(configured, name)
     if not isinstance(candidate, (int, float)) or isinstance(candidate, bool) or candidate <= 0:
         raise RuntimeError("operator timeout must be a positive number")
     return float(candidate)

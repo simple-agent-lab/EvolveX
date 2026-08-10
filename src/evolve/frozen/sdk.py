@@ -204,6 +204,7 @@ def _run_inspection_mode(
     if args.validate_config:
         if validate_config is None:
             _inspection_error("operator does not support config validation")
+            return True
         try:
             normalized = validate_config(config)
         except Exception as error:
@@ -240,7 +241,6 @@ def _context(config: dict[str, Any]) -> OperatorContext:
     seed = config.get("seed", 0)
     genid = os.environ["EVOLVE_GENID"]
     parent = os.environ.get("EVOLVE_PARENT") or None
-    fan_out = config.get("fan_out", 1)
     return OperatorContext(
         workspace=Path(os.environ["EVOLVE_WORKSPACE"]),
         checkout=Path(os.environ["EVOLVE_CHECKOUT"]),
@@ -248,9 +248,10 @@ def _context(config: dict[str, Any]) -> OperatorContext:
         genid=genid,
         parent=parent,
         round=None,
-        fan_out=int(fan_out),
+        fan_out=1,
         config=config,
         rng=random.Random(_rng_seed(seed, genid, parent)),
+        timeout_s=float(os.environ["EVOLVE_STAGE_TIMEOUT_S"]),
     )
 
 

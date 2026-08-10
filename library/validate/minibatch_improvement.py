@@ -63,7 +63,11 @@ def _write_json(path: Path, payload: object) -> None:
 
 def _cases(path: Path) -> list[dict[str, Any]]:
     payload = read_json(path)
-    return [row for row in payload if isinstance(row, dict)] if isinstance(payload, list) else []
+    return (
+        [{str(key): value for key, value in row.items()} for row in payload if isinstance(row, dict)]
+        if isinstance(payload, list)
+        else []
+    )
 
 
 def _task_scores(cases: list[dict[str, Any]]) -> dict[str, float]:
@@ -142,6 +146,7 @@ class MinibatchImprovementValidate(ValidateOperator):
             fan_out=ctx.fan_out,
             config=child_config,
             rng=ctx.rng,
+            timeout_s=ctx.timeout_s,
         )
         rollout_result = HarborRollout().rollout(checkout, child_ctx)
         _write_json(child_run_dir / "rollout" / "summary.json", rollout_result.summary)

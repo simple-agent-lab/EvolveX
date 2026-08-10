@@ -1,3 +1,4 @@
+import copy
 import json
 import shutil
 import subprocess
@@ -85,15 +86,23 @@ def _versioned_candidate_seed(path: Path, *, locked: bool) -> Path:
 
 def _override_hill_target(monkeypatch, target: dict[str, object]) -> None:
     from evolve import workspace as workspace_module
+    from evolve.recipe import ResolvedRecipe
 
-    default_config = workspace_module.default_config
+    resolve_builtin_recipe = workspace_module.resolve_builtin_recipe
 
-    def configured(recipe: str, experiment_id: str) -> dict[str, object]:
-        config = default_config(recipe, experiment_id)
+    def configured(recipe: str) -> ResolvedRecipe:
+        resolved = resolve_builtin_recipe(recipe)
+        config = copy.deepcopy(resolved.config)
         config["target"] = target.copy()
-        return config
+        return ResolvedRecipe(
+            resolved.name,
+            resolved.directory,
+            config,
+            resolved.operators,
+            resolved.warnings,
+        )
 
-    monkeypatch.setattr(workspace_module, "default_config", configured)
+    monkeypatch.setattr(workspace_module, "resolve_builtin_recipe", configured)
 
 
 def test_init_rejects_test_only_builtin_dummy_seed_before_creating_workspace(tmp_path: Path) -> None:
@@ -577,7 +586,8 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
     assert "tests/fixtures/seeds/dummy" in config
     assert "variant:" not in config
     assert "script:" not in config
-    assert "mutate:\n    runner: local\n    timeout_s: 3600" in config
+    assert "mutate:\n    timeout_s: 3600.0\n    config:" in config
+    assert "      runner: local" in config
     assert "meta_agent:" not in config
     assert "- target/**" in config
     assert (workspace / ".evolve-protocol-version").read_text() == "1\n"

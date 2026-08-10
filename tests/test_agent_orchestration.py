@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+import pytest
 import yaml
 from conftest import git, init_fixture_workspace, init_workspace, rows_by_genid, run_evolve
 
@@ -77,6 +78,25 @@ def test_operator_run_invokes_select_and_retains_artifacts(tmp_path: Path) -> No
     assert summary["operator"] == "select"
     assert summary["status"] == "complete"
     assert json.loads((workspace / "runs/gen-1/parents.json").read_text()) == {"parents": ["0"]}
+
+
+@pytest.mark.parametrize("reserved", ["operator", "script", "timeout_s", "config"])
+def test_operator_run_rejects_framework_owned_config_overrides(tmp_path: Path, reserved: str) -> None:
+    workspace, _evolve_home = init_workspace(tmp_path)
+
+    result = run_evolve(
+        "operator",
+        "run",
+        str(workspace),
+        "select",
+        "--genid",
+        "1",
+        "--config",
+        json.dumps({reserved: "replacement"}),
+    )
+
+    assert result.returncode == 1
+    assert f"cannot replace implementation keys: {reserved}" in result.stderr
 
 
 def test_verify_detects_tampered_best_ever_cache(tmp_path: Path) -> None:

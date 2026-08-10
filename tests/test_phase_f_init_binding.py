@@ -5,24 +5,23 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_real_recipe_binds_harbor_rollout_analyze_and_hyperagents_mutate(tmp_path: Path) -> None:
     from evolve import workspace as workspace_module
+    from evolve.recipe import resolve_builtin_recipe
 
-    config = workspace_module.default_config("hill_climb", "hill")
+    bindings = resolve_builtin_recipe("hill_climb").operators
+    rollout = bindings["rollout"]
+    analyze = bindings["analyze"]
+    mutate = bindings["mutate"]
 
-    bindings = workspace_module._operator_bindings(config, recipe="hill_climb", init_cwd=tmp_path)
-    rollout = next(binding for binding in bindings if binding.kind == "rollout")
-    analyze = next(binding for binding in bindings if binding.kind == "analyze")
-    mutate = next(binding for binding in bindings if binding.kind == "mutate")
-
-    assert rollout.source == "library/rollout/harbor.py"
-    assert '"target": "/opt/evolve/uv/cache"' in rollout.text
-    assert '"target": "/installed-agent/uv-cache"' not in rollout.text
-    assert analyze.source == "library/analyze/failure_patterns.py"
+    assert rollout.name == "harbor"
+    assert '"target": "/opt/evolve/uv/cache"' in rollout.source.read_text()
+    assert '"target": "/installed-agent/uv-cache"' not in rollout.source.read_text()
+    assert analyze.name == "failure_patterns"
     expected_source = (ROOT / "library" / "mutate" / "hyperagents.py").read_text()
-    assert mutate.source == "library/mutate/hyperagents.py"
-    assert mutate.text == expected_source
+    assert mutate.name == "hyperagents"
+    assert mutate.source.read_text() == expected_source
 
-    palette = workspace_module._operator_palette("hill_climb")
-    assets = workspace_module._operator_assets("hill_climb")
+    palette = workspace_module._operator_palette()
+    assets = workspace_module._operator_assets()
     assert "library/mutate/_runners/__init__.py" in assets
     assert "library/mutate/_runners/local.py" in assets
     assert "library/mutate/_runners/harbor.py" in assets
@@ -33,50 +32,12 @@ def test_real_recipe_binds_harbor_rollout_analyze_and_hyperagents_mutate(tmp_pat
 
 
 def test_mutate_runners_are_not_operator_variants(tmp_path: Path) -> None:
-    from evolve import workspace as workspace_module
+    from evolve.operator_library import discover_operators
 
-    variants = workspace_module._available_operator_variants("hill_climb", "mutate")
+    variants = sorted(name for stage, name in discover_operators() if stage == "mutate")
     assert variants == ["aevolve", "ahe", "gepa", "hyperagents"]
     assert "local" not in variants
     assert "harbor" not in variants
-
-    config = workspace_module.default_config("hill_climb", "hill")
-    config["operators"]["mutate"]["variant"] = "harbor"
-    try:
-        workspace_module._operator_bindings(config, recipe="hill_climb", init_cwd=tmp_path)
-    except ValueError as exc:
-        assert "unknown mutate variant: harbor" in str(exc)
-    else:
-        raise AssertionError("expected runner-as-variant rejection")
-
-
-def test_variant_markdown_companion_becomes_active_operator_prompt(tmp_path: Path, monkeypatch) -> None:
-    from evolve import workspace as workspace_module
-
-    library = tmp_path / "library"
-    (library / "mutate").mkdir(parents=True)
-    (library / "mutate" / "custom.py").write_text("# custom operator\n")
-    (library / "mutate" / "custom.md").write_text("CUSTOM STRATEGY\n")
-    monkeypatch.setattr(workspace_module, "library_root", lambda: library)
-
-    config = {
-        "operators": {
-            "select": {"script": str(tmp_path / "select.py")},
-            "rollout": {"script": str(tmp_path / "rollout.py")},
-            "mutate": {"variant": "custom"},
-            "gate": {"script": str(tmp_path / "gate.py")},
-            "record": {"script": str(tmp_path / "record.py")},
-        }
-    }
-    for name in ("select", "rollout", "gate", "record"):
-        (tmp_path / f"{name}.py").write_text(f"# {name}\n")
-    binding = next(
-        item
-        for item in workspace_module._operator_bindings(config, recipe="test", init_cwd=tmp_path)
-        if item.kind == "mutate"
-    )
-
-    assert binding.companion_text == "CUSTOM STRATEGY\n"
 
 
 def test_operator_assets_vendor_nested_prompt_files(tmp_path: Path, monkeypatch) -> None:
@@ -92,7 +53,7 @@ def test_operator_assets_vendor_nested_prompt_files(tmp_path: Path, monkeypatch)
     (library / "mutate" / "__pycache__" / "strategy.cpython-314.pyc").write_bytes(b"\x86\x00")
     monkeypatch.setattr(workspace_module, "library_root", lambda: library)
 
-    assets = workspace_module._operator_assets("custom")
+    assets = workspace_module._operator_assets()
 
     assert assets == {
         "library/mutate/prompts/strategy.md": "Strategy prompt\n",
@@ -120,7 +81,7 @@ def test_operator_assets_reads_only_direct_root_python_helpers(tmp_path: Path, m
     monkeypatch.setattr(workspace_module, "library_root", lambda: library)
     monkeypatch.setattr(Path, "read_text", guarded_read_text)
 
-    assets = workspace_module._operator_assets("custom")
+    assets = workspace_module._operator_assets()
 
     assert assets == {"library/shared_support.py": "ROOT_HELPER = True\n"}
 
@@ -133,6 +94,4 @@ def test_recipe_evaluator_assets_copy_training_but_not_sealed_files(tmp_path: Pa
     (recipes / "custom" / "evaluator" / "tasks" / "train.txt").write_text("task-a\n")
     (recipes / "custom" / "sealed").mkdir()
     (recipes / "custom" / "sealed" / "heldout.txt").write_text("secret-task\n")
-    monkeypatch.setattr(workspace_module, "recipe_root", lambda: recipes)
-
-    assert workspace_module._recipe_evaluator_assets("custom") == {"evaluator/tasks/train.txt": "task-a\n"}
+    assert workspace_module._recipe_evaluator_assets(recipes / "custom") == {"evaluator/tasks/train.txt": "task-a\n"}

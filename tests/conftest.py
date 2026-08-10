@@ -5,9 +5,9 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
-from unittest.mock import patch
 
 import pytest
 from harbor.models.registry import DatasetMetadata
@@ -16,7 +16,7 @@ from harbor.models.task.id import PackageTaskId
 from evolve import evaluation as evaluation_package
 from evolve.archive import merged_rows as mechanism_merged_rows
 from evolve.archive import mirror_path
-from evolve.config import load_config
+from evolve.config import load_config, render_yaml
 from evolve.workspace import InitOptions
 from evolve.workspace import init_workspace as create_workspace
 
@@ -137,8 +137,11 @@ def fixture_recipe_config(name: str, experiment_id: str) -> dict[str, Any]:
 
 def init_fixture_workspace(workspace: Path, name: str = "hill_climb-smoke") -> Path:
     config = fixture_recipe_config(name, workspace.name)
-    with patch("evolve.workspace.default_config", return_value=config):
-        create_workspace(InitOptions(workspace=workspace, recipe=name))
+    with tempfile.TemporaryDirectory(prefix="evolve-fixture-recipe-") as tempdir:
+        recipe = Path(tempdir) / name
+        recipe.mkdir()
+        (recipe / "evolve.yaml").write_text(render_yaml(config))
+        create_workspace(InitOptions(workspace=workspace, recipe_path=recipe))
     return workspace
 
 

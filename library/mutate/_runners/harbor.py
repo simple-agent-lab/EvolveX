@@ -603,6 +603,8 @@ def _redaction_environment(config: dict[str, Any]) -> dict[str, str]:
 
 
 def _nonnegative_int(value: object, default: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, (str, int, float)):
+        return default
     try:
         return max(0, int(value))
     except (TypeError, ValueError):
@@ -627,11 +629,8 @@ def _retry_config(config: dict[str, Any]) -> dict[str, Any]:
     return retry
 
 
-def _mutate_process_timeout_s(config: dict[str, Any]) -> float | None:
+def _mutate_process_timeout_s(config: dict[str, Any], timeout_s: float) -> float | None:
     if not uses_harbor_per_attempt_timeout(config):
-        return None
-    timeout_s = _positive_float(config.get("timeout_s"))
-    if timeout_s is None:
         return None
     max_retries = _nonnegative_int(config.get("max_retries"), 0)
     return harbor_mutate_budget(timeout_s, max_retries).harbor_process_s
@@ -841,6 +840,7 @@ def _build_command(
     tasks_dir: Path,
     job_name: str,
     config: dict[str, Any],
+    timeout_s: float,
 ) -> list[str]:
     agent = str(config.get("agent") or "codex")
     if is_installed_miniswe_agent(agent):
@@ -853,7 +853,7 @@ def _build_command(
             job_name,
             config,
             artifact=_ARTIFACT_SOURCE,
-            agent_timeout_s=_positive_float(config.get("timeout_s")),
+            agent_timeout_s=timeout_s,
         )
     command = _base_command(harbor, bundle.task_root, prompt_path, jobs_root, tasks_dir, job_name, config)
     workdir_index = command.index("--workdir")
@@ -989,7 +989,7 @@ def _trial_result(job_dir: Path) -> tuple[Path, dict[str, Any]]:
     for path in sorted(job_dir.glob("*/result.json")):
         payload = _read_json(path)
         if isinstance(payload, dict) and payload.get("trial_name"):
-            matches.append((path.parent, payload))
+            matches.append((path.parent, {str(key): value for key, value in payload.items()}))
     if len(matches) != 1:
         raise RuntimeError(f"expected exactly one Harbor meta-agent trial, found {len(matches)} in {job_dir}")
     return matches[0]
@@ -1000,7 +1000,7 @@ def _artifact_candidate(trial_dir: Path) -> tuple[Path, list[dict[str, Any]]]:
     payload = _read_json(manifest_path)
     if not isinstance(payload, list):
         raise RuntimeError(f"missing Harbor artifact manifest: {manifest_path}")
-    entries = [entry for entry in payload if isinstance(entry, dict)]
+    entries = [{str(key): value for key, value in entry.items()} for entry in payload if isinstance(entry, dict)]
     entry = next((item for item in entries if item.get("source") == _ARTIFACT_SOURCE), None)
     if entry is None or entry.get("status") != "ok":
         raise RuntimeError(f"Harbor did not collect a successful {_ARTIFACT_SOURCE} artifact")
@@ -1057,8 +1057,9 @@ def _miniswe_exit_status(trial_dir: Path) -> str | None:
         if not isinstance(message, dict) or message.get("role") != "exit":
             continue
         extra = message.get("extra")
-        if isinstance(extra, dict) and isinstance(extra.get("exit_status"), str):
-            return extra["exit_status"]
+        exit_status = extra.get("exit_status") if isinstance(extra, dict) else None
+        if isinstance(exit_status, str):
+            return exit_status
         content = message.get("content")
         return str(content) if content else None
     return None
@@ -1253,6 +1254,7 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
             tasks_dir,
             job_name,
             ctx.config,
+            ctx.timeout_s,
         )
         _write_json(
             harbor_root / "command.json",
@@ -1263,7 +1265,7 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
             checkout,
             harbor_root / "harbor.log",
             harbor_env,
-            timeout_s=_mutate_process_timeout_s(ctx.config),
+            timeout_s=_mutate_process_timeout_s(ctx.config, ctx.timeout_s),
             redaction_environment=redaction_environment,
         )
         usage["wall_s"] = wall_s

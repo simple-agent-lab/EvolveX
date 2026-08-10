@@ -6,6 +6,7 @@ import random
 import shutil
 import stat
 import subprocess
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -402,9 +403,9 @@ def _ctx(checkout: Path, run_dir: Path) -> OperatorContext:
             "agent": "mini-swe-agent",
             "model": "gpt-test",
             "environment": "docker",
-            "timeout_s": 30,
         },
         rng=random.Random(0),
+        timeout_s=30,
     )
 
 
@@ -754,13 +755,12 @@ def test_file_task_mutate_configures_per_attempt_timeout_and_timeout_retry(
     bin_dir = tmp_path / "bin"
     _install_fake_harbor(bin_dir)
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
-    ctx = _ctx(checkout, run_dir)
+    ctx = replace(_ctx(checkout, run_dir), timeout_s=3600)
     ctx.config.update(
         {
             "agent": INSTALLED_AGENT,
             "image": "evolve-meta-agent:test",
             "max_retries": 1,
-            "timeout_s": 3600,
         }
     )
     runner = _harbor_runner_module()
@@ -911,9 +911,9 @@ def test_agent_timeout_retry_loop_fits_full_lifecycle_budgets(
         {
             "runner": "harbor",
             "agent": INSTALLED_AGENT,
-            "timeout_s": 3600,
             "max_retries": 1,
-        }
+        },
+        3600,
     )
     assert 600.0 + elapsed_s + 600.0 + 60.0 == _operator_deadline_s(
         "mutate",

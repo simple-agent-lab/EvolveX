@@ -31,6 +31,7 @@ class OperatorContext:
     fan_out: int
     config: dict[str, Any]
     rng: random.Random
+    timeout_s: float = 600.0
 
 
 @dataclass(frozen=True)

@@ -26,7 +26,7 @@ from .archive import (
     rows_by_genid,
 )
 from .candidate.snapshot import build_candidate_snapshot, commit_candidate_snapshot
-from .config import evaluator_anchor, evaluator_sampling, experiment_id, operator_blocks
+from .config import evaluator_anchor, evaluator_sampling, experiment_id, operator_blocks, operator_runtime_config
 from .doctor import ensure_evaluator_ready
 from .evaluation import (
     CANONICAL_OUTCOMES,
@@ -1316,8 +1316,7 @@ def _strip_record_fields(fields: dict[str, Any], allowed_fields: frozenset[str])
 
 
 def _operator_config_block(operators_config: dict[str, Any], name: str) -> dict[str, Any]:
-    block = operators_config.get(name)
-    return block if isinstance(block, dict) else {}
+    return dict(operator_runtime_config(operators_config, name))
 
 
 def _operator_present(operators_config: dict[str, Any], name: str) -> bool:

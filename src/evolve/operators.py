@@ -109,6 +109,7 @@ def run_operator(
         ),
         "EVOLVE_GENID": genid,
         "EVOLVE_PARENT": parent or "",
+        "EVOLVE_STAGE_TIMEOUT_S": str(timeout_s),
         "EVOLVE_OPERATOR_TIMEOUT_S": str(deadline_s),
         "EVOLVE_RUN_DIR": str(run_dir.resolve()),
         "EVOLVE_WORKSPACE": str(workspace.resolve()),
