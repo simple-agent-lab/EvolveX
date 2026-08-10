@@ -3,5 +3,5 @@
     text { fill: #1a7f37; font: 700 14px Inter, ui-sans-serif, system-ui, sans-serif; }
     @media (prefers-color-scheme: dark) { text { fill: #3fb950; } }
   </style>
-  <text x="28" y="15" text-anchor="middle">(+7)</text>
+  <text x="28" y="18" text-anchor="middle">(+7)</text>
 </svg>
