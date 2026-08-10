@@ -122,6 +122,20 @@ def test_operator_active_replaces_workspace_oriented_list(tmp_path: Path) -> Non
     assert "variant" not in entries["select"]
 
 
+@pytest.mark.parametrize("workspace_name", ["plain-directory", "missing-directory"])
+def test_operator_active_rejects_a_path_that_is_not_an_initialized_workspace(
+    tmp_path: Path, workspace_name: str
+) -> None:
+    workspace = tmp_path / workspace_name
+    if workspace_name == "plain-directory":
+        workspace.mkdir()
+
+    result = run_evolve("operator", "active", str(workspace), "--json")
+
+    assert result.returncode == 1
+    assert result.stderr.startswith("evolve: operator active requires an initialized workspace:")
+
+
 def test_operator_active_uses_frozen_component_provenance(tmp_path: Path) -> None:
     workspace, _evolve_home = init_workspace(tmp_path)
     config_path = workspace / "evolve.yaml"
@@ -132,3 +146,18 @@ def test_operator_active_uses_frozen_component_provenance(tmp_path: Path) -> Non
     assert result.returncode == 0, result.stderr
     entries = {entry["name"]: entry for entry in json.loads(result.stdout)}
     assert entries["select"]["operator"] == "greedy"
+
+
+@pytest.mark.parametrize(
+    ("config", "message"),
+    [
+        ("{", "--config must be valid JSON"),
+        ("[]", "--config must be a JSON object"),
+    ],
+)
+def test_operator_check_invalid_config_uses_the_guarded_error_path(config: str, message: str) -> None:
+    result = run_evolve("operator", "check", "mutate/aevolve", "--config", config)
+
+    assert result.returncode == 1
+    assert result.stderr.startswith(f"evolve: {message}")
+    assert "Usage:" not in result.stderr

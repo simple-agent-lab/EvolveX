@@ -172,9 +172,9 @@ def build_operator_app(guard, workspace_environment, enable_live_output) -> type
         try:
             raw_config = json.loads(config)
         except json.JSONDecodeError as exc:
-            raise typer.BadParameter(f"--config must be valid JSON: {exc.msg}", param_hint="--config") from exc
+            raise ValueError(f"--config must be valid JSON: {exc.msg}") from exc
         if not isinstance(raw_config, dict):
-            raise typer.BadParameter("--config must be a JSON object", param_hint="--config")
+            raise ValueError("--config must be a JSON object")
         stage, name = parse_operator_identity(identity)
         normalized = validate_operator_config(resolve_operator(stage, name), raw_config)
         if json_output:
@@ -198,6 +198,8 @@ def build_operator_app(guard, workspace_environment, enable_live_output) -> type
     ) -> None:
         """List configured operator capabilities in an initialized workspace."""
         workspace = workspace.resolve()
+        if not (workspace / "evolve.yaml").is_file() or not (workspace / ".git").exists():
+            raise ValueError(f"operator active requires an initialized workspace: {workspace}")
         configured = operator_blocks(workspace)
         provenance = _component_operators(workspace)
         entries = []
