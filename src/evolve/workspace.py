@@ -188,6 +188,7 @@ def _write_files(
     init_cwd: Path,
 ) -> None:
     config = resolved.config
+    active_operator_files, frozen_operator_sources = _freeze_active_operators(resolved.operators)
     assert isinstance(config["evaluator"], dict)
     evaluator = cast("dict[str, Any]", config["evaluator"])
     evaluator_engine = str(evaluator["engine"])
@@ -241,11 +242,14 @@ def _write_files(
         gate_limit=tasks_per_round,
     )
     evaluator_dataset = str(split_manifest["dataset"])
-    files = {
+    files: dict[str, str | bytes] = {
         "pyproject.toml": _workspace_scaffold("pyproject.toml"),
         "uv.lock": _workspace_scaffold("uv.lock"),
         ".python-version": _workspace_scaffold(".python-version"),
-        ".evolve-components.json": json.dumps(_component_manifest(resolved), indent=2, sort_keys=True) + "\n",
+        ".evolve-components.json": json.dumps(
+            _component_manifest(resolved, active_operator_files), indent=2, sort_keys=True
+        )
+        + "\n",
         "evolve.yaml": render_yaml(_runtime_config(config)),
         "README.md": _workspace_scaffold("README.md"),
         "AGENTS.md": _workspace_scaffold("AGENTS.md"),
@@ -303,8 +307,7 @@ def _write_files(
             }
         )
     for stage, binding in resolved.operators.items():
-        source_label = _binding_source_label(binding)
-        files[f"operators/{stage}.py"] = _with_provenance(stage, source_label, binding.source.read_text())
+        files[f"operators/{stage}.py"] = active_operator_files[stage]
         companion = binding.source.with_suffix(".md") if isinstance(binding.source, Path) else None
         if companion is not None and companion.is_file():
             files[f"operators/{stage}.md"] = companion.read_text()
@@ -316,12 +319,16 @@ def _write_files(
         raise ValueError("recipe evaluator asset collides with generated file: " + ", ".join(evaluator_collisions))
     files["operators/README.md"] = _operator_index(
         resolved.operators,
+        frozen_operator_sources,
     )
     files.update(_operator_palette() | _operator_assets() | recipe_evaluator_assets)
     for relative_path, content in files.items():
         path = workspace / relative_path
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content)
+        if isinstance(content, bytes):
+            path.write_bytes(content)
+        else:
+            path.write_text(content)
     (workspace / "runs").mkdir(exist_ok=True)
     (workspace / "artifacts" / "user").mkdir(parents=True, exist_ok=True)
     (workspace / "artifacts" / "generations").mkdir(parents=True, exist_ok=True)
@@ -369,6 +376,15 @@ def _text_files(root: Path | Traversable):
             continue
 
 
+def _file_contents(root: Path | Traversable):
+    for relative, source in _walk_files(root):
+        content = source.read_bytes()
+        try:
+            yield relative, content.decode()
+        except UnicodeDecodeError:
+            yield relative, content
+
+
 def _root_python_helpers(root: Path | Traversable):
     for source in sorted(root.iterdir(), key=lambda entry: entry.name):
         if source.name.startswith((".", "_")) or not source.name.endswith(".py") or not source.is_file():
@@ -381,19 +397,21 @@ def _root_python_helpers(root: Path | Traversable):
             continue
 
 
-def _operator_assets() -> dict[str, str]:
-    assets: dict[str, str] = {}
+def _operator_assets() -> dict[str, str | bytes]:
+    assets: dict[str, str | bytes] = {}
     for kind in (*OPERATOR_KINDS, *OPTIONAL_OPERATOR_KINDS):
         directory = library_root() / kind
         if directory.is_dir():
-            for relative, text in _text_files(directory):
-                if relative.parts[0].startswith("_") or relative.suffix != ".py" or len(relative.parts) > 1:
-                    assets[f"library/{kind}/{relative.as_posix()}"] = text
+            for relative, content in _file_contents(directory):
+                helper_asset = relative.parts[0].startswith("_")
+                text_asset = isinstance(content, str) and (relative.suffix != ".py" or len(relative.parts) > 1)
+                if helper_asset or text_asset:
+                    assets[f"library/{kind}/{relative.as_posix()}"] = content
     shared = library_root() / "_shared"
     shared_assets = (
         {}
         if not shared.is_dir()
-        else {f"library/_shared/{relative.as_posix()}": text for relative, text in _text_files(shared)}
+        else {f"library/_shared/{relative.as_posix()}": content for relative, content in _file_contents(shared)}
     )
     return assets | shared_assets | {f"library/{name}": text for name, text in _root_python_helpers(library_root())}
 
@@ -409,6 +427,7 @@ def _recipe_evaluator_assets(
 
 def _operator_index(
     bindings: dict[str, ResolvedOperator],
+    frozen_sources: dict[str, bytes],
 ) -> str:
     rows = []
     for stage, binding in bindings.items():
@@ -422,7 +441,7 @@ def _operator_index(
             and path.name.removesuffix(".py") != active
         ]
         rows.append(
-            f"| {stage} | {active}.py | {_first_docstring_line(binding.source.read_text())} "
+            f"| {stage} | {active}.py | {_first_docstring_line(frozen_sources[stage].decode())} "
             f"| {', '.join(alts) if alts else '—'} |"
         )
     return (
@@ -455,6 +474,21 @@ def _binding_source_label(binding: ResolvedOperator) -> str:
     if binding.name is not None:
         return f"library/{binding.stage}/{binding.name}.py"
     return f"script/{binding.source.name}"
+
+
+def _freeze_active_operators(
+    bindings: dict[str, ResolvedOperator],
+) -> tuple[dict[str, bytes], dict[str, bytes]]:
+    active: dict[str, bytes] = {}
+    sources: dict[str, bytes] = {}
+    for stage, binding in bindings.items():
+        source_bytes = binding.source.read_bytes()
+        if hashlib.sha256(source_bytes).hexdigest() != binding.digest:
+            raise ValueError(f"operators.{stage} source changed after recipe resolution")
+        source_text = source_bytes.decode()
+        active[stage] = _with_provenance(stage, _binding_source_label(binding), source_text).encode()
+        sources[stage] = source_bytes
+    return active, sources
 
 
 def _with_provenance(kind: str, source: str, source_text: str) -> str:
@@ -494,7 +528,10 @@ def _dataset_pin(dataset: str, manifest: dict[str, Any]) -> str:
     return f"dataset={dataset}\nchecksum=sha256:stub\n"
 
 
-def _component_manifest(resolved: ResolvedRecipe) -> dict[str, object]:
+def _component_manifest(
+    resolved: ResolvedRecipe,
+    active_operator_files: dict[str, bytes],
+) -> dict[str, object]:
     config = resolved.config
     evaluator = cast("dict[str, Any]", config["evaluator"])
     operators = cast("dict[str, Any]", config["operators"])
@@ -516,7 +553,7 @@ def _component_manifest(resolved: ResolvedRecipe) -> dict[str, object]:
                 "stage": stage,
                 "source": binding.source_kind,
                 "name": binding.name or binding.source.name,
-                "sha256": binding.digest,
+                "sha256": hashlib.sha256(active_operator_files[stage]).hexdigest(),
                 "portable": binding.portable,
             }
             for stage, binding in resolved.operators.items()

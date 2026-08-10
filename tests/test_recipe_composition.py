@@ -1,3 +1,4 @@
+import hashlib
 import json
 import re
 import shutil
@@ -84,7 +85,10 @@ def test_init_freezes_resolved_operator_identity_and_nested_config(tmp_path: Pat
     }
     manifest = json.loads((workspace / ".evolve-components.json").read_text())
     assert manifest["operators"]["mutate"]["name"] == "hyperagents"
-    assert len(manifest["operators"]["mutate"]["sha256"]) == 64
+    assert (
+        manifest["operators"]["mutate"]["sha256"]
+        == hashlib.sha256((workspace / "operators/mutate.py").read_bytes()).hexdigest()
+    )
 
 
 @pytest.mark.parametrize(("recipe", "expected"), sorted(CASES.items()))
@@ -186,6 +190,32 @@ def test_init_copies_frozen_library_helpers_and_active_provenance(tmp_path: Path
     assert str(Path(library_root()).resolve()) not in first_line
 
 
+def test_init_copies_binary_shared_and_stage_local_helper_assets(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from evolve import recipe as recipe_module
+    from evolve import workspace as workspace_module
+
+    library = tmp_path / "library"
+    shutil.copytree(Path(library_root()), library, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    shared_bytes = b"\x00\xffSHARED\x80"
+    stage_bytes = b"\x89PNG\r\n\x1a\n\x00\xff"
+    (library / "_shared/fixtures").mkdir()
+    (library / "_shared/fixtures/payload.bin").write_bytes(shared_bytes)
+    (library / "mutate/_support/payload.bin").write_bytes(stage_bytes)
+    monkeypatch.setattr(recipe_module, "library_root", lambda: library)
+    monkeypatch.setattr(workspace_module, "library_root", lambda: library)
+
+    workspace = init_custom_recipe(
+        tmp_path,
+        mutate_operator="hyperagents",
+        mutate_config={"runner": "local"},
+    )
+
+    assert (workspace / "library/_shared/fixtures/payload.bin").read_bytes() == shared_bytes
+    assert (workspace / "library/mutate/_support/payload.bin").read_bytes() == stage_bytes
+
+
 def test_init_freezes_script_with_redacted_nonportable_provenance(tmp_path: Path) -> None:
     recipe = tmp_path / "credentials-should-not-appear" / "script-recipe"
     recipe.mkdir(parents=True)
@@ -211,10 +241,36 @@ def test_init_freezes_script_with_redacted_nonportable_provenance(tmp_path: Path
         "stage": "select",
         "source": "script",
         "name": "private-select.py",
-        "sha256": __import__("hashlib").sha256(source.read_bytes()).hexdigest(),
+        "sha256": hashlib.sha256((workspace / "operators/select.py").read_bytes()).hexdigest(),
         "portable": False,
     }
     assert "credentials-should-not-appear" not in manifest_text
+
+
+def test_init_refuses_operator_source_changed_after_resolution(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from evolve import workspace as workspace_module
+
+    recipe = tmp_path / "mutating-script-recipe"
+    recipe.mkdir()
+    source = recipe / "select.py"
+    source.write_text("print('resolved source')\n")
+    config = fixture_recipe_config("hill_climb-smoke", "mutating-script-recipe")
+    config["operators"]["select"] = {"script": "select.py", "config": {}}
+    (recipe / "evolve.yaml").write_text(render_yaml(config))
+    real_write_target = workspace_module._write_target
+
+    def write_target_then_mutate(workspace: Path, target: dict[str, object]) -> None:
+        real_write_target(workspace, target)
+        source.write_text("print('changed after resolution')\n")
+
+    monkeypatch.setattr(workspace_module, "_write_target", write_target_then_mutate)
+    workspace = tmp_path / "mutating-script-workspace"
+
+    with pytest.raises(ValueError, match=r"operators\.select source changed after recipe resolution"):
+        init_workspace(InitOptions(workspace=workspace, recipe_path=recipe))
+
+    assert not (workspace / ".evolve-components.json").exists()
+    assert not (workspace / "operators/select.py").exists()
 
 
 def test_recipe_name_and_path_are_mutually_exclusive(tmp_path: Path) -> None:
