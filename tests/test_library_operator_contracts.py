@@ -81,6 +81,7 @@ def test_every_recipe_selected_config_is_accepted(recipe_path: Path) -> None:
                 "n_concurrent": 2,
                 "agent_setup_timeout_multiplier": 2,
                 "agent_timeout_multiplier": 1.5,
+                "verifier_timeout_multiplier": 2.5,
                 "max_retries": 1,
                 "field_limit": 900,
                 "pass_threshold": 0.75,
@@ -103,6 +104,7 @@ def test_every_recipe_selected_config_is_accepted(recipe_path: Path) -> None:
                 "n_concurrent": 2,
                 "agent_setup_timeout_multiplier": 2.0,
                 "agent_timeout_multiplier": 1.5,
+                "verifier_timeout_multiplier": 2.5,
                 "max_retries": 1,
                 "field_limit": 900,
                 "pass_threshold": 0.75,
@@ -219,9 +221,14 @@ def test_every_recipe_selected_config_is_accepted(recipe_path: Path) -> None:
         (
             "validate",
             "minibatch_improvement",
-            {"criterion": "non_decreasing", "environment_kwargs": {"opaque": {"x": 1}}},
             {
                 "criterion": "non_decreasing",
+                "verifier_timeout_multiplier": 3,
+                "environment_kwargs": {"opaque": {"x": 1}},
+            },
+            {
+                "criterion": "non_decreasing",
+                "verifier_timeout_multiplier": 3.0,
                 "environment_kwargs": {"opaque": {"x": 1}},
             },
         ),

@@ -355,6 +355,7 @@ def test_harbor_rollout_uses_only_frozen_train_task_names(tmp_path: Path, monkey
             "jobs_dir": str(tmp_path / "jobs"),
             "environment": "custom.local:Environment",
             "environment_kwargs": {"workdir": "/workspace"},
+            "verifier_timeout_multiplier": 2,
         },
         rng=random.Random(0),
     )
@@ -387,6 +388,7 @@ def test_harbor_rollout_uses_only_frozen_train_task_names(tmp_path: Path, monkey
     assert ("--model", "openai/test-model") in zip(captured, captured[1:], strict=False)
     assert captured[captured.index("--env") + 1] == "custom.local:Environment"
     assert captured[captured.index("--environment-kwarg") + 1] == 'workdir="/workspace"'
+    assert captured[captured.index("--verifier-timeout-multiplier") + 1] == "2.0"
     assert result.summary["split"] == "train"
 
 

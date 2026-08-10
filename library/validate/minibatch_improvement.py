@@ -29,6 +29,7 @@ _CONFIG_KEYS = {
     "n_concurrent",
     "agent_setup_timeout_multiplier",
     "agent_timeout_multiplier",
+    "verifier_timeout_multiplier",
     "max_retries",
     "environment",
     "environment_kwargs",
@@ -46,7 +47,7 @@ def validate_config(raw: dict[str, object]) -> dict[str, object]:
         normalized["max_retries"] = nonnegative_int(config, "max_retries", 0)
     if "n_concurrent" in config:
         normalized["n_concurrent"] = positive_int(config, "n_concurrent", 1)
-    for key in ("agent_setup_timeout_multiplier", "agent_timeout_multiplier"):
+    for key in ("agent_setup_timeout_multiplier", "agent_timeout_multiplier", "verifier_timeout_multiplier"):
         if key in config:
             normalized[key] = positive_float(config, key, 1.0)
     if "environment" in config:

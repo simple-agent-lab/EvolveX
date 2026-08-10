@@ -29,6 +29,7 @@ operators:
     config:
       criterion: strict
       n_concurrent: 4
+      verifier_timeout_multiplier: 1
       max_retries: 1
 ```
 
@@ -41,6 +42,14 @@ runs/gen-N/validate/parent-cases.json
 runs/gen-N/validate/child-cases.json
 runs/gen-N/validate/child-eval/
 ```
+
+The child replay accepts the same Harbor reliability controls as `rollout`,
+including `n_concurrent`, timeout multipliers, and `max_retries`. If otherwise
+healthy verifier jobs regularly reach their task-declared timeout, increase
+`verifier_timeout_multiplier` on both `rollout` and `validate`; lowering
+`n_concurrent` can also reduce host contention. These controls change execution
+headroom, not the minibatch comparison criterion. The parent and child settings
+should remain symmetric.
 
 Use the criterion declared by the method, such as `strict` or
 `non_decreasing`; changing it changes the experiment policy.
