@@ -204,8 +204,8 @@ def test_frontend_has_required_navigation_and_refresh_contract() -> None:
     assert "Champion agent ·" in javascript
     assert "Champion diff" in javascript
     assert "Champion files" in javascript
-    assert "Parent modification history" in javascript
     assert "View diff" in javascript
+    assert "View formatted diff" not in javascript
     assert "Champion replay" in javascript
     assert "Next · Generation" in javascript
     assert "data-champion-next" in javascript

@@ -117,21 +117,8 @@ main.diff-mode { width: min(1480px, 100%); }
 .champion-file-list li { align-items: center; }
 .champion-file-list li > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .champion-file-list small { display: flex; flex: none; gap: 7px; font: 700 9px Inter, ui-sans-serif, sans-serif; }
-.champion-file-list i, .champion-history i { font-style: normal; }
+.champion-file-list i { font-style: normal; }
 .champion-diff-empty { padding: 14px; color: var(--muted); background: var(--canvas); border-radius: 7px; font-size: 10px; text-align: center; }
-.champion-history { position: relative; display: grid; gap: 8px; margin: 0; padding: 0 0 0 20px; list-style: none; }
-.champion-history::before { content: ""; position: absolute; top: 10px; bottom: 14px; left: 5px; width: 2px; background: #dce4df; }
-.champion-history > li { position: relative; min-width: 0; }
-.champion-history-marker { position: absolute; z-index: 1; top: 11px; left: -19px; width: 10px; height: 10px; background: white; border: 2px solid var(--accent); border-radius: 50%; }
-.champion-history > li > div { padding: 9px 10px; background: #f8faf9; border: 1px solid var(--line); border-radius: 8px; }
-.champion-history-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.champion-history-title strong { font-size: 10px; }
-.champion-history-title span { color: var(--muted); font-size: 9px; font-variant-numeric: tabular-nums; }
-.champion-history p { margin: 4px 0 0; color: var(--muted); font-size: 9px; }
-.champion-history > li ul { display: flex; flex-wrap: wrap; gap: 4px; margin: 7px 0 0; padding: 0; list-style: none; }
-.champion-history > li ul li { max-width: 100%; overflow: hidden; padding: 3px 5px; color: #4d5d55; background: white; border-radius: 4px; font: 8px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace; text-overflow: ellipsis; white-space: nowrap; }
-.champion-history a { display: inline-block; margin-top: 7px; color: #216549; font-size: 9px; font-weight: 700; text-decoration: none; }
-.champion-history a:hover { text-decoration: underline; }
 .champion-diff-actions { display: flex; align-items: center; gap: 10px; padding-top: 15px; border-top: 1px solid var(--line); }
 .champion-diff-actions span { color: var(--muted); font-size: 9px; }
 .champion-next-button { min-width: 142px; }

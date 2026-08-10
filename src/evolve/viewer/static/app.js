@@ -239,31 +239,8 @@ function championDiffCard(review) {
       <div class="champion-diff-label"><strong>Champion files</strong><span>All final target changes</span></div>
       ${files.length ? `<ul class="file-list champion-file-list">${files.map((file) => `<li><span>${escapeHtml(file.path)}</span><small><i class="plus">+${file.additions}</i><i class="minus">−${file.deletions}</i></small></li>`).join('')}</ul>` : `<div class="champion-diff-empty">${available ? 'The champion matches the genesis target.' : 'The cumulative Git diff is unavailable.'}</div>`}
     </div>
-    <div class="champion-diff-section">
-      <div class="champion-diff-label"><strong>Parent modification history</strong><span>${lineage.length} generations in the champion lineage</span></div>
-      <ol class="champion-history">
-        ${lineage.map((summary, index) => championHistoryItem(summary, details.get(summary.genid), index === 0)).join('')}
-      </ol>
-    </div>
     ${diffHref ? `<div class="champion-diff-actions"><a class="button primary" data-evolve-link href="${diffHref}">View diff</a><span>Replay accepted changes generation by generation</span></div>` : ''}
   </section>`;
-}
-
-function championHistoryItem(summary, detail, genesis) {
-  if (genesis) {
-    return `<li><span class="champion-history-marker" aria-hidden="true"></span><div><div class="champion-history-title"><strong>G${escapeHtml(summary.genid)} · Genesis agent</strong><span>Score ${number(summary.score)}</span></div><p>Starting point</p></div></li>`;
-  }
-  const change = detail?.change;
-  const paths = change?.changed_paths || [];
-  return `<li>
-    <span class="champion-history-marker" aria-hidden="true"></span>
-    <div>
-      <div class="champion-history-title"><strong>G${escapeHtml(summary.parent)} → G${escapeHtml(summary.genid)}</strong><span>Score ${number(summary.score)}</span></div>
-      <p>${paths.length} files <i class="plus">+${change?.insertions ?? 0}</i> <i class="minus">−${change?.deletions ?? 0}</i></p>
-      ${paths.length ? `<ul>${paths.map((path) => `<li title="${escapeHtml(path)}">${escapeHtml(path)}</li>`).join('')}</ul>` : ''}
-      ${change?.patch_artifact_id ? `<a data-evolve-link href="${artifactHref(change.patch_artifact_id)}">View parent diff</a>` : ''}
-    </div>
-  </li>`;
 }
 
 function healthCard(experiment, detail, globalResult = false) {
@@ -307,7 +284,7 @@ function changeCard(detail) {
     <div class="card-header"><div><h3>Latest modification</h3><p>Generation ${escapeHtml(detail.summary.genid)} from parent ${escapeHtml(detail.summary.parent || '—')}</p></div><div class="diff-stat"><span class="plus">+${change.insertions}</span><span class="minus">−${change.deletions}</span></div></div>
     <p class="change-rationale">${escapeHtml(change.rationale || 'No rationale was recorded.')}</p>
     <ul class="file-list">${change.changed_paths.slice(0, 8).map((path) => `<li><span>${escapeHtml(path)}</span></li>`).join('')}</ul>
-    ${change.patch_artifact_id ? `<p><a class="button" data-evolve-link href="${artifactHref(change.patch_artifact_id)}">View formatted diff</a></p>` : ''}
+    ${change.patch_artifact_id ? `<p><a class="button primary" data-evolve-link href="${artifactHref(change.patch_artifact_id)}">View diff</a></p>` : ''}
   </section>`;
 }
 
