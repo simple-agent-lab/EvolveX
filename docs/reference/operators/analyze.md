@@ -26,13 +26,11 @@ The result contains a summary and artifact paths.
 | Operator | Selected evidence |
 | --- | --- |
 | `failure_patterns` | aggregate metrics, verifier-grounded failure clusters, representatives, and passing behavior |
-| `failed_traces` | metrics plus detailed failed and agent-error executions |
 | `trace_browser` | compact metrics and filesystem instructions for retained raw traces |
 | `trajectory_only` | A-Evolve behavior-only proxy judgments without evaluator labels or task text |
-| `execution_records` | complete per-case execution, tool, verifier, and history records |
-| `utility_metrics` | per-task downstream utility with less trajectory emphasis |
 | `ahe` | per-task debugger analysis for Agentic Harness Engineering |
 | `gepa` | component-oriented reflective examples and datasets |
+| `artifact_rubric` | artifact-oriented rubric evidence for poster and document tasks |
 
 ## Configuration
 

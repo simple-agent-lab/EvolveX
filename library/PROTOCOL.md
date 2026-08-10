@@ -245,9 +245,8 @@ point to these entry files:
 - select: `ahe_latest`, `greedy`, `newest`, `pareto`, `random`,
   `score_child_prop`, `score_weighted`
 - rollout: `failure_focused`, `harbor`, `noop`, `parent_evaluation`
-- analyze: `ahe`, `artifact_rubric`, `execution_records`, `failed_traces`,
-  `failure_patterns`, `gepa`, `trace_browser`, `trajectory_only`,
-  `utility_metrics`
+- analyze: `ahe`, `artifact_rubric`, `failure_patterns`, `gepa`,
+  `trace_browser`, `trajectory_only`
 - mutate: `aevolve`, `ahe`, `gepa`, `hyperagents` (`runner`: `local` or `harbor`)
 - validate: `hyperagents`, `minibatch_improvement`
 - novelty: `accept_all`, `diff_similarity`

@@ -22,6 +22,19 @@ def repository_recipe_paths() -> list[Path]:
     return recipe_paths
 
 
+def test_analyze_catalog_contains_only_supported_strategies() -> None:
+    names = {name for stage, name in discover_operators() if stage == "analyze"}
+
+    assert names == {
+        "ahe",
+        "artifact_rubric",
+        "failure_patterns",
+        "gepa",
+        "trace_browser",
+        "trajectory_only",
+    }
+
+
 @pytest.mark.parametrize("operator", discover_operators().values(), ids=lambda item: item.identity)
 def test_every_library_operator_describes_and_validates(operator: LibraryOperator) -> None:
     description = describe_operator(operator)
