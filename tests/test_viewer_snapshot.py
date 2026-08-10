@@ -99,6 +99,25 @@ def test_stage_evidence_is_recipe_aware(tmp_path: Path) -> None:
     assert _stage(bundle, "1", "meta_agent").state == "waiting"
 
 
+def test_validate_rejection_is_not_passed_instead_of_complete(tmp_path: Path) -> None:
+    sources = _sources(
+        tmp_path,
+        rows=[{"genid": "10", "parent": "6", "status": "rejected_validation"}],
+        documents={
+            "runs/gen-10/validate/result.json": {
+                "accept": False,
+                "reason": "GEPA minibatch did not improve: delta -2",
+            }
+        },
+    )
+
+    bundle = build_snapshot(sources)
+
+    assert _stage(bundle, "10", "validate").state == "not_passed"
+    assert _stage(bundle, "10", "canonical_evaluation").state == "skipped"
+    assert _stage(bundle, "10", "gate").state == "skipped"
+
+
 def test_change_summary_uses_rationale_paths_and_patch_stats(tmp_path: Path) -> None:
     """Dropping one artifact source would make modifications impossible to understand."""
     sources = _sources(

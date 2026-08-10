@@ -174,10 +174,14 @@ def _stages(sources: WorkspaceSources, row: dict[str, Any], trials: list[TrialSu
     raw_operators = sources.config.get("operators")
     operators = cast(dict[str, Any], raw_operators) if isinstance(raw_operators, dict) else {}
     result: list[StageSummary] = []
+    pre_evaluation_rejected = False
     for name in STAGE_ORDER:
         operator = _OPERATOR_FOR_STAGE.get(name)
         if operator is not None and operator not in operators:
             result.append(StageSummary(name=name, state="not_applicable"))
+            continue
+        if pre_evaluation_rejected and name in {"novelty", "canonical_evaluation", "gate", "reflect"}:
+            result.append(StageSummary(name=name, state="skipped"))
             continue
         state: StageState = "waiting"
         completed = total = None
@@ -195,7 +199,12 @@ def _stages(sources: WorkspaceSources, row: dict[str, Any], trials: list[TrialSu
                 if (document := sources.documents.get(prefix + relative)) is not None
             ]
             if evidence:
-                state = "complete" if all(document.error is None for document in evidence) else "unknown"
+                if any(document.error is not None for document in evidence):
+                    state = "unknown"
+                elif _stage_not_passed(name, evidence):
+                    state = "not_passed"
+                else:
+                    state = "complete"
         if name == "rollout":
             summary = sources.documents.get(prefix + "rollout/summary.json")
             if summary is not None and isinstance(summary.value, dict):
@@ -205,7 +214,23 @@ def _stages(sources: WorkspaceSources, row: dict[str, Any], trials: list[TrialSu
             completed = len([trial for trial in trials if trial.purpose != "rollout"])
             total = _integer(row.get("expected_trials"))
         result.append(StageSummary(name=name, state=state, progress_completed=completed, progress_total=total))
+        if name in {"validate", "novelty"} and state == "not_passed":
+            pre_evaluation_rejected = True
     return result
+
+
+def _stage_not_passed(name: str, evidence: list[Any]) -> bool:
+    values = [document.value for document in evidence if isinstance(document.value, dict)]
+    if name in {"validate", "novelty"}:
+        return any(value.get("accept") is False for value in values)
+    if name == "gate":
+        return any(
+            value.get("accept") is False
+            or value.get("valid_parent") is False
+            or value.get("verdict") in {"reject", "discard"}
+            for value in values
+        )
+    return False
 
 
 def _change_summary(

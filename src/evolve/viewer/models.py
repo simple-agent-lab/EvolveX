@@ -7,7 +7,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-StageState = Literal["not_applicable", "waiting", "active", "complete", "failed", "unknown"]
+StageState = Literal["not_applicable", "skipped", "waiting", "active", "complete", "not_passed", "failed", "unknown"]
 HealthState = Literal["complete", "failed", "active", "waiting", "possibly_interrupted", "unknown"]
 
 

@@ -57,9 +57,9 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .status-pill { padding: 7px 10px; }
 .badge { padding: 5px 8px; }
 .complete, .active { color: #126842; background: var(--accent-soft); }
-.failed, .error { color: var(--danger); background: var(--danger-soft); }
+.failed, .error, .not_passed { color: var(--danger); background: var(--danger-soft); }
 .possibly_interrupted, .waiting, .pending { color: var(--warn); background: var(--warn-soft); }
-.neutral, .unknown, .not_applicable { color: #5e6863; background: #edf0ee; }
+.neutral, .unknown, .not_applicable, .skipped { color: #5e6863; background: #edf0ee; }
 main { width: min(1280px, 100%); margin: 0 auto; padding: 34px clamp(22px, 4vw, 52px) 64px; }
 .page-heading { display: flex; align-items: end; justify-content: space-between; gap: 18px; margin-bottom: 22px; }
 .page-heading h2 { margin: 0; font-size: 27px; letter-spacing: -.025em; }
@@ -89,6 +89,7 @@ main { width: min(1280px, 100%); margin: 0 auto; padding: 34px clamp(22px, 4vw, 
 .stage:last-child::after { right: 50%; }
 .stage.complete::before { background: var(--accent); }
 .stage.active::before { background: #2f79c5; box-shadow: 0 0 0 4px #e1effd; }
+.stage.not_passed::before { background: var(--danger); box-shadow: 0 0 0 4px var(--danger-soft); }
 .stage.failed::before { background: var(--danger); }
 .stage strong { display: block; color: var(--ink); font-size: 10px; font-weight: 600; }
 .warning-list { display: grid; gap: 8px; margin: 0; padding: 0 20px 18px; list-style: none; }
