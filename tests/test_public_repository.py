@@ -14,34 +14,16 @@ SVG_NS = {"svg": "http://www.w3.org/2000/svg"}
 
 
 def maintained_current_files() -> list[Path]:
-    # Human-facing recipe prose is scanned here; recipe YAML is exercised by
-    # composition tests so unrelated nested concepts such as candidate-runtime
-    # kinds are not mistaken for stage vocabulary.
     files = [ROOT / "README.md", ROOT / "ARCHITECTURE.md", ROOT / "CONTRIBUTING.md", ROOT / "QUICKSTART.md"]
     files.extend(path for path in (ROOT / "docs").rglob("*.md") if "superpowers" not in path.parts)
     files.extend((ROOT / "library").rglob("*.md"))
     files.extend((ROOT / "library").rglob("*.py"))
     files.extend((ROOT / "recipes").rglob("README.md"))
-    files.extend((ROOT / "scaffolds").rglob("*.md"))
-    files.extend((ROOT / "skills").rglob("*.md"))
-    files.extend(
-        ROOT / "src" / "evolve" / name
-        for name in (
-            "config.py",
-            "driver.py",
-            "feedback.py",
-            "operator_cli.py",
-            "operator_library.py",
-            "operators.py",
-            "orchestration.py",
-            "recipe_cli.py",
-            "workspace.py",
-            "frozen/interfaces.py",
-            "frozen/sdk.py",
+    for root in (ROOT / "scaffolds", ROOT / "skills"):
+        files.extend(
+            path for path in root.rglob("*") if path.is_file() and path.suffix in {".md", ".py", ".sh", ".yaml"}
         )
-    )
-    # recipe.py retains retired spellings only to diagnose rejected legacy
-    # inputs. tests/test_recipe_resolution.py covers that negative boundary.
+    files.extend((ROOT / "src" / "evolve").rglob("*.py"))
     return sorted(set(files))
 
 
@@ -160,11 +142,54 @@ def test_mkdocs_covers_custom_recipe_operator_and_experiment_workflows() -> None
     assert not (ROOT / "docs/reference/trace-analyzers.md").exists()
 
 
-def test_maintained_public_material_uses_canonical_operator_vocabulary() -> None:
-    forbidden = ("meta_agent", "trace_analyzer", "MetaAgentOperator", "TraceAnalyzerOperator", "variant:")
+def test_maintained_public_material_uses_canonical_stage_identifiers() -> None:
+    forbidden = ("meta_agent", "trace_analyzer", "MetaAgentOperator", "TraceAnalyzerOperator", "Trace Analyzer")
+    # recipe.py names retired stages only so rejected legacy recipes receive a
+    # precise migration diagnostic; tests/test_recipe_resolution.py exercises
+    # that negative compatibility boundary.
+    rejection_diagnostic = ROOT / "src" / "evolve" / "recipe.py"
     for path in maintained_current_files():
         text = path.read_text()
+        if path == rejection_diagnostic:
+            for legacy_mapping in ('"trace_analyzer": "analyze"', '"meta_agent": "mutate"'):
+                assert text.count(legacy_mapping) == 1
+                text = text.replace(legacy_mapping, "")
         assert not [term for term in forbidden if term in text], path
+
+
+def test_recipe_operator_blocks_never_use_variant_keys() -> None:
+    def variant_paths(value: object, prefix: str = "operators") -> list[str]:
+        if isinstance(value, dict):
+            found = [f"{prefix}.variant"] if "variant" in value else []
+            for key, item in value.items():
+                found.extend(variant_paths(item, f"{prefix}.{key}"))
+            return found
+        if isinstance(value, list):
+            return [path for index, item in enumerate(value) for path in variant_paths(item, f"{prefix}[{index}]")]
+        return []
+
+    failures: dict[str, list[str]] = {}
+    for path in sorted((ROOT / "recipes").glob("*/evolve.yaml")):
+        config = yaml.safe_load(path.read_text())
+        assert isinstance(config, dict)
+        paths = variant_paths(config.get("operators", {}))
+        if paths:
+            failures[path.relative_to(ROOT).as_posix()] = paths
+    assert failures == {}
+
+
+def test_analyze_pipeline_uses_operator_vocabulary() -> None:
+    files = [ROOT / "src" / "evolve" / "trace_analysis.py", ROOT / "src" / "evolve" / "feedback.py"]
+    files.extend((ROOT / "library" / "analyze").rglob("*.py"))
+    files.append(ROOT / "library" / "mutate" / "aevolve.py")
+
+    forbidden = re.compile(r"\bvariants?\b|selected_variant|Trace Analyzer", re.IGNORECASE)
+    failures = {
+        path.relative_to(ROOT).as_posix(): sorted(set(forbidden.findall(path.read_text())))
+        for path in files
+        if forbidden.search(path.read_text())
+    }
+    assert failures == {}
 
 
 def test_license_metadata_and_notice_are_consistent() -> None:

@@ -16,7 +16,7 @@ def validate_config(raw: dict[str, object]) -> dict[str, object]:
 
 
 class FailedTraces(AnalyzeBase):
-    variant = "failed_traces"
+    operator = "failed_traces"
 
 
 if __name__ == "__main__":

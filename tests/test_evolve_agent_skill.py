@@ -85,26 +85,26 @@ def test_top_level_skill_uses_only_canonical_operator_terms() -> None:
 
 def test_method_cards_route_to_shipped_capabilities() -> None:
     expected = {
-        "hill-climb.md": ("operator list . --json", "library/select/", "library/gate/"),
+        "hill-climb.md": ("operator active . --json", "library/select/", "library/gate/"),
         "a-evolve.md": (
-            "operator list . --json",
+            "operator active . --json",
             "library/analyze/trajectory_only.py",
             "library/analyze/artifact_rubric.py",
             "library/mutate/aevolve.py",
         ),
         "gepa.md": (
-            "operator list . --json",
+            "operator active . --json",
             "library/select/pareto.py",
             "library/analyze/gepa.py",
             "library/validate/minibatch_improvement.py",
         ),
         "ahe.md": (
-            "operator list . --json",
+            "operator active . --json",
             "operators/analyze.py",
             "library/analyze/ahe.py",
         ),
         "hyperagents.md": (
-            "operator list . --json",
+            "operator active . --json",
             "library/mutate/hyperagents.py",
             "library/validate/hyperagents.py",
         ),
@@ -118,6 +118,19 @@ def test_method_cards_route_to_shipped_capabilities() -> None:
         term for terms in expected.values() for term in terms if term.startswith("library/") and term.endswith(".py")
     }
     assert all((ROOT / path).is_file() for path in concrete_paths)
+
+
+def test_initialized_workspace_guidance_uses_active_binding_discovery() -> None:
+    sources = [ROOT / "scaffolds" / "workspace" / "AGENTS.md"]
+    sources.extend(
+        (SKILL / "references" / name)
+        for name in ("hill-climb.md", "a-evolve.md", "gepa.md", "ahe.md", "hyperagents.md", "workspace-contract.md")
+    )
+
+    for source in sources:
+        body = source.read_text()
+        assert "./evolve operator active ." in body, source
+        assert "./evolve operator list ." not in body, source
 
 
 def test_evolve_skill_uses_checkable_completion_criteria() -> None:

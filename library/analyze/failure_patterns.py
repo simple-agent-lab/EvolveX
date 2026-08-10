@@ -16,7 +16,7 @@ def validate_config(raw: dict[str, object]) -> dict[str, object]:
 
 
 class FailurePatterns(AnalyzeBase):
-    variant = "failure_patterns"
+    operator = "failure_patterns"
 
 
 if __name__ == "__main__":

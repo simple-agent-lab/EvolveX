@@ -16,7 +16,7 @@ def validate_config(raw: dict[str, object]) -> dict[str, object]:
 
 
 class ExecutionRecords(AnalyzeBase):
-    variant = "execution_records"
+    operator = "execution_records"
 
 
 if __name__ == "__main__":

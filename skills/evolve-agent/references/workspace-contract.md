@@ -123,12 +123,12 @@ Run:
 ```bash
 ./evolve status .
 ./evolve verify .
-./evolve operator list . --json
+./evolve operator active . --json
 ```
 
 Read `evolve.yaml` for the mutable surface, `program.md` for loop semantics, and
 the matching `archive.jsonl` row when resuming a generation. File presence does
-not prove that an operator is active: `operator list --json` is authoritative.
+not prove that an operator is active: `operator active --json` is authoritative.
 
 Identify the champion, next generation id, configured operators, their access
 mode, pending transitions, and child worktrees before acting. Certify
@@ -152,7 +152,7 @@ child worktree is open.
 Discover capabilities first, then use mechanism-owned state transitions:
 
 ```bash
-./evolve operator list . --json
+./evolve operator active . --json
 generation_id=1
 ./evolve operator run . select --genid "$generation_id"
 ```
@@ -166,7 +166,7 @@ child_checkout="runs/worktrees/gen-$generation_id"
 ./evolve fork . "$parent_id" "$child_checkout"
 ./evolve operator run . rollout --genid "$generation_id" \
   --parent "$parent_id" --checkout "$child_checkout"
-# Run only if operator list marks it configured with direct access:
+# Run only if operator active marks it configured with direct access:
 ./evolve operator run . analyze --genid "$generation_id" \
   --parent "$parent_id" --checkout "$child_checkout"
 ```

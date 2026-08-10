@@ -10,7 +10,12 @@ from conftest import init_workspace
 
 from evolve.feedback import write_feedback_bundle
 from evolve.frozen.interfaces import OperatorContext
-from evolve.trace_analysis import VARIANTS, _trajectory_only_cases, trajectory_signal_records, write_evidence_bundle
+from evolve.trace_analysis import (
+    ANALYZE_OPERATORS,
+    _trajectory_only_cases,
+    trajectory_signal_records,
+    write_evidence_bundle,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -453,7 +458,7 @@ def test_feedback_bundle_exposes_current_rollout_to_mutator(tmp_path: Path) -> N
     assert "feedback/failures/analyze.md" in manifest
 
 
-def test_analyze_variants_share_raw_harbor_facts(tmp_path: Path) -> None:
+def test_analyze_operators_share_raw_harbor_facts(tmp_path: Path) -> None:
     module = _harbor_rollout_module()
     jobs = tmp_path / "jobs"
     _write_trial(jobs, name="missing-output-a", reward=0)
@@ -461,22 +466,26 @@ def test_analyze_variants_share_raw_harbor_facts(tmp_path: Path) -> None:
     _write_trial(jobs, name="passing", reward=1)
     cases = module.collect_cases(jobs)
 
-    for variant in VARIANTS:
-        run_dir = tmp_path / variant
+    for operator in ANALYZE_OPERATORS:
+        run_dir = tmp_path / operator
         selected, artifacts = write_evidence_bundle(
             run_dir,
             cases,
-            variant=variant,
+            operator=operator,
             max_chars=100_000,
         )
-        if variant == "trajectory_only":
+        manifest = json.loads((run_dir / "analyze" / "evidence" / "manifest.json").read_text())
+        assert manifest["analyze_operator"] == operator
+        assert "selected_variant" not in manifest
+        if operator == "trajectory_only":
             assert "Agent Behavior Analysis" in selected
             assert "analyze/evidence/raw_traces.jsonl" not in artifacts
             assert "analyze/evidence/trajectory_only.json" in artifacts
         else:
-            assert f"Variant: {variant}" in selected
+            assert f"Analyze Operator: {operator}" in selected
             assert "analyze/evidence/raw_traces.jsonl" in artifacts
-        assert (run_dir / "analyze" / "evidence" / "manifest.json").is_file()
+            assert set(manifest["operators"]) == set(ANALYZE_OPERATORS) - {"trajectory_only"}
+        assert "variants" not in manifest
 
     patterns = json.loads(
         (tmp_path / "failure_patterns" / "analyze" / "evidence" / "failure_patterns.json").read_text()
@@ -528,7 +537,7 @@ def test_trajectory_only_matches_aevolve_behavior_only_evidence(tmp_path: Path) 
     selected, artifacts = write_evidence_bundle(
         tmp_path,
         cases,
-        variant="trajectory_only",
+        operator="trajectory_only",
         max_chars=100_000,
         judge_verdicts=[
             {
@@ -638,18 +647,18 @@ def test_trajectory_only_does_not_treat_pre_tool_commentary_as_final_response() 
     assert records[0]["signals"]["completed"] is False
 
 
-def test_feedback_history_uses_analyze_operator_not_retired_variant_key(tmp_path: Path) -> None:
+def test_feedback_history_uses_analyze_operator_key(tmp_path: Path) -> None:
     workspace, _ = init_workspace(tmp_path)
     historical = workspace / "runs" / "gen-0" / "analyze" / "evidence"
     historical.mkdir(parents=True)
     (historical / "metrics.json").write_text(json.dumps({"trials": 2}))
-    (historical / "manifest.json").write_text(json.dumps({"selected_variant": "failure_patterns"}))
+    (historical / "manifest.json").write_text(json.dumps({"analyze_operator": "failure_patterns"}))
     run_dir = workspace / "runs" / "gen-1"
     evidence = run_dir / "analyze" / "evidence"
     evidence.mkdir(parents=True)
     (run_dir / "analyze" / "feedback.md").write_text("duplicate selected view\n")
     (evidence / "selected.md").write_text("# selected profile evidence\n")
-    (evidence / "manifest.json").write_text(json.dumps({"selected_variant": "failure_patterns"}))
+    (evidence / "manifest.json").write_text(json.dumps({"analyze_operator": "failure_patterns"}))
     (evidence / "metrics.json").write_text(json.dumps({"trials": 1}))
 
     manifest = write_feedback_bundle(workspace=workspace, run_dir=run_dir)

@@ -13,7 +13,7 @@ agent harness.
 
 ## Use the shipped capabilities
 
-Run `./evolve operator list . --json` and use its live configuration. The
+Run `./evolve operator active . --json` and use its live configuration. The
 shipped AHE profile normally exposes `ahe_latest` selection,
 `parent_evaluation` rollout, and the `ahe` analyze operator. Invoke these direct
 operators, inspect the retained task trajectories and debugger findings under

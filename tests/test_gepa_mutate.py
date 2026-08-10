@@ -62,7 +62,7 @@ def _case(tmp_path: Path):
     evidence.joinpath("manifest.json").write_text(
         json.dumps(
             {
-                "selected_variant": "gepa",
+                "analyze_operator": "gepa",
                 "component_evidence": {
                     "prompt": {
                         "file": "reflection/00-prompt.json",

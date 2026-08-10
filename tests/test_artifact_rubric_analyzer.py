@@ -53,13 +53,13 @@ def test_artifact_rubric_analyzer_uses_artifacts_without_trajectory(tmp_path: Pa
 
     result = module.ArtifactRubricAnalyzer().analyze(tmp_path, ctx)
 
-    assert result.summary["variant"] == "artifact_rubric"
+    assert result.summary["operator"] == "artifact_rubric"
     assert result.summary["weak_rubric_counts"] == {"authored_visual_language": 1}
     dataset = json.loads((run_dir / "analyze/evidence/reflective_dataset.json").read_text())
     assert dataset["skill"][0]["Generated Artifacts"]["artifacts"][0]["kind"] == "svg"
     assert dataset["skill"][0]["Rubric Feedback"]["feedback"]["message"] == ("Use a restrained palette.")
     manifest = json.loads((run_dir / "analyze/evidence/manifest.json").read_text())
-    assert manifest["selected_variant"] == "artifact_rubric"
+    assert manifest["analyze_operator"] == "artifact_rubric"
     assert manifest["cases"] == 1
     selected = (run_dir / "analyze/evidence/selected.md").read_text()
     assert "### paper-a" in selected

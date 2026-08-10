@@ -12,7 +12,7 @@ mutation and candidates may trade off across tasks.
 
 ## Use the shipped capabilities
 
-Run `./evolve operator list . --json` first. The shipped GEPA profile normally
+Run `./evolve operator active . --json` first. The shipped GEPA profile normally
 connects a `pareto` select, task rollout, and a `gepa` analyzer for component
 reflection, and a `minibatch_improvement` validate stage. Invoke the configured direct stages, read
 the parent set, sampled cases, component examples, and validation decision under

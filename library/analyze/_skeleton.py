@@ -1,4 +1,4 @@
-"""Skeleton trace analyzer operator for custom evidence-selection strategies."""
+"""Skeleton analyze operator for custom evidence-selection strategies."""
 
 from pathlib import Path
 

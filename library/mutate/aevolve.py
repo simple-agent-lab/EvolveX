@@ -29,7 +29,7 @@ from library.mutate._support.evidence import load_feedback
 from library.mutate._support.workspace import workspace_contract
 
 DEFAULT_INLINE_EVIDENCE_CHARS = 50_000
-TRAJECTORY_ONLY_VARIANT = "trajectory_only"
+TRAJECTORY_ONLY_OPERATOR = "trajectory_only"
 _RUNNER_KEYS = {
     "runner",
     "agent",
@@ -283,7 +283,7 @@ def _instructions(config: dict[str, Any], template_rule: str, *, trajectory_only
         ]
         if trajectory_only
         else [
-            "Review the trace-analyzer feedback and task summaries before editing; inspect the complete evidence files "
+            "Review the analyze-operator feedback and task summaries before editing; inspect the complete evidence files "
             "when the inline view is truncated or a claim needs verification.",
             "Make one coherent change anywhere inside the mutable surface when supported by the evidence.",
         ]
@@ -307,14 +307,14 @@ def _instructions(config: dict[str, Any], template_rule: str, *, trajectory_only
     return "\n".join(f"{index}. {instruction}" for index, instruction in enumerate(instructions, 1))
 
 
-def _selected_variant(ctx: OperatorContext) -> str:
+def _selected_analyze_operator(ctx: OperatorContext) -> str:
     for path in (
         ctx.run_dir / "analyze" / "evidence" / "manifest.json",
         ctx.run_dir / "feedback" / "evidence" / "manifest.json",
     ):
         payload = _read_json(path)
-        if isinstance(payload, dict) and payload.get("selected_variant"):
-            return str(payload["selected_variant"])
+        if isinstance(payload, dict) and payload.get("analyze_operator"):
+            return str(payload["analyze_operator"])
     return ""
 
 
@@ -358,13 +358,13 @@ def _evidence_section(observation: str, ctx: OperatorContext, *, trajectory_only
     raw_root = relative_run / "analyze" / "evidence"
     feedback = load_feedback(ctx.run_dir, fallback=observation).strip()
     if not feedback:
-        feedback = "(No trace-analyzer feedback was produced for this generation.)"
+        feedback = "(No analyze-operator feedback was produced for this generation.)"
     limit = _positive_int(ctx.config.get("evidence_chars"), DEFAULT_INLINE_EVIDENCE_CHARS)
     marker = f"\n\n[inline evidence truncated; inspect the complete feedback bundle at `{feedback_root.as_posix()}/`]"
     if len(feedback) > limit:
         feedback = feedback[: max(limit - len(marker), 0)] + marker
     return (
-        "### Trace-Analyzer Feedback\n\n"
+        "### Analyze-Operator Feedback\n\n"
         f"{feedback}\n\n"
         f"- Complete feedback bundle: `{feedback_root.as_posix()}/`\n"
         f"- Selected evidence: `{(feedback_root / 'evidence' / 'selected.md').as_posix()}`\n"
@@ -382,7 +382,7 @@ def build_prompt(
         raise ValueError(f"A-Evolve prompt_path must reference an existing file: {prompt_relative}")
     skills_dir, skills_relative = _relative_path(checkout, ctx.config.get("skills_dir"), "target/skills")
     _, memory_relative = _relative_path(checkout, ctx.config.get("memory_dir"), "target/memory")
-    trajectory_only = _selected_variant(ctx) == TRAJECTORY_ONLY_VARIANT
+    trajectory_only = _selected_analyze_operator(ctx) == TRAJECTORY_ONLY_OPERATOR
     summaries = [] if trajectory_only else _case_summaries(ctx)
     tasks_analyzed = _selected_case_count(ctx) if trajectory_only else len(summaries)
     evolve_skills = _enabled(ctx.config, "evolve_skills", True)

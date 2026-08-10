@@ -258,14 +258,14 @@ class TrajectoryOnly(AnalyzeOperator):
         feedback, artifacts = write_evidence_bundle(
             ctx.run_dir,
             cases,
-            variant="trajectory_only",
+            operator="trajectory_only",
             max_chars=max_chars,
             judge_verdicts=verdicts,
         )
         (ctx.run_dir / "analyze" / "feedback.md").write_text(feedback)
         return AnalyzeResult(
             summary={
-                "variant": "trajectory_only",
+                "operator": "trajectory_only",
                 "cases": len(records),
                 "judge_verdicts": sum(1 for verdict in verdicts if verdict.get("score", -1) >= 0),
                 "source": str(cases_path),

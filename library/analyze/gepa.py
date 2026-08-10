@@ -114,7 +114,7 @@ class GepaAnalyze(AnalyzeOperator):
         }
         _write_json(root / "metrics.json", metrics)
         manifest = {
-            "selected_variant": "gepa",
+            "analyze_operator": "gepa",
             "source": "rollout/cases.json",
             "components": components,
             "component_evidence": component_evidence,
@@ -161,7 +161,7 @@ class GepaAnalyze(AnalyzeOperator):
         ]
         return AnalyzeResult(
             summary={
-                "variant": "gepa",
+                "operator": "gepa",
                 "cases": len(cases),
                 "usable_cases": len(usable),
                 "components": list(components),

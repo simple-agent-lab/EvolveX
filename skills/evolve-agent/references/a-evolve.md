@@ -16,7 +16,7 @@ being improved.
 
 ## Use the shipped capabilities
 
-Run `./evolve operator list . --json` and follow the live access metadata. The
+Run `./evolve operator active . --json` and follow the live access metadata. The
 shipped A-Evolve profile normally provides task rollout, a `trajectory_only`
 analyze, and an `aevolve` meta agent. Artifact-oriented experiments may
 instead compose `library/rollout/evaluation_replay.py` with

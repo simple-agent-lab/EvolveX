@@ -16,7 +16,7 @@ harder attribution problem than target-only evolution.
 
 ## Use the shipped capabilities
 
-Run `./evolve operator list . --json` before choosing a stage. The shipped
+Run `./evolve operator active . --json` before choosing a stage. The shipped
 HyperAgents profile normally combines population-aware selection,
 `parent_evaluation`, `trace_browser`, a `hyperagents` meta agent, and an
 independent `hyperagents` validate stage. Invoke configured direct evidence

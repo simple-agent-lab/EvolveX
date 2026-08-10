@@ -4,8 +4,8 @@ Folded out of the retired `observe` operator (DESIGN §7: the canonical verb set
 is select/rollout/analyze/mutate/…/gate/record). The bundle is derived
 from the archive + workspace, plus bounded evidence emitted by analyze. The driver calls
 `write_feedback_bundle` after analyze and before mutate, which reads
-`runs/gen-<id>/feedback/`. It therefore exists even when rollout is a noop
-variant. This is the one home for the logic — `library/observe/*` is deleted.
+`runs/gen-<id>/feedback/`. It therefore exists even when rollout is a no-op
+operator. This is the one home for the logic — `library/observe/*` is deleted.
 """
 
 from __future__ import annotations
@@ -125,7 +125,7 @@ def _rollout_history(workspace: Path, rows: list[Row], history_k: int) -> list[R
                 "verdict": row.get("verdict"),
                 "reason": row.get("reason"),
                 "mutated": row.get("mutated"),
-                "analyze_operator": manifest.get("selected_variant"),
+                "analyze_operator": manifest.get("analyze_operator"),
                 "rollout_metrics": metrics,
                 "raw_evidence_dir": evidence_root.relative_to(workspace).as_posix() if evidence_root.is_dir() else None,
                 "source_tag": row.get("tag"),

@@ -16,7 +16,7 @@ def validate_config(raw: dict[str, object]) -> dict[str, object]:
 
 
 class TraceBrowser(AnalyzeBase):
-    variant = "trace_browser"
+    operator = "trace_browser"
 
 
 if __name__ == "__main__":

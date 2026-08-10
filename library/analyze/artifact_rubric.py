@@ -168,7 +168,7 @@ class ArtifactRubricAnalyzer(AnalyzeOperator):
         _write_json(
             evidence / "manifest.json",
             {
-                "selected_variant": "artifact_rubric",
+                "analyze_operator": "artifact_rubric",
                 "source": "rollout/cases.json",
                 "evidence_schema_version": 1,
                 "cases": len(cases),
@@ -179,7 +179,7 @@ class ArtifactRubricAnalyzer(AnalyzeOperator):
         (evidence / "selected.md").write_text(selected)
         (root / "feedback.md").write_text(selected)
         return AnalyzeResult(
-            summary={"variant": "artifact_rubric", **metrics},
+            summary={"operator": "artifact_rubric", **metrics},
             artifacts=[
                 "analyze/feedback.md",
                 "analyze/evidence/manifest.json",

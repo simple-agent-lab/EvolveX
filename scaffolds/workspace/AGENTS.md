@@ -8,8 +8,8 @@ folder, not a tool-specific one.
 Everything goes through the vendored console **`./evolve`** (the mechanism is
 under `.evolve/`, so no install is needed): `./evolve status .` to see where
 things stand, `./evolve run . --resume` to run the driver, and
-`./evolve operator list .` to discover capabilities for an agent-orchestrated
-generation.
+`./evolve operator active .` to discover capabilities for an
+agent-orchestrated generation.
 
 Hard rules (enforced — do not fight them): never hand-edit scores or archive
 status fields; the frozen evaluator side stamps those. To edit a candidate as

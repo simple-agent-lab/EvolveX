@@ -282,7 +282,7 @@ def test_aevolve_trajectory_only_prompt_has_one_behavior_evidence_section_and_no
     (trace_evidence / "manifest.json").write_text(
         json.dumps(
             {
-                "selected_variant": "trajectory_only",
+                "analyze_operator": "trajectory_only",
                 "evidence_policy": "trajectory_only",
                 "ground_truth_exposed": False,
                 "cases": 1,
