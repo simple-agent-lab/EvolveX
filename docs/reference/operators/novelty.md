@@ -14,9 +14,9 @@ class NoveltyOperator:
 The result contains a novelty score, where `1.0` is wholly novel and `0.0` is an
 exact duplicate, plus an acceptance boolean.
 
-## Variants
+## Library operators
 
-| Variant | Rule |
+| Operator | Rule |
 | --- | --- |
 | `accept_all` | accept every candidate edit and disable deduplication |
 | `diff_similarity` | compare the candidate diff with recent accepted diffs and reject excessive similarity |
@@ -26,10 +26,11 @@ exact duplicate, plus an acceptance boolean.
 ```yaml
 operators:
   novelty:
-    variant: diff_similarity
-    threshold: 0.98
-    history_k: 8
+    operator: diff_similarity
     timeout_s: 600
+    config:
+      threshold: 0.98
+      history_k: 8
 ```
 
 - `threshold` is the similarity level at which an edit is considered too close
@@ -39,4 +40,3 @@ operators:
 Use `accept_all` when novelty is not part of the method contract. Adding or
 changing novelty filtering changes which candidates receive evaluator budget
 and therefore changes the experiment policy.
-

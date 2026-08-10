@@ -1,8 +1,9 @@
-# Meta-agent execution
+# Mutate operator execution
 
-The meta-agent receives rollout-derived feedback and edits the uncommitted child
-candidate before canonical evaluation. `variant` selects the improvement strategy;
-`runner` selects how that strategy launches its editing agent.
+The configured `mutate` operator receives rollout-derived feedback and edits
+the uncommitted child before canonical evaluation. `operator` selects the
+reusable strategy; its nested `config.runner` selects how that strategy launches
+an editing agent.
 
 ## `runner: local`: arbitrary trusted host command
 
@@ -13,7 +14,7 @@ file named by `EVOLVE_PROMPT_FILE`.
 
 Resolution order is:
 
-1. `operators.mutate.command`;
+1. `operators.mutate.config.command`;
 2. `EVOLVE_AGENT_COMMAND`;
 3. otherwise the operator fails because no concrete agent was selected.
 
@@ -22,35 +23,38 @@ Examples:
 ```yaml
 # Codex
 mutate:
-  variant: hyperagents
-  runner: local
-  command: codex exec --full-auto - < "$EVOLVE_PROMPT_FILE"
+  operator: hyperagents
   timeout_s: 3600
+  config:
+    runner: local
+    command: codex exec --full-auto - < "$EVOLVE_PROMPT_FILE"
 ```
 
 ```yaml
 # Claude Code; permission policy should be chosen deliberately for the host.
 mutate:
-  variant: hyperagents
-  runner: local
-  command: claude -p --dangerously-skip-permissions "Implement the task supplied on stdin." < "$EVOLVE_PROMPT_FILE"
+  operator: hyperagents
   timeout_s: 3600
+  config:
+    runner: local
+    command: claude -p --dangerously-skip-permissions "Implement the task supplied on stdin." < "$EVOLVE_PROMPT_FILE"
 ```
 
 ```yaml
 # Any custom executable or script
 mutate:
-  variant: hyperagents
-  runner: local
-  command: /absolute/path/to/my-agent --prompt-file "$EVOLVE_PROMPT_FILE"
+  operator: hyperagents
   timeout_s: 3600
+  config:
+    runner: local
+    command: /absolute/path/to/my-agent --prompt-file "$EVOLVE_PROMPT_FILE"
 ```
 
 The command must edit files in its current working directory and exit zero.
 Because it is a trusted host command, it can access inherited credentials,
 network, Git metadata, and paths outside the candidate. The mutable-surface
 repair only constrains observable candidate changes; it is not a host sandbox.
-That includes Git-ignored files: a local meta-agent can overwrite the
+That includes Git-ignored files: a local editing agent can overwrite the
 workspace's `.venv`, caches, or other untracked state. Use `runner: harbor` when
 the editing agent must not be able to mutate the framework environment.
 
@@ -58,9 +62,9 @@ the editing agent must not be able to mutate the framework environment.
 
 The Harbor runner builds a disposable writable experiment workspace at
 `/app/task/workspace`. Gate visibility is controlled by
-`operators.mutate.expose_gate_data`, which must be a boolean and defaults to
+`operators.mutate.config.expose_gate_data`, which must be a boolean and defaults to
 `false`. Git-ignored host state, including nested `.venv` directories and
-caches, is omitted from the disposable copy. A meta-agent may create new
+caches, is omitted from the disposable copy. An editing agent may create new
 ignored paths inside the task, but they are not imported into the host checkout.
 
 With `expose_gate_data: false`, the task receives the selected parent,
@@ -80,7 +84,7 @@ mounted in either mode.
 The bundled recipes make this choice explicitly. All real recipes use `false`
 so gate and sealed data remain held out from mutation. AHE and HyperAgents
 still receive their retained training evaluations through the normalized
-rollout, trace-analyzer, and feedback inputs.
+rollout, analyze, and feedback inputs.
 Harbor returns the complete disposable workspace; the runner compares it with a
 trusted pre-run manifest, rejects protected changes, symlinks, and special files,
 then transactionally imports configured `editable_roots` and the current
@@ -89,7 +93,7 @@ evidence are discarded; durable user and prior-generation artifacts are
 read-only from the runner's perspective.
 AHE imports only `target`; HyperAgents imports `target` and `operators`.
 
-## Durable meta-agent artifacts and handoffs
+## Durable mutation artifacts and handoffs
 
 Every workspace has a gitignored durable area:
 
@@ -101,7 +105,7 @@ artifacts/
         └── handoff.md          # optional free-form convention
 ```
 
-Meta-agents may read the whole tree, but a generation may persist writes only
+Mutation agents may read the whole tree, but a generation may persist writes only
 under `artifacts/generations/<genid>/`. The runner copies the tree into Harbor
 and imports only that current namespace; attempted returned edits to `user/` or
 prior generations are discarded. Prompts identify `handoff.md` from the selected
@@ -110,16 +114,17 @@ normal and non-fatal. Artifact files never become part of a candidate patch.
 
 ```yaml
 mutate:
-  variant: hyperagents
-  runner: harbor
-  expose_gate_data: false
-  agent: mini-swe-agent
-  model: openai/gpt-5.4
-  environment: docker
-  editable_roots: [target, operators]
-  image: ubuntu:24.04       # optional; Harbor defaults to ubuntu:latest
-  max_retries: 0
+  operator: hyperagents
   timeout_s: 3600
+  config:
+    runner: harbor
+    expose_gate_data: false
+    agent: mini-swe-agent
+    model: openai/gpt-5.4
+    environment: docker
+    editable_roots: [target, operators]
+    image: ubuntu:24.04       # optional; Harbor defaults to ubuntu:latest
+    max_retries: 0
 ```
 
 Useful optional keys are:
@@ -149,11 +154,12 @@ git add pyproject.toml uv.lock
 
 ```yaml
 mutate:
-  variant: hyperagents
-  runner: harbor
-  agent: my_agent.harbor_adapter:MyAgent
-  model: my-model
+  operator: hyperagents
   timeout_s: 3600
+  config:
+    runner: harbor
+    agent: my_agent.harbor_adapter:MyAgent
+    model: my-model
 ```
 
 Harbor and the framework are always launched with `uv run --project
@@ -178,7 +184,7 @@ certified role-specific runtime inputs, with the model endpoint bypassed.
 
 ## Retained Harbor evidence
 
-Each Harbor meta-agent run retains:
+Each Harbor mutate run retains:
 
 ```text
 runs/gen-N/mutate/harbor/prompt.md

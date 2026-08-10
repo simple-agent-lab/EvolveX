@@ -204,7 +204,7 @@ commit snapshots the candidate and removes its child worktree.
 
 Use the least context needed for the current decision:
 
-1. Run `operator list --json` to discover active stages, access mode, variant,
+1. Run `operator active . --json` to discover active stages, access mode, operator,
    and active script path.
 2. Run configured direct operators and inspect `runs/gen-<id>/<stage>/`.
 3. Override one invocation with a recursively merged JSON object when only its
@@ -220,7 +220,7 @@ Use the least context needed for the current decision:
    inputs, outputs, or access rules are unclear.
 5. Read `operators/<stage>.py` only to diagnose the running implementation or
    make an explicitly allowed process change.
-6. Read `library/<stage>/<variant>.py` to compare or adapt a reference variant;
+6. Read `library/<stage>/<name>.py` to compare or adapt a reference operator;
    copy or implement the change in the active operator when it must take effect.
 
 Reruns retain prior output under

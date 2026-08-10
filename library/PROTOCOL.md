@@ -10,9 +10,11 @@ path, but the file contract is the protocol.
 The mechanism invokes required operator files for select, rollout, mutate,
 gate, and record, plus recipe-selected optional operators such as
 analyze, validate, novelty, and reflect. A copied file may be a library
-variant, a recipe-local operator, or a user-provided `script:`. Python variants
-normally end with `sdk.main(VariantClass)`, but any executable file that honors
-the same files is valid.
+operator or a user-provided `script:`. Named Python operators end with
+`sdk.main(OperatorClass, validate_config=validate_config)` so discovery-time
+inspection can describe the entry and validate configuration. Any explicit
+script that honors the same files is valid, but script bindings are
+non-portable filesystem dependencies.
 
 Runtime state arrives through environment variables:
 
@@ -24,7 +26,11 @@ Runtime state arrives through environment variables:
 - `EVOLVE_PARENT`: selected parent id, when there is one.
 - `EVOLVE_ROUND`: numeric round when the runner is executing a per-round
   operator. The variable is absent when no round applies.
-- `EVOLVE_OPERATOR_TIMEOUT_S`: inherited timeout cap for adapters.
+- `EVOLVE_STAGE_TIMEOUT_S`: the recipe-selected stage timeout. The SDK exposes
+  the same value as `OperatorContext.timeout_s`.
+- `EVOLVE_OPERATOR_TIMEOUT_S`: the outer subprocess deadline. It normally
+  matches the stage timeout; adapters with bounded per-attempt retries may
+  receive a larger framework-calculated deadline.
 
 Operator-specific YAML settings are passed as `--config` JSON. The framework
 enforces the configured timeout around the subprocess. A nonzero exit code, a
@@ -39,9 +45,10 @@ another value exits nonzero with `protocol_version` in stderr.
 ## Per-Kind Contract
 
 All Python operators receive an `OperatorContext` with these fields: `workspace`,
-`checkout`, `run_dir`, `genid`, `parent`, `round`, `fan_out`, `config`, and
-`rng`. `workspace`, `checkout`, and `run_dir` are `Path` values. `config` is the
-operator config dict, and `rng` is seeded from that config.
+`checkout`, `run_dir`, `genid`, `parent`, `round`, `fan_out`, `config`, `rng`,
+and `timeout_s`. `workspace`, `checkout`, and `run_dir` are `Path`
+values. `config` is only the opaque nested recipe `config` dict, `rng` is
+seeded from that config, and `timeout_s` is the selected stage budget.
 
 ### Select
 
@@ -213,30 +220,40 @@ anchor and sealed evidence remains non-actionable. The frozen SDK exposes the
 receipt-validated projection through `evaluation_diagnostics(workspace,
 genid)`, and reports render coverage and certification independently from score.
 
-## Write Your Own Variant in Three Steps
+## Write Your Own Named Operator
 
-1. Copy `library/<kind>/_skeleton.py` into your own operator file, for example
-   `my_select.py`.
-2. Fill in the one method for that kind, returning the result dataclass with
-   valid field values.
-3. Point `evolve.yaml` at it with `script: ./my_select.py`, then run the file
-   as the mechanism will run it: set `EVOLVE_WORKSPACE`,
-   `EVOLVE_CHECKOUT`, `EVOLVE_RUN_DIR`, `EVOLVE_GENID`, and optionally
-   `EVOLVE_PARENT`, then execute it with `--config '{}'` and inspect the
-   expected files.
+1. Run `evolve operator new <stage> <name>` in a source checkout, or copy
+   `library/<stage>/_skeleton.py` to `library/<stage>/<name>.py`.
+2. Implement the stage method and return its result dataclass.
+3. Implement mandatory config validation with
+   `library._shared.config.config_object`, normalizers, and `reject_unknown`;
+   pass it to `sdk.main(..., validate_config=validate_config)`.
+4. Run `evolve operator describe <stage>/<name>` and
+   `evolve operator check <stage>/<name> --config '<json>'`.
+5. Select it under `operator:` with all settings under `config`, then run
+   `evolve recipe check` before initialization.
 
-## Shipped Variants
+Underscore-prefixed modules such as `library/_shared/` and
+`library/mutate/_runners/` are shared helpers. Discovery excludes them, so
+helper refactors do not create accidental public operators.
 
-The shipped library uses canonical algorithm names only. Recipe research names
-may appear in recipe prose, but `variant:` values point to these files:
+## Shipped Operators
 
-- select: `greedy`, `random`, `score_weighted`, `newest`, `pareto`
-- rollout: `failure_focused`, `harbor`, `noop`
-- analyze: `failure_patterns`, `failed_traces`, `trace_browser`, `trajectory_only`, `execution_records`, `gepa`, `utility_metrics`
+The shipped library uses canonical algorithm names only. Named recipe bindings
+point to these entry files:
+
+- select: `ahe_latest`, `greedy`, `newest`, `pareto`, `random`,
+  `score_child_prop`, `score_weighted`
+- rollout: `failure_focused`, `harbor`, `noop`, `parent_evaluation`
+- analyze: `ahe`, `artifact_rubric`, `execution_records`, `failed_traces`,
+  `failure_patterns`, `gepa`, `trace_browser`, `trajectory_only`,
+  `utility_metrics`
 - mutate: `aevolve`, `ahe`, `gepa`, `hyperagents` (`runner`: `local` or `harbor`)
 - validate: `hyperagents`, `minibatch_improvement`
-- gate: `hillclimb`, `parent_eligible`
-- record: `gepa`, `jsonl`
+- novelty: `accept_all`, `diff_similarity`
+- gate: `ahe_artifact_valid`, `hillclimb`, `parent_eligible`
+- record: `gepa`, `hyperagents`, `jsonl`
+- reflect: `credit`
 
 ## Stability Tiers
 
@@ -244,13 +261,14 @@ may appear in recipe prose, but `variant:` values point to these files:
 | --- | --- | --- |
 | Verbs and file contract | Major-version protected | CLI verbs, subprocess execution, required files, JSON fields |
 | Interfaces and SDK | Additive-only paved road | ABC names, result dataclasses, `OperatorContext`, `sdk.main(...)` |
-| Library variants | Evolve freely | Algorithms under `library/<kind>/` may change as practice improves |
+| Library operators | Evolve freely | Algorithms under `library/<kind>/` may change as practice improves |
 | Recipes | Examples, no promise | Presets encode experiment policy and can change as evidence changes |
 
 ## Escape-Hatch Ladder
 
-1. YAML: choose a shipped `variant:` and tune its config.
-2. `script:` variant: point one operator kind at your own executable file.
+1. YAML: choose a shipped `operator:` and tune its nested `config`.
+2. `script:` escape hatch: point one stage at your own executable file; this
+   remains runnable but is non-portable.
 3. Agent orchestration: discover capabilities with `evolve operator list`, run
    configured stages with `evolve operator run`, edit a child worktree, then
    use `commit`, `eval`, and `finalize`.

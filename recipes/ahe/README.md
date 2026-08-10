@@ -8,9 +8,9 @@ with one trial per task. That certified evaluation is replayed as the next AHE
 debugger input, so its score
 and debugger evidence come from the same retained Harbor trajectories rather
 than a separate rollout run. Each task receives one required LLM debugger
-analysis using the same model and runner as the meta-agent. The debugger uses
+analysis using the same model and runner as the mutate operator. The debugger uses
 `high` reasoning so its short MiniSWE protocol reliably reaches the required
-tool call; the change-producing meta-agent also uses `high`. Both paths receive
+tool call; the change-producing mutation agent also uses `high`. Both paths receive
 an explicit 64k output budget through Harbor's `max_tokens` constructor field
 because mini-swe-agent otherwise uses its 1,000-token default. Failures
 stop the generation after three attempts; there is no silent deterministic
@@ -28,7 +28,7 @@ its Python API with evaluator-owned model and resource limits. The prompt asks
 for a change manifest linking target edits to debugger evidence and predicted
 effects, but that manifest is best-effort metadata: a missing or malformed block
 does not discard an otherwise surface-valid patch. The raw response, changed
-paths, and patch are preserved and passed to the next meta-agent; predicted-fix
+paths, and patch are preserved and passed to the next mutate run; predicted-fix
 and risk attribution is used only when available. The newest valid generation
 remains the next parent even after a score regression, allowing the following
 generation to attribute it and choose KEEP, REVISE, or ROLLBACK + PIVOT.

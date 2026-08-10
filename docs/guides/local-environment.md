@@ -13,17 +13,20 @@ declared by a Dockerfile.
 ```yaml
 operators:
   rollout:
-    variant: harbor
-    environment: evolve.harbor_local:LocalEnvironment
-    environment_kwargs: {workdir: /app}
+    operator: harbor
+    config:
+      environment: evolve.harbor_local:LocalEnvironment
+      environment_kwargs: {workdir: /app}
   mutate:
-    variant: hyperagents
-    runner: harbor
-    environment: evolve.harbor_local:LocalEnvironment
-    environment_kwargs: {workdir: /app}
+    operator: hyperagents
+    config:
+      runner: harbor
+      environment: evolve.harbor_local:LocalEnvironment
+      environment_kwargs: {workdir: /app}
   validate:
-    variant: minibatch_improvement
-    environment: evolve.harbor_local:LocalEnvironment
+    operator: minibatch_improvement
+    config:
+      environment: evolve.harbor_local:LocalEnvironment
 
 evaluator:
   engine: harbor

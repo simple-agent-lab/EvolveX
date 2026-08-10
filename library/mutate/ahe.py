@@ -344,7 +344,7 @@ class AheMutate(MutateOperator):
         assert manifest is not None
         _write_json(out / "change_manifest.json", manifest)
         notes = [
-            "variant: ahe",
+            "operator: ahe",
             f"runner: {runner_name(ctx)}",
             "change-manifest: parsed",
             "written-by: operators/mutate.py",

@@ -182,7 +182,6 @@ partition.
 
 ## Historical-workspace note
 
-Older workspaces can contain `meta_agent`, `trace_analyzer`, or `variant:`
-configuration. Treat those as historical metadata only; current authoring uses
-the canonical `mutate` and `analyze` stages with `operator:` and nested
-`config:`.
+Older initialized workspaces retain the stage files and configuration frozen at
+creation time. Treat those as historical metadata only; start a new workspace
+to use the current operator model.

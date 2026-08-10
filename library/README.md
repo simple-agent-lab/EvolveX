@@ -1,97 +1,104 @@
-# library/ — the reference operator catalog
+# `library/` — reusable operators
 
-A curated, framework-versioned pool of operator implementations to **consult and
-adapt**, one folder per verb. This is reference material, not the runtime: it is
-**not** copied wholesale into a workspace, and nothing here is executed as-is.
+The source catalog is organized by fixed lifecycle stage. Every public Python
+entry at `library/<stage>/<name>.py` is a named operator; adding a valid file
+makes it discoverable without a registry edit. Recipes contain no operator
+code. They select a name and provide configuration, and initialization freezes
+the selected bytes into `operators/<stage>.py` while copying the catalog and
+helper assets into the workspace for controlled process evolution.
 
-See [`docs/concepts/design.md`](../docs/concepts/design.md) §7 for the full rationale. In short:
-
-- The meta-agent reads `library/<verb>/*.py`, then adapts a variant
-  **into** the workspace's active `operators/<verb>.py`. Only that adapted-in,
-  committed copy ever runs — so meta_eval replay and the self-reference gate
-  always act on in-tree code, and the catalog needs no freeze, digest, or gate.
-- It is surfaced to the meta-agent through the workspace skill and operator prompts,
-  not vendored in — fat skills, thin workspace.
-- It is also the **harvest sink**: operators that evolve well in real runs get
-  promoted back here, closing `framework seeds → workspace evolves → good
-  variants flow back` (M8).
-
-## Layout
-
-```
+```text
 library/
-├─ select/   greedy · newest · pareto · random · score_weighted
-├─ rollout/  failure_focused · harbor · noop
-├─ analyze/ failure_patterns · failed_traces · trace_browser · trajectory_only · execution_records · gepa · utility_metrics
-├─ mutate/ aevolve · ahe · gepa · hyperagents
-│  ├─ support/  shared evidence loading
-│  └─ runners/ local · harbor
-├─ validate/ hyperagents · minibatch_improvement
-├─ gate/     hillclimb · parent_eligible
-├─ record/   jsonl · hyperagents
-└─ _skeletons/   "write a new operator of verb X" starting points   (planned move)
+├─ _shared/     shared underscore-prefixed helpers
+├─ select/      greedy · newest · pareto · random · score_weighted
+├─ rollout/     failure_focused · harbor · noop · parent_evaluation
+├─ analyze/     failure_patterns · trace_browser · trajectory_only · …
+├─ mutate/      aevolve · ahe · gepa · hyperagents
+│  ├─ _support/ shared evidence loading
+│  └─ _runners/ local · harbor
+├─ validate/    hyperagents · minibatch_improvement
+├─ novelty/     accept_all · diff_similarity
+├─ gate/        hillclimb · parent_eligible · ahe_artifact_valid
+├─ record/      gepa · hyperagents · jsonl
+└─ reflect/     credit
 ```
 
-## Canonical verb set
+Files and directories beginning with `_` are importable helpers and are not
+discovered as named operators. Each stage directory also has an `_skeleton.py`
+authoring starting point.
 
-Required: `select · rollout · mutate · gate · record`. Optional:
-`analyze · validate · novelty · reflect`.
-The authority is `src/evolve/frozen/interfaces.py`.
+## Author and validate an operator
 
-## Harbor rollout
+Create a complete SDK entry file from the CLI:
 
-`rollout/harbor.py` is an opt-in live variant. It runs the current candidate
-through the frozen Harbor train split and normalizes results into
-`rollout/cases.json`. A separate `analyze` operator chooses and renders
-bounded meta-agent evidence under `analyze/evidence/`.
+```bash
+evolve operator new mutate my_operator
+evolve operator describe mutate/my_operator
+evolve operator check mutate/my_operator --config '{}'
+evolve operator list mutate
+```
 
-Select it in a recipe before `evolve init`:
+Every named entry must call `sdk.main` with a configuration validator. Use the
+shared helpers to require a JSON object, normalize defaults, and reject unknown
+keys:
+
+```python
+from library._shared.config import config_object, reject_unknown
+
+
+def validate_config(raw):
+    config = config_object(raw)
+    reject_unknown(config, {"mode"})
+    return {"mode": config.get("mode", "safe")}
+
+
+if __name__ == "__main__":
+    sdk.main(MyOperator, validate_config=validate_config)
+```
+
+Discovery reads only paths. Description and validation execute the entry in a
+subprocess, so framework code never imports operator modules in-process.
+
+## Select an operator in a recipe
+
+The binding contains only the name, timeout, and opaque nested config:
 
 ```yaml
 operators:
-  rollout: {variant: harbor, path: /path/to/train-tasks, budget_tasks: 8, n_concurrent: 2, max_retries: 1}
+  rollout:
+    operator: harbor
+    timeout_s: 3600
+    config:
+      path: /path/to/train-tasks
+      budget_tasks: 8
+      n_concurrent: 2
+      max_retries: 1
 ```
 
-`max_retries` controls Harbor's internal retry policy for one job.
-The operator does not run an outer repair batch. Cases normalized as
-`infra_error` or `incomplete` remain in the rollout evidence and flow through
-the configured trace analyzer to the meta-agent.
+Run `evolve recipe check /path/to/evolve.yaml` before initialization. A named
+operator is portable with the source catalog. An explicit `script:` path is an
+executable escape hatch but is reported as non-portable.
 
-The train `path` is required in config or through `EVOLVE_HARBOR_ROLLOUT_TASKS`.
-Optional keys are `agent`, `model`, `include_task_name`, `jobs_dir`,
-`max_retries`, `field_limit`, and `pass_threshold`
-(default `1.0`). The custom checkout agent
-defaults to `evaluator/eval.env`; `EVOLVE_HARBOR_MODEL` and
-`EVOLVE_ROLLOUT_JOBS_DIR` are additional environment overrides.
+## Harbor mutation execution
 
-The rollout path is intentionally not inherited from `EVOLVE_HARBOR_TASKS`:
-verifier output is meta-agent feedback and may reveal tests. Set `path` or
-`EVOLVE_HARBOR_ROLLOUT_TASKS` to a train-only task set, never the gate or sealed
-set used for final evaluation.
-
-## Meta-agent execution
-
-Meta-agent variants define the improvement strategy. `aevolve.py` performs
-observation-driven prompt and skill evolution, `ahe.py` engineers the target
-harness, `gepa.py` performs component-level reflective mutation, and
-`hyperagents.py` implements self-referential editing. Their
-`runner` selects how the editing agent is executed.
-
-`runners/local.py` executes a trusted host command. `runners/harbor.py` instead
-supplies a disposable full experiment workspace at `/app/workspace` and
-transactionally imports configured roots from the validated artifact:
+The `aevolve`, `ahe`, `gepa`, and `hyperagents` mutate operators choose an
+improvement strategy. Their `runner` config selects a trusted local command or
+an isolated Harbor editing agent:
 
 ```yaml
 operators:
   mutate:
-    variant: hyperagents
-    runner: harbor
-    agent: mini-swe-agent
-    model: openai/gpt-5.4
-    environment: docker
-    editable_roots: [target, operators]
+    operator: hyperagents
     timeout_s: 3600
+    config:
+      runner: harbor
+      agent: mini-swe-agent
+      model: openai/gpt-5.4
+      environment: docker
+      editable_roots: [target, operators]
 ```
 
-See [the meta-agent guide](../docs/guides/meta-agents.md) for command examples, supported Harbor
-agent identifiers, custom adapter configuration, and the artifact boundary.
+See the [mutate operator guide](../docs/guides/mutate-operators.md) for runner
+semantics, supported Harbor agent identifiers, adapter configuration, and the
+artifact boundary. See [the protocol](PROTOCOL.md) for every stage interface
+and output file.

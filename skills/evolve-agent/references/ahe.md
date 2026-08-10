@@ -15,7 +15,7 @@ agent harness.
 
 Run `./evolve operator list . --json` and use its live configuration. The
 shipped AHE profile normally exposes `ahe_latest` selection,
-`parent_evaluation` rollout, and the `ahe` trace analyzer. Invoke these direct
+`parent_evaluation` rollout, and the `ahe` analyze operator. Invoke these direct
 operators, inspect the retained task trajectories and debugger findings under
 `runs/gen-<id>/`, and let the outer coding agent implement the harness change.
 The configured AHE `mutate` is optional for a second opinion or unattended

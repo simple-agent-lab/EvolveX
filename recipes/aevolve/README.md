@@ -23,7 +23,7 @@ The mapping is:
 | behavior-only observation view | `analyze: trajectory_only` |
 | infer likely outcomes | read-only per-task judge inside `analyze: trajectory_only` |
 | group patterns and review drafts | `mutate: aevolve` |
-| LLM with workspace shell access | Harbor meta-agent runner |
+| LLM with workspace shell access | Harbor mutate runner |
 | mutate prompt and complete skill directories | `target/prompt.md`, `target/skills/**` |
 | Git snapshots | generation tags |
 | holdout validation | disjoint gate split plus strict hill-climb gate |
@@ -31,10 +31,10 @@ The mapping is:
 Differences from the A-Evolve reference implementation:
 
 - the reference implementation's judge is hard-wired to a Bedrock model; this recipe
-  invokes the configured meta-agent model through Harbor with the same
+  invokes the configured mutation model through Harbor with the same
   behavior-only input and verdict schema;
 - the solver cannot currently return newly proposed draft skills into
-  `target/skills/_drafts/`; the meta-agent will review drafts if another process
+  `target/skills/_drafts/`; the mutate operator will review drafts if another process
   places them there;
 - the built-in Codex target consumes its prompt and skills, but not
   `memory/*.jsonl` or custom `tools/`, so this recipe disables memory and tool

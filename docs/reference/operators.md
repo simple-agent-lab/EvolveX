@@ -1,8 +1,9 @@
 # Operator overview
 
-Operators are the composable stages of an EvolveX generation. Their names in
-this reference are identical to the keys used under `operators:` in
-`evolve.yaml`.
+A stage is a fixed lifecycle slot. An operator is one reusable implementation
+at `library/<stage>/<name>.py`. A recipe is the code-free selection and
+configuration of operators. Canonical evaluation is framework-owned and cannot
+be replaced by a recipe operator.
 
 ```text
 select
@@ -32,51 +33,87 @@ Canonical evaluation is framework-owned and is not an operator.
 | [`record`](operators/record.md) | yes | attach method-specific evidence to the archive |
 | [`reflect`](operators/reflect.md) | no | derive reusable insights from verified history |
 
-## Active and available implementations
+## Discover and validate the library
+
+Discovery is filesystem-only and never imports operator code into the
+framework process. Inspection runs each entry file in a subprocess:
+
+```bash
+evolve operator list
+evolve operator list mutate --json
+evolve operator describe mutate/hyperagents
+evolve operator check mutate/hyperagents --config '{"runner":"local"}'
+```
+
+Create a complete SDK entry file in a source checkout with:
+
+```bash
+evolve operator new mutate my_operator
+```
+
+Every named library entry must expose `--describe` and `--validate-config` via
+`sdk.main(..., validate_config=validate_config)`. Validation must reject
+unknown or invalid settings; `library/_shared/config.py` provides common
+helpers. Underscore-prefixed files and directories are helper modules, not
+discoverable operators.
+
+## Compose a recipe
+
+Each enabled stage selects exactly one `operator` or `script`. Put every
+operator-specific setting under `config`:
+
+```yaml
+operators:
+  select:
+    operator: greedy
+    timeout_s: 600
+    config: {}
+  mutate:
+    operator: hyperagents
+    timeout_s: 3600
+    config:
+      runner: harbor
+      editable_roots: [target]
+```
+
+Check the complete composition before initialization:
+
+```bash
+evolve recipe check /path/to/recipe/evolve.yaml
+evolve recipe check /path/to/recipe/evolve.yaml --json
+```
+
+Recipe-local operator directories are rejected. A `script:` binding is still
+executable, but `recipe check` marks it non-portable because it depends on a
+filesystem path outside the shared named catalog.
+
+## Inspect initialized bindings
 
 After initialization:
 
 ```text
-operators/<name>.py       active implementation
-library/<name>/*.py       available alternatives
-operators/README.md       generated active/alternative summary
+operators/<stage>.py       frozen active implementation
+library/                   frozen alternatives and imported helpers
+evolve.yaml                normalized operator config
+.evolve-components.json   source identity, digest, and portability
 ```
 
 Inspect the active configuration with:
 
 ```bash
-./evolve operator list .
+./evolve operator active .
+./evolve operator active . --json
 cat operators/README.md
 ```
 
-Each operator block may select a `variant` or an explicit `script`, but not
-both. Recipe-local variants take precedence over the shared library:
+Direct orchestration can invoke a configured stage and retains its artifacts:
 
-```yaml
-operators:
-  select:
-    variant: greedy
-    timeout_s: 600
-```
-
-## Custom implementations
-
-Start from `library/<name>/_skeleton.py` and implement the matching interface in
-`evolve.frozen.interfaces`. Put a recipe-local implementation at:
-
-```text
-my-recipe/operators/<name>/<variant>.py
-```
-
-Then select it by filename stem:
-
-```yaml
-operators:
-  <name>:
-    variant: <variant>
+```bash
+./evolve operator run . rollout --genid 1 --parent 0
+./evolve operator run . mutate --genid 1 --parent 0 --config '{}'
+./evolve finalize . 1 --parent 0
 ```
 
 Operators execute as subprocesses. They should write diagnostics beneath their
 generation run directory and return the typed result for their interface. They
 must not write evaluator truth, generation tags, or archive outcomes directly.
-

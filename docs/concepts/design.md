@@ -17,12 +17,17 @@ The governing boundary is simple: framework code owns the mechanics that make
 scores trustworthy; a recipe selects the evolvable policy. Operators run as
 subprocesses, so the mechanism never imports workspace operator code in-process.
 
+A **stage** is a fixed lifecycle slot. An **operator** is a reusable
+implementation at `library/<stage>/<name>.py`. A **recipe** is code-free
+selection and configuration of operators. **Evaluate** is the framework-owned
+trusted mechanism and is never resolved from the operator library.
+
 ## Recipe-driven initialization
 
-`evolve init` reads one supported recipe YAML and validates its selected
-`target.seed`, `evaluator.engine`, `evaluator.agent`, and
-`operators.mutate.agent`. The recipe is the selection authority; there is
-no second runtime component registry.
+`evolve init` resolves one supported recipe YAML, validates every named
+operator in a subprocess, and freezes its normalized configuration. The recipe
+is the selection authority; adding `library/<stage>/<name>.py` makes an
+operator discoverable without editing a registry.
 
 ```text
 recipe YAML
@@ -34,9 +39,10 @@ recipe YAML
   -> generation-zero Git snapshot
 ```
 
-The framework has five supported recipes: `aevolve`, `ahe`, `gepa`,
-`hill_climb`, and `hyperagents`. Development smoke recipes live under
-`tests/fixtures/recipes/` and are not part of the public recipe inventory.
+The framework ships `aevolve`, `ahe`, `ahe_codex`, `gepa`, `gepa_local`,
+`hill_climb`, `hill_climb_codex`, `hyperagents`, and `hyperagents_codex`.
+Development smoke recipes live under `tests/fixtures/recipes/` and are not part
+of the public recipe inventory.
 
 ## Source ownership
 
@@ -47,7 +53,7 @@ The framework has five supported recipes: `aevolve`, `ahe`, `gepa`,
 | `scaffolds/evaluators/harbor/` | Harbor-specific evaluator files |
 | `seeds/` | built-in evolvable target content |
 | `src/evolve/integrations/harbor/` | Harbor adapters owned by the framework |
-| `library/` | reference operator variants available in a workspace |
+| `library/` | discoverable, reusable operator implementations |
 | `tests/fixtures/` | deterministic test-only resources |
 
 Harbor integrations are framework modules. A generated workspace vendors them
@@ -59,8 +65,8 @@ adapter packages.
 ```text
 <workspace>/
 ├─ target/          candidate selected by the recipe's seed
-├─ operators/       active recipe-selected operator scripts
-├─ library/         operator variants copied for the workspace
+├─ operators/       frozen active recipe-selected operator scripts
+├─ library/         frozen catalog alternatives and imported helpers
 ├─ evaluator/       frozen evaluator and selected engine files
 ├─ skills/          workspace operating manual
 ├─ .evolve/         vendored framework runtime and launcher
@@ -70,9 +76,12 @@ adapter packages.
 └─ runs/, artifacts/  generated run state and durable context
 ```
 
-The mutable surface in `evolve.yaml` controls what a candidate may edit. The
-target and, for recipes that select it, operator scripts are evolvable. The
-evaluator, archive stamps, and vendored mechanism are not.
+Initialization records normalized operator config in `evolve.yaml`, freezes
+selected bytes in `operators/`, and records source identity and SHA-256
+provenance in `.evolve-components.json`. Existing initialized workspaces are
+never rewritten when the source catalog changes. The mutable surface in
+`evolve.yaml` controls what a candidate may edit; the evaluator, archive stamps,
+and vendored mechanism remain outside it.
 
 ## Invariants
 

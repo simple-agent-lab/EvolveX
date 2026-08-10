@@ -238,7 +238,7 @@ class GepaMutate(MutateOperator):
         if violations:
             raise SystemExit("GEPA meta-agent changed paths outside the mutable surface: " + ", ".join(violations))
         notes = [
-            "variant: gepa",
+            "operator: gepa",
             f"runner: {runner_name(ctx)}",
             "components: " + ", ".join(proposal["components"]),
             "written-by: operators/mutate.py",

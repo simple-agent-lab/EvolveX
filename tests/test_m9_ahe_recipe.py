@@ -61,27 +61,30 @@ def test_ahe_recipe_initializes_harbor_miniswe_composition(tmp_path: Path) -> No
         "MINISWE_COST_LIMIT=0\nMINISWE_ENV_TIMEOUT=30\nMINISWE_REASONING_EFFORT=high\nMINISWE_STEP_LIMIT=100\n"
     )
     config = (workspace / "evolve.yaml").read_text()
-    assert "variant: ahe" in config
+    assert "operator: ahe" in config
     assert "runner: harbor" in config
     assert "expose_gate_data: false" in config
     assert "agent: evolve.integrations.harbor.miniswe_task_file:InstalledMiniSweAgent" in config
     assert "editable_roots:" in config
     operators = operator_blocks(workspace)
-    assert "agent_env" not in operators["mutate"]
+    assert "agent_env" not in operators["mutate"]["config"]
     assert {name: operator_timeout(operators, name) for name in ("rollout", "analyze", "mutate")} == {
         "rollout": 600,
         "analyze": 3600,
         "mutate": 3600,
     }
     assert operators["analyze"] == {
-        "variant": "ahe",
-        "max_tasks": 30,
-        "max_concurrent": 10,
-        "timeout_per_task": 600,
-        "retry_attempts": 1,
-        "debugger_agent_kwargs": {"reasoning_effort": "high", "max_tokens": 64000},
-        "field_limit": 2000,
+        "operator": "ahe",
         "timeout_s": 3600,
+        "config": {
+            "max_tasks": 30,
+            "max_concurrent": 10,
+            "timeout_per_task": 600.0,
+            "retry_attempts": 1,
+            "debugger_agent_kwargs": {"reasoning_effort": "high", "max_tokens": 64000},
+            "field_limit": 2000,
+            "pass_threshold": 1.0,
+        },
     }
     config = (workspace / "evolve.yaml").read_text()
     assert "budget_usd" not in config

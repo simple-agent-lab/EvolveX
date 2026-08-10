@@ -178,7 +178,7 @@ class HyperAgentsMutate(MutateOperator):
         )
         usage = _safe_usage(agent_run.usage)
         notes = [
-            "variant: hyperagents",
+            "operator: hyperagents",
             f"runner: {runner_name(ctx)}",
             "written-by: operators/mutate.py",
             *patch.notes,

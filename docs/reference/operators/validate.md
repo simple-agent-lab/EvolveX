@@ -12,9 +12,9 @@ class ValidateOperator:
 
 The result contains an acceptance boolean, reason, and artifact paths.
 
-## Variants
+## Library operators
 
-| Variant | Validation rule |
+| Operator | Validation rule |
 | --- | --- |
 | `minibatch_improvement` | rerun a GEPA child on the exact parent minibatch and apply an improvement criterion |
 | `hyperagents` | apply the fixed HyperAgents validation contract |
@@ -24,11 +24,12 @@ The result contains an acceptance boolean, reason, and artifact paths.
 ```yaml
 operators:
   validate:
-    variant: minibatch_improvement
-    criterion: strict
-    n_concurrent: 4
-    max_retries: 1
+    operator: minibatch_improvement
     timeout_s: 3600
+    config:
+      criterion: strict
+      n_concurrent: 4
+      max_retries: 1
 ```
 
 The validator reads the parent's rollout cases, runs the child on the same task
@@ -55,4 +56,3 @@ runs/gen-N/validate/
 
 If no `validate` block is present, the driver proceeds from mutation (and any
 configured `novelty`) to canonical evaluation.
-

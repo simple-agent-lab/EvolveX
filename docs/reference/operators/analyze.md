@@ -21,9 +21,9 @@ class AnalyzeOperator:
 
 The result contains a summary and artifact paths.
 
-## Variants
+## Library operators
 
-| Variant | Selected evidence |
+| Operator | Selected evidence |
 | --- | --- |
 | `failure_patterns` | aggregate metrics, verifier-grounded failure clusters, representatives, and passing behavior |
 | `failed_traces` | metrics plus detailed failed and agent-error executions |
@@ -39,21 +39,23 @@ The result contains a summary and artifact paths.
 ```yaml
 operators:
   rollout:
-    variant: harbor
-    budget_tasks: 8
+    operator: harbor
+    config:
+      budget_tasks: 8
   analyze:
-    variant: failure_patterns
-    max_chars: 30000
+    operator: failure_patterns
     timeout_s: 600
+    config:
+      max_chars: 30000
 ```
 
 Common bounds include `max_chars`, `max_cases`, `max_tasks`, `field_limit`,
-history depth, concurrency, retry count, and per-task timeout. Variant-specific
+history depth, concurrency, retry count, and per-task timeout. Operator-specific
 keys should be copied from the closest supported recipe.
 
 ## Inputs and artifacts
 
-Most deterministic variants write an auditable evidence bundle:
+Most deterministic operators write an auditable evidence bundle:
 
 ```text
 runs/gen-N/analyze/evidence/raw_traces.jsonl
@@ -67,14 +69,14 @@ runs/gen-N/analyze/evidence/selected.md
 ```
 
 `selected.md` is copied to `feedback/evidence/selected.md` and included in the
-meta-agent prompt.
+mutate prompt.
 
 `gepa` additionally writes reflective datasets and per-component reflection.
 `ahe` writes debugger-oriented case analysis.
 
 ## Fidelity boundary
 
-All variants except `trajectory_only` deterministically parse, filter, cluster,
+All operators except `trajectory_only` deterministically parse, filter, cluster,
 serialize, and truncate existing rollout facts.
 
 `trajectory_only` adds an isolated behavior-only model judge. Its evidence
@@ -82,5 +84,5 @@ directory intentionally omits reward, verifier output, task input, and raw-case
 paths. The A-Evolve Harbor bundle also omits archive and run history so those
 labels cannot be recovered by filesystem inspection.
 
-The variant selects an evidence shape; it does not by itself reproduce every
+The operator selects an evidence shape; it does not by itself reproduce every
 search or optimization capability of the method that motivated it.

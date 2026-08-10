@@ -2,6 +2,8 @@ from pathlib import Path
 
 from conftest import run_evolve
 
+from evolve.config import load_config
+
 
 def test_gepa_recipe_initializes_all_native_operators(tmp_path: Path) -> None:
     workspace = tmp_path / "gepa-workspace"
@@ -16,10 +18,13 @@ def test_gepa_recipe_initializes_all_native_operators(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     config = (workspace / "evolve.yaml").read_text()
     assert "seed: builtin-codex" in config
-    assert "variant: minibatch_improvement" in config
+    assert "operator: minibatch_improvement" in config
     assert "component_strategy: round_robin" in config
-    assert "task_execution_skill: target/skills/task-execution\n" in config
-    assert "task_execution_skill: target/skills/task-execution/SKILL.md" not in config
+    rendered = load_config(workspace / "evolve.yaml")
+    for stage in ("analyze", "mutate"):
+        assert rendered["operators"][stage]["config"]["components"]["task_execution_skill"] == [
+            "target/skills/task-execution"
+        ]
     assert "expose_gate_data: false" in config
     assert "agent: target.agent:HarborAgent" in config
     assert "class ParetoSelect" in (workspace / "operators/select.py").read_text()

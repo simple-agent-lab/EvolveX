@@ -13,6 +13,38 @@ RELATIVE_LINK = re.compile(r"\[[^\]]+\]\((?!https?://|mailto:|#)([^)#]+)")
 SVG_NS = {"svg": "http://www.w3.org/2000/svg"}
 
 
+def maintained_current_files() -> list[Path]:
+    # Human-facing recipe prose is scanned here; recipe YAML is exercised by
+    # composition tests so unrelated nested concepts such as candidate-runtime
+    # kinds are not mistaken for stage vocabulary.
+    files = [ROOT / "README.md", ROOT / "ARCHITECTURE.md", ROOT / "CONTRIBUTING.md", ROOT / "QUICKSTART.md"]
+    files.extend(path for path in (ROOT / "docs").rglob("*.md") if "superpowers" not in path.parts)
+    files.extend((ROOT / "library").rglob("*.md"))
+    files.extend((ROOT / "library").rglob("*.py"))
+    files.extend((ROOT / "recipes").rglob("README.md"))
+    files.extend((ROOT / "scaffolds").rglob("*.md"))
+    files.extend((ROOT / "skills").rglob("*.md"))
+    files.extend(
+        ROOT / "src" / "evolve" / name
+        for name in (
+            "config.py",
+            "driver.py",
+            "feedback.py",
+            "operator_cli.py",
+            "operator_library.py",
+            "operators.py",
+            "orchestration.py",
+            "recipe_cli.py",
+            "workspace.py",
+            "frozen/interfaces.py",
+            "frozen/sdk.py",
+        )
+    )
+    # recipe.py retains retired spellings only to diagnose rejected legacy
+    # inputs. tests/test_recipe_resolution.py covers that negative boundary.
+    return sorted(set(files))
+
+
 def _relative_luminance(color: str) -> float:
     channels = [int(color[index : index + 2], 16) / 255 for index in (1, 3, 5)]
     linear = [channel / 12.92 if channel <= 0.04045 else ((channel + 0.055) / 1.055) ** 2.4 for channel in channels]
@@ -76,6 +108,11 @@ def test_mkdocs_covers_custom_recipe_operator_and_experiment_workflows() -> None
         assert (ROOT / page).is_file()
         assert page.removeprefix("docs/") in mkdocs
 
+    mutate_guide = ROOT / "docs/guides/mutate-operators.md"
+    assert mutate_guide.is_file()
+    assert "guides/mutate-operators.md" in mkdocs
+    assert not (ROOT / "docs/guides/meta-agents.md").exists()
+
     custom_recipe = (ROOT / expected_pages[0]).read_text()
     assert "--recipe-path" in custom_recipe
     assert "surface:" in custom_recipe
@@ -121,6 +158,13 @@ def test_mkdocs_covers_custom_recipe_operator_and_experiment_workflows() -> None
         assert f"- {title}: reference/operators/{stage}.md" in mkdocs
 
     assert not (ROOT / "docs/reference/trace-analyzers.md").exists()
+
+
+def test_maintained_public_material_uses_canonical_operator_vocabulary() -> None:
+    forbidden = ("meta_agent", "trace_analyzer", "MetaAgentOperator", "TraceAnalyzerOperator", "variant:")
+    for path in maintained_current_files():
+        text = path.read_text()
+        assert not [term for term in forbidden if term in text], path
 
 
 def test_license_metadata_and_notice_are_consistent() -> None:

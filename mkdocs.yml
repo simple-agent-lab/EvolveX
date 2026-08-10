@@ -42,7 +42,7 @@ nav:
       - Creating a custom recipe: guides/custom-recipes.md
       - From recipe to experiment: guides/recipe-to-experiment.md
       - Running Evolve reliably: guides/operations.md
-      - Meta-agent execution: guides/meta-agents.md
+      - Mutate operator execution: guides/mutate-operators.md
       - Local Harbor environment: guides/local-environment.md
   - Reference:
       - Environment Variables: reference/environment-variables.md

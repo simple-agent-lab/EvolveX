@@ -23,7 +23,7 @@ forming the child hypothesis; let `finalize` apply the gate and record.
 
 Read `operators/<stage>.py` only when a direct invocation or its artifact needs
 diagnosis. If the selection or acceptance policy itself must change, compare
-the relevant `library/select/` or `library/gate/` variants and adapt the active
+the relevant `library/select/` or `library/gate/` operators and adapt the active
 operator only after process mutation is explicitly in scope.
 
 ## Apply the method

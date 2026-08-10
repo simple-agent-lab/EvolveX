@@ -9,6 +9,7 @@ from conftest import (
     fixture_recipe_config,
     git,
     init_recipe_with_local_inputs,
+    init_workspace_from_config,
 )
 
 from evolve.evaluation import ContractResolutionContext, Outcome, resolve_evaluation_contract
@@ -21,7 +22,7 @@ from evolve.preflight import (
     PreflightResultV1,
 )
 from evolve.runtime.uv import CandidateRuntimeResult
-from evolve.workspace import InitOptions, init_workspace
+from evolve.workspace import InitOptions
 
 
 def _strict_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
@@ -44,8 +45,7 @@ def _strict_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         }
     )
     config["evaluator"].pop("k", None)
-    monkeypatch.setattr("evolve.workspace.default_config", lambda _recipe, _experiment: config)
-    init_workspace(InitOptions(workspace=workspace, recipe="fixture"))
+    init_workspace_from_config(InitOptions(workspace=workspace), config)
     allow_local_runtime(monkeypatch)
     return workspace
 

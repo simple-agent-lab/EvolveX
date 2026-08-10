@@ -181,7 +181,7 @@ def test_aevolve_reproduces_recent_summary_draft_and_workspace_mutation_cycle(
         "tasks_analyzed": 3,
         "usage": {"usd": 0.12},
     }
-    assert "variant: aevolve" in result.notes
+    assert "operator: aevolve" in result.notes
     assert "runner: harbor" in result.notes
     assert (run_dir / "mutate" / "patch.diff").is_file()
 

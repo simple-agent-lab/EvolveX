@@ -664,7 +664,7 @@ def test_init_binds_real_hyperagents_method_surface_and_operators(tmp_path: Path
     assert "ParentEvaluationRollout" in (workspace / "operators/rollout.py").read_text()
     assert (workspace / "library/rollout/harbor.py").is_file()
     assert "class TraceBrowser" in (workspace / "operators/analyze.py").read_text()
-    assert "variant: hyperagents" in (workspace / "operators/mutate.py").read_text()
+    assert "operator: hyperagents" in (workspace / "operators/mutate.py").read_text()
     assert "HyperAgents Self-Improvement" in (workspace / "operators/mutate.py").read_text()
     assert "HyperAgentsValidate" in (workspace / "operators/validate.py").read_text()
     assert "HyperAgentsRecord" in (workspace / "operators/record.py").read_text()

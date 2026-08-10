@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 
 import pytest
-from conftest import fixture_recipe_config, init_fixture_workspace
+from conftest import fixture_recipe_config, init_fixture_workspace, init_workspace_from_config
 
 import evolve.runtime.process as runtime_module
 from evolve import workspace as workspace_module
@@ -395,10 +395,9 @@ def test_default_expected_trials_match_generated_evaluator_environment(
     config["evaluator"].pop("tasks_per_round")
     config["evaluator"].pop("k", None)
     config["evaluator"]["repetitions"] = 2
-    monkeypatch.setattr(workspace_module, "default_config", lambda _recipe, _experiment: config)
     monkeypatch.setenv("EVAL_STUB", "1")
     workspace = tmp_path / "workspace"
-    workspace_module.init_workspace(workspace_module.InitOptions(workspace, "fixture"))
+    init_workspace_from_config(workspace_module.InitOptions(workspace), config)
 
     record = evaluate(workspace, "gen/0", "0", purpose="genesis")
 

@@ -1,8 +1,8 @@
 # Evolution Program
 
 Use either `./evolve run .` to run the driver or let the outer agent
-orchestrate one generation. In the latter mode, run `operator list`, then
-invoke configured select, rollout, and trace-analyzer capabilities with
+orchestrate one generation. In the latter mode, run `operator active`, then
+invoke configured select, rollout, and analyze capabilities with
 `operator run`. Read their files under `runs/gen-<id>/`, form a hypothesis, and
 edit the child worktree directly. `mutate` is optional when the outer agent
 owns the mutation.

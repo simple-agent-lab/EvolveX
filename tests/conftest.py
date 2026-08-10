@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -143,6 +144,16 @@ def init_fixture_workspace(workspace: Path, name: str = "hill_climb-smoke") -> P
         (recipe / "evolve.yaml").write_text(render_yaml(config))
         create_workspace(InitOptions(workspace=workspace, recipe_path=recipe))
     return workspace
+
+
+def init_workspace_from_config(options: InitOptions, config: dict[str, Any]) -> Path:
+    """Initialize through the maintained custom-recipe path using test config."""
+    with tempfile.TemporaryDirectory(prefix="evolve-test-recipe-") as tempdir:
+        recipe = Path(tempdir) / "custom"
+        recipe.mkdir()
+        (recipe / "evolve.yaml").write_text(render_yaml(copy.deepcopy(config)))
+        create_workspace(replace(options, recipe=None, recipe_path=recipe))
+    return options.workspace
 
 
 def write_identity_dataset(root: Path, count: int = 10) -> Path:

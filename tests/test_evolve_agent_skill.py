@@ -76,12 +76,11 @@ def test_top_level_skill_is_backend_neutral_and_operator_first() -> None:
     assert not (SKILL / "scripts").exists()
 
 
-def test_top_level_skill_marks_legacy_operator_terms_as_historical() -> None:
+def test_top_level_skill_uses_only_canonical_operator_terms() -> None:
     body = (SKILL / "SKILL.md").read_text().lower()
-    current, historical = body.split("## historical-workspace note", maxsplit=1)
 
-    assert not any(term in current for term in ("meta_agent", "trace_analyzer", "variant:"))
-    assert all(term in historical for term in ("meta_agent", "trace_analyzer", "variant:"))
+    assert "## historical-workspace note" in body
+    assert not any(term in body for term in ("meta_agent", "trace_analyzer", "variant:"))
 
 
 def test_method_cards_route_to_shipped_capabilities() -> None:

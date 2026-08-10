@@ -482,7 +482,7 @@ class AEvolveMutate(MutateOperator):
             "usage": usage,
         }
         notes = [
-            "variant: aevolve",
+            "operator: aevolve",
             f"runner: {runner_name(ctx)}",
             f"tasks-analyzed: {report['tasks_analyzed']}",
             f"drafts-reviewed: {report['drafts_reviewed']}",

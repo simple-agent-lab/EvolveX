@@ -35,14 +35,28 @@ def test_release_wheel_has_one_resource_owner_and_complete_metadata() -> None:
         assert not [name for name in names if name.startswith("evolve/datasets/")]
         assert {
             "evolve/library/PROTOCOL.md",
+            "evolve/library/_shared/config.py",
+            "evolve/library/analyze/failure_patterns.py",
+            "evolve/library/mutate/hyperagents.py",
             "evolve/recipes/aevolve/evolve.yaml",
+            "evolve/recipes/ahe/evolve.yaml",
             "evolve/recipes/ahe_codex/evolve.yaml",
+            "evolve/recipes/gepa/evolve.yaml",
+            "evolve/recipes/gepa_local/evolve.yaml",
+            "evolve/recipes/hill_climb/evolve.yaml",
+            "evolve/recipes/hill_climb_codex/evolve.yaml",
+            "evolve/recipes/hyperagents/evolve.yaml",
+            "evolve/recipes/hyperagents_codex/evolve.yaml",
             "evolve/scaffolds/workspace/README.md",
             "evolve/seeds/codex/agent.py",
             "evolve/seeds/codex/plugins/evolve-target/.codex-plugin/plugin.json",
             "evolve/seeds/codex/plugins/evolve-target/hooks/hooks.json",
             "evolve/integrations/harbor/codex_candidate.py",
             "evolve/integrations/harbor/miniswe_candidate.py",
+            "evolve/operator_cli.py",
+            "evolve/operator_library.py",
+            "evolve/recipe.py",
+            "evolve/recipe_cli.py",
             "evolve/skills/evolve-agent/SKILL.md",
             "evolve/skills/evolve-agent/references/workspace-contract.md",
             "evolve/containers/meta-agent/Dockerfile",
@@ -50,6 +64,8 @@ def test_release_wheel_has_one_resource_owner_and_complete_metadata() -> None:
             "evolve/licenses/LICENSE",
             "evolve/licenses/NOTICE",
         } <= names
+        assert not [name for name in names if name.startswith("evolve/library/meta_agent/")]
+        assert not [name for name in names if name.startswith("evolve/library/trace_analyzer/")]
 
         metadata_path = next(name for name in names if name.endswith(".dist-info/METADATA"))
         metadata = Parser().parsestr(archive.read(metadata_path).decode())

@@ -21,7 +21,7 @@ README.md                     this workspace guide
 archive.jsonl                 append-only lineage record
 evolve                        workspace console
 evolve.yaml                   rendered recipe configuration
-library/                      recipe-relevant operator variants
+library/                      frozen operator catalog and imported helpers
 LICENSE.evolvex               license for the vendored framework and operator library
 NOTICE.evolvex                framework and third-party attribution notices
 operators/                    active operator scripts, supporting Markdown, and index
