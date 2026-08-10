@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from harbor import viewer as harbor_viewer
 from harbor.viewer.server import create_app as create_harbor_app
 
+from ..git import git
 from .harbor_bridge import HarborBridge
 from .models import ArtifactPreviewMetadata, PaginatedTrials, SnapshotBundle, ViewerWarning, WorkspaceSources
 from .reader import WorkspaceReader
@@ -86,6 +87,38 @@ def create_viewer_app(workspace: Path, *, bridge: HarborBridge | None = None) ->
         if detail is None:
             raise HTTPException(status_code=404, detail=f"generation {genid!r} not found")
         return detail
+
+    @app.get("/api/evolve/generations/{genid}/diff")
+    def generation_diff(genid: str, context: int = Query(8, ge=3, le=30)) -> Response:
+        detail = store.refresh().generation_details.get(genid)
+        if detail is None:
+            raise HTTPException(status_code=404, detail=f"generation {genid!r} not found")
+        parent = detail.summary.parent
+        paths = [path for path in detail.change.changed_paths if path == "target" or path.startswith("target/")]
+        if parent is None or not paths:
+            raise HTTPException(status_code=404, detail="expanded generation diff is unavailable")
+        result = git(
+            workspace,
+            "diff",
+            "--no-ext-diff",
+            f"--unified={context}",
+            f"gen/{parent}",
+            f"gen/{genid}",
+            "--",
+            *paths,
+            check=False,
+        )
+        if result.returncode != 0 or not result.stdout:
+            raise HTTPException(status_code=404, detail="expanded generation diff is unavailable")
+        encoded = result.stdout.encode()
+        return Response(
+            content=encoded[:MAX_ARTIFACT_PREVIEW_BYTES],
+            media_type="text/x-diff",
+            headers={
+                "Cache-Control": "no-store",
+                "X-Evolve-Artifact-Truncated": str(len(encoded) > MAX_ARTIFACT_PREVIEW_BYTES).lower(),
+            },
+        )
 
     @app.get("/api/evolve/trials", response_model=PaginatedTrials)
     def trials(

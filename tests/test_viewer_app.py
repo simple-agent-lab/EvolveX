@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from evolve.git import git
 from evolve.viewer.app import create_viewer_app
 
 
@@ -52,6 +53,33 @@ def test_snapshot_and_generation_routes(viewer_workspace: Path) -> None:
         assert client.get("/api/evolve/snapshot").status_code == 200
         assert client.get("/api/evolve/generations/1").json()["summary"]["genid"] == "1"
         assert client.get("/api/evolve/generations/missing").status_code == 404
+
+
+def test_generation_diff_adds_bounded_parent_context(viewer_workspace: Path) -> None:
+    git(viewer_workspace, "init")
+    git(viewer_workspace, "config", "user.name", "Viewer Test")
+    git(viewer_workspace, "config", "user.email", "viewer@example.com")
+    target = viewer_workspace / "target/example.py"
+    target.parent.mkdir()
+    target.write_text("".join(f"line {index}\n" for index in range(1, 16)))
+    git(viewer_workspace, "add", "target/example.py")
+    git(viewer_workspace, "commit", "-m", "baseline")
+    git(viewer_workspace, "tag", "gen/0")
+    target.write_text("".join("changed\n" if index == 8 else f"line {index}\n" for index in range(1, 16)))
+    git(viewer_workspace, "add", "target/example.py")
+    git(viewer_workspace, "commit", "-m", "generation 1")
+    git(viewer_workspace, "tag", "gen/1")
+    (viewer_workspace / "runs/gen-1/meta_agent/changed.json").write_text('["target/example.py"]')
+
+    with TestClient(create_viewer_app(viewer_workspace)) as client:
+        response = client.get("/api/evolve/generations/1/diff", params={"context": 5})
+
+    assert response.status_code == 200
+    assert "-line 8" in response.text
+    assert "+changed" in response.text
+    assert " line 13" in response.text
+    assert " line 14" not in response.text
+    assert response.headers["cache-control"] == "no-store"
 
 
 def test_trial_pagination_and_filters(viewer_workspace: Path) -> None:

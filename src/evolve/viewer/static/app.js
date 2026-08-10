@@ -348,9 +348,22 @@ async function renderArtifact(artifactId) {
   const genid = generationMatch?.[1] || null;
   const generation = genid ? state.snapshot.generations.find((item) => item.genid === genid) : null;
   const backHref = genid ? `/generations/${encodeURIComponent(genid)}` : '/';
-  const presentation = artifactPresentation(metadata, text);
+  let presentation = artifactPresentation(metadata, text);
   const isDiff = presentation.mode === 'diff';
-  const diffFiles = isDiff ? splitDiffFiles(text) : [];
+  let expandedContext = null;
+  if (isDiff && genid) {
+    try {
+      const response = await fetch(`/api/evolve/generations/${encodeURIComponent(genid)}/diff?context=8`, {cache: 'no-store'});
+      if (response.ok) {
+        const expanded = await response.text();
+        if (expanded) {
+          presentation = {...presentation, text: expanded};
+          expandedContext = 8;
+        }
+      }
+    } catch { /* Fall back to the registered patch artifact. */ }
+  }
+  const diffFiles = isDiff ? splitDiffFiles(presentation.text) : [];
   const title = isDiff && genid ? `Generation ${genid} diff` : metadata.label;
   content.classList.toggle('diff-mode', isDiff);
   content.innerHTML = `
@@ -374,6 +387,7 @@ async function renderArtifact(artifactId) {
           <span><strong>${generation?.change_files ?? '—'}</strong> files</span>
           <span class="plus">+${generation?.insertions ?? '—'}</span>
           <span class="minus">−${generation?.deletions ?? '—'}</span>
+          ${expandedContext == null ? '' : `<span>${expandedContext} lines context</span>`}
         </div>
         <div class="diff-toolbar-actions">
           <div class="diff-segmented" aria-label="Diff layout">
