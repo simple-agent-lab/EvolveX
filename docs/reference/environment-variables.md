@@ -150,6 +150,25 @@ UV_CACHE_DIR=/data/uv-cache
 TMPDIR=/data/evolve/tmp
 ```
 
+## Harbor execution headroom
+
+Harbor timeout multipliers are optional execution controls. Each multiplier is
+applied to the corresponding limit declared by a benchmark task; it does not
+replace the task's timeout:
+
+| Variable | Purpose |
+| --- | --- |
+| `EVOLVE_HARBOR_AGENT_SETUP_TIMEOUT_MULTIPLIER` | agent installation/setup headroom |
+| `EVOLVE_HARBOR_AGENT_TIMEOUT_MULTIPLIER` | target-agent execution headroom |
+| `EVOLVE_HARBOR_VERIFIER_TIMEOUT_MULTIPLIER` | verifier execution headroom |
+| `EVOLVE_HARBOR_MAX_RETRIES` | Harbor retry count for retry-eligible exceptions |
+| `EVOLVE_HARBOR_N_CONCURRENT` | default concurrent Harbor trials used when an operator does not override `n_concurrent` |
+
+Prefer explicit recipe keys for reproducible experiments. Environment values
+are useful for launch profiles and diagnostics, but `operators.rollout` and
+`operators.validate` may set their own concurrency and timeout multipliers.
+Keep the two GEPA stages symmetric when changing execution headroom.
+
 ## Proxy variables
 
 Standard proxy variables are optional and inherited from the host:
@@ -210,4 +229,3 @@ or evaluator failures:
 ```bash
 ./evolve doctor . --profile experiment --probe-model
 ```
-

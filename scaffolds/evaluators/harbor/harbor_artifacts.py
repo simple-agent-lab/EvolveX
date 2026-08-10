@@ -342,7 +342,10 @@ def _reward(result: dict[str, Any]) -> float | None:
 
 
 def _verifier_timeout_is_final_zero(jobs_dir: Path) -> bool:
-    configs = [path for path in jobs_dir.glob("*/config.json") if path.parent.parent == jobs_dir]
+    root_config = jobs_dir / "config.json"
+    configs = [root_config] if root_config.is_file() else []
+    if not configs:
+        configs = [path for path in jobs_dir.glob("*/config.json") if path.parent.parent == jobs_dir]
     if len(configs) != 1:
         return False
     try:

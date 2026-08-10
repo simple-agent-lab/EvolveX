@@ -927,6 +927,10 @@ class HarborRollout(RolloutOperator):
             ctx.config.get("agent_timeout_multiplier"),
             _float_value(eval_env.get("EVOLVE_HARBOR_AGENT_TIMEOUT_MULTIPLIER"), 1),
         )
+        verifier_timeout_multiplier = _float_value(
+            ctx.config.get("verifier_timeout_multiplier"),
+            _float_value(eval_env.get("EVOLVE_HARBOR_VERIFIER_TIMEOUT_MULTIPLIER"), 1),
+        )
         max_retries = _configured_max_retries(ctx.config, eval_env)
         field_limit = _positive_int(ctx.config.get("field_limit"), 2000)
         pass_threshold = _float_value(ctx.config.get("pass_threshold"), 1.0)
@@ -949,6 +953,8 @@ class HarborRollout(RolloutOperator):
             str(max(setup_timeout_multiplier, 1)),
             "--agent-timeout-multiplier",
             str(max(agent_timeout_multiplier, 1)),
+            "--verifier-timeout-multiplier",
+            str(max(verifier_timeout_multiplier, 1)),
             "--max-retries",
             str(max_retries),
             "-y",

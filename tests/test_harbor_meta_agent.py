@@ -1274,17 +1274,13 @@ def test_harbor_bundle_never_exposes_gate_or_sealed_data(tmp_path: Path, traject
         shutil.rmtree(bundle.staging, ignore_errors=True)
 
 
-@pytest.mark.parametrize("leak_source", ["prompt", "train-evidence"])
-def test_harbor_bundle_rejects_private_task_identifiers(tmp_path: Path, leak_source: str) -> None:
+def test_harbor_bundle_rejects_private_task_identifiers_in_prompt(tmp_path: Path) -> None:
     checkout, run_dir = _checkout(tmp_path)
     evaluator = checkout / "evaluator"
     evaluator.mkdir()
     (evaluator / "splits.json").write_text(
         json.dumps({"tasks": {"train": ["train-task"], "gate": ["gate-secret-task"], "sealed": []}})
     )
-    prompt = "analyze gate-secret-task" if leak_source == "prompt" else "safe train evidence"
-    if leak_source == "train-evidence":
-        (run_dir / "trace_analyzer" / "evidence" / "raw_traces.jsonl").write_text('{"task_name":"gate-secret-task"}\n')
     runner = _harbor_runner_module()
     surface = runner.load_surface_policy(checkout)
 
@@ -1294,8 +1290,39 @@ def test_harbor_bundle_rejects_private_task_identifiers(tmp_path: Path, leak_sou
             _ctx(checkout, run_dir),
             ["target"],
             surface,
-            prompt=prompt,
+            prompt="analyze gate-secret-task",
         )
+
+
+def test_harbor_bundle_redacts_private_task_identifiers_echoed_by_train_rollout(
+    tmp_path: Path,
+) -> None:
+    checkout, run_dir = _checkout(tmp_path)
+    evaluator = checkout / "evaluator"
+    evaluator.mkdir()
+    (evaluator / "splits.json").write_text(
+        json.dumps({"tasks": {"train": ["train-task"], "gate": ["gate-secret-task"], "sealed": []}})
+    )
+    rollout = run_dir / "rollout"
+    rollout.mkdir(exist_ok=True)
+    (rollout / "cases.json").write_text(
+        '{"task_name":"train-task","observation":"found gate-secret-task in an external listing"}\n'
+    )
+    runner = _harbor_runner_module()
+    surface = runner.load_surface_policy(checkout)
+    bundle = runner._prepare_bundle(
+        checkout,
+        _ctx(checkout, run_dir),
+        ["target"],
+        surface,
+        prompt="safe train evidence",
+    )
+    try:
+        copied = (bundle.workspace / "runs" / "gen-1" / "rollout" / "cases.json").read_text()
+        assert "gate-secret-task" not in copied
+        assert "[PRIVATE_TASK]" in copied
+    finally:
+        shutil.rmtree(bundle.staging, ignore_errors=True)
 
 
 def test_harbor_bundle_omits_trajectory_judge_workdirs(tmp_path: Path) -> None:

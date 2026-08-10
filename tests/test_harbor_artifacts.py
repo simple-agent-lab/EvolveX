@@ -186,6 +186,32 @@ def test_final_retried_verifier_timeout_scores_zero_and_preserves_sibling(tmp_pa
     assert rewards == [0.0, 1.0]
 
 
+def test_final_retried_verifier_timeout_uses_root_job_config_with_trial_configs(tmp_path: Path) -> None:
+    jobs = tmp_path / "jobs"
+    jobs.mkdir()
+    (jobs / "config.json").write_text(
+        json.dumps({"retry": {"max_retries": 1, "exclude_exceptions": ["AgentTimeoutError"]}})
+    )
+    for task in ("case-a", "case-b"):
+        trial = jobs / f"{task}__one"
+        write_trial(
+            trial,
+            task=task,
+            trial="one",
+            reward=None if task == "case-a" else 1.0,
+            exception_type="VerifierTimeoutError" if task == "case-a" else None,
+        )
+        (trial / "config.json").write_text(json.dumps({"trial_name": f"{task}__one"}))
+
+    vector, _artifacts, rewards = collect_harbor_artifacts(jobs)
+
+    timeout = vector["tasks"]["case-a"]["trials"][0]
+    assert timeout["status"] == "timeout"
+    assert timeout["reward"] == 0.0
+    assert timeout["owner"] == "benchmark_verifier"
+    assert rewards == [0.0, 1.0]
+
+
 def test_verifier_timeout_without_retry_or_agent_result_remains_infrastructure(tmp_path: Path) -> None:
     jobs = tmp_path / "jobs"
     write_job_config(jobs, max_retries=0)
