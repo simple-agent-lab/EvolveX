@@ -156,12 +156,11 @@ Split: **50 train / 19 gate / 20 sealed**.
 <table width="100%">
   <thead>
     <tr>
-      <th width="14%">Target agent</th>
-      <th width="14%">Method</th>
-      <th width="18%">Train</th>
-      <th width="18%">Gate</th>
-      <th width="18%">Sealed</th>
-      <th width="18%">Overall</th>
+      <th width="17%">Target agent</th>
+      <th width="17%">Method</th>
+      <th width="22%">Train</th>
+      <th width="22%">Gate</th>
+      <th width="22%">Sealed</th>
     </tr>
   </thead>
   <tbody>
@@ -170,29 +169,25 @@ Split: **50 train / 19 gate / 20 sealed**.
       <td>AHE</td>
       <td>58.0% → 74.0%<br><img src="docs/assets/benchmark-deltas/gain-16-0.svg" alt="(+16.0%)" width="76" height="20"></td>
       <td>57.9% → 68.4%<br><img src="docs/assets/benchmark-deltas/gain-10-5.svg" alt="(+10.5%)" width="76" height="20"></td>
-      <td>70.0% → 70.0%<br><strong>(+0.0%)</strong></td>
-      <td>60.7% → 71.9%<br><img src="docs/assets/benchmark-deltas/gain-11-2.svg" alt="(+11.2%)" width="76" height="20"></td>
+      <td>70.0% → 70.0%<br><img src="docs/assets/benchmark-deltas/no-change-0-0.svg" alt="(+0.0%)" width="76" height="20"></td>
     </tr>
     <tr>
       <td>Hyperagents</td>
       <td>58.0% → 68.0%<br><img src="docs/assets/benchmark-deltas/gain-10-0.svg" alt="(+10.0%)" width="76" height="20"></td>
       <td>57.9% → 73.7%<br><img src="docs/assets/benchmark-deltas/gain-15-8.svg" alt="(+15.8%)" width="76" height="20"></td>
-      <td>70.0% → 70.0%<br><strong>(+0.0%)</strong></td>
-      <td>60.7% → 69.7%<br><img src="docs/assets/benchmark-deltas/gain-9-0.svg" alt="(+9.0%)" width="76" height="20"></td>
+      <td>70.0% → 70.0%<br><img src="docs/assets/benchmark-deltas/no-change-0-0.svg" alt="(+0.0%)" width="76" height="20"></td>
     </tr>
     <tr>
       <td>A Evolve</td>
       <td>58.0% → 68.0%<br><img src="docs/assets/benchmark-deltas/gain-10-0.svg" alt="(+10.0%)" width="76" height="20"></td>
       <td>57.9% → 78.9%<br><img src="docs/assets/benchmark-deltas/gain-21-0.svg" alt="(+21.0%)" width="76" height="20"></td>
       <td>70.0% → 65.0%<br><img src="docs/assets/benchmark-deltas/loss-5-0.svg" alt="(−5.0%)" width="76" height="20"></td>
-      <td>60.7% → 69.7%<br><img src="docs/assets/benchmark-deltas/gain-9-0.svg" alt="(+9.0%)" width="76" height="20"></td>
     </tr>
     <tr>
       <td>GEPA</td>
       <td>58.0% → 68.0%<br><img src="docs/assets/benchmark-deltas/gain-10-0.svg" alt="(+10.0%)" width="76" height="20"></td>
       <td>57.9% → 68.4%<br><img src="docs/assets/benchmark-deltas/gain-10-5.svg" alt="(+10.5%)" width="76" height="20"></td>
       <td>70.0% → 75.0%<br><img src="docs/assets/benchmark-deltas/gain-5-0.svg" alt="(+5.0%)" width="76" height="20"></td>
-      <td>60.7% → 69.7%<br><img src="docs/assets/benchmark-deltas/gain-9-0.svg" alt="(+9.0%)" width="76" height="20"></td>
     </tr>
     <tr>
       <td rowspan="4">Codex</td>
@@ -200,28 +195,24 @@ Split: **50 train / 19 gate / 20 sealed**.
       <td>58.0% → 74.0%<br><img src="docs/assets/benchmark-deltas/gain-16-0.svg" alt="(+16.0%)" width="76" height="20"></td>
       <td>52.6% → 47.4%<br><img src="docs/assets/benchmark-deltas/loss-5-2.svg" alt="(−5.2%)" width="76" height="20"></td>
       <td>65.0% → 70.0%<br><img src="docs/assets/benchmark-deltas/gain-5-0.svg" alt="(+5.0%)" width="76" height="20"></td>
-      <td>58.4% → 67.4%<br><img src="docs/assets/benchmark-deltas/gain-9-0.svg" alt="(+9.0%)" width="76" height="20"></td>
     </tr>
     <tr>
       <td>Hyperagents</td>
       <td>58.0% → 72.0%<br><img src="docs/assets/benchmark-deltas/gain-14-0.svg" alt="(+14.0%)" width="76" height="20"></td>
       <td>52.6% → 57.9%<br><img src="docs/assets/benchmark-deltas/gain-5-3.svg" alt="(+5.3%)" width="76" height="20"></td>
       <td>65.0% → 75.0%<br><img src="docs/assets/benchmark-deltas/gain-10-0.svg" alt="(+10.0%)" width="76" height="20"></td>
-      <td>58.4% → 69.7%<br><img src="docs/assets/benchmark-deltas/gain-11-3.svg" alt="(+11.3%)" width="76" height="20"></td>
     </tr>
     <tr>
       <td>A Evolve</td>
-      <td>58.0% → 58.0%<br><strong>(+0.0%)</strong></td>
-      <td>52.6% → 52.6%<br><strong>(+0.0%)</strong></td>
-      <td>65.0% → 65.0%<br><strong>(+0.0%)</strong></td>
-      <td>58.4% → 58.4%<br><strong>(+0.0%)</strong></td>
+      <td>58.0% → 58.0%<br><img src="docs/assets/benchmark-deltas/no-change-0-0.svg" alt="(+0.0%)" width="76" height="20"></td>
+      <td>52.6% → 52.6%<br><img src="docs/assets/benchmark-deltas/no-change-0-0.svg" alt="(+0.0%)" width="76" height="20"></td>
+      <td>65.0% → 65.0%<br><img src="docs/assets/benchmark-deltas/no-change-0-0.svg" alt="(+0.0%)" width="76" height="20"></td>
     </tr>
     <tr>
       <td>GEPA</td>
-      <td>58.0% → 58.0%<br><strong>(+0.0%)</strong></td>
-      <td>52.6% → 52.6%<br><strong>(+0.0%)</strong></td>
-      <td>65.0% → 65.0%<br><strong>(+0.0%)</strong></td>
-      <td>58.4% → 58.4%<br><strong>(+0.0%)</strong></td>
+      <td>58.0% → 58.0%<br><img src="docs/assets/benchmark-deltas/no-change-0-0.svg" alt="(+0.0%)" width="76" height="20"></td>
+      <td>52.6% → 52.6%<br><img src="docs/assets/benchmark-deltas/no-change-0-0.svg" alt="(+0.0%)" width="76" height="20"></td>
+      <td>65.0% → 65.0%<br><img src="docs/assets/benchmark-deltas/no-change-0-0.svg" alt="(+0.0%)" width="76" height="20"></td>
     </tr>
   </tbody>
 </table>
@@ -233,12 +224,11 @@ Split: **50 train / 20 gate / 27 sealed**.
 <table width="100%">
   <thead>
     <tr>
-      <th width="14%">Target agent</th>
-      <th width="14%">Method</th>
-      <th width="18%">Train</th>
-      <th width="18%">Gate</th>
-      <th width="18%">Sealed</th>
-      <th width="18%">Overall</th>
+      <th width="17%">Target agent</th>
+      <th width="17%">Method</th>
+      <th width="22%">Train</th>
+      <th width="22%">Gate</th>
+      <th width="22%">Sealed</th>
     </tr>
   </thead>
   <tbody>
@@ -246,30 +236,26 @@ Split: **50 train / 20 gate / 27 sealed**.
       <td rowspan="4">MiniSWE Agent</td>
       <td>AHE</td>
       <td>30.0% → 36.0%<br><img src="docs/assets/benchmark-deltas/gain-6-0.svg" alt="(+6.0%)" width="76" height="20"></td>
-      <td>35.0% → 35.0%<br><strong>(+0.0%)</strong></td>
+      <td>35.0% → 35.0%<br><img src="docs/assets/benchmark-deltas/no-change-0-0.svg" alt="(+0.0%)" width="76" height="20"></td>
       <td>18.5% → 25.9%<br><img src="docs/assets/benchmark-deltas/gain-7-4.svg" alt="(+7.4%)" width="76" height="20"></td>
-      <td>27.8% → 33.0%<br><img src="docs/assets/benchmark-deltas/gain-5-2.svg" alt="(+5.2%)" width="76" height="20"></td>
     </tr>
     <tr>
       <td>Hyperagents</td>
       <td>30.0% → 38.0%<br><img src="docs/assets/benchmark-deltas/gain-8-0.svg" alt="(+8.0%)" width="76" height="20"></td>
       <td>35.0% → 45.0%<br><img src="docs/assets/benchmark-deltas/gain-10-0.svg" alt="(+10.0%)" width="76" height="20"></td>
       <td>18.5% → 37.0%<br><img src="docs/assets/benchmark-deltas/gain-18-5.svg" alt="(+18.5%)" width="76" height="20"></td>
-      <td>27.8% → 39.2%<br><img src="docs/assets/benchmark-deltas/gain-11-4.svg" alt="(+11.4%)" width="76" height="20"></td>
     </tr>
     <tr>
       <td>A Evolve</td>
       <td>30.0% → 34.0%<br><img src="docs/assets/benchmark-deltas/gain-4-0.svg" alt="(+4.0%)" width="76" height="20"></td>
       <td>35.0% → 45.0%<br><img src="docs/assets/benchmark-deltas/gain-10-0.svg" alt="(+10.0%)" width="76" height="20"></td>
       <td>18.5% → 29.6%<br><img src="docs/assets/benchmark-deltas/gain-11-1.svg" alt="(+11.1%)" width="76" height="20"></td>
-      <td>27.8% → 35.1%<br><img src="docs/assets/benchmark-deltas/gain-7-3.svg" alt="(+7.3%)" width="76" height="20"></td>
     </tr>
     <tr>
       <td>GEPA</td>
       <td>30.0% → 32.0%<br><img src="docs/assets/benchmark-deltas/gain-2-0.svg" alt="(+2.0%)" width="76" height="20"></td>
       <td>35.0% → 45.0%<br><img src="docs/assets/benchmark-deltas/gain-10-0.svg" alt="(+10.0%)" width="76" height="20"></td>
       <td>18.5% → 25.9%<br><img src="docs/assets/benchmark-deltas/gain-7-4.svg" alt="(+7.4%)" width="76" height="20"></td>
-      <td>27.8% → 33.0%<br><img src="docs/assets/benchmark-deltas/gain-5-2.svg" alt="(+5.2%)" width="76" height="20"></td>
     </tr>
     <tr>
       <td rowspan="4">Codex</td>
@@ -277,28 +263,24 @@ Split: **50 train / 20 gate / 27 sealed**.
       <td>30.0% → 36.0%<br><img src="docs/assets/benchmark-deltas/gain-6-0.svg" alt="(+6.0%)" width="76" height="20"></td>
       <td>30.0% → 45.0%<br><img src="docs/assets/benchmark-deltas/gain-15-0.svg" alt="(+15.0%)" width="76" height="20"></td>
       <td>7.4% → 14.8%<br><img src="docs/assets/benchmark-deltas/gain-7-4.svg" alt="(+7.4%)" width="76" height="20"></td>
-      <td>23.7% → 32.0%<br><img src="docs/assets/benchmark-deltas/gain-8-3.svg" alt="(+8.3%)" width="76" height="20"></td>
     </tr>
     <tr>
       <td>Hyperagents</td>
       <td>30.0% → 36.0%<br><img src="docs/assets/benchmark-deltas/gain-6-0.svg" alt="(+6.0%)" width="76" height="20"></td>
       <td>30.0% → 50.0%<br><img src="docs/assets/benchmark-deltas/gain-20-0.svg" alt="(+20.0%)" width="76" height="20"></td>
       <td>7.4% → 48.1%<br><img src="docs/assets/benchmark-deltas/gain-40-7.svg" alt="(+40.7%)" width="76" height="20"></td>
-      <td>23.7% → 42.3%<br><img src="docs/assets/benchmark-deltas/gain-18-6.svg" alt="(+18.6%)" width="76" height="20"></td>
     </tr>
     <tr>
       <td>A Evolve</td>
       <td>30.0% → 38.0%<br><img src="docs/assets/benchmark-deltas/gain-8-0.svg" alt="(+8.0%)" width="76" height="20"></td>
       <td>30.0% → 45.0%<br><img src="docs/assets/benchmark-deltas/gain-15-0.svg" alt="(+15.0%)" width="76" height="20"></td>
       <td>7.4% → 18.5%<br><img src="docs/assets/benchmark-deltas/gain-11-1.svg" alt="(+11.1%)" width="76" height="20"></td>
-      <td>23.7% → 34.0%<br><img src="docs/assets/benchmark-deltas/gain-10-3.svg" alt="(+10.3%)" width="76" height="20"></td>
     </tr>
     <tr>
       <td>GEPA</td>
       <td>30.0% → 36.0%<br><img src="docs/assets/benchmark-deltas/gain-6-0.svg" alt="(+6.0%)" width="76" height="20"></td>
       <td>30.0% → 35.0%<br><img src="docs/assets/benchmark-deltas/gain-5-0.svg" alt="(+5.0%)" width="76" height="20"></td>
       <td>7.4% → 14.8%<br><img src="docs/assets/benchmark-deltas/gain-7-4.svg" alt="(+7.4%)" width="76" height="20"></td>
-      <td>23.7% → 29.9%<br><img src="docs/assets/benchmark-deltas/gain-6-2.svg" alt="(+6.2%)" width="76" height="20"></td>
     </tr>
   </tbody>
 </table>
