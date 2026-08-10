@@ -158,7 +158,7 @@ async function renderOverview() {
   content.innerHTML = `
     <div class="page-heading">
       <div><h2>Experiment overview</h2><p>Global final result, experiment health, and generation history.</p></div>
-      ${finalResultId ? `<a class="button" data-evolve-link href="/generations/${encodeURIComponent(finalResultId)}">Open final result · G${escapeHtml(finalResultId)}</a>` : ''}
+      ${finalResultId ? `<a class="button" data-evolve-link href="/generations/${encodeURIComponent(finalResultId)}">Open champion agent · G${escapeHtml(finalResultId)}</a>` : ''}
     </div>
     <div class="stack">
       ${healthCard(experiment, finalDetail, true)}
@@ -187,7 +187,7 @@ function healthCard(experiment, detail, globalResult = false) {
     <div class="health-banner">
       <div>
         <span class="status-pill ${escapeHtml(displayHealth)}">${escapeHtml(label(displayHealth))}</span>
-        <h2>${displayGeneration ? `${globalResult ? 'Final result · ' : ''}Generation ${escapeHtml(displayGeneration)}` : 'Waiting for the first generation'}</h2>
+        <h2>${displayGeneration ? `${globalResult ? 'Champion agent · ' : ''}Generation ${escapeHtml(displayGeneration)}` : 'Waiting for the first generation'}</h2>
         <p>${escapeHtml(description)}</p>
       </div>
       <div class="metric-big"><strong>${number(experiment.best_score)}</strong><span>Best canonical score</span></div>
