@@ -51,6 +51,18 @@ def test_validate_config_mode_rejects_non_object_input(
     assert "config must be a JSON object" in capsys.readouterr().err
 
 
+def test_validate_config_mode_rejects_nonfinite_input(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sys, "argv", ["operator.py", "--validate-config", "--config", '{"value": NaN}'])
+
+    with pytest.raises(SystemExit) as exit_info:
+        sdk.main(object, validate_config=lambda raw: raw)
+
+    assert exit_info.value.code == 2
+    assert "config must be valid JSON" in capsys.readouterr().err
+
+
 def test_validate_config_mode_rejects_non_object_normalized_output(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -61,6 +73,18 @@ def test_validate_config_mode_rejects_non_object_normalized_output(
 
     assert exit_info.value.code == 2
     assert "config validator must return a JSON object" in capsys.readouterr().err
+
+
+def test_validate_config_mode_rejects_nonfinite_normalized_output(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sys, "argv", ["operator.py", "--validate-config"])
+
+    with pytest.raises(SystemExit) as exit_info:
+        sdk.main(object, validate_config=lambda raw: {"opaque": {"temperature": float("inf")}})
+
+    assert exit_info.value.code == 2
+    assert "config validator returned invalid JSON" in capsys.readouterr().err
 
 
 def test_validate_config_mode_reports_validator_exception(

@@ -87,6 +87,19 @@ def test_contract_only_traversable_discovers_and_inspects_with_shared_helper() -
     assert describe_operator(operator) == {"answer": 42}
 
 
+def test_source_library_wins_over_later_regular_library_package(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    hostile = tmp_path / "hostile"
+    (hostile / "library").mkdir(parents=True)
+    (hostile / "library/__init__.py").write_text("")
+    monkeypatch.setenv("PYTHONPATH", str(hostile))
+
+    description = describe_operator(resolve_operator("mutate", "hyperagents"))
+
+    assert description["stage"] == "mutate"
+
+
 def test_subprocess_inspection_describes_and_validates_operator_config(tmp_path: Path) -> None:
     root = _library_with_operator(tmp_path, _sdk_operator_script())
     operator = resolve_operator("mutate", "critic_editor", root)
@@ -137,6 +150,24 @@ def test_subprocess_validation_wraps_non_json_config(tmp_path: Path) -> None:
 
     with pytest.raises(OperatorLibraryError, match=r"mutate/critic_editor.*not JSON-serializable"):
         validate_operator_config(operator, {"attempts": {1}})
+
+
+@pytest.mark.parametrize("nonfinite", [float("nan"), float("inf"), float("-inf")])
+def test_subprocess_validation_rejects_nested_nonfinite_config(tmp_path: Path, nonfinite: float) -> None:
+    root = _library_with_operator(tmp_path, _sdk_operator_script())
+    operator = resolve_operator("mutate", "critic_editor", root)
+
+    with pytest.raises(OperatorLibraryError, match=r"mutate/critic_editor.*not JSON-serializable"):
+        validate_operator_config(operator, {"opaque": {"temperature": nonfinite}})
+
+
+@pytest.mark.parametrize("constant", ["NaN", "Infinity", "-Infinity"])
+def test_subprocess_inspection_rejects_nonfinite_json_constant(tmp_path: Path, constant: str) -> None:
+    root = _library_with_operator(tmp_path, f"print('{{\"value\": {constant}}}')\n")
+    operator = resolve_operator("mutate", "critic_editor", root)
+
+    with pytest.raises(OperatorLibraryError, match=r"mutate/critic_editor.*malformed JSON"):
+        describe_operator(operator)
 
 
 def test_discovery_does_not_import_operator_but_inspection_subprocess_does(tmp_path: Path) -> None:

@@ -18,6 +18,13 @@ Keep `evolve.yaml` at the root of the copied directory. A custom recipe can be
 passed either as a directory or as its YAML file:
 
 ```bash
+uv run --frozen evolve recipe check "$PWD/my-recipes/my-gepa/evolve.yaml"
+```
+
+Resolve and validate the complete operator composition before running the
+environment-specific preflight:
+
+```bash
 uv run --frozen evolve preflight /tmp/my-experiment \
   --recipe-path "$PWD/my-recipes/my-gepa" \
   --dataset /absolute/path/to/harbor/tasks

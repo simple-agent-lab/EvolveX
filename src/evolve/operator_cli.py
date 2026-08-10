@@ -49,8 +49,8 @@ def _component_operators(workspace: Path) -> dict[str, dict[str, object]]:
     if not path.is_file():
         return {}
     try:
-        payload = json.loads(path.read_text())
-    except json.JSONDecodeError:
+        payload = json.loads(path.read_text(), parse_constant=_reject_json_constant)
+    except (json.JSONDecodeError, ValueError):
         return {}
     operators = payload.get("operators") if isinstance(payload, dict) else None
     if not isinstance(operators, dict):
@@ -110,7 +110,7 @@ def _create_operator(stage: str, name: str) -> Path:
     if not OPERATOR_NAME.fullmatch(name):
         raise OperatorLibraryError(f"invalid operator name: {name}")
     root: Resource = library_root()
-    if not isinstance(root, Path):
+    if not isinstance(root, Path) or not _is_source_checkout_library(root):
         raise OperatorLibraryError("operator authoring requires a source checkout")
     target = root / stage / f"{name}.py"
     if target.exists():
@@ -118,6 +118,16 @@ def _create_operator(stage: str, name: str) -> Path:
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(_new_operator_source(stage, name))
     return target
+
+
+def _is_source_checkout_library(root: Path) -> bool:
+    checkout = root.parent
+    return (
+        root.name == "library"
+        and (checkout / ".git").exists()
+        and (checkout / "pyproject.toml").is_file()
+        and (checkout / "src/evolve").is_dir()
+    )
 
 
 def build_operator_app(guard, workspace_environment, enable_live_output) -> typer.Typer:
@@ -141,7 +151,7 @@ def build_operator_app(guard, workspace_environment, enable_live_output) -> type
             for operator in list_operators(stage)
         ]
         if json_output:
-            print(json.dumps(entries, indent=2, sort_keys=True))
+            print(json.dumps(entries, indent=2, sort_keys=True, allow_nan=False))
             return
         for entry in entries:
             print(f"{entry['identity']}")
@@ -157,7 +167,7 @@ def build_operator_app(guard, workspace_environment, enable_live_output) -> type
         operator = resolve_operator(stage, name)
         description = {"identity": operator.identity, **describe_operator(operator)}
         if json_output:
-            print(json.dumps(description, indent=2, sort_keys=True))
+            print(json.dumps(description, indent=2, sort_keys=True, allow_nan=False))
             return
         print(f"{operator.identity}: {description.get('description', '')}")
 
@@ -170,18 +180,19 @@ def build_operator_app(guard, workspace_environment, enable_live_output) -> type
     ) -> None:
         """Validate one library operator's configuration."""
         try:
-            raw_config = json.loads(config)
-        except json.JSONDecodeError as exc:
-            raise ValueError(f"--config must be valid JSON: {exc.msg}") from exc
+            raw_config = json.loads(config, parse_constant=_reject_json_constant)
+        except (json.JSONDecodeError, ValueError) as exc:
+            detail = exc.msg if isinstance(exc, json.JSONDecodeError) else str(exc)
+            raise ValueError(f"--config must be valid JSON: {detail}") from exc
         if not isinstance(raw_config, dict):
             raise ValueError("--config must be a JSON object")
         stage, name = parse_operator_identity(identity)
         normalized = validate_operator_config(resolve_operator(stage, name), raw_config)
         if json_output:
-            print(json.dumps(normalized, indent=2, sort_keys=True))
+            print(json.dumps(normalized, indent=2, sort_keys=True, allow_nan=False))
             return
         print(f"{stage}/{name}: configuration valid")
-        print(json.dumps(normalized, indent=2, sort_keys=True))
+        print(json.dumps(normalized, indent=2, sort_keys=True, allow_nan=False))
 
     @operator_app.command("new")
     @guard
@@ -221,7 +232,7 @@ def build_operator_app(guard, workspace_environment, enable_live_output) -> type
                 entry["implementation"] = spec.kind
             entries.append(entry)
         if json_output:
-            print(json.dumps(entries, indent=2, sort_keys=True))
+            print(json.dumps(entries, indent=2, sort_keys=True, allow_nan=False))
             return
         for entry in entries:
             state = "configured" if entry["configured"] else "off"
@@ -244,9 +255,10 @@ def build_operator_app(guard, workspace_environment, enable_live_output) -> type
     ) -> None:
         """Run one configured operator and retain its generation artifacts."""
         try:
-            override = json.loads(config)
-        except json.JSONDecodeError as exc:
-            raise typer.BadParameter(f"--config must be valid JSON: {exc.msg}", param_hint="--config") from exc
+            override = json.loads(config, parse_constant=_reject_json_constant)
+        except (json.JSONDecodeError, ValueError) as exc:
+            detail = exc.msg if isinstance(exc, json.JSONDecodeError) else str(exc)
+            raise typer.BadParameter(f"--config must be valid JSON: {detail}", param_hint="--config") from exc
         if not isinstance(override, dict):
             raise typer.BadParameter("--config must be a JSON object", param_hint="--config")
         enable_live_output(verbose)
@@ -271,6 +283,7 @@ def build_operator_app(guard, workspace_environment, enable_live_output) -> type
                     "wall_s": round(invocation.result.wall_s, 3),
                 },
                 sort_keys=True,
+                allow_nan=False,
             )
         )
 
@@ -297,3 +310,7 @@ def attach_orchestration_commands(app, guard, workspace_environment, enable_live
             changed = finalize_child(workspace, genid, parent=parent)
         state = "finalized" if changed else "already finalized"
         print(f"gen/{genid}: {state}")
+
+
+def _reject_json_constant(value: str) -> object:
+    raise ValueError(f"non-standard JSON constant: {value}")

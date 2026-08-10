@@ -9,8 +9,9 @@ import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from importlib.resources.abc import Traversable
 from pathlib import Path
-from typing import cast
+from typing import IO, Literal, cast, overload
 
 from .config import Resource, library_root
 from .frozen.interfaces import OPERATOR_BY_KIND
@@ -33,7 +34,49 @@ class OperatorLibraryError(ValueError):
     pass
 
 
-_DISCOVERY_ROOTS: dict[int, Resource] = {}
+@dataclass(frozen=True)
+class _RootedResource(Traversable):
+    resource: Traversable
+    root: Traversable
+
+    @property
+    def name(self) -> str:
+        return self.resource.name
+
+    def iterdir(self) -> Iterator[Traversable]:
+        return (_RootedResource(entry, self.root) for entry in self.resource.iterdir())
+
+    def is_dir(self) -> bool:
+        return self.resource.is_dir()
+
+    def is_file(self) -> bool:
+        return self.resource.is_file()
+
+    def joinpath(self, *descendants: str | os.PathLike[str]) -> Traversable:
+        return _RootedResource(self.resource.joinpath(*descendants), self.root)
+
+    @overload
+    def open(
+        self,
+        mode: Literal["r"] = "r",
+        *,
+        encoding: str | None = None,
+        errors: str | None = None,
+    ) -> IO[str]: ...
+
+    @overload
+    def open(self, mode: Literal["rb"]) -> IO[bytes]: ...
+
+    def open(
+        self,
+        mode: Literal["r", "rb"] = "r",
+        *,
+        encoding: str | None = None,
+        errors: str | None = None,
+    ) -> IO[str] | IO[bytes]:
+        if mode == "rb":
+            return self.resource.open("rb")
+        return self.resource.open("r", encoding=encoding, errors=errors)
 
 
 def discover_operators(root: Resource | None = None) -> dict[tuple[str, str], LibraryOperator]:
@@ -82,8 +125,8 @@ def _discover_stage(
         name = entry.name.removesuffix(".py")
         if not OPERATOR_NAME.fullmatch(name):
             raise OperatorLibraryError(f"invalid operator name: {entry.name}")
-        operator = LibraryOperator(stage=stage, name=name, source=entry)
-        _DISCOVERY_ROOTS[id(entry)] = library
+        source: Resource = entry if isinstance(entry, Path) else _RootedResource(entry, library)
+        operator = LibraryOperator(stage=stage, name=name, source=source)
         discovered[(stage, name)] = operator
 
 
@@ -106,7 +149,7 @@ def validate_operator_config(
 
 def _inspect(operator: LibraryOperator, mode: str, config: dict[str, object], timeout_s: float) -> dict[str, object]:
     try:
-        serialized_config = json.dumps(config)
+        serialized_config = json.dumps(config, allow_nan=False)
     except (TypeError, ValueError) as error:
         raise _error(operator, f"config is not JSON-serializable: {error}", None) from error
     with _operator_source(operator) as (source, cwd):
@@ -130,8 +173,8 @@ def _inspect(operator: LibraryOperator, mode: str, config: dict[str, object], ti
     if completed.returncode != 0:
         raise _error(operator, f"inspection exited with status {completed.returncode}", completed.stderr)
     try:
-        payload = json.loads(completed.stdout)
-    except json.JSONDecodeError as error:
+        payload = json.loads(completed.stdout, parse_constant=_reject_json_constant)
+    except (json.JSONDecodeError, ValueError) as error:
         raise _error(operator, "inspection returned malformed JSON", completed.stderr) from error
     if not isinstance(payload, dict):
         raise _error(operator, "inspection must return one JSON object", completed.stderr)
@@ -141,10 +184,10 @@ def _inspect(operator: LibraryOperator, mode: str, config: dict[str, object], ti
 @contextmanager
 def _operator_source(operator: LibraryOperator) -> Iterator[tuple[Path, Path]]:
     source = operator.source
-    root = _DISCOVERY_ROOTS.get(id(source), _default_library_root(operator))
     if isinstance(source, Path):
-        yield source, cast(Path, root).parent
+        yield source, source.parent.parent.parent
         return
+    root = source.root if isinstance(source, _RootedResource) else _default_library_root(operator)
     with tempfile.TemporaryDirectory(prefix="evolvex-operator-library-") as temporary:
         destination = Path(temporary) / "library"
         _copy_tree(root, destination)
@@ -177,3 +220,7 @@ def _stderr_tail(stderr: object) -> str:
         stderr = stderr.decode(errors="replace")
     text = str(stderr or "").strip()
     return text[-2000:] if text else "<empty>"
+
+
+def _reject_json_constant(value: str) -> object:
+    raise ValueError(f"non-standard JSON constant: {value}")

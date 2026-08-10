@@ -213,6 +213,7 @@ def test_required_public_repository_files_exist() -> None:
         ".github/ISSUE_TEMPLATE/feature_request.yml",
         ".github/ISSUE_TEMPLATE/config.yml",
         "library/_shared/config.py",
+        "library/__init__.py",
         "library/select/_skeleton.py",
         "library/rollout/_skeleton.py",
         "library/analyze/_skeleton.py",

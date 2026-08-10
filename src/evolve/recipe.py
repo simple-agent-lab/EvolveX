@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -179,6 +180,11 @@ def _resolve_stage(
             problems.append(RecipeProblem(prefix, "specify exactly one of operator or script"))
         return None
     if not config_is_mapping:
+        return None
+    try:
+        json.dumps(operator_config, allow_nan=False)
+    except (TypeError, ValueError) as error:
+        problems.append(RecipeProblem(f"{prefix}.config", f"config is not JSON-serializable: {error}"))
         return None
 
     if has_operator:

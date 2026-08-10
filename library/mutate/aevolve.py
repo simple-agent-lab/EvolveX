@@ -32,6 +32,7 @@ DEFAULT_INLINE_EVIDENCE_CHARS = 50_000
 TRAJECTORY_ONLY_OPERATOR = "trajectory_only"
 _RUNNER_KEYS = {
     "runner",
+    "command",
     "agent",
     "model",
     "environment",
@@ -94,7 +95,7 @@ def _runner_config(config: dict[str, object]) -> dict[str, object]:
     if runner not in {"local", "harbor"}:
         raise ValueError("runner must be 'local' or 'harbor'")
     normalized: dict[str, object] = {"runner": runner}
-    for key in ("agent", "model", "environment", "image", "workdir", "agent_pythonpath", "jobs_dir"):
+    for key in ("command", "agent", "model", "environment", "image", "workdir", "agent_pythonpath", "jobs_dir"):
         if key in config:
             normalized[key] = string(config, key, "")
     for key in ("environment_kwargs", "agent_kwargs", "agent_env"):

@@ -1,4 +1,5 @@
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -7,8 +8,23 @@ from typer.testing import CliRunner
 
 from evolve import operator_cli
 from evolve.cli import app
+from evolve.operator_library import describe_operator, resolve_operator, validate_operator_config
 
 runner = CliRunner()
+
+
+def _source_checkout_library(tmp_path: Path) -> Path:
+    checkout = tmp_path / "checkout"
+    subprocess.run(["git", "init", "-q", str(checkout)], check=True)
+    (checkout / "pyproject.toml").write_text("[project]\nname = 'fixture'\nversion = '0'\n")
+    (checkout / "src/evolve").mkdir(parents=True)
+    library = checkout / "library"
+    library.mkdir()
+    (library / "__init__.py").write_text('"""Fixture operator library."""\n')
+    shared = library / "_shared/config.py"
+    shared.parent.mkdir()
+    shared.write_bytes((Path(__file__).resolve().parents[1] / "library/_shared/config.py").read_bytes())
+    return library
 
 
 def test_operator_list_discovers_library_by_stage() -> None:
@@ -48,7 +64,7 @@ def test_operator_describe_rejects_invalid_identity(identity: str) -> None:
 
 
 def test_operator_new_creates_one_valid_entry_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    library = tmp_path / "library"
+    library = _source_checkout_library(tmp_path)
     monkeypatch.setattr(operator_cli, "library_root", lambda: library)
 
     result = runner.invoke(app, ["operator", "new", "mutate", "critic_editor"])
@@ -77,7 +93,7 @@ def test_operator_new_creates_one_valid_entry_file(tmp_path: Path, monkeypatch: 
 def test_operator_new_generates_a_valid_minimal_stage_operator(
     stage: str, expected: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    library = tmp_path / "library"
+    library = _source_checkout_library(tmp_path)
     monkeypatch.setattr(operator_cli, "library_root", lambda: library)
 
     result = runner.invoke(app, ["operator", "new", stage, "sample"])
@@ -86,8 +102,28 @@ def test_operator_new_generates_a_valid_minimal_stage_operator(
     assert expected in (library / stage / "sample.py").read_text()
 
 
+@pytest.mark.parametrize(
+    "stage",
+    ["select", "rollout", "analyze", "mutate", "validate", "novelty", "gate", "record", "reflect"],
+)
+def test_operator_new_scaffold_executes_describe_and_check_modes(
+    stage: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    library = _source_checkout_library(tmp_path)
+    monkeypatch.setattr(operator_cli, "library_root", lambda: library)
+
+    created = runner.invoke(app, ["operator", "new", stage, "sample"])
+    operator = resolve_operator(stage, "sample", library)
+
+    assert created.exit_code == 0, created.output
+    description = describe_operator(operator)
+    assert description["config_validation"] is True
+    assert description["stage"] == stage
+    assert validate_operator_config(operator, {}) == {}
+
+
 def test_operator_new_refuses_to_overwrite_existing_entry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    library = tmp_path / "library"
+    library = _source_checkout_library(tmp_path)
     target = library / "mutate" / "critic_editor.py"
     target.parent.mkdir(parents=True)
     target.write_text("existing\n")
@@ -107,6 +143,22 @@ def test_operator_new_requires_a_source_checkout(monkeypatch: pytest.MonkeyPatch
 
     assert result.exit_code == 1
     assert "operator authoring requires a source checkout" in result.output
+
+
+def test_operator_new_rejects_writable_unpacked_install_resource(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    package = tmp_path / "site-packages/evolve"
+    library = package / "library"
+    library.mkdir(parents=True)
+    (package / "__init__.py").write_text("")
+    monkeypatch.setattr(operator_cli, "library_root", lambda: library)
+
+    result = runner.invoke(app, ["operator", "new", "mutate", "critic_editor"])
+
+    assert result.exit_code == 1
+    assert "operator authoring requires a source checkout" in result.output
+    assert not (library / "mutate/critic_editor.py").exists()
 
 
 def test_operator_active_replaces_workspace_oriented_list(tmp_path: Path) -> None:
@@ -153,6 +205,7 @@ def test_operator_active_uses_frozen_component_provenance(tmp_path: Path) -> Non
     [
         ("{", "--config must be valid JSON"),
         ("[]", "--config must be a JSON object"),
+        ('{"value": NaN}', "--config must be valid JSON"),
     ],
 )
 def test_operator_check_invalid_config_uses_the_guarded_error_path(config: str, message: str) -> None:
@@ -161,3 +214,19 @@ def test_operator_check_invalid_config_uses_the_guarded_error_path(config: str, 
     assert result.returncode == 1
     assert result.stderr.startswith(f"evolve: {message}")
     assert "Usage:" not in result.stderr
+
+
+def test_operator_check_accepts_local_mutation_command() -> None:
+    command = "printf command-accepted"
+
+    result = run_evolve(
+        "operator",
+        "check",
+        "mutate/hyperagents",
+        "--config",
+        json.dumps({"runner": "local", "command": command}),
+        "--json",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["command"] == command

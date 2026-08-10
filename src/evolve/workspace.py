@@ -385,16 +385,23 @@ def _file_contents(root: Path | Traversable):
             yield relative, content
 
 
-def _root_python_helpers(root: Path | Traversable):
+def _root_helper_assets(root: Path | Traversable) -> dict[str, str | bytes]:
+    assets: dict[str, str | bytes] = {}
     for source in sorted(root.iterdir(), key=lambda entry: entry.name):
-        if source.name.startswith((".", "_")) or not source.name.endswith(".py") or not source.is_file():
+        if not source.name.startswith("_"):
             continue
         if isinstance(source, Path) and source.is_symlink():
             raise ValueError(f"operator asset may not be a symlink: {source}")
-        try:
-            yield source.name, source.read_text()
-        except UnicodeDecodeError:
-            continue
+        if source.is_dir():
+            for relative, content in _file_contents(source):
+                assets[f"library/{source.name}/{relative.as_posix()}"] = content
+        elif source.is_file():
+            content = source.read_bytes()
+            try:
+                assets[f"library/{source.name}"] = content.decode()
+            except UnicodeDecodeError:
+                assets[f"library/{source.name}"] = content
+    return assets
 
 
 def _operator_assets() -> dict[str, str | bytes]:
@@ -407,13 +414,7 @@ def _operator_assets() -> dict[str, str | bytes]:
                 text_asset = isinstance(content, str) and (relative.suffix != ".py" or len(relative.parts) > 1)
                 if helper_asset or text_asset:
                     assets[f"library/{kind}/{relative.as_posix()}"] = content
-    shared = library_root() / "_shared"
-    shared_assets = (
-        {}
-        if not shared.is_dir()
-        else {f"library/_shared/{relative.as_posix()}": content for relative, content in _file_contents(shared)}
-    )
-    return assets | shared_assets | {f"library/{name}": text for name, text in _root_python_helpers(library_root())}
+    return assets | _root_helper_assets(library_root())
 
 
 def _recipe_evaluator_assets(

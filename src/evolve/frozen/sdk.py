@@ -158,7 +158,7 @@ def _run_runtime_mode(operator_cls: type[object], config: dict[str, object]) -> 
         playbook.parent.mkdir(parents=True, exist_ok=True)
         with open(playbook, "a") as handle:
             for op in payload["ops"]:
-                handle.write(json.dumps(op, ensure_ascii=False) + "\n")
+                handle.write(json.dumps(op, ensure_ascii=False, allow_nan=False) + "\n")
     else:
         raise TypeError("operator_cls must subclass an evolve interface operator")
 
@@ -175,9 +175,10 @@ def _parse_args() -> argparse.Namespace:
 
 def _config_object(raw: str) -> dict[str, object]:
     try:
-        config = json.loads(raw)
-    except json.JSONDecodeError as error:
-        _inspection_error(f"config must be valid JSON: {error.msg}")
+        config = json.loads(raw, parse_constant=_reject_json_constant)
+    except (json.JSONDecodeError, ValueError) as error:
+        detail = error.msg if isinstance(error, json.JSONDecodeError) else str(error)
+        _inspection_error(f"config must be valid JSON: {detail}")
     if not isinstance(config, dict):
         _inspection_error("config must be a JSON object")
     return cast("dict[str, object]", config)
@@ -198,6 +199,7 @@ def _run_inspection_mode(
                     "config_validation": validate_config is not None,
                 },
                 sort_keys=True,
+                allow_nan=False,
             )
         )
         return True
@@ -211,7 +213,11 @@ def _run_inspection_mode(
             _inspection_error(str(error))
         if not isinstance(normalized, dict):
             _inspection_error("config validator must return a JSON object")
-        print(json.dumps(normalized, sort_keys=True))
+        try:
+            serialized = json.dumps(normalized, sort_keys=True, allow_nan=False)
+        except (TypeError, ValueError) as error:
+            _inspection_error(f"config validator returned invalid JSON: {error}")
+        print(serialized)
         return True
     return False
 
@@ -233,6 +239,7 @@ def _rng_seed(seed: int | str, genid: str, parent: str | None) -> int:
         [int(seed), str(genid), str(parent or "")],
         separators=(",", ":"),
         ensure_ascii=True,
+        allow_nan=False,
     ).encode()
     return int.from_bytes(hashlib.sha256(identity).digest()[:8], "big")
 
@@ -327,11 +334,15 @@ def _read_json_if_exists(path: Path) -> object | None:
     if not path.exists():
         return None
     try:
-        return json.loads(path.read_text())
-    except json.JSONDecodeError:
+        return json.loads(path.read_text(), parse_constant=_reject_json_constant)
+    except (json.JSONDecodeError, ValueError):
         return None
 
 
 def _write_json(path: Path, payload: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n")
+
+
+def _reject_json_constant(value: str) -> object:
+    raise ValueError(f"non-standard JSON constant: {value}")

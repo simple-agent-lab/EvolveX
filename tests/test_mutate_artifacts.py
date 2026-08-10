@@ -1,11 +1,14 @@
 import random
+import shlex
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 from evolve.agent import AgentRunResult
 from evolve.frozen.interfaces import OperatorContext
+from evolve.operator_library import resolve_operator, validate_operator_config
 from library.mutate import _runners as runners
 from library.mutate._support.artifacts import (
     artifact_generation_relative,
@@ -85,6 +88,29 @@ def test_runner_locally_ignores_artifacts_in_existing_git_workspace(tmp_path: Pa
         == 0
     )
     assert not (tmp_path / ".gitignore").exists()
+
+
+def test_local_runner_executes_validated_inline_command(tmp_path: Path) -> None:
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    marker = checkout / "command-output.txt"
+    script = (
+        "import os, pathlib; "
+        "pathlib.Path('command-output.txt').write_text("
+        "pathlib.Path(os.environ['EVOLVE_PROMPT_FILE']).read_text())"
+    )
+    command = f"{shlex.quote(sys.executable)} -c {shlex.quote(script)}"
+    config = validate_operator_config(
+        resolve_operator("mutate", "hyperagents"),
+        {"runner": "local", "command": command},
+    )
+    ctx = _ctx(tmp_path)
+    ctx.config.update(config)
+
+    result = runners.local.run_agent(checkout, "real prompt", ctx)
+
+    assert result.returncode == 0
+    assert marker.read_text() == "real prompt"
 
 
 @pytest.mark.parametrize("genid", ["", ".", "..", "1/child", "1\\child"])

@@ -203,6 +203,11 @@ def test_init_copies_binary_shared_and_stage_local_helper_assets(
     (library / "_shared/fixtures").mkdir()
     (library / "_shared/fixtures/payload.bin").write_bytes(shared_bytes)
     (library / "mutate/_support/payload.bin").write_bytes(stage_bytes)
+    root_helper = b"ROOT_HELPER = True\n"
+    root_asset = b"\x00\xffROOT\x80"
+    (library / "_root_helper.py").write_bytes(root_helper)
+    (library / "_root_assets").mkdir()
+    (library / "_root_assets/payload.bin").write_bytes(root_asset)
     monkeypatch.setattr(recipe_module, "library_root", lambda: library)
     monkeypatch.setattr(workspace_module, "library_root", lambda: library)
 
@@ -214,6 +219,8 @@ def test_init_copies_binary_shared_and_stage_local_helper_assets(
 
     assert (workspace / "library/_shared/fixtures/payload.bin").read_bytes() == shared_bytes
     assert (workspace / "library/mutate/_support/payload.bin").read_bytes() == stage_bytes
+    assert (workspace / "library/_root_helper.py").read_bytes() == root_helper
+    assert (workspace / "library/_root_assets/payload.bin").read_bytes() == root_asset
 
 
 def test_init_freezes_script_with_redacted_nonportable_provenance(tmp_path: Path) -> None:

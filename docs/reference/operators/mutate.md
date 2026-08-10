@@ -51,7 +51,7 @@ operators:
   and protected evaluation.
 
 Operator-specific path keys include `components`, `prompt_path`, `skills_dir`,
-`memory_dir`, and `tools_dir`.
+and `memory_dir`.
 
 ## Artifacts
 

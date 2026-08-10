@@ -124,7 +124,7 @@ def run_operator(
                 _OPERATOR_WRAPPER,
                 str(script.resolve()),
                 "--config",
-                json.dumps(config_block),
+                json.dumps(config_block, allow_nan=False),
             ],
             cwd=checkout,
             env=env,

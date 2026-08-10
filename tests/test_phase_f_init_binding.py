@@ -61,12 +61,12 @@ def test_operator_assets_vendor_nested_prompt_files(tmp_path: Path, monkeypatch)
     }
 
 
-def test_operator_assets_reads_only_direct_root_python_helpers(tmp_path: Path, monkeypatch) -> None:
+def test_operator_assets_reads_only_discovery_permitted_root_helpers(tmp_path: Path, monkeypatch) -> None:
     from evolve import workspace as workspace_module
 
     library = tmp_path / "library"
     library.mkdir()
-    helper = library / "shared_support.py"
+    helper = library / "_shared_support.py"
     helper.write_text("ROOT_HELPER = True\n")
     nested = library / "internal" / "credential_loader.py"
     nested.parent.mkdir()
@@ -83,7 +83,7 @@ def test_operator_assets_reads_only_direct_root_python_helpers(tmp_path: Path, m
 
     assets = workspace_module._operator_assets()
 
-    assert assets == {"library/shared_support.py": "ROOT_HELPER = True\n"}
+    assert assets == {"library/_shared_support.py": "ROOT_HELPER = True\n"}
 
 
 def test_recipe_evaluator_assets_copy_training_but_not_sealed_files(tmp_path: Path, monkeypatch) -> None:

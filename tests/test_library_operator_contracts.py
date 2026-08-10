@@ -29,6 +29,24 @@ def test_every_library_operator_describes_and_validates(operator: LibraryOperato
     assert description["config_validation"] is True
 
 
+@pytest.mark.parametrize("name", ["aevolve", "ahe", "gepa", "hyperagents"])
+def test_mutate_validators_normalize_command_as_a_strict_string(name: str) -> None:
+    operator = resolve_operator("mutate", name)
+    base = {"components": {"prompt": "target/prompt.md"}} if name == "gepa" else {}
+
+    normalized = validate_operator_config(
+        operator,
+        {**base, "runner": "local", "command": "printf accepted"},
+    )
+
+    assert normalized["command"] == "printf accepted"
+    with pytest.raises(OperatorLibraryError, match="command must be a non-empty string"):
+        validate_operator_config(
+            operator,
+            {**base, "runner": "local", "command": ["printf", "rejected"]},
+        )
+
+
 @pytest.mark.parametrize("recipe_path", repository_recipe_paths(), ids=lambda path: path.parent.name)
 def test_every_recipe_selected_config_is_accepted(recipe_path: Path) -> None:
     resolved = resolve_recipe(recipe_path)

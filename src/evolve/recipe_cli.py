@@ -46,7 +46,7 @@ def build_recipe_app(guard: _Guard) -> typer.Typer:
             print(render_recipe_problems(error.problems), file=sys.stderr)
             raise typer.Exit(1) from error
         if json_output:
-            print(json.dumps(recipe_check_payload(resolved), indent=2, sort_keys=True))
+            print(json.dumps(recipe_check_payload(resolved), indent=2, sort_keys=True, allow_nan=False))
         else:
             print(f"recipe check: valid ({len(resolved.operators)} operators)")
             for warning in resolved.warnings:

@@ -31,6 +31,18 @@ def test_recipe_check_json_reports_resolved_values() -> None:
     assert len(payload["operators"]["mutate"]["digest"]) == 64
 
 
+def test_recipe_check_accepts_local_mutation_command(tmp_path: Path) -> None:
+    config = yaml.safe_load(SMOKE_RECIPE.read_text())
+    config["operators"]["mutate"]["config"]["command"] = "printf recipe-command-accepted"
+    recipe = tmp_path / "evolve.yaml"
+    recipe.write_text(yaml.safe_dump(config, sort_keys=False))
+
+    result = run_evolve("recipe", "check", str(recipe), "--json")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout)["operators"]["mutate"]["config"]["command"] == ("printf recipe-command-accepted")
+
+
 def test_recipe_check_renders_every_problem_and_exits_one(tmp_path: Path) -> None:
     config = yaml.safe_load(SMOKE_RECIPE.read_text())
     config["operators"]["select"] = {"variant": "greedy"}
@@ -79,3 +91,21 @@ def test_recipe_check_keeps_yaml_date_config_in_typed_diagnostics(tmp_path: Path
     assert "operators.mutate.config:" in result.stderr
     assert "not JSON-serializable" in result.stderr
     assert "TypeError" not in result.stderr
+
+
+def test_recipe_check_rejects_nested_nonfinite_opaque_script_config(tmp_path: Path) -> None:
+    config = yaml.safe_load(SMOKE_RECIPE.read_text())
+    script = tmp_path / "select.py"
+    script.write_text("print('selected')\n")
+    config["operators"]["select"] = {
+        "script": "select.py",
+        "config": {"opaque": {"temperature": float("nan")}},
+    }
+    recipe = tmp_path / "evolve.yaml"
+    recipe.write_text(yaml.safe_dump(config, sort_keys=False))
+
+    result = run_evolve("recipe", "check", str(recipe), "--json")
+
+    assert result.returncode == 1
+    assert "operators.select.config" in result.stderr
+    assert "not JSON-serializable" in result.stderr
