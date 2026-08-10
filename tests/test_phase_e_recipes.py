@@ -72,6 +72,8 @@ def test_supported_recipes_use_harbor_and_method_meta_agent() -> None:
         assert "engine: harbor" in config
         assert "target/**" in config
         assert "target/agent.py" not in config
+        assert "tools_dir:" not in config
+        assert "evolve_tools:" not in config
         if name == "aevolve":
             assert f"dataset: {TERMINAL_BENCH_DATASET}" in config
             assert "seed: builtin-codex" in config
@@ -86,7 +88,6 @@ def test_supported_recipes_use_harbor_and_method_meta_agent() -> None:
             assert "evolve_prompts: true" in config
             assert "evolve_skills: true" in config
             assert "evolve_memory: false" in config
-            assert "evolve_tools: false" in config
             assert "agent: target.agent:HarborAgent" in config
         elif name == "gepa":
             assert f"dataset: {TERMINAL_BENCH_DATASET}" in config

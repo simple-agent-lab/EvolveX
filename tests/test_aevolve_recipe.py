@@ -22,7 +22,6 @@ def test_aevolve_recipe_initializes_builtin_codex_workspace_contract(tmp_path: P
     assert "expose_gate_data: false" in config
     assert "runner: harbor" in config
     assert "evolve_memory: false" in config
-    assert "evolve_tools: false" in config
     assert "prompt_path: target/prompt.md" in config
     assert (workspace / "target" / "prompt.md").is_file()
     assert (workspace / "target" / "skills" / "task-execution" / "SKILL.md").is_file()
