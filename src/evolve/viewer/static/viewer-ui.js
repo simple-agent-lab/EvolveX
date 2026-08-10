@@ -26,6 +26,13 @@ export function artifactHref(id) {
   return `/artifacts/${encodeURIComponent(id)}`;
 }
 
+export function snapshotRevision(snapshot) {
+  if (!snapshot) return '';
+  const experiment = {...(snapshot.experiment || {})};
+  delete experiment.updated_at;
+  return JSON.stringify({...snapshot, experiment});
+}
+
 export function artifactPresentation(metadata, text) {
   const kind = String(metadata.kind || '').toLowerCase();
   if (kind === 'diff' || kind === 'patch') return {mode: 'diff', language: 'diff', text};

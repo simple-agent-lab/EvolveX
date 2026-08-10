@@ -7,6 +7,7 @@ import {
   compareGenerationIds,
   generationsThrough,
   scoreTrend,
+  snapshotRevision,
 } from '../../src/evolve/viewer/static/viewer-ui.js';
 
 test('generation ordering treats 10 as newer than 2', () => {
@@ -56,4 +57,13 @@ test('malformed JSON falls back to plain text mode', () => {
 
 test('artifact links stay inside the evolve preview', () => {
   assert.equal(artifactHref('abc def'), '/artifacts/abc%20def');
+});
+
+test('snapshot revision ignores refresh timestamps but detects experiment changes', () => {
+  const first = {experiment: {id: 'run', updated_at: 'first'}, generations: [{genid: '0', score: 0.3}]};
+  const refreshed = {experiment: {id: 'run', updated_at: 'second'}, generations: [{genid: '0', score: 0.3}]};
+  const changed = {experiment: {id: 'run', updated_at: 'third'}, generations: [{genid: '0', score: 0.4}]};
+
+  assert.equal(snapshotRevision(first), snapshotRevision(refreshed));
+  assert.notEqual(snapshotRevision(first), snapshotRevision(changed));
 });

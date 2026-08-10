@@ -3,9 +3,10 @@ import {
   artifactPresentation,
   generationsThrough,
   scoreTrend,
+  snapshotRevision,
 } from './viewer-ui.js';
 
-const state = { snapshot: null, timer: null, refreshing: false, artifactCache: new Map() };
+const state = { snapshot: null, revision: '', timer: null, refreshing: false, artifactCache: new Map() };
 const content = document.querySelector('#viewer-content');
 const experimentName = document.querySelector('#experiment-name');
 const healthPill = document.querySelector('#health-pill');
@@ -33,9 +34,17 @@ async function refresh() {
   state.refreshing = true;
   refreshStatus.textContent = 'Refreshing…';
   try {
-    state.snapshot = await getJson('/api/evolve/snapshot');
+    const nextSnapshot = await getJson('/api/evolve/snapshot');
+    const nextRevision = snapshotRevision(nextSnapshot);
+    const shouldRender = state.snapshot == null || nextRevision !== state.revision;
+    const viewState = shouldRender && state.snapshot != null ? captureViewState() : null;
+    state.snapshot = nextSnapshot;
+    state.revision = nextRevision;
     updateChrome();
-    await renderRoute(window.location.pathname, new URLSearchParams(window.location.search));
+    if (shouldRender) {
+      await renderRoute(window.location.pathname, new URLSearchParams(window.location.search));
+      restoreViewState(viewState);
+    }
     refreshStatus.textContent = `Updated ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
   } catch (error) {
     refreshStatus.textContent = 'Refresh failed';
@@ -45,6 +54,53 @@ async function refresh() {
   } finally {
     state.refreshing = false;
   }
+}
+
+function captureViewState() {
+  const controls = [...content.querySelectorAll('input[id], select[id], textarea[id]')].map((control) => ({
+    id: control.id,
+    value: control.value,
+    checked: 'checked' in control ? control.checked : null,
+  }));
+  const scrollers = [...content.querySelectorAll('.trend-scroll, .table-wrap, .artifact-preview')].map((element) => ({
+    left: element.scrollLeft,
+    top: element.scrollTop,
+  }));
+  return {
+    route: `${window.location.pathname}${window.location.search}`,
+    controls,
+    scrollers,
+    windowX: window.scrollX,
+    windowY: window.scrollY,
+    focusedId: content.contains(document.activeElement) ? document.activeElement.id : null,
+    artifactWrap: document.querySelector('#artifact-preview')?.classList.contains('wrap') || false,
+  };
+}
+
+function restoreViewState(saved) {
+  if (!saved || saved.route !== `${window.location.pathname}${window.location.search}`) return;
+  for (const item of saved.controls) {
+    const control = document.getElementById(item.id);
+    if (!control) continue;
+    control.value = item.value;
+    if (item.checked != null && 'checked' in control) control.checked = item.checked;
+  }
+  [...content.querySelectorAll('.trend-scroll, .table-wrap, .artifact-preview')].forEach((element, index) => {
+    const position = saved.scrollers[index];
+    if (!position) return;
+    element.scrollLeft = position.left;
+    element.scrollTop = position.top;
+  });
+  if (saved.artifactWrap) {
+    const preview = document.querySelector('#artifact-preview');
+    const button = document.querySelector('#artifact-wrap');
+    preview?.classList.add('wrap');
+    preview?.classList.remove('no-wrap');
+    button?.setAttribute('aria-pressed', 'true');
+    if (button) button.textContent = 'Do not wrap';
+  }
+  document.getElementById(saved.focusedId)?.focus({preventScroll: true});
+  window.scrollTo(saved.windowX, saved.windowY);
 }
 
 function updateChrome() {
