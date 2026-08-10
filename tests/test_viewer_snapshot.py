@@ -216,6 +216,58 @@ def test_gepa_train_score_change_is_kept_separate_from_canonical_score(tmp_path:
     assert performance.train_delta == 5
 
 
+def test_certified_anchor_score_is_exposed_as_sealed_score(tmp_path: Path) -> None:
+    sources = _sources(
+        tmp_path,
+        rows=[
+            {
+                "genid": "4",
+                "status": "complete",
+                "score": 0.68,
+                "evals": [
+                    {
+                        "kind": "anchor",
+                        "purpose": "anchor",
+                        "outcome": "benchmark_complete",
+                        "score": 0.75,
+                        "_evolve_receipt_certified": True,
+                    }
+                ],
+            }
+        ],
+    )
+
+    performance = build_snapshot(sources).generation_details["4"].performance
+
+    assert performance.score == 0.68
+    assert performance.sealed_score == 0.75
+
+
+def test_unverified_anchor_is_not_exposed_as_sealed_score(tmp_path: Path) -> None:
+    sources = _sources(
+        tmp_path,
+        rows=[
+            {
+                "genid": "4",
+                "status": "complete",
+                "score": 0.68,
+                "evals": [
+                    {
+                        "kind": "anchor",
+                        "purpose": "anchor",
+                        "outcome": "benchmark_complete",
+                        "score": 0.75,
+                    }
+                ],
+            }
+        ],
+    )
+
+    performance = build_snapshot(sources).generation_details["4"].performance
+
+    assert performance.sealed_score is None
+
+
 def test_harbor_never_overrides_canonical_reward(tmp_path: Path) -> None:
     """Raw Harbor disagreement must remain a warning instead of changing the benchmark receipt."""
     task = "dataset__task-a"

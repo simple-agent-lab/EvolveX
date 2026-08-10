@@ -78,6 +78,7 @@ main { width: min(1280px, 100%); margin: 0 auto; padding: 34px clamp(22px, 4vw, 
 .health-banner { display: flex; justify-content: space-between; gap: 24px; padding: 20px; background: linear-gradient(115deg, #edf8f2, #f9fcfa); border-bottom: 1px solid #dceae2; }
 .health-banner h2 { margin: 5px 0 4px; font-size: 20px; }
 .health-banner p { margin: 0; color: var(--muted); font-size: 12px; }
+.health-metrics { display: flex; align-items: center; gap: 28px; }
 .metric-big { text-align: right; }
 .metric-big strong { display: block; font-size: 22px; font-variant-numeric: tabular-nums; }
 .metric-big span { color: var(--muted); font-size: 11px; }
@@ -201,6 +202,6 @@ main { width: min(1280px, 100%); margin: 0 auto; padding: 34px clamp(22px, 4vw, 
   .primary-nav a { flex-direction: column; gap: 2px; padding: 6px; font-size: 10px; }.primary-nav a span { font-size: 16px; }
   .topbar { min-height: 70px; padding: 13px 18px; }.refresh-status { display: none; }
   main { padding: 24px 16px 45px; }.page-heading { align-items: start; flex-direction: column; }.page-heading h2 { font-size: 24px; }
-  .health-banner { flex-direction: column; }.metric-big { text-align: left; }
+  .health-banner { flex-direction: column; }.health-metrics { justify-content: space-between; }.metric-big { text-align: left; }
   .filters { grid-template-columns: 1fr; }.filter-action .button { width: 100%; }
 }

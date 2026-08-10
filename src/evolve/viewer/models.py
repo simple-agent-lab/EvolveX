@@ -50,6 +50,7 @@ class ChangeSummary(BaseModel):
 
 class PerformanceSummary(BaseModel):
     score: float | None = None
+    sealed_score: float | None = None
     parent_score: float | None = None
     delta: float | None = None
     comparable: bool = False

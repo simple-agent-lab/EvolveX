@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
+from ..archive import RECEIPT_CERTIFIED_FIELD
 from ..population import generation_number
 from .models import (
     ArtifactReference,
@@ -272,6 +273,7 @@ def _performance_summary(
     gepa = cast(dict[str, Any], row.get("gepa")) if isinstance(row.get("gepa"), dict) else {}
     return PerformanceSummary(
         score=score,
+        sealed_score=_sealed_score(row),
         parent_score=parent_score,
         delta=score - parent_score if comparable and score is not None and parent_score is not None else None,
         comparable=comparable,
@@ -286,6 +288,22 @@ def _performance_summary(
         train_score_after=_number(gepa.get("train_score_after")),
         train_delta=_number(gepa.get("train_delta")),
     )
+
+
+def _sealed_score(row: dict[str, Any]) -> float | None:
+    evaluations = row.get("evals")
+    if not isinstance(evaluations, list):
+        return None
+    anchors = [
+        _number(evaluation.get("score"))
+        for evaluation in evaluations
+        if isinstance(evaluation, dict)
+        and evaluation.get("kind") == "anchor"
+        and evaluation.get("purpose") == "anchor"
+        and evaluation.get("outcome") == "benchmark_complete"
+        and evaluation.get(RECEIPT_CERTIFIED_FIELD) is True
+    ]
+    return next((score for score in reversed(anchors) if score is not None), None)
 
 
 def _canonical_trials(

@@ -190,6 +190,7 @@ function overviewPlaceholderCard() {
 function healthCard(experiment, detail, globalResult = false) {
   const stages = detail?.stages || [];
   const warnings = experiment.warnings || [];
+  const sealedScore = detail?.performance?.sealed_score;
   const displayGeneration = globalResult ? detail?.summary?.genid : experiment.focus_generation;
   const displayHealth = globalResult ? detail?.summary?.status || 'unknown' : experiment.health;
   const description = globalResult
@@ -202,7 +203,10 @@ function healthCard(experiment, detail, globalResult = false) {
         <h2>${displayGeneration ? `${globalResult ? 'Champion agent · ' : ''}Generation ${escapeHtml(displayGeneration)}` : 'Waiting for the first generation'}</h2>
         <p>${escapeHtml(description)}</p>
       </div>
-      <div class="metric-big"><strong>${number(experiment.best_score)}</strong><span>Best canonical score</span></div>
+      <div class="health-metrics">
+        <div class="metric-big"><strong>${number(experiment.best_score)}</strong><span>Best canonical score</span></div>
+        ${globalResult ? `<div class="metric-big"><strong>${number(sealedScore)}</strong><span>Sealed score</span></div>` : ''}
+      </div>
     </div>
     ${stages.length ? `<div class="stage-strip" style="--stage-count:${stages.length}" aria-label="Generation stages">${stages.map(stageItem).join('')}</div>` : ''}
     ${warnings.length ? `<ul class="warning-list">${warnings.map((warning) => `<li><strong>${escapeHtml(label(warning.code))}:</strong> ${escapeHtml(warning.message)}</li>`).join('')}</ul>` : ''}
