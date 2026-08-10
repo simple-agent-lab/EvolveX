@@ -40,6 +40,21 @@ def write_recipe(tmp_path: Path, *, operators: dict[str, object]) -> Path:
     return path
 
 
+def write_recipe_with_raw_yaml_config(tmp_path: Path, yaml_value: str, *, missing_record: bool = False) -> Path:
+    operators = copy.deepcopy(_operators())
+    operators["mutate"] = {
+        "operator": "hyperagents",
+        "config": {"runner": "local", "agent_kwargs": {"opaque": "YAML_VALUE"}},
+    }
+    if missing_record:
+        del operators["record"]
+    recipe = write_recipe(tmp_path, operators=operators)
+    rendered = recipe.read_text()
+    assert "opaque: YAML_VALUE" in rendered
+    recipe.write_text(rendered.replace("opaque: YAML_VALUE", f"opaque: {yaml_value}"))
+    return recipe
+
+
 def test_recipe_resolves_named_operator_and_normalizes_config(tmp_path: Path) -> None:
     recipe = write_recipe(tmp_path, operators=_operators())
 
@@ -68,6 +83,40 @@ def test_recipe_wraps_malformed_yaml_as_resolution_problem(tmp_path: Path) -> No
     assert len(caught.value.problems) == 1
     assert caught.value.problems[0].path == "recipe"
     assert "expected the node content" in caught.value.problems[0].message
+
+
+@pytest.mark.parametrize("yaml_timeout", [".nan", ".inf", "-.inf"])
+def test_recipe_aggregates_nonfinite_timeout_problem(tmp_path: Path, yaml_timeout: str) -> None:
+    operators = copy.deepcopy(_operators())
+    operators["select"]["timeout_s"] = "YAML_TIMEOUT"
+    del operators["record"]
+    recipe = write_recipe(tmp_path, operators=operators)
+    rendered = recipe.read_text()
+    assert "timeout_s: YAML_TIMEOUT" in rendered
+    recipe.write_text(rendered.replace("timeout_s: YAML_TIMEOUT", f"timeout_s: {yaml_timeout}"))
+
+    with pytest.raises(RecipeResolutionError) as caught:
+        resolve_recipe(recipe)
+
+    assert {problem.path for problem in caught.value.problems} >= {
+        "operators.select.timeout_s",
+        "operators.record",
+    }
+
+
+@pytest.mark.parametrize("yaml_value", ["2026-08-10", "!!set {alpha: null}"])
+def test_recipe_aggregates_non_json_yaml_config_problem(tmp_path: Path, yaml_value: str) -> None:
+    recipe = write_recipe_with_raw_yaml_config(tmp_path, yaml_value, missing_record=True)
+
+    with pytest.raises(RecipeResolutionError) as caught:
+        resolve_recipe(recipe)
+
+    assert {problem.path for problem in caught.value.problems} >= {
+        "operators.mutate.config",
+        "operators.record",
+    }
+    config_problem = next(problem for problem in caught.value.problems if problem.path == "operators.mutate.config")
+    assert "not JSON-serializable" in config_problem.message
 
 
 @pytest.mark.parametrize(

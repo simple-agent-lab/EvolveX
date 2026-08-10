@@ -88,6 +88,10 @@ def validate_operator_config(
 
 
 def _inspect(operator: LibraryOperator, mode: str, config: dict[str, object], timeout_s: float) -> dict[str, object]:
+    try:
+        serialized_config = json.dumps(config)
+    except (TypeError, ValueError) as error:
+        raise _error(operator, f"config is not JSON-serializable: {error}", None) from error
     with _operator_source(operator) as (source, cwd):
         environment = dict(os.environ)
         environment["PYTHONDONTWRITEBYTECODE"] = "1"
@@ -96,7 +100,7 @@ def _inspect(operator: LibraryOperator, mode: str, config: dict[str, object], ti
         launcher = "import runpy, sys; source = sys.argv.pop(1); runpy.run_path(source, run_name='__main__')"
         try:
             completed = subprocess.run(
-                [sys.executable, "-c", launcher, str(source), mode, "--config", json.dumps(config)],
+                [sys.executable, "-c", launcher, str(source), mode, "--config", serialized_config],
                 cwd=cwd,
                 env=environment,
                 capture_output=True,
@@ -122,7 +126,7 @@ def _operator_source(operator: LibraryOperator) -> Iterator[tuple[Path, Path]]:
     source = operator.source
     root = _DISCOVERY_ROOTS.get(id(source), _default_library_root(operator))
     if isinstance(source, Path):
-        yield source, root.parent
+        yield source, cast(Path, root).parent
         return
     with tempfile.TemporaryDirectory(prefix="evolvex-operator-library-") as temporary:
         destination = Path(temporary) / "library"

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from importlib.resources.abc import Traversable
@@ -243,4 +244,12 @@ def _timeout(
     if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
         problems.append(RecipeProblem(path, "must be a positive number"))
         return fallback
-    return float(value)
+    try:
+        normalized = float(value)
+    except OverflowError:
+        problems.append(RecipeProblem(path, "must be a positive number"))
+        return fallback
+    if not math.isfinite(normalized):
+        problems.append(RecipeProblem(path, "must be a positive number"))
+        return fallback
+    return normalized

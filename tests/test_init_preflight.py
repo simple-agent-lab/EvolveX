@@ -230,3 +230,36 @@ def test_preflight_recipe_failure_short_circuits_later_checks(tmp_path: Path) ->
     assert "seed directory does not exist" not in result.stdout
     assert "does not resolve to a local task directory" not in result.stdout
     assert not workspace.exists()
+
+
+def test_preflight_yaml_set_config_uses_recipe_failure_and_short_circuits(tmp_path: Path) -> None:
+    import yaml
+
+    config = yaml.safe_load(Path(SMOKE_RECIPE).read_text())
+    config["operators"]["mutate"]["config"]["agent_kwargs"] = {"opaque": "YAML_VALUE"}
+    recipe_dir = tmp_path / "recipe"
+    recipe_dir.mkdir()
+    recipe = recipe_dir / "evolve.yaml"
+    rendered = yaml.safe_dump(config, sort_keys=False)
+    assert "opaque: YAML_VALUE" in rendered
+    recipe.write_text(rendered.replace("opaque: YAML_VALUE", "opaque: !!set {alpha: null}"))
+    workspace = tmp_path / "workspace"
+
+    result = run_evolve(
+        "preflight",
+        str(workspace),
+        "--recipe-path",
+        str(recipe),
+        "--seed",
+        str(tmp_path / "missing-seed"),
+        "--dataset",
+        str(tmp_path / "missing-dataset"),
+    )
+
+    assert result.returncode == 1
+    assert "operators.mutate.config:" in result.stdout
+    assert "not JSON-serializable" in result.stdout
+    assert "seed directory does not exist" not in result.stdout
+    assert "does not resolve to a local task directory" not in result.stdout
+    assert "TypeError" not in result.stderr
+    assert not workspace.exists()

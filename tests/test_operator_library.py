@@ -131,6 +131,14 @@ def test_subprocess_validation_reports_missing_validator(tmp_path: Path) -> None
         validate_operator_config(operator, {})
 
 
+def test_subprocess_validation_wraps_non_json_config(tmp_path: Path) -> None:
+    root = _library_with_operator(tmp_path, _sdk_operator_script())
+    operator = resolve_operator("mutate", "critic_editor", root)
+
+    with pytest.raises(OperatorLibraryError, match=r"mutate/critic_editor.*not JSON-serializable"):
+        validate_operator_config(operator, {"attempts": {1}})
+
+
 def test_discovery_does_not_import_operator_but_inspection_subprocess_does(tmp_path: Path) -> None:
     marker = tmp_path / "operator-imported"
     root = _library_with_operator(

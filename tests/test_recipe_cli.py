@@ -63,3 +63,19 @@ def test_recipe_check_warns_for_nonportable_script(tmp_path: Path) -> None:
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "warn  operators.select: script source is non-portable" in result.stdout
+
+
+def test_recipe_check_keeps_yaml_date_config_in_typed_diagnostics(tmp_path: Path) -> None:
+    config = yaml.safe_load(SMOKE_RECIPE.read_text())
+    config["operators"]["mutate"]["config"]["agent_kwargs"] = {"opaque": "YAML_VALUE"}
+    recipe = tmp_path / "evolve.yaml"
+    rendered = yaml.safe_dump(config, sort_keys=False)
+    assert "opaque: YAML_VALUE" in rendered
+    recipe.write_text(rendered.replace("opaque: YAML_VALUE", "opaque: 2026-08-10"))
+
+    result = run_evolve("recipe", "check", str(recipe))
+
+    assert result.returncode == 1
+    assert "operators.mutate.config:" in result.stderr
+    assert "not JSON-serializable" in result.stderr
+    assert "TypeError" not in result.stderr
