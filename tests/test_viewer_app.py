@@ -177,6 +177,7 @@ def test_frontend_has_required_navigation_and_refresh_contract() -> None:
     static = Path(__file__).parents[1] / "src/evolve/viewer/static"
     html = (static / "index.html").read_text()
     javascript = (static / "app.js").read_text()
+    styles = (static / "styles.css").read_text()
 
     assert all(label in html for label in ("Overview", "Generations", "Trials"))
     assert "3000" in javascript
@@ -200,6 +201,8 @@ def test_frontend_has_required_navigation_and_refresh_contract() -> None:
     )
     assert "options.outputFormat || 'side-by-side'" in javascript
     assert "options.drawFileList ?? true" in javascript
+    assert ".d2h-code-side-linenumber" in styles
+    assert "display: table-cell" in styles
     assert all(
         label in javascript
         for label in (

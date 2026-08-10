@@ -154,7 +154,8 @@ main.diff-mode .artifact-preview { height: clamp(360px, calc(100vh - 360px), 660
 .artifact-preview .d2h-file-side-diff { box-sizing: border-box; min-width: 0; max-width: 50%; overflow-x: auto; overflow-y: hidden; vertical-align: top; }
 .artifact-preview .d2h-file-side-diff + .d2h-file-side-diff { border-left: 1px solid #dfe5e2; }
 .artifact-preview .d2h-diff-table { font-size: 11px; }
-.artifact-preview .d2h-code-side-linenumber, .artifact-preview .d2h-code-linenumber { color: #8c9791; background: #f7f9f8; border-color: #e2e7e4; font-size: 9px; }
+.artifact-preview .d2h-code-side-linenumber, .artifact-preview .d2h-code-linenumber { position: sticky; z-index: 2; left: 0; display: table-cell; color: #8c9791; background: #f7f9f8; border-color: #e2e7e4; font-size: 9px; vertical-align: top; }
+.artifact-preview .d2h-code-side-line, .artifact-preview .d2h-code-line { box-sizing: border-box; display: block; width: auto; padding: 0 .75em; }
 .artifact-preview .d2h-cntx { background: #fff; }
 .artifact-preview .d2h-info { color: #65756d; background: #edf2ef; border-color: #dfe6e2; }
 .artifact-preview .d2h-ins { background: #e9f8ef; }
