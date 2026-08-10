@@ -14,11 +14,8 @@ Case = dict[str, Any]
 
 ANALYZE_OPERATORS = (
     "failure_patterns",
-    "failed_traces",
     "trace_browser",
     "trajectory_only",
-    "execution_records",
-    "utility_metrics",
 )
 
 
@@ -525,11 +522,8 @@ def _metrics(cases: list[Case]) -> Case:
 
 _ANALYZE_OPERATOR_GUIDANCE = {
     "failure_patterns": "Prioritize recurring, actionable failure signatures. Preserve passing behaviors and propose a narrow edit tied to one agent mechanism.",
-    "failed_traces": "Diagnose concrete capability weaknesses from failed executions and make a change that generalizes beyond one task.",
     "trace_browser": "Use filesystem tools to inspect raw traces, metrics, source, and prior generations instead of relying only on this bounded summary.",
     "trajectory_only": "Infer improvement opportunities from agent behavior alone. No pass/fail labels, rewards, verifier feedback, task text, or raw-case paths are exposed.",
-    "execution_records": "Reflect across complete per-case inputs, outputs, ordered actions, tool results, verifier feedback, metrics, and history.",
-    "utility_metrics": "Treat per-task reward as downstream utility and improve the editable component for average utility across tasks.",
 }
 
 
@@ -538,7 +532,6 @@ def _render_selected(
     metrics: Case,
     patterns: list[Case],
     passes: list[Case],
-    reflections: list[Case],
     max_chars: int,
     trajectory_records: list[Case] | None = None,
 ) -> str:
@@ -581,15 +574,6 @@ def _render_selected(
             ["", "## Verifier-grounded failure patterns", "", "```json", json.dumps(patterns, indent=2), "```"]
         )
         lines.extend(["", "## Passing behaviors to preserve", "", "```json", json.dumps(passes, indent=2), "```"])
-    elif operator == "failed_traces":
-        failed_reflections = [
-            record
-            for record in reflections
-            if (record.get("feedback") or {}).get("outcome") in {"failed", "agent_error"}
-        ]
-        lines.extend(
-            ["", "## Detailed failed executions", "", "```json", json.dumps(failed_reflections, indent=2), "```"]
-        )
     elif operator == "trace_browser":
         lines.extend(
             [
@@ -598,12 +582,6 @@ def _render_selected(
                 "",
                 "Inspect `raw_traces.jsonl`, `reflective_records.jsonl`, `failure_patterns.json`, and `metrics.json`. Compare these with prior generation directories under `$EVOLVE_WORKSPACE/runs/` and with the candidate source currently checked out.",
             ]
-        )
-    elif operator == "execution_records":
-        lines.extend(["", "## Execution records", "", "```json", json.dumps(reflections, indent=2), "```"])
-    elif operator == "utility_metrics":
-        lines.extend(
-            ["", "## Downstream utility observations", "", "```json", json.dumps(metrics["per_task"], indent=2), "```"]
         )
     rendered = "\n".join(lines) + "\n"
     if len(rendered) <= max_chars:
@@ -652,7 +630,6 @@ def write_evidence_bundle(
             {},
             [],
             [],
-            [],
             max_chars,
             trajectory_records=trajectory_records,
         )
@@ -673,14 +650,11 @@ def write_evidence_bundle(
         "analyze_operator": selected,
         "operators": {
             "failure_patterns": ["failure_patterns.json", "passing_behaviors.json", "metrics.json"],
-            "failed_traces": ["reflective_records.jsonl", "metrics.json"],
             "trace_browser": ["raw_traces.jsonl", "metrics.json", "prior generation runs + source tree"],
-            "execution_records": ["raw_traces.jsonl", "reflective_records.jsonl", "metrics.json", "history"],
-            "utility_metrics": ["metrics.json", "source tree"],
         },
     }
     _write_json(root / "manifest.json", manifest)
-    selected_md = _render_selected(selected, metrics, patterns, passes, reflections, max_chars)
+    selected_md = _render_selected(selected, metrics, patterns, passes, max_chars)
     (root / "selected.md").write_text(selected_md)
     artifacts = [
         "analyze/evidence/manifest.json",
