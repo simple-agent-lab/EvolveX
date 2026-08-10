@@ -149,13 +149,11 @@ async function renderRoute(pathname, params) {
 async function renderOverview() {
   const snapshot = state.snapshot;
   const experiment = snapshot.experiment;
-  const focus = experiment.focus_generation;
   const finalResult = finalResultGeneration(snapshot.generations);
   const finalResultId = finalResult?.genid || null;
-  const [latestDetail, finalDetail] = await Promise.all([
-    focus ? getJson(`/api/evolve/generations/${encodeURIComponent(focus)}`) : null,
-    finalResultId ? getJson(`/api/evolve/generations/${encodeURIComponent(finalResultId)}`) : null,
-  ]);
+  const finalDetail = finalResultId
+    ? await getJson(`/api/evolve/generations/${encodeURIComponent(finalResultId)}`)
+    : null;
   const recent = snapshot.generations.slice(-6).reverse();
   content.innerHTML = `
     <div class="page-heading">
@@ -163,7 +161,7 @@ async function renderOverview() {
       ${finalResultId ? `<a class="button" data-evolve-link href="/generations/${encodeURIComponent(finalResultId)}">Open final result · G${escapeHtml(finalResultId)}</a>` : ''}
     </div>
     <div class="stack">
-      ${healthCard(experiment, latestDetail)}
+      ${healthCard(experiment, finalDetail, true)}
       <div class="grid-two">
         ${overviewPlaceholderCard()}
         ${performanceCard(finalDetail, snapshot.generations, true)}
@@ -177,15 +175,20 @@ function overviewPlaceholderCard() {
   return '<section class="card overview-placeholder" aria-label="Reserved overview panel"></section>';
 }
 
-function healthCard(experiment, detail) {
+function healthCard(experiment, detail, globalResult = false) {
   const stages = detail?.stages || [];
   const warnings = experiment.warnings || [];
+  const displayGeneration = globalResult ? detail?.summary?.genid : experiment.focus_generation;
+  const displayHealth = globalResult ? detail?.summary?.status || 'unknown' : experiment.health;
+  const description = globalResult
+    ? 'Global champion from canonical evaluation'
+    : experiment.current_stage ? `Current stage: ${label(experiment.current_stage)}` : time(experiment.last_activity_at);
   return `<section class="card health-card">
     <div class="health-banner">
       <div>
-        <span class="status-pill ${escapeHtml(experiment.health)}">${escapeHtml(label(experiment.health))}</span>
-        <h2>${experiment.focus_generation ? `Generation ${escapeHtml(experiment.focus_generation)}` : 'Waiting for the first generation'}</h2>
-        <p>${escapeHtml(experiment.current_stage ? `Current stage: ${label(experiment.current_stage)}` : time(experiment.last_activity_at))}</p>
+        <span class="status-pill ${escapeHtml(displayHealth)}">${escapeHtml(label(displayHealth))}</span>
+        <h2>${displayGeneration ? `${globalResult ? 'Final result · ' : ''}Generation ${escapeHtml(displayGeneration)}` : 'Waiting for the first generation'}</h2>
+        <p>${escapeHtml(description)}</p>
       </div>
       <div class="metric-big"><strong>${number(experiment.best_score)}</strong><span>Best canonical score</span></div>
     </div>
