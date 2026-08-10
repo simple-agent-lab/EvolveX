@@ -11,6 +11,7 @@ import json
 import os
 import random
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, cast
 
@@ -19,6 +20,7 @@ from ..evaluation.diagnostics import validate_evaluation_diagnostics_payload
 from ..git import head_tag, working_tree_changed_paths
 from ..surface import check_paths, surface_patterns
 from .interfaces import (
+    OPERATORS,
     PROTOCOL_VERSION,
     AnalyzeOperator,
     ArchiveView,
@@ -55,6 +57,7 @@ RECORD_STRIPPED_FIELDS = STAMPED_FIELDS | {
     "pending_gate_record",
     MECHANISM_EVAL_FIELD,
 }
+ConfigValidator = Callable[[dict[str, object]], dict[str, object]]
 
 
 def rows(workspace: Path | str = ".") -> list[dict[str, Any]]:
@@ -99,9 +102,15 @@ def surface_check(workspace: Path | str = ".", parent: str | None = None) -> dic
     return {"ok": not violations, "mutated": mutated, "violations": violations}
 
 
-def main(operator_cls: type[object]) -> None:
+def main(operator_cls: type[object], *, validate_config: ConfigValidator | None = None) -> None:
     args = _parse_args()
-    config = json.loads(args.config)
+    config = _config_object(args.config)
+    if _run_inspection_mode(args, operator_cls, config, validate_config):
+        return
+    _run_runtime_mode(operator_cls, config)
+
+
+def _run_runtime_mode(operator_cls: type[object], config: dict[str, object]) -> None:
     ctx = _context(config)
     _assert_protocol_version(ctx)
     archive = ArchiveView(ctx.workspace)
@@ -157,8 +166,65 @@ def main(operator_cls: type[object]) -> None:
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="{}")
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--describe", action="store_true")
+    modes.add_argument("--validate-config", action="store_true")
     args, _unknown = parser.parse_known_args()
     return args
+
+
+def _config_object(raw: str) -> dict[str, object]:
+    try:
+        config = json.loads(raw)
+    except json.JSONDecodeError as error:
+        _inspection_error(f"config must be valid JSON: {error.msg}")
+    if not isinstance(config, dict):
+        _inspection_error("config must be a JSON object")
+    return cast("dict[str, object]", config)
+
+
+def _run_inspection_mode(
+    args: argparse.Namespace,
+    operator_cls: type[object],
+    config: dict[str, object],
+    validate_config: ConfigValidator | None,
+) -> bool:
+    if args.describe:
+        print(
+            json.dumps(
+                {
+                    "stage": _operator_stage(operator_cls),
+                    "description": (operator_cls.__doc__ or "").strip(),
+                    "config_validation": validate_config is not None,
+                },
+                sort_keys=True,
+            )
+        )
+        return True
+    if args.validate_config:
+        if validate_config is None:
+            _inspection_error("operator does not support config validation")
+        try:
+            normalized = validate_config(config)
+        except Exception as error:
+            _inspection_error(str(error))
+        if not isinstance(normalized, dict):
+            _inspection_error("config validator must return a JSON object")
+        print(json.dumps(normalized, sort_keys=True))
+        return True
+    return False
+
+
+def _operator_stage(operator_cls: type[object]) -> str:
+    for spec in OPERATORS:
+        if issubclass(operator_cls, spec.abc):
+            return spec.kind
+    raise TypeError("operator_cls must subclass an evolve interface operator")
+
+
+def _inspection_error(message: str) -> None:
+    print(message, file=sys.stderr)
+    raise SystemExit(2)
 
 
 def _rng_seed(seed: int | str, genid: str, parent: str | None) -> int:
