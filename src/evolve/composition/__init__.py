@@ -1,3 +1,4 @@
+from .materialize import OperatorMaterialization, materialize_operators
 from .recipe import (
     RecipeProblem,
     RecipeResolutionError,
@@ -9,10 +10,12 @@ from .recipe import (
 )
 
 __all__ = [
+    "OperatorMaterialization",
     "RecipeProblem",
     "RecipeResolutionError",
     "ResolvedOperator",
     "ResolvedRecipe",
+    "materialize_operators",
     "render_recipe_problems",
     "resolve_builtin_recipe",
     "resolve_recipe",

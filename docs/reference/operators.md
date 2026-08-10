@@ -92,9 +92,9 @@ filesystem path outside the shared named catalog.
 After initialization:
 
 ```text
-operators/<stage>.py       frozen active implementation
-library/                   frozen alternatives and imported helpers
-evolve.yaml                normalized operator config
+operators/       frozen active recipe-selected operator scripts
+library/         frozen runtime helpers imported by selected library operators
+evolve.yaml      normalized operator config
 .evolve-components.json   source identity, digest, and portability
 ```
 

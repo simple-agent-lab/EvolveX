@@ -35,7 +35,7 @@ def test_ahe_recipe_initializes_harbor_miniswe_composition(tmp_path: Path) -> No
     assert (workspace / "target/uv.lock").is_file()
     assert surface_lists(workspace) == (["target/**"], [])
     assert "source=library/rollout/parent_evaluation.py" in (workspace / "operators/rollout.py").read_text()
-    assert (workspace / "library/rollout/harbor.py").is_file()
+    assert not (workspace / "library/rollout/harbor.py").exists()
     assert "source=library/analyze/ahe.py" in (workspace / "operators/analyze.py").read_text()
     assert "source=library/mutate/ahe.py" in (workspace / "operators/mutate.py").read_text()
     assert "source=library/select/ahe_latest.py" in (workspace / "operators/select.py").read_text()

@@ -17,13 +17,10 @@ from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import Any, cast
 
-from . import __version__ as _EVOLVE_VERSION
 from .archive import append_event
-from .composition import ResolvedOperator, ResolvedRecipe, resolve_builtin_recipe, resolve_recipe
+from .composition import ResolvedRecipe, materialize_operators, resolve_builtin_recipe, resolve_recipe
 from .config import (
     DEFAULT_RECIPE,
-    OPERATOR_KINDS,
-    OPTIONAL_OPERATOR_KINDS,
     SOURCE_ROOT,
     evaluator_repetitions,
     library_root,
@@ -188,7 +185,7 @@ def _write_files(
     init_cwd: Path,
 ) -> None:
     config = resolved.config
-    active_operator_files, frozen_operator_sources = _freeze_active_operators(resolved.operators)
+    operator_materialization = materialize_operators(resolved.operators)
     assert isinstance(config["evaluator"], dict)
     evaluator = cast("dict[str, Any]", config["evaluator"])
     evaluator_engine = str(evaluator["engine"])
@@ -247,7 +244,7 @@ def _write_files(
         "uv.lock": _workspace_scaffold("uv.lock"),
         ".python-version": _workspace_scaffold(".python-version"),
         ".evolve-components.json": json.dumps(
-            _component_manifest(resolved, active_operator_files), indent=2, sort_keys=True
+            _component_manifest(resolved, operator_materialization.components), indent=2, sort_keys=True
         )
         + "\n",
         "evolve.yaml": render_yaml(_runtime_config(config)),
@@ -296,6 +293,7 @@ def _write_files(
         "archive.jsonl": "",
         "best_ever.json": "null\n",
     }
+    files.update(operator_materialization.files)
     files.update(_skill_package("evolve-agent"))
     if evaluator_engine == "harbor":
         files.update(
@@ -306,22 +304,13 @@ def _write_files(
                 "evaluator/smoke.sh": _evaluator_scaffold("harbor", "smoke.sh"),
             }
         )
-    for stage, binding in resolved.operators.items():
-        files[f"operators/{stage}.py"] = active_operator_files[stage]
-        companion = binding.source.with_suffix(".md") if isinstance(binding.source, Path) else None
-        if companion is not None and companion.is_file():
-            files[f"operators/{stage}.md"] = companion.read_text()
     generated_output_paths = {relative_path.casefold() for relative_path in files}
     evaluator_collisions = sorted(
         relative_path for relative_path in recipe_evaluator_assets if relative_path.casefold() in generated_output_paths
     )
     if evaluator_collisions:
         raise ValueError("recipe evaluator asset collides with generated file: " + ", ".join(evaluator_collisions))
-    files["operators/README.md"] = _operator_index(
-        resolved.operators,
-        frozen_operator_sources,
-    )
-    files.update(_operator_palette() | _operator_assets() | recipe_evaluator_assets)
+    files.update(recipe_evaluator_assets)
     for relative_path, content in files.items():
         path = workspace / relative_path
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -334,170 +323,30 @@ def _write_files(
     (workspace / "artifacts" / "generations").mkdir(parents=True, exist_ok=True)
 
 
-def _operator_palette() -> dict[str, str]:
-    """Vendor the per-kind variant catalog into the workspace's own `library/`,
-    mirroring the framework's `library/`. `operators/` holds only the active
-    scripts the driver runs; `library/<kind>/` holds the swap-in alternatives a
-    self-modifying agent can copy over and evolve. Keeping them in separate
-    trees is what makes `operators/` scannable at a glance."""
-    palette: dict[str, str] = {}
-    for kind in (*OPERATOR_KINDS, *OPTIONAL_OPERATOR_KINDS):
-        directory = library_root() / kind
-        if not directory.is_dir():
-            continue
-        for path in sorted(directory.iterdir(), key=lambda entry: entry.name):
-            if path.name.endswith(".py") and not path.name.startswith("_"):
-                palette[f"library/{kind}/{path.name}"] = _with_provenance(
-                    kind,
-                    f"library/{kind}/{path.name}",
-                    path.read_text(),
-                )
-    return palette
-
-
-def _walk_files(root: Path | Traversable, prefix: Path = Path("")):
-    for item in sorted(root.iterdir(), key=lambda entry: entry.name):
-        relative = prefix / item.name
-        if any(part.startswith(".") or part == "__pycache__" for part in relative.parts):
-            continue
-        if isinstance(item, Path) and item.is_symlink():
-            raise ValueError(f"operator asset may not be a symlink: {item}")
-        if item.is_dir():
-            yield from _walk_files(item, relative)
-        elif item.is_file():
-            yield relative, item
-
-
-def _text_files(root: Path | Traversable):
-    for relative, source in _walk_files(root):
-        try:
-            yield relative, source.read_text()
-        except UnicodeDecodeError:
-            continue
-
-
-def _file_contents(root: Path | Traversable):
-    for relative, source in _walk_files(root):
-        content = source.read_bytes()
-        try:
-            yield relative, content.decode()
-        except UnicodeDecodeError:
-            yield relative, content
-
-
-def _root_helper_assets(root: Path | Traversable) -> dict[str, str | bytes]:
-    assets: dict[str, str | bytes] = {}
-    for source in sorted(root.iterdir(), key=lambda entry: entry.name):
-        if not source.name.startswith("_"):
-            continue
-        if isinstance(source, Path) and source.is_symlink():
-            raise ValueError(f"operator asset may not be a symlink: {source}")
-        if source.is_dir():
-            for relative, content in _file_contents(source):
-                assets[f"library/{source.name}/{relative.as_posix()}"] = content
-        elif source.is_file():
-            content = source.read_bytes()
-            try:
-                assets[f"library/{source.name}"] = content.decode()
-            except UnicodeDecodeError:
-                assets[f"library/{source.name}"] = content
-    return assets
-
-
-def _operator_assets() -> dict[str, str | bytes]:
-    assets: dict[str, str | bytes] = {}
-    for kind in (*OPERATOR_KINDS, *OPTIONAL_OPERATOR_KINDS):
-        directory = library_root() / kind
-        if directory.is_dir():
-            for relative, content in _file_contents(directory):
-                helper_asset = relative.parts[0].startswith("_")
-                text_asset = isinstance(content, str) and (relative.suffix != ".py" or len(relative.parts) > 1)
-                if helper_asset or text_asset:
-                    assets[f"library/{kind}/{relative.as_posix()}"] = content
-    return assets | _root_helper_assets(library_root())
-
-
 def _recipe_evaluator_assets(
     recipe_directory: Path | Traversable,
 ) -> dict[str, str]:
     root = recipe_directory / "evaluator"
-    return (
-        {} if not root.is_dir() else {f"evaluator/{relative.as_posix()}": text for relative, text in _text_files(root)}
-    )
+    assets: dict[str, str] = {}
 
+    def visit(directory: Path | Traversable, prefix: Path = Path("")) -> None:
+        for source in sorted(directory.iterdir(), key=lambda entry: entry.name):
+            relative = prefix / source.name
+            if any(part.startswith(".") or part == "__pycache__" for part in relative.parts):
+                continue
+            if isinstance(source, Path) and source.is_symlink():
+                raise ValueError(f"operator asset may not be a symlink: {source}")
+            if source.is_dir():
+                visit(source, relative)
+            elif source.is_file():
+                try:
+                    assets[f"evaluator/{relative.as_posix()}"] = source.read_text()
+                except UnicodeDecodeError:
+                    continue
 
-def _operator_index(
-    bindings: dict[str, ResolvedOperator],
-    frozen_sources: dict[str, bytes],
-) -> str:
-    rows = []
-    for stage, binding in bindings.items():
-        active = binding.name or binding.source.name.removesuffix(".py")
-        alts = [
-            path.name.removesuffix(".py")
-            for path in sorted((library_root() / stage).iterdir(), key=lambda entry: entry.name)
-            if path.is_file()
-            and path.name.endswith(".py")
-            and not path.name.startswith("_")
-            and path.name.removesuffix(".py") != active
-        ]
-        rows.append(
-            f"| {stage} | {active}.py | {_first_docstring_line(frozen_sources[stage].decode())} "
-            f"| {', '.join(alts) if alts else '—'} |"
-        )
-    return (
-        "# Active operators\n\n"
-        "The loop runs exactly these scripts, one per verb — each is yours to evolve\n"
-        "(the mechanism never overwrites them). Alternatives live in `library/<verb>/`;\n"
-        "copy one over a script to swap strategy. This file is generated by `init`.\n\n"
-        "| verb | active | what it does | swap-in (`library/<verb>/`) |\n"
-        "| --- | --- | --- | --- |\n" + "\n".join(rows) + "\n"
-    )
-
-
-def _first_docstring_line(source_text: str) -> str:
-    lines = source_text.splitlines()
-    i = 0
-    while i < len(lines) and (not lines[i].strip() or lines[i].lstrip().startswith("#")):
-        i += 1
-    if i < len(lines):
-        line = lines[i].strip()
-        for marker in ('"""', "'''"):
-            if line.startswith(marker):
-                inner = line[3:].split(marker, 1)[0].strip()
-                if inner:
-                    return inner
-                return lines[i + 1].strip() if i + 1 < len(lines) else "(no description)"
-    return "(no description)"
-
-
-def _binding_source_label(binding: ResolvedOperator) -> str:
-    if binding.name is not None:
-        return f"library/{binding.stage}/{binding.name}.py"
-    return f"script/{binding.source.name}"
-
-
-def _freeze_active_operators(
-    bindings: dict[str, ResolvedOperator],
-) -> tuple[dict[str, bytes], dict[str, bytes]]:
-    active: dict[str, bytes] = {}
-    sources: dict[str, bytes] = {}
-    for stage, binding in bindings.items():
-        source_bytes = binding.source.read_bytes()
-        if hashlib.sha256(source_bytes).hexdigest() != binding.digest:
-            raise ValueError(f"operators.{stage} source changed after recipe resolution")
-        source_text = source_bytes.decode()
-        active[stage] = _with_provenance(stage, _binding_source_label(binding), source_text).encode()
-        sources[stage] = source_bytes
-    return active, sources
-
-
-def _with_provenance(kind: str, source: str, source_text: str) -> str:
-    return (
-        f"# evolve-provenance: kind={kind} source={source} framework_version={_EVOLVE_VERSION}\n"
-        "# this file is yours now - mechanism will never overwrite it; evolve it.\n\n"
-        f"{source_text}"
-    )
+    if root.is_dir():
+        visit(root)
+    return assets
 
 
 def _runtime_config(config: dict[str, object]) -> dict[str, object]:
@@ -531,7 +380,7 @@ def _dataset_pin(dataset: str, manifest: dict[str, Any]) -> str:
 
 def _component_manifest(
     resolved: ResolvedRecipe,
-    active_operator_files: dict[str, bytes],
+    operator_components: dict[str, dict[str, object]],
 ) -> dict[str, object]:
     config = resolved.config
     evaluator = cast("dict[str, Any]", config["evaluator"])
@@ -549,16 +398,7 @@ def _component_manifest(
         "integrations": sorted(
             {reference.split(":", 1)[0] for reference in references if reference.startswith("evolve.integrations.")}
         ),
-        "operators": {
-            stage: {
-                "stage": stage,
-                "source": binding.source_kind,
-                "name": binding.name or binding.source.name,
-                "sha256": hashlib.sha256(active_operator_files[stage]).hexdigest(),
-                "portable": binding.portable,
-            }
-            for stage, binding in resolved.operators.items()
-        },
+        "operators": operator_components,
     }
 
 

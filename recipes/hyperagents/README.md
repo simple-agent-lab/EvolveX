@@ -48,7 +48,7 @@ docker build --build-arg MINISWE_VERSION=2.4.5 \
 ## Operator Routing
 
 `select: {operator: score_child_prop, config: {}}` resolves to [`library/select/score_child_prop.py`](../../library/select/score_child_prop.py).
-`rollout: {operator: parent_evaluation, config: {}}` resolves to [`library/rollout/parent_evaluation.py`](../../library/rollout/parent_evaluation.py) and uses the normalized collector from [`library/rollout/harbor.py`](../../library/rollout/harbor.py).
+`rollout: {operator: parent_evaluation, config: {}}` resolves to [`library/rollout/parent_evaluation.py`](../../library/rollout/parent_evaluation.py) and uses the normalized collector from [`library/_shared/harbor.py`](../../library/_shared/harbor.py).
 `analyze: {operator: trace_browser, config: {}}` resolves to [`library/analyze/trace_browser.py`](../../library/analyze/trace_browser.py).
 `mutate: {operator: hyperagents, config: {...}}` resolves to [`library/mutate/hyperagents.py`](../../library/mutate/hyperagents.py).
 `validate: {operator: hyperagents, config: {}}` resolves to [`library/validate/hyperagents.py`](../../library/validate/hyperagents.py).

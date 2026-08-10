@@ -66,7 +66,7 @@ adapter packages.
 <workspace>/
 ├─ target/          candidate selected by the recipe's seed
 ├─ operators/       frozen active recipe-selected operator scripts
-├─ library/         frozen catalog alternatives and imported helpers
+├─ library/         frozen runtime helpers imported by selected library operators
 ├─ evaluator/       frozen evaluator and selected engine files
 ├─ skills/          workspace operating manual
 ├─ .evolve/         vendored framework runtime and launcher

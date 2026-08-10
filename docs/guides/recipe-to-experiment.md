@@ -85,7 +85,7 @@ Initialization creates a separate Git repository and freezes:
 - the resolved `evolve.yaml`;
 - the target seed under `target/`;
 - active operators under `operators/`;
-- shared operator helpers under `library/_shared/`;
+- runtime helpers imported by selected library operators under `library/`;
 - operator source names, normalized config, and SHA-256 provenance in
   `.evolve-components.json`;
 - the evaluator and task membership under `evaluator/`;
@@ -108,8 +108,9 @@ git show gen/0:evaluator/splits.json
 git status --short
 ```
 
-`operators/README.md` lists the active operator implementation and the
-alternatives copied into each `library/<stage>/` directory.
+`operators/README.md` lists the recipe-selected implementations. Only their
+shared runtime helpers are copied under `library/`; unselected catalog operators
+remain in the source installation.
 
 ## 5. Run doctor and an isolated smoke
 

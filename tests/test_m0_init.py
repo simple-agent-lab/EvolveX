@@ -559,12 +559,23 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
         assert (workspace / relative_path).exists(), relative_path
     for method_card in ("a-evolve.md", "gepa.md", "ahe.md", "hyperagents.md"):
         assert (workspace / "skills/evolve-agent/references" / method_card).is_file()
-    for capability in (
+    for helper in (
+        "library/__init__.py",
+        "library/_shared/config.py",
+        "library/mutate/_config.py",
+        "library/mutate/_runners/local.py",
+        "library/mutate/_support/workspace.py",
+    ):
+        assert (workspace / helper).is_file(), helper
+    for unselected in (
         "library/analyze/ahe.py",
         "library/analyze/gepa.py",
+        "library/mutate/aevolve.py",
+        "library/mutate/hyperagents.py",
+        "library/rollout/harbor.py",
         "library/validate/minibatch_improvement.py",
     ):
-        assert (workspace / capability).is_file(), capability
+        assert not (workspace / unselected).exists(), unselected
     assert "artifacts/" in (workspace / ".gitignore").read_text().splitlines()
     assert not (workspace / "operators" / "meta_agent.py").exists()
     assert not (workspace / "operators" / "meta_agent.md").exists()
@@ -662,7 +673,7 @@ def test_init_binds_real_hyperagents_method_surface_and_operators(tmp_path: Path
     assert result.returncode == 0, result.stderr
     assert "score_child_prop" in (workspace / "operators/select.py").read_text()
     assert "ParentEvaluationRollout" in (workspace / "operators/rollout.py").read_text()
-    assert (workspace / "library/rollout/harbor.py").is_file()
+    assert not (workspace / "library/rollout/harbor.py").exists()
     assert "class TraceBrowser" in (workspace / "operators/analyze.py").read_text()
     assert "operator: hyperagents" in (workspace / "operators/mutate.py").read_text()
     assert "HyperAgents Self-Improvement" in (workspace / "operators/mutate.py").read_text()

@@ -22,7 +22,7 @@ from library._shared.config import (
     string,
 )
 from library._shared.gepa import read_json
-from library.rollout.harbor import HarborRollout
+from library._shared.harbor import HarborRollout
 
 _CONFIG_KEYS = {
     "criterion",

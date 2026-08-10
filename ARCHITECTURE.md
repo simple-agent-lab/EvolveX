@@ -29,6 +29,7 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `composition/__init__.py` | 25 | stable recipe-resolution facade without CLI dependencies |
 | `composition/catalog.py` | 250 | filesystem-only operator library discovery and subprocess inspection protocol |
 | `composition/cli.py` | 100 | recipe check command rendering human and machine-readable resolved bindings |
+| `composition/materialize.py` | 200 | selected operator freezing, runtime-helper materialization, and provenance manifest entries |
 | `composition/recipe.py` | 300 | strict built-in and path recipe resolution, operator binding validation, and aggregated diagnostics |
 | `config.py` | 225 | read/render `evolve.yaml`, including evaluator repetition and inline runtime normalization |
 | `driver.py` | 1800 | the generation sequencer: orchestrates baseline eval, verbs + operators (incl. novelty, self-modification admission gates, sealed anchors); validates operator outputs; computes verified_fixes; audit quarantine; doctor repair |
@@ -72,7 +73,7 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `splits.py` | 650 | freeze content-backed task identity/membership and materialize authoritative limited runtime selections |
 | `surface.py` | 150 | mutable-surface pattern matching and violation checks |
 | `trace_analysis.py` | 775 | deterministic shared transforms used by the independent analyze operator variants |
-| `workspace.py` | 1100 | `evolve init` scaffolding: file copies, operator binding, deterministic dataset and Harbor runtime config, generated operator palette, protocol stamping, safe seed + mechanism vendoring, inner-skill copy |
+| `workspace.py` | 1100 | `evolve init` scaffolding: file copies, composition materialization, deterministic dataset and Harbor runtime config, protocol stamping, safe seed + mechanism vendoring, inner-skill copy |
 | `git.py` | 150 | thin git subprocess helpers — nothing evolve-specific |
 | `harbor_local.py` | 250 | minimal in-place Harbor environment for fast trials against a pre-configured local agent runtime |
 | `host_runtime.py` | 100 | host-side locked runtime process helpers |
@@ -99,7 +100,7 @@ each workspace, immutable there because it sits outside the mutable surface
 | `frozen/interfaces.py` | 350 | operator ABCs, registry, result schemas, and strict operator payload validation |
 | `frozen/sdk.py` | 350 | Python operator entrypoint and file-contract IO; no library algorithm policy |
 
-Total `src/evolve/` budget: **17630 lines**. The budget admits the explicit content-backed
+Total `src/evolve/` budget: **17830 lines**. The budget admits the explicit content-backed
 evaluation-contract boundaries, the opt-in in-place Harbor runtime, and the redacted trace-analysis
 boundary between rollout and feedback assembly; if the mechanism wants to
 grow past that, something belongs in a workspace operator instead —

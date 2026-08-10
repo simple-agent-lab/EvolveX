@@ -33,6 +33,6 @@ def test_gepa_recipe_initializes_all_native_operators(tmp_path: Path) -> None:
     assert "class MinibatchImprovementValidate" in (workspace / "operators/validate.py").read_text()
     assert "class GepaRecord" in (workspace / "operators/record.py").read_text()
     assert (workspace / "library/_shared/gepa.py").is_file()
-    mutate = (workspace / "library/mutate/gepa.py").read_text()
+    mutate = (workspace / "operators/mutate.py").read_text()
     assert "## Reflective dataset" not in mutate
     assert "component_evidence" in mutate

@@ -182,9 +182,7 @@ def test_init_copies_frozen_library_helpers_and_active_provenance(tmp_path: Path
     assert (workspace / "library/mutate/_runners/harbor.py").read_bytes() == (
         Path(library_root()) / "mutate/_runners/harbor.py"
     ).read_bytes()
-    assert (workspace / "library/mutate/_skeleton.py").read_bytes() == (
-        Path(library_root()) / "mutate/_skeleton.py"
-    ).read_bytes()
+    assert not (workspace / "library/mutate/_skeleton.py").exists()
     first_line = (workspace / "operators/mutate.py").read_text().splitlines()[0]
     assert "kind=mutate source=library/mutate/hyperagents.py" in first_line
     assert str(Path(library_root()).resolve()) not in first_line
@@ -194,6 +192,7 @@ def test_init_copies_binary_shared_and_stage_local_helper_assets(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from evolve import workspace as workspace_module
+    from evolve.composition import materialize as materialize_module
     from evolve.composition import recipe as recipe_module
 
     library = tmp_path / "library"
@@ -208,6 +207,7 @@ def test_init_copies_binary_shared_and_stage_local_helper_assets(
     (library / "_root_helper.py").write_bytes(root_helper)
     (library / "_root_assets").mkdir()
     (library / "_root_assets/payload.bin").write_bytes(root_asset)
+    monkeypatch.setattr(materialize_module, "library_root", lambda: library)
     monkeypatch.setattr(recipe_module, "library_root", lambda: library)
     monkeypatch.setattr(workspace_module, "library_root", lambda: library)
 
