@@ -171,12 +171,16 @@ def _generation_detail(
 
 def _stages(sources: WorkspaceSources, row: dict[str, Any], trials: list[TrialSummary]) -> list[StageSummary]:
     genid = str(row["genid"])
+    is_genesis = row.get("purpose") == "genesis" or (genid == "0" and row.get("parent") is None)
     prefix = f"runs/gen-{genid}/"
     raw_operators = sources.config.get("operators")
     operators = cast(dict[str, Any], raw_operators) if isinstance(raw_operators, dict) else {}
     result: list[StageSummary] = []
     pre_evaluation_rejected = False
     for name in STAGE_ORDER:
+        if is_genesis and name != "canonical_evaluation":
+            result.append(StageSummary(name=name, state="not_applicable"))
+            continue
         operator = _OPERATOR_FOR_STAGE.get(name)
         if operator is not None and operator not in operators:
             result.append(StageSummary(name=name, state="not_applicable"))

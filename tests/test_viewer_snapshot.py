@@ -82,6 +82,36 @@ def test_newest_candidate_controls_overview_health(tmp_path: Path) -> None:
     assert bundle.snapshot.experiment.best_score == 0.6
 
 
+def test_genesis_only_reports_its_canonical_evaluation_stage(tmp_path: Path) -> None:
+    sources = _sources(
+        tmp_path,
+        rows=[
+            {
+                "genid": "0",
+                "purpose": "genesis",
+                "status": "complete",
+                "score": 0.5,
+                "expected_trials": 2,
+                "task_vector": {
+                    "tasks": {
+                        "task-a": {"trials": [{"status": "benchmark_complete", "reward": 1.0}]},
+                        "task-b": {"trials": [{"status": "benchmark_complete", "reward": 0.0}]},
+                    }
+                },
+            }
+        ],
+    )
+
+    bundle = build_snapshot(sources)
+    detail = bundle.generation_details["0"]
+
+    assert detail.summary.current_stage is None
+    assert _stage(bundle, "0", "canonical_evaluation").state == "complete"
+    assert _stage(bundle, "0", "canonical_evaluation").progress_completed == 2
+    assert _stage(bundle, "0", "canonical_evaluation").progress_total == 2
+    assert all(stage.state == "not_applicable" for stage in detail.stages if stage.name != "canonical_evaluation")
+
+
 def test_passed_run_summary_keeps_normal_final_rejection_from_failing_experiment(tmp_path: Path) -> None:
     sources = _sources(
         tmp_path,
