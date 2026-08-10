@@ -140,6 +140,7 @@ function activateNavigation(name) {
 
 async function renderRoute(pathname, params) {
   if (!state.snapshot) return;
+  content.classList.remove('diff-mode');
   if (pathname.startsWith('/artifacts/')) {
     activateNavigation(null);
     await renderArtifact(decodeURIComponent(pathname.slice('/artifacts/'.length)));
@@ -345,19 +346,37 @@ async function renderArtifact(artifactId) {
   const presentation = artifactPresentation(metadata, text);
   const isDiff = presentation.mode === 'diff';
   const title = isDiff && genid ? `Generation ${genid} diff` : metadata.label;
+  content.classList.toggle('diff-mode', isDiff);
   content.innerHTML = `
     <div class="page-heading artifact-heading">
       <div><p class="eyebrow">${isDiff ? 'Generation comparison' : 'Artifact preview'}</p><h2>${escapeHtml(title)}</h2><p class="artifact-path">${escapeHtml(metadata.relative_path)}</p></div>
       <div class="page-actions">
         <a class="button" data-evolve-link href="${backHref}">← ${genid ? `Generation ${escapeHtml(genid)}` : 'Overview'}</a>
-        ${isDiff ? '<button class="button diff-layout-button primary" type="button" data-diff-layout="side-by-side" aria-pressed="true">Split</button><button class="button diff-layout-button" type="button" data-diff-layout="line-by-line" aria-pressed="false">Unified</button>' : ''}
         <a class="button" target="_blank" href="${escapeHtml(metadata.content_url)}">Raw</a>
-        <button class="button" id="artifact-wrap" type="button" aria-pressed="false">Wrap lines</button>
+        ${isDiff ? '' : '<button class="button" id="artifact-wrap" type="button" aria-pressed="false">Wrap lines</button>'}
       </div>
     </div>
     ${metadata.truncated ? '<div class="artifact-notice">Preview limited to the first 1 MiB of this artifact.</div>' : ''}
     <section class="card artifact-card">
-      <div class="artifact-meta"><span>${escapeHtml(metadata.kind || 'text')}</span><span>${formatBytes(metadata.size)}</span></div>
+      ${isDiff ? `<div class="diff-toolbar">
+        <div class="diff-generation-flow">
+          <span><small>Original</small><strong>${generation?.parent == null ? 'Parent version' : `Generation ${escapeHtml(generation.parent)}`}</strong></span>
+          <b aria-hidden="true">→</b>
+          <span><small>Modified</small><strong>Generation ${escapeHtml(genid || '—')}</strong></span>
+        </div>
+        <div class="diff-summary" aria-label="Diff summary">
+          <span><strong>${generation?.change_files ?? '—'}</strong> files</span>
+          <span class="plus">+${generation?.insertions ?? '—'}</span>
+          <span class="minus">−${generation?.deletions ?? '—'}</span>
+        </div>
+        <div class="diff-toolbar-actions">
+          <div class="diff-segmented" aria-label="Diff layout">
+            <button class="diff-layout-button" type="button" data-diff-layout="side-by-side" aria-pressed="true">Split</button>
+            <button class="diff-layout-button" type="button" data-diff-layout="line-by-line" aria-pressed="false">Unified</button>
+          </div>
+          <button class="button" id="artifact-wrap" type="button" aria-pressed="false">Wrap lines</button>
+        </div>
+      </div>` : `<div class="artifact-meta"><span>${escapeHtml(metadata.kind || 'text')}</span><span>${formatBytes(metadata.size)}</span></div>`}
       ${isDiff && genid ? `<div id="diff-comparison-labels" class="diff-comparison-labels">
         <div><span>Original</span><strong>${generation?.parent == null ? 'Parent version' : `Generation ${escapeHtml(generation.parent)}`}</strong></div>
         <div><span>Modified</span><strong>Generation ${escapeHtml(genid)}</strong></div>
@@ -374,6 +393,7 @@ async function renderArtifact(artifactId) {
     wrapButton.textContent = wrapping ? 'Do not wrap' : 'Wrap lines';
   });
   const renderLayout = (outputFormat) => {
+    document.querySelector('.artifact-card').dataset.diffLayout = outputFormat;
     preview.replaceChildren();
     preview.classList.remove('diff-preview');
     renderArtifactPresentation(preview, presentation, {outputFormat});
