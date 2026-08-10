@@ -154,7 +154,7 @@ function performanceCard(detail, generations) {
 
 function renderGenerations() {
   const generations = [...state.snapshot.generations].reverse();
-  content.innerHTML = `<div class="page-heading"><div><h2>Generations</h2><p>${generations.length} recorded candidates and baselines.</p></div></div>${generationTable(generations, null)}`;
+  content.innerHTML = `<div class="page-heading"><div><h2>Generations</h2><p>${generations.length} recorded candidates and baselines.</p></div><div class="page-actions"><a class="button" href="/" data-evolve-link>← Overview</a></div></div>${generationTable(generations, null)}`;
 }
 
 function generationTable(generations, title) {
@@ -170,10 +170,10 @@ function generationTable(generations, title) {
 async function renderGeneration(genid) {
   let detail;
   try { detail = await getJson(`/api/evolve/generations/${encodeURIComponent(genid)}`); }
-  catch (error) { content.innerHTML = `<div class="error-card"><strong>Generation not found.</strong><p>${escapeHtml(error.message)}</p></div>`; return; }
+  catch (error) { content.innerHTML = `<div class="error-card"><strong>Generation not found.</strong><p>${escapeHtml(error.message)}</p><p><a class="button" data-evolve-link href="/generations">← Generations</a></p></div>`; return; }
   const summary = detail.summary;
   content.innerHTML = `
-    <div class="page-heading"><div><p class="eyebrow">Generation detail</p><h2>Generation ${escapeHtml(summary.genid)}</h2><div class="detail-meta"><span>Status ${badge(summary.status)}</span><span>Parent <strong>${escapeHtml(summary.parent || '—')}</strong></span><span>Score <strong>${number(summary.score)}</strong></span></div></div><div class="page-actions"><a class="button" data-evolve-link href="/trials?generation=${encodeURIComponent(summary.genid)}">View trials</a></div></div>
+    <div class="page-heading"><div><p class="eyebrow">Generation detail</p><h2>Generation ${escapeHtml(summary.genid)}</h2><div class="detail-meta"><span>Status ${badge(summary.status)}</span><span>Parent <strong>${escapeHtml(summary.parent || '—')}</strong></span><span>Score <strong>${number(summary.score)}</strong></span></div></div><div class="page-actions"><a class="button" data-evolve-link href="/generations">← Generations</a><a class="button" data-evolve-link href="/trials?generation=${encodeURIComponent(summary.genid)}">View trials</a></div></div>
     <div class="stack">
       <section class="card"><div class="card-header"><div><h3>Stage progress</h3><p>Evidence inferred from this generation's artifacts</p></div></div><div class="stage-strip">${detail.stages.map(stageItem).join('')}</div></section>
       <div class="grid-two">${changeCard(detail)}${performanceCard(detail, generationsThrough(state.snapshot.generations, summary.genid))}</div>
@@ -204,7 +204,7 @@ async function renderArtifact(artifactId) {
   try {
     loaded = await loadArtifact(artifactId);
   } catch (error) {
-    content.innerHTML = `<div class="error-card"><strong>Could not read this artifact.</strong><p>${escapeHtml(error.message)}</p></div>`;
+    content.innerHTML = `<div class="error-card"><strong>Could not read this artifact.</strong><p>${escapeHtml(error.message)}</p><p><a class="button" data-evolve-link href="/">← Overview</a></p></div>`;
     return;
   }
   const {metadata, text} = loaded;
@@ -213,7 +213,7 @@ async function renderArtifact(artifactId) {
   content.innerHTML = `
     <div class="page-heading artifact-heading">
       <div><p class="eyebrow">Artifact preview</p><h2>${escapeHtml(metadata.label)}</h2><p class="artifact-path">${escapeHtml(metadata.relative_path)}</p></div>
-      <div class="page-actions"><a class="button" data-evolve-link href="${backHref}">Back</a><a class="button" target="_blank" href="${escapeHtml(metadata.content_url)}">Raw</a><button class="button" id="artifact-wrap" type="button" aria-pressed="false">Wrap lines</button></div>
+      <div class="page-actions"><a class="button" data-evolve-link href="${backHref}">← ${generationMatch ? 'Generation' : 'Overview'}</a><a class="button" target="_blank" href="${escapeHtml(metadata.content_url)}">Raw</a><button class="button" id="artifact-wrap" type="button" aria-pressed="false">Wrap lines</button></div>
     </div>
     ${metadata.truncated ? '<div class="artifact-notice">Preview limited to the first 1 MiB of this artifact.</div>' : ''}
     <section class="card artifact-card"><div class="artifact-meta"><span>${escapeHtml(metadata.kind || 'text')}</span><span>${formatBytes(metadata.size)}</span></div><div id="artifact-preview" class="artifact-preview no-wrap"></div></section>`;
@@ -272,8 +272,11 @@ async function renderTrials(params) {
   if (!apiParams.has('page_size')) apiParams.set('page_size', '50');
   const data = await getJson(`/api/evolve/trials?${apiParams}`);
   const generations = [...state.snapshot.generations].reverse();
+  const selectedGeneration = params.get('generation');
+  const backHref = selectedGeneration ? `/generations/${encodeURIComponent(selectedGeneration)}` : '/';
+  const backLabel = selectedGeneration ? `Generation ${escapeHtml(selectedGeneration)}` : 'Overview';
   content.innerHTML = `
-    <div class="page-heading"><div><h2>Trials</h2><p>Canonical outcomes with direct access to full Harbor inspection.</p></div></div>
+    <div class="page-heading"><div><h2>Trials</h2><p>Canonical outcomes with direct access to full Harbor inspection.</p></div><div class="page-actions"><a class="button" data-evolve-link href="${backHref}">← ${backLabel}</a></div></div>
     <section class="card">
       <form id="trial-filters" class="filters">
         <div class="field"><label for="filter-generation">Generation</label><select id="filter-generation" name="generation"><option value="">All generations</option>${generations.map((generation) => `<option value="${escapeHtml(generation.genid)}" ${params.get('generation') === generation.genid ? 'selected' : ''}>${escapeHtml(generation.genid)}</option>`).join('')}</select></div>

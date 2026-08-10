@@ -154,6 +154,7 @@ def test_frontend_has_required_navigation_and_refresh_contract() -> None:
     assert "3000" in javascript
     assert "/api/evolve/snapshot" in javascript
     assert "Full Harbor inspection" in javascript
+    assert all(label in javascript for label in ("← Overview", "← Generations", "← Generation"))
 
 
 @pytest.mark.parametrize(
