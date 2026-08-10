@@ -32,6 +32,7 @@ operators:
     task_sampling: generation_shuffle
     n_concurrent: 4
     agent_setup_timeout_multiplier: 1
+    verifier_timeout_multiplier: 1
     max_retries: 1
     timeout_s: 3600
 ```
@@ -42,6 +43,10 @@ Important keys:
 - `task_sampling`: `head` or deterministic `generation_shuffle`;
 - `task_names`: optional exact names from the frozen train split;
 - `n_concurrent`: concurrent Harbor trials;
+- `agent_setup_timeout_multiplier`, `agent_timeout_multiplier`, and
+  `verifier_timeout_multiplier`: multiply the corresponding limits declared
+  by each task's `task.toml`; keep the operator `timeout_s` large enough for
+  the resulting longest trial;
 - `agent_env` and agent/runtime settings: inputs forwarded to the rollout
   adapter;
 - `max_retries` and `timeout_s`: infrastructure retry and operator limits.
@@ -62,4 +67,3 @@ runs/harbor-rollouts/gen-N/
 `cases.json` is the method-neutral input to `trace_analyzer`. It includes task
 identity, ordered model/tool events, verifier evidence, outcome, exception,
 usage, timing, and artifact inventory.
-
