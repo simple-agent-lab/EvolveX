@@ -70,6 +70,10 @@ export function scoreTrend(generations, selectedId = null) {
   const coordinates = points.map((item, index) => `${x(index)},${y(item.score)}`).join(' ');
   const tooltipWidth = 104;
   const tooltipHeight = 30;
+  const plotHeight = height - top - bottom;
+  const pointSpacing = points.length === 1
+    ? width - left - right
+    : (width - left - right) / (points.length - 1);
   const displayScore = (score) => Number(score).toFixed(3).replace(/\.?0+$/, '');
 
   return `<div class="trend-scroll"><svg class="trend" viewBox="0 0 ${width} ${height}" role="img" aria-label="Canonical score by generation">
@@ -83,8 +87,11 @@ export function scoreTrend(generations, selectedId = null) {
       const pointY = y(item.score);
       const tooltipX = Math.max(left, Math.min(width - right - tooltipWidth, pointX - tooltipWidth / 2));
       const tooltipY = pointY < top + tooltipHeight + 8 ? pointY + 12 : pointY - tooltipHeight - 10;
+      const hitLeft = index === 0 ? left : pointX - pointSpacing / 2;
+      const hitRight = index === points.length - 1 ? width - right : pointX + pointSpacing / 2;
       return `<g class="trend-point" tabindex="0" role="img" aria-label="Generation ${genid}: ${score}">
-        <circle class="trend-hit" cx="${pointX}" cy="${pointY}" r="12"/>
+        <rect class="trend-hit" x="${hitLeft}" y="${top}" width="${hitRight - hitLeft}" height="${plotHeight}"/>
+        <line class="trend-guide" x1="${pointX}" x2="${pointX}" y1="${top}" y2="${height - bottom}"/>
         <circle class="trend-dot${selected}" cx="${pointX}" cy="${pointY}" r="4"/>
         <g class="trend-tooltip" aria-hidden="true" transform="translate(${tooltipX} ${tooltipY})">
           <rect width="${tooltipWidth}" height="${tooltipHeight}" rx="6"/>

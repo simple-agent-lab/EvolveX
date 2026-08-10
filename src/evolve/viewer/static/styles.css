@@ -125,10 +125,12 @@ main { width: min(1280px, 100%); margin: 0 auto; padding: 34px clamp(22px, 4vw, 
 .trend-grid { stroke: #e5ebe7; stroke-width: 1; vector-effect: non-scaling-stroke; }
 .trend-point { cursor: pointer; outline: none; }
 .trend-hit { fill: transparent; }
+.trend-guide { opacity: 0; stroke: var(--accent); stroke-width: 1; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
 .trend-dot { fill: white; stroke: var(--accent); stroke-width: 2; vector-effect: non-scaling-stroke; }
 .trend-dot.selected { fill: var(--accent); stroke: white; stroke-width: 3; filter: drop-shadow(0 0 2px rgb(24 124 86 / 55%)); }
 .trend-point:hover .trend-dot, .trend-point:focus .trend-dot { fill: var(--accent); }
 .trend-point:focus .trend-dot { stroke: white; stroke-width: 3; filter: drop-shadow(0 0 3px rgb(24 124 86 / 65%)); }
+.trend-point:hover .trend-guide, .trend-point:focus .trend-guide { opacity: .35; }
 .trend-tooltip { opacity: 0; pointer-events: none; transition: opacity 100ms ease; }
 .trend-point:hover .trend-tooltip, .trend-point:focus .trend-tooltip { opacity: 1; }
 .trend-tooltip rect { fill: var(--rail); filter: drop-shadow(0 2px 4px rgb(23 32 28 / 22%)); }
