@@ -50,7 +50,10 @@ def test_run_mutate_uses_nested_mutate_command(tmp_path: Path) -> None:
     run_mutate(
         workspace=workspace,
         prompt="x",
-        config={"operators": {"mutate": {"command": f"{sys.executable} {script}"}}, "timeout_s": 30},
+        config={
+            "operators": {"mutate": {"config": {"command": f"{sys.executable} {script}"}}},
+            "timeout_s": 30,
+        },
     )
 
     assert (workspace / "nested-command-ran").read_text() == "yes\n"

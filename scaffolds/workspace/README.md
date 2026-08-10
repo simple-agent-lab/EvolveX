@@ -21,7 +21,7 @@ README.md                     this workspace guide
 archive.jsonl                 append-only lineage record
 evolve                        workspace console
 evolve.yaml                   rendered recipe configuration
-library/                      only shared runtime helpers imported by selected scripts
+library/                      closed root and selected-stage underscore helper bundles
 LICENSE.evolvex               license for the vendored framework and operator library
 NOTICE.evolvex                framework and third-party attribution notices
 operators/                    recipe-selected active scripts, supporting Markdown, and index

@@ -10,7 +10,7 @@ being improved.
 - The target exposes prompts or skills as meaningful mutable components.
 - Complete behavioral trajectories are available, or the evaluator retains
   generated artifacts with structured rubric judgments.
-- The meta agent or outer agent can identify recurring, transferable failure
+- The mutate operator or outer agent can identify recurring, transferable failure
   patterns from the selected evidence mode.
 - The evaluated agent actually consumes every component being evolved.
 
@@ -18,7 +18,7 @@ being improved.
 
 Run `./evolve operator active . --json` and follow the live access metadata. The
 shipped A-Evolve profile normally provides task rollout, a `trajectory_only`
-analyze, and an `aevolve` meta agent. Artifact-oriented experiments may
+analyze, and an `aevolve` mutate operator. Artifact-oriented experiments may
 instead compose `library/rollout/parent_evaluation.py` with
 `library/analyze/artifact_rubric.py` and the same
 `library/mutate/aevolve.py` mutation strategy. For an outer-agent edit,

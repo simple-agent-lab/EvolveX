@@ -30,7 +30,7 @@ class HyperAgentsValidate(ValidateOperator):
             log.write_text(f"FAIL {relative}: {exc}\n")
             return ValidateResult(False, f"compile failed for {relative}", ["validate/compile.log"])
         log.write_text("\n".join(f"PASS {path}" for path in checked) + "\n")
-        return ValidateResult(True, "meta-agent and task-agent Python compile", ["validate/compile.log"])
+        return ValidateResult(True, "mutate and task-agent Python compile", ["validate/compile.log"])
 
 
 if __name__ == "__main__":

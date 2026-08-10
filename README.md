@@ -172,7 +172,7 @@ supported recipe values, and launcher overrides.
 
 Scores are solved-task counts shown as **seed → best**, with the absolute
 task-count change underneath. All runs use a GPT-5.4-high target model and a
-GPT-5.4-xhigh Codex meta-agent.
+GPT-5.4-xhigh Codex mutate operator.
 
 ### Terminal Bench 2
 

@@ -5,8 +5,9 @@ entry at `library/<stage>/<name>.py` is a named operator; adding a valid file
 makes it discoverable without a registry edit. Recipes contain no operator
 code. They select a name and provide configuration, and initialization freezes
 only the recipe-selected active scripts into `operators/`. The generated
-`library/` contains only the shared runtime helpers imported by those selected
-scripts.
+`library/` contains the closed root underscore helper bundle plus the
+underscore helper bundle for each selected named stage; unselected public
+operators are never copied.
 
 ```text
 library/

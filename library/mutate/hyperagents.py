@@ -1,4 +1,4 @@
-"""HyperAgents-style self-referential meta-agent operator."""
+"""HyperAgents-style self-referential mutate operator."""
 
 from __future__ import annotations
 

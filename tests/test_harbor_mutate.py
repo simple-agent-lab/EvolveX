@@ -360,7 +360,7 @@ def _checkout(tmp_path: Path) -> tuple[Path, Path]:
     (checkout / ".gitignore").write_text("artifacts/\n")
     (checkout / "target" / "obsolete.txt").write_text("remove me\n")
     (checkout / "operators" / "mutate.md").write_text(
-        "# Meta-Agent\n\nImprove the target from the supplied failure evidence.\n"
+        "# Mutate Operator\n\nImprove the target from the supplied failure evidence.\n"
     )
     (checkout / "evolve.yaml").write_text(
         "experiment:\n  id: test\n"

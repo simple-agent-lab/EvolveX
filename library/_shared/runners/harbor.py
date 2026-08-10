@@ -87,9 +87,9 @@ def _validate_tree(root: Path) -> None:
     for path in [root, *root.rglob("*")]:
         mode = path.lstat().st_mode
         if stat.S_ISLNK(mode):
-            raise RuntimeError(f"Harbor meta-agent does not accept symlinks: {path}")
+            raise RuntimeError(f"Harbor mutate runner does not accept symlinks: {path}")
         if not (stat.S_ISDIR(mode) or stat.S_ISREG(mode)):
-            raise RuntimeError(f"Harbor meta-agent does not accept special files: {path}")
+            raise RuntimeError(f"Harbor mutate runner does not accept special files: {path}")
 
 
 def _editable_roots(value: object, surface: SurfacePolicy) -> tuple[str, ...]:
@@ -245,8 +245,8 @@ def _nonignored_manifest_changes(
 
 def _initialize_sanitized_git(workspace: Path) -> None:
     git(workspace, "init", "--quiet")
-    git(workspace, "config", "user.name", "EvolveX Meta-Agent")
-    git(workspace, "config", "user.email", "meta-agent@evolvex.invalid")
+    git(workspace, "config", "user.name", "EvolveX Mutate Operator")
+    git(workspace, "config", "user.email", "mutate@evolvex.invalid")
     # This repository is copied into the Harbor task immediately after the
     # baseline commit.  Git may otherwise detach automatic maintenance on
     # platforms such as macOS, racing that copy as maintenance.lock appears
@@ -254,7 +254,7 @@ def _initialize_sanitized_git(workspace: Path) -> None:
     git(workspace, "config", "maintenance.auto", "false")
     git(workspace, "config", "gc.auto", "0")
     git(workspace, "add", "--all")
-    git(workspace, "commit", "--quiet", "--no-gpg-sign", "-m", "sanitized meta-agent baseline")
+    git(workspace, "commit", "--quiet", "--no-gpg-sign", "-m", "sanitized mutate baseline")
 
 
 def _copy_visible_generation_inputs(source: Path, destination: Path) -> None:
@@ -264,7 +264,7 @@ def _copy_visible_generation_inputs(source: Path, destination: Path) -> None:
             copied = destination / name
             # trajectory_only uses isolated Harbor jobs to produce the
             # published evidence bundle. Those jobs are implementation
-            # artifacts, not meta-agent evidence, and may contain the judge
+            # artifacts, not mutate evidence, and may contain the judge
             # model's unrelated context (including names that overlap private
             # task partitions). Only the analyzer's published outputs belong
             # in the editing bundle.
@@ -273,7 +273,7 @@ def _copy_visible_generation_inputs(source: Path, destination: Path) -> None:
             # Certified replay snapshots are intentionally frozen in the
             # experiment workspace. Docker Compose's artifact copier preserves
             # those directory modes, then cannot create their descendants in
-            # the host destination. The meta-agent bundle is disposable and
+            # the host destination. The mutate bundle is disposable and
             # changes under runs/ are never imported, so keep the files intact
             # while allowing the bundle itself to round-trip as an artifact.
             for current, _, _ in os.walk(copied, followlinks=False):
@@ -356,7 +356,7 @@ def _redact_private_tasks_from_run_inputs(workspace: Path, private_names: tuple[
     Target agents can inspect resources outside the task checkout and may echo a
     gate or sealed task name into their command output. The rollout remains
     valid train evidence, but that incidental identifier must not be forwarded
-    to the meta-agent. Only the disposable copied ``runs`` evidence is rewritten;
+    to the mutate operator. Only the disposable copied ``runs`` evidence is rewritten;
     candidate and durable artifact inputs remain protected by the strict check
     below.
     """
@@ -382,13 +382,13 @@ def _assert_private_tasks_absent(workspace: Path, prompt: str, private_names: tu
     if pattern is None:
         return
     if pattern.search(prompt.encode()):
-        raise RuntimeError("Harbor meta-agent prompt contains a private gate/sealed task identifier")
+        raise RuntimeError("Harbor mutate prompt contains a private gate/sealed task identifier")
     overlap = max(len(name.encode()) for name in private_names) + 1
     for path in workspace.rglob("*"):
         if not path.is_file() or ".git" in path.relative_to(workspace).parts:
             continue
         if _contains_private_task_name(path, pattern, overlap):
-            raise RuntimeError("Harbor meta-agent workspace contains a private gate/sealed task identifier")
+            raise RuntimeError("Harbor mutate workspace contains a private gate/sealed task identifier")
 
 
 def _expose_gate_data(config: dict[str, Any]) -> bool:
@@ -487,19 +487,19 @@ def _copy_returned_tree(checkout: Path, source: Path, destination: Path, relativ
         if _git_ignored(checkout, child_relative, directory=stat.S_ISDIR(mode)):
             continue
         if stat.S_ISLNK(mode):
-            raise RuntimeError(f"Harbor meta-agent does not accept symlinks: {child}")
+            raise RuntimeError(f"Harbor mutate runner does not accept symlinks: {child}")
         if stat.S_ISDIR(mode):
             _copy_returned_tree(checkout, child, destination / child.name, child_relative)
         elif stat.S_ISREG(mode):
             shutil.copy2(child, destination / child.name)
         else:
-            raise RuntimeError(f"Harbor meta-agent does not accept special files: {child}")
+            raise RuntimeError(f"Harbor mutate runner does not accept special files: {child}")
 
 
 def _copy_regular_tree(source: Path, destination: Path) -> None:
     """Copy only regular files/directories, treating a deleted namespace as empty."""
     if source.is_symlink():
-        raise RuntimeError(f"Harbor meta-agent does not accept symlinks: {source}")
+        raise RuntimeError(f"Harbor mutate runner does not accept symlinks: {source}")
     if not source.exists():
         destination.mkdir(parents=True)
         return
@@ -509,13 +509,13 @@ def _copy_regular_tree(source: Path, destination: Path) -> None:
     for child in source.iterdir():
         mode = child.lstat().st_mode
         if stat.S_ISLNK(mode):
-            raise RuntimeError(f"Harbor meta-agent does not accept symlinks: {child}")
+            raise RuntimeError(f"Harbor mutate runner does not accept symlinks: {child}")
         if stat.S_ISDIR(mode):
             _copy_regular_tree(child, destination / child.name)
         elif stat.S_ISREG(mode):
             shutil.copy2(child, destination / child.name)
         else:
-            raise RuntimeError(f"Harbor meta-agent does not accept special files: {child}")
+            raise RuntimeError(f"Harbor mutate runner does not accept special files: {child}")
 
 
 def _install_bundle(
@@ -1007,7 +1007,7 @@ def _run_harbor(
             except OSError:
                 process.kill()
             process.wait()
-        chunks.append("\nharbor meta-agent timed out\n")
+        chunks.append("\nharbor mutate runner timed out\n")
         cleanup_messages = _cleanup_harbor_containers(command, env)
         if cleanup_messages:
             chunks.append("\n".join(cleanup_messages) + "\n")
@@ -1026,7 +1026,7 @@ def _trial_result(job_dir: Path) -> tuple[Path, dict[str, Any]]:
         if isinstance(payload, dict) and payload.get("trial_name"):
             matches.append((path.parent, {str(key): value for key, value in payload.items()}))
     if len(matches) != 1:
-        raise RuntimeError(f"expected exactly one Harbor meta-agent trial, found {len(matches)} in {job_dir}")
+        raise RuntimeError(f"expected exactly one Harbor mutate trial, found {len(matches)} in {job_dir}")
     return matches[0]
 
 
@@ -1234,7 +1234,7 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
     prompt_path = harbor_root / "prompt.md"
     jobs_root = Path(str(ctx.config.get("jobs_dir") or harbor_root / "jobs")).expanduser()
     tasks_dir = harbor_root / "tasks"
-    job_name = "meta-agent-gen-" + re.sub(r"[^A-Za-z0-9_.-]+", "-", ctx.genid)
+    job_name = "mutate-gen-" + re.sub(r"[^A-Za-z0-9_.-]+", "-", ctx.genid)
     usage: dict[str, Any] = {"usd": 0, "wall_s": 0}
     output = ""
     returncode = 1
@@ -1254,7 +1254,7 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
             prompt=prompt,
         )
         if (jobs_root / job_name).exists():
-            raise RuntimeError(f"Harbor meta-agent job already exists: {jobs_root / job_name}")
+            raise RuntimeError(f"Harbor mutate job already exists: {jobs_root / job_name}")
         harbor, harbor_env = uv_run(ctx.workspace, "harbor")
         harbor_env = _harbor_process_env(ctx.config, harbor_env, workspace=ctx.workspace)
         prompt_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1321,13 +1321,13 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
             raise RuntimeError(f"harbor exec exited {returncode}; see {harbor_root / 'harbor.log'}")
         if trial.get("exception_info") not in (None, {}):
             raise RuntimeError(
-                f"Harbor meta-agent trial failed: {_redact(str(trial.get('exception_info')), redaction_environment)}"
+                f"Harbor mutate trial failed: {_redact(str(trial.get('exception_info')), redaction_environment)}"
             )
         if _uses_miniswe_artifact(ctx.config.get("agent")):
             exit_status = _miniswe_exit_status(trial_dir)
             if exit_status != "Submitted":
                 raise RuntimeError(
-                    "Harbor MiniSwe meta-agent did not submit successfully: "
+                    "Harbor MiniSwe mutate runner did not submit successfully: "
                     f"exit_status={_redact(str(exit_status or 'missing'), redaction_environment)}"
                 )
         artifact, manifest = _artifact_candidate(trial_dir)

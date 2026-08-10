@@ -22,6 +22,8 @@ def materialize_operators(
     library: Resource | None = None,
 ) -> OperatorMaterialization:
     root = library or library_root()
+    if isinstance(root, Path) and root.is_symlink():
+        raise ValueError(f"operator library root may not be a symlink: {root}")
     files: dict[str, str | bytes] = {}
     frozen_sources: dict[str, bytes] = {}
     components: dict[str, dict[str, object]] = {}
@@ -122,8 +124,9 @@ def _operator_index(
         )
     return (
         "# Active operators\n\n"
-        "The loop runs exactly these recipe-selected scripts. Their imported runtime\n"
-        "helpers are frozen under `library/`; unselected catalog operators are not copied.\n\n"
+        "The loop runs exactly these recipe-selected scripts. The closed root and\n"
+        "selected-stage underscore helper bundles are frozen under `library/`;\n"
+        "unselected catalog operators are not copied.\n\n"
         "| stage | active | what it does | source |\n"
         "| --- | --- | --- | --- |\n" + "\n".join(rows) + "\n"
     )

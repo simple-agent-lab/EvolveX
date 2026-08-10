@@ -1,4 +1,4 @@
-"""Dispatch a meta-agent strategy prompt to its configured runner."""
+"""Dispatch a mutate strategy prompt to its configured runner."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ def run_agent(checkout: Path, prompt: str, ctx: OperatorContext) -> AgentRunResu
     if name == "harbor":
         return harbor.run_agent(checkout, prompt, ctx)
     raise AgentCommandError(
-        f"unknown meta-agent runner: {name}; available: {', '.join(RUNNERS)}",
+        f"unknown mutate runner: {name}; available: {', '.join(RUNNERS)}",
         returncode=2,
     )
 

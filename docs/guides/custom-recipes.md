@@ -221,8 +221,8 @@ recipe names. For a custom recipe, you are responsible for making every image
 named in `evolve.yaml` available to Docker:
 
 ```bash
-docker build -t my-meta-agent:latest containers/meta-agent-codex
-docker image inspect my-meta-agent:latest
+docker build -t my-mutate-runner:latest containers/meta-agent-codex
+docker image inspect my-mutate-runner:latest
 ```
 
 Then reference that exact image:
@@ -235,7 +235,7 @@ operators:
     config:
       runner: harbor
       environment: docker
-      image: my-meta-agent:latest
+      image: my-mutate-runner:latest
 ```
 
 Keep API keys and auth files outside recipe YAML. Supply them through the

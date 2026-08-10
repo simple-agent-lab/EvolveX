@@ -117,14 +117,14 @@ _Avoid_: CLI (for the workspace entry point)
 **Outer agent**:
 The coding agent operating a workspace from outside during an agent-led
 generation.
-_Avoid_: mutation agent, meta-agent (for the outer agent)
+_Avoid_: mutate operator (for the outer agent)
 
-**Mutation agent** (`mutate`):
+**Mutate operator** (`mutate`):
 The configured stage that edits the child from inside the loop during a
 driver-led generation. The outer agent plays this same mutating role from
 outside during an agent-led generation; the name `mutate` stays with the
 stage and its files.
-_Avoid_: outer agent (for the configured mutation agent)
+_Avoid_: outer agent (for the configured mutate operator)
 
 **Driver**:
 The unattended loop started by `evolve run`.

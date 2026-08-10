@@ -209,7 +209,7 @@ class GepaMutate(MutateOperator):
         _write_json(out / "surface-check.json", patch.surface_report)
         _write_json(out / "usage.json", usage)
         if violations:
-            raise SystemExit("GEPA meta-agent changed paths outside the mutable surface: " + ", ".join(violations))
+            raise SystemExit("GEPA mutate operator changed paths outside the mutable surface: " + ", ".join(violations))
         notes = [
             "operator: gepa",
             f"runner: {runner_name(ctx)}",

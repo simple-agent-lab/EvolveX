@@ -118,8 +118,10 @@ def _resolve_command(config: dict[str, Any]) -> str:
     operators = config.get("operators")
     if isinstance(operators, dict):
         mutate = operators.get("mutate")
-        if isinstance(mutate, dict) and mutate.get("command"):
-            return str(mutate["command"])
+        if isinstance(mutate, dict):
+            mutate_config = mutate.get("config")
+            if isinstance(mutate_config, dict) and mutate_config.get("command"):
+                return str(mutate_config["command"])
 
     env_command = os.environ.get("EVOLVE_AGENT_COMMAND")
     if env_command:

@@ -37,7 +37,7 @@ workspace/
 
 | Area | Owner | Rule |
 | --- | --- | --- |
-| `target/` | meta agent or outer agent | Change only inside the mutable surface. |
+| `target/` | mutate operator or outer agent | Change only inside the mutable surface. |
 | `evaluator/` | frozen evaluation side | Never let candidate or mutation code edit it. |
 | `operators/` | active method | Change only when process evolution is declared. |
 | `library/` | framework or researcher | Consult or adapt; these files do not run directly. |

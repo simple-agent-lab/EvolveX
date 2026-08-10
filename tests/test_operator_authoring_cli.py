@@ -118,6 +118,7 @@ def test_operator_new_scaffold_executes_describe_and_check_modes(
     assert created.exit_code == 0, created.output
     description = describe_operator(operator)
     assert description["config_validation"] is True
+    assert description["description"] == f"Describe the sample {stage} operator."
     assert description["stage"] == stage
     assert validate_operator_config(operator, {}) == {}
 

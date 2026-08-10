@@ -1,4 +1,4 @@
-"""Load the normalized feedback bundle assembled before meta-agent execution."""
+"""Load the normalized feedback bundle assembled before mutate execution."""
 
 from __future__ import annotations
 

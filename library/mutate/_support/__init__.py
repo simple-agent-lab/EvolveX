@@ -1,1 +1,1 @@
-"""Shared support code for meta-agent strategy variants."""
+"""Shared support code for mutate operator strategies."""

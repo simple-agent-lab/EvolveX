@@ -165,7 +165,7 @@ def test_ahe_prompt_uses_official_decisions_and_required_manifest(tmp_path: Path
     assert "/app/task/workspace/runs/gen-1/analyze/analysis/detail" in prompt
     assert "/app/task/workspace/runs/gen-1/analyze/evidence/cases.jsonl" in prompt
     assert "/app/task/workspace/runs/gen-1/rollout" in prompt
-    assert "No selected-parent meta-agent change exists for this baseline generation." in prompt
+    assert "No selected-parent mutate change exists for this baseline generation." in prompt
     assert str(ctx.run_dir) not in prompt
     assert "Repository: /app/task/workspace" in prompt
     assert "Archive: /app/task/workspace/archive.jsonl" in prompt
@@ -250,12 +250,12 @@ def test_ahe_prompt_points_to_prior_change_without_inlining_it(tmp_path: Path) -
 
     prompt = module.build_prompt(checkout, "fallback", ctx)
 
-    assert "Selected parent meta-agent artifacts" in prompt
+    assert "Selected parent mutate artifacts" in prompt
     assert "/app/task/workspace/runs/gen-1/mutate" in prompt
     assert "PREVIOUS REASONING BODY" not in prompt
     assert "target/previous.py" not in prompt
     assert "PREVIOUS PATCH BODY" not in prompt
-    assert "No selected-parent meta-agent change exists" not in prompt
+    assert "No selected-parent mutate change exists" not in prompt
 
 
 def test_ahe_prompt_accepts_fanout_generation_ids(tmp_path: Path) -> None:

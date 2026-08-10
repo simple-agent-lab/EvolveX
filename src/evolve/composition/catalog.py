@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import json
 import os
 import re
@@ -81,10 +82,14 @@ class _RootedResource(Traversable):
 
 def discover_operators(root: Resource | None = None) -> dict[tuple[str, str], LibraryOperator]:
     library = root or library_root()
+    if isinstance(library, Path) and library.is_symlink():
+        raise OperatorLibraryError(f"operator library root may not be a symlink: {library}")
     if not library.is_dir():
         raise OperatorLibraryError(f"operator library is not a directory: {library}")
     discovered: dict[tuple[str, str], LibraryOperator] = {}
     for entry in sorted(library.iterdir(), key=lambda item: item.name):
+        if isinstance(entry, Path) and entry.is_symlink():
+            raise OperatorLibraryError(f"operator library path may not be a symlink: {entry}")
         if entry.name.startswith("_"):
             continue
         if entry.is_dir():
@@ -118,6 +123,8 @@ def _discover_stage(
 ) -> None:
     stage = stage_root.name
     for entry in sorted(stage_root.iterdir(), key=lambda item: item.name):
+        if isinstance(entry, Path) and entry.is_symlink():
+            raise OperatorLibraryError(f"operator library path may not be a symlink: {entry}")
         if entry.name.startswith("_"):
             continue
         if not entry.is_file() or not entry.name.endswith(".py"):
@@ -138,7 +145,12 @@ def resolve_operator(stage: str, name: str, root: Resource | None = None) -> Lib
 
 
 def describe_operator(operator: LibraryOperator, timeout_s: float = 5.0) -> dict[str, object]:
-    return _inspect(operator, "--describe", {}, timeout_s)
+    description = _inspect(operator, "--describe", {}, timeout_s)
+    if not str(description.get("description", "")).strip():
+        module_doc = ast.get_docstring(ast.parse(operator.source.read_text()))
+        if module_doc:
+            description["description"] = module_doc
+    return description
 
 
 def validate_operator_config(

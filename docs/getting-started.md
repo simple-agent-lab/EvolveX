@@ -51,7 +51,7 @@ The output path can then be passed to `evolve preflight` and `evolve init` with
 `--dataset`. For the repository's reproducible Terminal-Bench subset, prefer
 the setup script below: it downloads Terminal-Bench 2.0, verifies and
 materializes the pinned task subset, and builds the selected recipe's
-meta-agent image.
+mutate-runner image.
 
 ```bash
 ./scripts/setup_terminal_bench.sh ahe

@@ -210,7 +210,7 @@ def _maybe_final_anchor(workspace: Path, generation: int) -> None:
             "parent": candidate.get("parent"),
             "mutated": candidate.get("mutated", []),
             "surface_violations": candidate.get("surface_violations", []),
-            "note": "sealed anchor evaluation; excluded from meta-agent feedback",
+            "note": "sealed anchor evaluation; excluded from mutate feedback",
             "kind": "anchor",
             "round": generation,
         },

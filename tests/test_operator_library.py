@@ -51,6 +51,41 @@ def test_discovery_rejects_non_underscore_root_python_helper(tmp_path: Path) -> 
         discover_operators(root)
 
 
+def test_discovery_rejects_symlinked_named_operator(tmp_path: Path) -> None:
+    root = tmp_path / "library"
+    stage = root / "mutate"
+    stage.mkdir(parents=True)
+    external = tmp_path / "external.py"
+    external.write_text("print('{}')\n")
+    (stage / "critic_editor.py").symlink_to(external)
+
+    with pytest.raises(OperatorLibraryError, match=r"symlink.*mutate/critic_editor\.py"):
+        discover_operators(root)
+
+
+def test_discovery_rejects_symlinked_stage_directory(tmp_path: Path) -> None:
+    root = tmp_path / "library"
+    external = tmp_path / "external"
+    external.mkdir(parents=True)
+    (external / "critic_editor.py").write_text("print('{}')\n")
+    root.mkdir()
+    (root / "mutate").symlink_to(external, target_is_directory=True)
+
+    with pytest.raises(OperatorLibraryError, match=r"symlink.*mutate"):
+        discover_operators(root)
+
+
+def test_discovery_rejects_symlinked_library_root(tmp_path: Path) -> None:
+    external = tmp_path / "external"
+    (external / "mutate").mkdir(parents=True)
+    (external / "mutate" / "critic_editor.py").write_text("print('{}')\n")
+    root = tmp_path / "library"
+    root.symlink_to(external, target_is_directory=True)
+
+    with pytest.raises(OperatorLibraryError, match=r"symlink.*library"):
+        discover_operators(root)
+
+
 def test_discovery_ignores_pycache(tmp_path: Path) -> None:
     root = tmp_path / "library"
     (root / "mutate").mkdir(parents=True)

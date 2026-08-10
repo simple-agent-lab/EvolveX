@@ -1,4 +1,4 @@
-"""Run the current checkout through Harbor and distill meta-agent feedback."""
+"""Run the current checkout through Harbor and distill mutate feedback."""
 
 from evolve.frozen import sdk
 from library._shared.harbor import HarborRollout, validate_config

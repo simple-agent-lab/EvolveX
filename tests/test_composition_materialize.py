@@ -168,6 +168,30 @@ def test_materialization_rejects_symlinked_helper_assets(tmp_path) -> None:
         materialize_operators({"select": binding}, library=library)
 
 
+def test_script_materialization_rejects_symlinked_library_root(tmp_path: Path) -> None:
+    external = tmp_path / "external"
+    (external / "_shared").mkdir(parents=True)
+    (external / "_shared" / "unexpected.py").write_text("UNEXPECTED = True\n")
+    library = tmp_path / "library"
+    library.symlink_to(external, target_is_directory=True)
+    script = tmp_path / "select.py"
+    script.write_text("print('selected')\n")
+    source = script.read_bytes()
+    binding = ResolvedOperator(
+        stage="select",
+        source_kind="script",
+        source=script,
+        name=None,
+        timeout_s=10.0,
+        config={},
+        portable=False,
+        digest=hashlib.sha256(source).hexdigest(),
+    )
+
+    with pytest.raises(ValueError, match=r"symlink.*library"):
+        materialize_operators({"select": binding}, library=library)
+
+
 def test_materialized_gepa_validate_imports_only_shared_harbor_runtime(tmp_path) -> None:
     materialized = materialize_operators(resolve_builtin_recipe("gepa").operators)
     assert "library/rollout/harbor.py" not in materialized.files

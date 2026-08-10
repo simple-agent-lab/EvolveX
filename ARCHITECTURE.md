@@ -84,7 +84,7 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `integrations/harbor/_candidate_source.py` | 75 | exact candidate-source validation and archive-copy boundary |
 | `integrations/harbor/codex_candidate.py` | 75 | Codex adapter for OpenAI-compatible Responses endpoints |
 | `integrations/harbor/miniswe_candidate.py` | 550 | exact-candidate MiniSWE Harbor evaluator agent |
-| `integrations/harbor/miniswe_task_file.py` | 130 | large-task MiniSWE meta-agent transport |
+| `integrations/harbor/miniswe_task_file.py` | 130 | large-task MiniSWE mutate-runner transport |
 | `mutate_budget.py` | 150 | shared Harbor mutation retry and timeout budget calculations |
 
 ### The frozen ring (`src/evolve/frozen/`)

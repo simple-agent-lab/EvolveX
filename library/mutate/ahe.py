@@ -206,7 +206,7 @@ def _extract_manifest(output: str, genid: str) -> dict[str, Any]:
     starts = [match.start() for match in re.finditer(re.escape(MANIFEST_START), output)]
     ends = [match.start() for match in re.finditer(re.escape(MANIFEST_END), output)]
     if len(starts) != 1 or len(ends) != 1 or ends[0] <= starts[0]:
-        raise ValueError("meta-agent output must contain exactly one AHE manifest block")
+        raise ValueError("mutate output must contain exactly one AHE manifest block")
     raw = output[starts[0] + len(MANIFEST_START) : ends[0]].strip()
     payload = json.loads(raw)
     if not isinstance(payload, dict):
@@ -223,7 +223,7 @@ def _read_manifest_file(checkout: Path, genid: str) -> dict[str, Any]:
     try:
         raw = path.read_text()
     except OSError as exc:
-        raise ValueError(f"meta-agent must write the AHE manifest file: {MANIFEST_FILE}") from exc
+        raise ValueError(f"mutate operator must write the AHE manifest file: {MANIFEST_FILE}") from exc
     finally:
         path.unlink(missing_ok=True)
     return _extract_manifest(f"{MANIFEST_START}\n{raw}\n{MANIFEST_END}", genid)
@@ -248,11 +248,11 @@ def build_prompt(checkout: Path, observation: str, ctx: OperatorContext) -> str:
     cases = current_run / "analyze" / "evidence" / "cases.jsonl"
     rollout = current_run / "rollout"
     if ctx.parent in (None, "0"):
-        prior_change = "No selected-parent meta-agent change exists for this baseline generation."
+        prior_change = "No selected-parent mutate change exists for this baseline generation."
     else:
         parent_mutate = experiment / "runs" / f"gen-{ctx.parent}" / "mutate"
         prior_change = (
-            f"Inspect the selected parent manifest and patch. Selected parent meta-agent artifacts: `{parent_mutate}`"
+            f"Inspect the selected parent manifest and patch. Selected parent mutate artifacts: `{parent_mutate}`"
         )
     target_prompt = CODEX_AHE_PROMPT if (checkout / "target" / "codex.toml").is_file() else AHE_PROMPT
     return (

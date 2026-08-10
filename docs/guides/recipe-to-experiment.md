@@ -108,9 +108,10 @@ git show gen/0:evaluator/splits.json
 git status --short
 ```
 
-`operators/README.md` lists the recipe-selected implementations. Only their
-shared runtime helpers are copied under `library/`; unselected catalog operators
-remain in the source installation.
+`operators/README.md` lists the recipe-selected implementations. The closed
+root underscore helper bundle and each selected named stage's underscore helper
+bundle are copied under `library/`; unselected catalog operators remain in the
+source installation.
 
 ## 5. Run doctor and an isolated smoke
 

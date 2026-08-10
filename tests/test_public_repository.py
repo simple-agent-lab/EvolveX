@@ -143,7 +143,12 @@ def test_mkdocs_covers_custom_recipe_operator_and_experiment_workflows() -> None
 
 
 def test_maintained_public_material_uses_canonical_stage_identifiers() -> None:
-    forbidden = ("meta_agent", "trace_analyzer", "MetaAgentOperator", "TraceAnalyzerOperator", "Trace Analyzer")
+    forbidden = (
+        re.compile(r"\bmeta[-_ ]agent\b", re.IGNORECASE),
+        re.compile(r"\btrace[-_ ]analyzer\b", re.IGNORECASE),
+        re.compile(r"\bMetaAgentOperator\b"),
+        re.compile(r"\bTraceAnalyzerOperator\b"),
+    )
     # recipe.py names retired stages only so rejected legacy recipes receive a
     # precise migration diagnostic; tests/test_recipe_resolution.py exercises
     # that negative compatibility boundary.
@@ -154,7 +159,10 @@ def test_maintained_public_material_uses_canonical_stage_identifiers() -> None:
             for legacy_mapping in ('"trace_analyzer": "analyze"', '"meta_agent": "mutate"'):
                 assert text.count(legacy_mapping) == 1
                 text = text.replace(legacy_mapping, "")
-        assert not [term for term in forbidden if term in text], path
+        text = re.sub(r"evolve-meta-agent-[A-Za-z0-9_.:-]+", "", text)
+        text = text.replace("containers/meta-agent-codex", "").replace("containers/meta-agent", "")
+        text = text.replace('resource_root("containers") / "meta-agent"', "")
+        assert not [pattern.pattern for pattern in forbidden if pattern.search(text)], path
 
 
 def test_recipe_operator_blocks_never_use_variant_keys() -> None:

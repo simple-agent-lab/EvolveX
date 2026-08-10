@@ -145,7 +145,7 @@ def _runner_config(checkout: Path, analyzer_config: dict[str, Any]) -> dict[str,
         config["agent_env"] = agent_env
     config["max_retries"] = 0
     if not config.get("agent") or not config.get("model"):
-        raise RuntimeError("trajectory_only judge requires meta-agent agent and model")
+        raise RuntimeError("trajectory_only judge requires mutate config agent and model")
     return config
 
 

@@ -1,4 +1,4 @@
-"""Render one truthful candidate-workspace contract for meta-agent prompts."""
+"""Render one truthful candidate-workspace contract for mutate prompts."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ def _relative(value: object) -> str | None:
         return None
     path = Path(value.strip())
     if path.is_absolute() or ".." in path.parts:
-        raise ValueError(f"meta-agent context path must be checkout-relative: {path}")
+        raise ValueError(f"mutate context path must be checkout-relative: {path}")
     return path.as_posix()
 
 

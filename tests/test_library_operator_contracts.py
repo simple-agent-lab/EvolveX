@@ -39,6 +39,7 @@ def test_analyze_catalog_contains_only_supported_strategies() -> None:
 def test_every_library_operator_describes_and_validates(operator: LibraryOperator) -> None:
     description = describe_operator(operator)
     assert description["stage"] == operator.stage
+    assert isinstance(description["description"], str) and description["description"].strip()
     assert description["config_validation"] is True
 
 

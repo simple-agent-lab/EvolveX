@@ -51,7 +51,7 @@ def test_hyperagents_validator_accepts_mutate_and_target_python(tmp_path: Path) 
     result = module.HyperAgentsValidate().validate(checkout, _ctx(checkout, run_dir))
 
     assert result.accept is True
-    assert result.reason == "meta-agent and task-agent Python compile"
+    assert result.reason == "mutate and task-agent Python compile"
     assert result.artifacts == ["validate/compile.log"]
     assert "PASS operators/mutate.py" in (run_dir / "validate" / "compile.log").read_text()
     assert "PASS target/agent.py" in (run_dir / "validate" / "compile.log").read_text()

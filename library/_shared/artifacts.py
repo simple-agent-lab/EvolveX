@@ -73,6 +73,6 @@ def render_artifact_guidance(ctx: OperatorContext, repository: Path) -> str:
         )
     lines.append(
         f"At the end, you may write an optional free-form `handoff.md` at `{current / HANDOFF_NAME}` "
-        "for a future child meta-agent."
+        "for a future child mutate operator."
     )
     return "\n".join(lines)
