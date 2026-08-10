@@ -162,6 +162,7 @@ def test_frontend_has_required_navigation_and_refresh_contract() -> None:
     assert "Global final result" in javascript
     assert "Global champion from canonical evaluation" in javascript
     assert "Champion agent ·" in javascript
+    assert "hasTrainScore && !globalResult" in javascript
     assert "overviewPlaceholderCard" in javascript
 
 

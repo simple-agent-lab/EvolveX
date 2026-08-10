@@ -220,17 +220,18 @@ function performanceCard(detail, generations, globalResult = false) {
   const performance = detail?.performance || {};
   const delta = performance.delta;
   const hasTrainScore = performance.train_score_before != null && performance.train_score_after != null;
+  const showTrainPage = hasTrainScore && !globalResult;
   const canonicalSubtitle = globalResult
     ? `Global champion · Generation ${escapeHtml(detail?.summary?.genid || '—')}`
     : 'Canonical evaluation only';
   return `<section class="card performance-card" data-performance-card data-page="1">
-    <div class="card-header"><div><h3>${globalResult ? 'Final performance' : 'Performance'}</h3><p data-performance-subtitle data-canonical-label="${canonicalSubtitle}">${canonicalSubtitle}</p></div><div class="performance-header-actions">${performance.contract_certified == null ? '' : badge(performance.contract_certified ? 'certified' : 'uncertified')}${hasTrainScore ? '<div class="performance-pager" aria-label="Performance pages"><button class="performance-page-button" type="button" data-performance-previous aria-label="Previous performance page" disabled>‹</button><span><strong data-performance-page-number>1</strong> / 2</span><button class="performance-page-button" type="button" data-performance-next aria-label="Next performance page">›</button></div>' : ''}</div></div>
+    <div class="card-header"><div><h3>${globalResult ? 'Final performance' : 'Performance'}</h3><p data-performance-subtitle data-canonical-label="${canonicalSubtitle}">${canonicalSubtitle}</p></div><div class="performance-header-actions">${performance.contract_certified == null ? '' : badge(performance.contract_certified ? 'certified' : 'uncertified')}${showTrainPage ? '<div class="performance-pager" aria-label="Performance pages"><button class="performance-page-button" type="button" data-performance-previous aria-label="Previous performance page" disabled>‹</button><span><strong data-performance-page-number>1</strong> / 2</span><button class="performance-page-button" type="button" data-performance-next aria-label="Next performance page">›</button></div>' : ''}</div></div>
     <div data-performance-page="1">
       <div class="score-value">${number(performance.score)}${delta == null ? '' : `<span class="score-delta ${delta >= 0 ? 'plus' : 'minus'}">${delta >= 0 ? '+' : ''}${number(delta)}</span>`}</div>
       ${scoreTrend(generations, detail?.summary?.genid)}
       <div class="legend"><span><strong>${performance.observed_trials ?? '—'}</strong> observed trials</span><span><strong>${performance.expected_trials ?? '—'}</strong> expected</span><span>${performance.comparable ? 'Parent delta comparable' : 'Parent delta not comparable'}</span></div>
     </div>
-    ${hasTrainScore ? `<div data-performance-page="2" hidden>
+    ${showTrainPage ? `<div data-performance-page="2" hidden>
       ${trainScoreChange(performance.train_score_before, performance.train_score_after, performance.train_delta)}
       <div class="train-score-note"><strong>GEPA validation minibatch</strong><span>This train comparison decides whether the proposal proceeds to canonical evaluation.</span></div>
     </div>` : ''}
