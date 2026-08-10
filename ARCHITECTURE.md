@@ -25,7 +25,7 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `candidate/__init__.py` | 10 | candidate-boundary package marker |
 | `candidate/smoke.py` | 225 | run install or one-request model smoke against an exact candidate snapshot and persist redacted evidence |
 | `candidate/snapshot.py` | 100 | exact candidate Git tree construction, temporary materialization, and reviewed-tree commit verification |
-| `cli.py` | 450 | argument parsing and verb dispatch only — no logic |
+| `cli.py` | 475 | argument parsing and verb dispatch only — no logic |
 | `config.py` | 225 | read/render `evolve.yaml`, including evaluator repetition and inline runtime normalization |
 | `driver.py` | 1800 | the generation sequencer: orchestrates baseline eval, verbs + operators (incl. novelty, self-modification admission gates, sealed anchors); validates operator outputs; computes verified_fixes; audit quarantine; doctor repair |
 | `doctor.py` | 250 | read-only local/experiment preflight profiles and persisted diagnostic receipts |
@@ -81,6 +81,12 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `integrations/harbor/miniswe_candidate.py` | 550 | exact-candidate MiniSWE Harbor evaluator agent |
 | `integrations/harbor/miniswe_task_file.py` | 130 | large-task MiniSWE meta-agent transport |
 | `meta_agent_budget.py` | 150 | shared Harbor meta-agent retry and timeout budget calculations |
+| `viewer/__init__.py` | 30 | read-only experiment viewer package facade |
+| `viewer/models.py` | 300 | stable viewer API models and internal source/snapshot records |
+| `viewer/reader.py` | 450 | validated cached reads of archive, stage, evaluation, and Harbor-root evidence |
+| `viewer/snapshot.py` | 700 | derive health, stages, changes, performance, trials, and artifact references from source evidence |
+| `viewer/harbor_bridge.py` | 350 | ephemeral federation and current/retained-schema trial links for Harbor inspection |
+| `viewer/app.py` | 450 | read-only Evolve API, Harbor composition, snapshot retention, and server launch |
 
 ### The frozen ring (`src/evolve/frozen/`)
 
@@ -95,7 +101,8 @@ each workspace, immutable there because it sits outside the mutable surface
 | `frozen/interfaces.py` | 350 | operator ABCs, registry, result schemas, and strict operator payload validation |
 | `frozen/sdk.py` | 300 | Python operator entrypoint and file-contract IO; no library algorithm policy |
 
-Total `src/evolve/` budget: **16730 lines**. The budget admits the explicit content-backed
+Total `src/evolve/` budget: **19035 lines**. The budget admits the read-only experiment viewer,
+the explicit content-backed
 evaluation-contract boundaries, the opt-in in-place Harbor runtime, and the redacted trace-analysis
 boundary between rollout and feedback assembly; if the mechanism wants to
 grow past that, something belongs in a workspace operator instead —

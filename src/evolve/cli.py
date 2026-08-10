@@ -394,6 +394,19 @@ def doctor_profile(
 
 @app.command()
 @_guard
+def view(
+    workspace: Path = typer.Argument(Path(".")),
+    host: str = typer.Option("127.0.0.1", "--host"),
+    port: str = typer.Option("8080-8089", "--port"),
+) -> None:
+    """Browse one experiment workspace without modifying it."""
+    from .viewer import run_viewer
+
+    run_viewer(workspace, host, port)
+
+
+@app.command()
+@_guard
 def repair(workspace: Path = typer.Argument(Path("."))) -> None:
     """Explicitly repair interrupted state such as stale child worktrees."""
     actions = repair_workspace(workspace)
