@@ -29,6 +29,9 @@ test('score chart has fixed score ticks and generation labels', () => {
   assert.match(html, />G0<.*>G1<.*>G10</s);
   assert.match(html, /Generation 10: 0\.36/);
   assert.match(html, /trend-dot selected/);
+  assert.match(html, /class="trend-point" tabindex="0" role="img"/);
+  assert.match(html, /class="trend-tooltip"/);
+  assert.match(html, />G10: 0\.36</);
 });
 
 test('artifact presentation prettifies JSON and selects mature diff rendering', () => {

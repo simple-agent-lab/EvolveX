@@ -68,15 +68,30 @@ export function scoreTrend(generations, selectedId = null) {
     + (1 - Math.max(0, Math.min(1, Number(score)))) * (height - top - bottom);
   const ticks = [[1, top], [0.5, y(0.5)], [0, height - bottom]];
   const coordinates = points.map((item, index) => `${x(index)},${y(item.score)}`).join(' ');
+  const tooltipWidth = 104;
+  const tooltipHeight = 30;
+  const displayScore = (score) => Number(score).toFixed(3).replace(/\.?0+$/, '');
 
   return `<div class="trend-scroll"><svg class="trend" viewBox="0 0 ${width} ${height}" role="img" aria-label="Canonical score by generation">
     ${ticks.map(([tick, cy]) => `<line class="trend-grid" x1="${left}" x2="${width - right}" y1="${cy}" y2="${cy}"/><text class="trend-axis-label" x="${left - 7}" y="${cy + 3}">${tick}</text>`).join('')}
     <polyline class="trend-line" points="${coordinates}"/>
     ${points.map((item, index) => {
       const genid = escapeSvg(item.genid);
-      const score = escapeSvg(item.score);
+      const score = escapeSvg(displayScore(item.score));
       const selected = String(item.genid) === String(selectedId) ? ' selected' : '';
-      return `<g><circle class="trend-dot${selected}" cx="${x(index)}" cy="${y(item.score)}" r="4" aria-label="Generation ${genid}: ${score}"><title>Generation ${genid}: ${score}</title></circle><text class="trend-x-label" x="${x(index)}" y="${height - 9}">G${genid}</text></g>`;
+      const pointX = x(index);
+      const pointY = y(item.score);
+      const tooltipX = Math.max(left, Math.min(width - right - tooltipWidth, pointX - tooltipWidth / 2));
+      const tooltipY = pointY < top + tooltipHeight + 8 ? pointY + 12 : pointY - tooltipHeight - 10;
+      return `<g class="trend-point" tabindex="0" role="img" aria-label="Generation ${genid}: ${score}">
+        <circle class="trend-hit" cx="${pointX}" cy="${pointY}" r="12"/>
+        <circle class="trend-dot${selected}" cx="${pointX}" cy="${pointY}" r="4"/>
+        <g class="trend-tooltip" aria-hidden="true" transform="translate(${tooltipX} ${tooltipY})">
+          <rect width="${tooltipWidth}" height="${tooltipHeight}" rx="6"/>
+          <text x="${tooltipWidth / 2}" y="19">G${genid}: ${score}</text>
+        </g>
+        <text class="trend-x-label" x="${pointX}" y="${height - 9}">G${genid}</text>
+      </g>`;
     }).join('')}
   </svg></div>`;
 }
