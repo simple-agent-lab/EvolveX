@@ -1,3 +1,5 @@
+from importlib.resources.abc import Traversable
+from io import BytesIO, StringIO
 from pathlib import Path
 
 import pytest
@@ -66,6 +68,23 @@ def test_discovery_allows_shared_helpers(tmp_path: Path) -> None:
     (root / "README.md").touch()
 
     assert discover_operators(root) == {}
+
+
+def test_contract_only_traversable_discovers_and_inspects_with_shared_helper() -> None:
+    root = _resource_tree(
+        {
+            "mutate": {
+                "critic_editor.py": (
+                    "from library._shared.helper import answer\nimport json\nprint(json.dumps({'answer': answer}))\n"
+                ),
+            },
+            "_shared": {"helper.py": "answer = 42\n"},
+        }
+    )
+
+    operator = resolve_operator("mutate", "critic_editor", root)
+
+    assert describe_operator(operator) == {"answer": 42}
 
 
 def test_subprocess_inspection_describes_and_validates_operator_config(tmp_path: Path) -> None:
@@ -147,3 +166,48 @@ def _sdk_operator_script(*, include_validator: bool = True) -> str:
         f"{validator}\n"
         f"{call}\n"
     )
+
+
+class _MemoryTraversable(Traversable):
+    def __init__(self, name: str, children: dict[str, "_MemoryTraversable"] | None = None, data: bytes | None = None):
+        self._name = name
+        self._children = children
+        self._data = data
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    def iterdir(self):
+        return iter((self._children or {}).values())
+
+    def is_dir(self) -> bool:
+        return self._children is not None
+
+    def is_file(self) -> bool:
+        return self._data is not None
+
+    def joinpath(self, *descendants: str):
+        entry: Traversable = self
+        for descendant in descendants:
+            if not isinstance(entry, _MemoryTraversable) or entry._children is None:
+                return _MemoryTraversable(descendant)
+            entry = entry._children.get(descendant, _MemoryTraversable(descendant))
+        return entry
+
+    def open(self, mode: str = "r", *args, **kwargs):
+        if self._data is None:
+            raise FileNotFoundError(self.name)
+        if "b" in mode:
+            return BytesIO(self._data)
+        return StringIO(self._data.decode())
+
+
+def _resource_tree(data: dict[str, object], name: str = "library") -> _MemoryTraversable:
+    children: dict[str, _MemoryTraversable] = {}
+    for child_name, value in data.items():
+        if isinstance(value, dict):
+            children[child_name] = _resource_tree(value, child_name)
+        else:
+            children[child_name] = _MemoryTraversable(child_name, data=str(value).encode())
+    return _MemoryTraversable(name, children=children)

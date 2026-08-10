@@ -48,7 +48,7 @@ def discover_operators(root: Resource | None = None) -> dict[tuple[str, str], Li
             if entry.name not in OPERATOR_BY_KIND:
                 raise OperatorLibraryError(f"unknown operator stage directory: {entry.name}")
             _discover_stage(entry, library, discovered)
-        elif entry.is_file() and entry.suffix == ".py":
+        elif entry.is_file() and entry.name.endswith(".py"):
             raise OperatorLibraryError(f"root Python helpers must be underscore-prefixed: {entry.name}")
     return discovered
 
@@ -60,9 +60,9 @@ def _discover_stage(
     for entry in sorted(stage_root.iterdir(), key=lambda item: item.name):
         if entry.name.startswith("_"):
             continue
-        if not entry.is_file() or entry.suffix != ".py":
+        if not entry.is_file() or not entry.name.endswith(".py"):
             continue
-        name = entry.stem
+        name = entry.name.removesuffix(".py")
         if not OPERATOR_NAME.fullmatch(name):
             raise OperatorLibraryError(f"invalid operator name: {entry.name}")
         operator = LibraryOperator(stage=stage, name=name, source=entry)
