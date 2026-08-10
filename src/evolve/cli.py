@@ -24,6 +24,7 @@ from .git import head_tag, working_tree_changed_paths
 from .operator_cli import attach_orchestration_commands
 from .orchestration import commit_agent_child, eval_agent_child, fork_agent_child, record_agent_fields
 from .population import best_row, fixed_evaluation_identity
+from .recipe_cli import build_recipe_app
 from .report import format_report, format_status
 from .run_summary import assert_run_success, write_run_summary
 from .surface import check_paths, surface_patterns
@@ -71,6 +72,7 @@ def _guard(fn):
     return wrapper
 
 
+app.add_typer(build_recipe_app(_guard), name="recipe")
 attach_orchestration_commands(app, _guard, _workspace_environment, _enable_live_output)
 
 

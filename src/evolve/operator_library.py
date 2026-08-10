@@ -90,6 +90,7 @@ def validate_operator_config(
 def _inspect(operator: LibraryOperator, mode: str, config: dict[str, object], timeout_s: float) -> dict[str, object]:
     with _operator_source(operator) as (source, cwd):
         environment = dict(os.environ)
+        environment["PYTHONDONTWRITEBYTECODE"] = "1"
         existing_path = environment.get("PYTHONPATH")
         environment["PYTHONPATH"] = str(cwd) if not existing_path else f"{cwd}{os.pathsep}{existing_path}"
         launcher = "import runpy, sys; source = sys.argv.pop(1); runpy.run_path(source, run_name='__main__')"

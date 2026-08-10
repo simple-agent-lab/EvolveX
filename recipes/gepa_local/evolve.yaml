@@ -13,44 +13,49 @@ surface:
     - target/**
   exclude: []
 operators:
-  select: {variant: pareto, seed: 0, timeout_s: 600}
+  select: {operator: pareto, timeout_s: 600, config: {seed: 0}}
   rollout:
-    variant: harbor
-    budget_tasks: 8
-    environment: "evolve.harbor_local:LocalEnvironment"
-    n_concurrent: 2
-    max_retries: 1
+    operator: harbor
     timeout_s: 600
+    config:
+      budget_tasks: 8
+      environment: "evolve.harbor_local:LocalEnvironment"
+      n_concurrent: 2
+      max_retries: 1
   analyze:
-    variant: gepa
-    components:
-      knowledge: target/knowledge.md
-    max_cases: 8
-    field_limit: 2000
+    operator: gepa
     timeout_s: 600
+    config:
+      components:
+        knowledge: target/knowledge.md
+      max_cases: 8
+      field_limit: 2000
   mutate:
-    variant: gepa
-    runner: harbor
-    agent: evolve.integrations.harbor.local_auto_agent:LocalAutoAgent
-    environment: "evolve.harbor_local:LocalEnvironment"
-    agent_kwargs:
-      model_by_agent:
-        codex: gpt-5.4
-    editable_roots: [target]
-    expose_gate_data: false
-    components:
-      knowledge: target/knowledge.md
-    max_retries: 1
+    operator: gepa
     timeout_s: 600
+    config:
+      runner: harbor
+      agent: evolve.integrations.harbor.local_auto_agent:LocalAutoAgent
+      environment: "evolve.harbor_local:LocalEnvironment"
+      agent_kwargs:
+        model_by_agent:
+          codex: gpt-5.4
+      editable_roots: [target]
+      expose_gate_data: false
+      components:
+        knowledge: target/knowledge.md
+      max_retries: 1
   validate:
-    variant: minibatch_improvement
-    criterion: non_decreasing
-    environment: "evolve.harbor_local:LocalEnvironment"
-    n_concurrent: 2
-    max_retries: 1
+    operator: minibatch_improvement
     timeout_s: 600
-  gate: {variant: parent_eligible, timeout_s: 600}
-  record: {variant: gepa, timeout_s: 600}
+    config:
+      criterion: non_decreasing
+      environment: "evolve.harbor_local:LocalEnvironment"
+      n_concurrent: 2
+      max_retries: 1
+  gate: {operator: parent_eligible, timeout_s: 600, config: {}}
+  record: {operator: gepa, timeout_s: 600, config: {}}
+  timeout_s: 600
 execution_runtime:
   backend: local
 evaluator:

@@ -99,10 +99,9 @@ DEFAULT_RECIPE = "gepa"
 
 
 def default_config(recipe: str, experiment_id: str) -> dict[str, Any]:
-    if recipe not in RECIPE_NAMES:
-        raise ValueError(f"unsupported recipe: {recipe}")
-    config = _read_config_file(recipe_root() / recipe / "evolve.yaml")
-    config = copy.deepcopy(config)
+    from .recipe import resolve_builtin_recipe
+
+    config = copy.deepcopy(resolve_builtin_recipe(recipe).config)
     config["experiment"]["id"] = experiment_id
     return config
 

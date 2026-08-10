@@ -14,12 +14,12 @@ surface:
     - operators/**
   exclude: []
 operators:
-  select: {variant: score_child_prop, seed: 0}
-  rollout: {variant: noop}
-  mutate: {variant: hyperagents, runner: local, editable_roots: [target, operators], timeout_s: 3600}
-  validate: {variant: hyperagents, timeout_s: 300}
-  gate: {variant: parent_eligible}
-  record: {variant: hyperagents}
+  select: {operator: score_child_prop, config: {seed: 0}}
+  rollout: {operator: noop, config: {}}
+  mutate: {operator: hyperagents, timeout_s: 3600, config: {runner: local, editable_roots: [target, operators]}}
+  validate: {operator: hyperagents, timeout_s: 300, config: {}}
+  gate: {operator: parent_eligible, config: {}}
+  record: {operator: hyperagents, config: {}}
   timeout_s: 600
 evaluator:
   engine: harbor

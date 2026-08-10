@@ -13,32 +13,33 @@ surface:
     - target/**
   exclude: []
 operators:
-  select: {variant: greedy, timeout_s: 600}
-  rollout: {variant: harbor, budget_tasks: 10, n_concurrent: 4, agent_setup_timeout_multiplier: 1, max_retries: 1, timeout_s: 3600}
-  analyze: {variant: trajectory_only, history_cycles: 2, max_observations: 30, max_chars: 30000, judge_max_concurrent: 4, judge_retry_attempts: 1, judge_timeout_s: 600, timeout_s: 3600}
+  select: {operator: greedy, timeout_s: 600, config: {}}
+  rollout: {operator: harbor, timeout_s: 3600, config: {budget_tasks: 10, n_concurrent: 4, agent_setup_timeout_multiplier: 1, max_retries: 1}}
+  analyze: {operator: trajectory_only, timeout_s: 3600, config: {history_cycles: 2, max_observations: 30, max_chars: 30000, judge_max_concurrent: 4, judge_retry_attempts: 1, judge_timeout_s: 600}}
   mutate:
-    variant: aevolve
-    trajectory_only: true
-    expose_gate_data: false
-    runner: harbor
-    agent: codex
-    model: gpt-5.4
-    environment: docker
-    image: evolve-meta-agent-codex:20260805-codex0145
-    editable_roots: [target]
-    evolve_prompts: true
-    evolve_skills: true
-    evolve_memory: false
-    prompt_path: target/prompt.md
-    skills_dir: target/skills
-    memory_dir: target/memory
-    history_cycles: 2
-    max_observations: 30
-    feedback_chars: 300
-    max_retries: 1
+    operator: aevolve
     timeout_s: 3600
-  gate: {variant: hillclimb, strict: true, timeout_s: 600}
-  record: {variant: jsonl, timeout_s: 600}
+    config:
+      trajectory_only: true
+      expose_gate_data: false
+      runner: harbor
+      agent: codex
+      model: gpt-5.4
+      environment: docker
+      image: evolve-meta-agent-codex:20260805-codex0145
+      editable_roots: [target]
+      evolve_prompts: true
+      evolve_skills: true
+      evolve_memory: false
+      prompt_path: target/prompt.md
+      skills_dir: target/skills
+      memory_dir: target/memory
+      history_cycles: 2
+      max_observations: 30
+      feedback_chars: 300
+      max_retries: 1
+  gate: {operator: hillclimb, timeout_s: 600, config: {strict: true}}
+  record: {operator: jsonl, timeout_s: 600, config: {}}
   timeout_s: 600
 evaluator:
   engine: harbor

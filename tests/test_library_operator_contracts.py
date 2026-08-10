@@ -1,8 +1,6 @@
-from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-import yaml
 
 from evolve.operator_library import (
     LibraryOperator,
@@ -12,20 +10,16 @@ from evolve.operator_library import (
     resolve_operator,
     validate_operator_config,
 )
+from evolve.recipe import resolve_recipe
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def canonical_recipe_operator_cases() -> Iterator[tuple[Path, str, str, dict[str, object]]]:
+def repository_recipe_paths() -> list[Path]:
     recipe_paths = sorted((ROOT / "recipes").glob("*/evolve.yaml"))
     recipe_paths += sorted((ROOT / "tests" / "fixtures" / "recipes").glob("*/evolve.yaml"))
-    for recipe_path in recipe_paths:
-        raw = yaml.safe_load(recipe_path.read_text())
-        for stage, block in raw["operators"].items():
-            if not isinstance(block, dict):
-                continue
-            config = {key: value for key, value in block.items() if key not in {"variant", "timeout_s"}}
-            yield recipe_path, stage, str(block["variant"]), config
+    recipe_paths.append(ROOT / "evals" / "skills" / "make-paper-poster" / "recipe" / "evolve.yaml")
+    return recipe_paths
 
 
 @pytest.mark.parametrize("operator", discover_operators().values(), ids=lambda item: item.identity)
@@ -35,11 +29,12 @@ def test_every_library_operator_describes_and_validates(operator: LibraryOperato
     assert description["config_validation"] is True
 
 
-def test_every_recipe_selected_config_is_accepted() -> None:
-    for recipe_path, stage, name, config in canonical_recipe_operator_cases():
-        operator = resolve_operator(stage, name)
-        normalized = validate_operator_config(operator, config)
-        assert isinstance(normalized, dict), f"{recipe_path}:{stage}"
+@pytest.mark.parametrize("recipe_path", repository_recipe_paths(), ids=lambda path: path.parent.name)
+def test_every_recipe_selected_config_is_accepted(recipe_path: Path) -> None:
+    resolved = resolve_recipe(recipe_path)
+
+    assert resolved.operators
+    assert all(isinstance(binding.config, dict) for binding in resolved.operators.values())
 
 
 @pytest.mark.parametrize(

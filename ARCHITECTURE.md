@@ -53,6 +53,8 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `orchestration.py` | 400 | safe outer-agent composition of driver verbs, stage handoffs, retries, and admission receipts |
 | `patching.py` | 150 | mutable-surface patch creation and parent-reference selection |
 | `population.py` | 100 | genid/lineage bookkeeping for fan-out generations |
+| `recipe.py` | 300 | strict built-in and path recipe resolution, operator binding validation, and aggregated diagnostics |
+| `recipe_cli.py` | 100 | recipe check command rendering human and machine-readable resolved bindings |
 | `preflight/__init__.py` | 50 | stable public preflight facade and prospective-check exports |
 | `preflight/checks.py` | 100 | exact-environment host tool and candidate dependency-lock probes |
 | `preflight/models.py` | 150 | typed checks, failure categories, and atomic receipt serialization |
@@ -96,7 +98,7 @@ each workspace, immutable there because it sits outside the mutable surface
 | `frozen/interfaces.py` | 350 | operator ABCs, registry, result schemas, and strict operator payload validation |
 | `frozen/sdk.py` | 350 | Python operator entrypoint and file-contract IO; no library algorithm policy |
 
-Total `src/evolve/` budget: **17030 lines**. The budget admits the explicit content-backed
+Total `src/evolve/` budget: **17430 lines**. The budget admits the explicit content-backed
 evaluation-contract boundaries, the opt-in in-place Harbor runtime, and the redacted trace-analysis
 boundary between rollout and feedback assembly; if the mechanism wants to
 grow past that, something belongs in a workspace operator instead —

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from conftest import FIXTURE_RECIPES, FIXTURE_SEEDS, init_fixture_workspace, run_evolve
+from conftest import FIXTURE_RECIPES, FIXTURE_SEEDS, run_evolve
 
 SMOKE_RECIPE = str(FIXTURE_RECIPES / "hill_climb-smoke" / "evolve.yaml")
 DUMMY_SEED = str(FIXTURE_SEEDS / "dummy")
@@ -75,7 +75,10 @@ def test_preflight_rejects_missing_seed_directory(tmp_path: Path) -> None:
 
 
 def test_preflight_rejects_initialized_workspace(tmp_path: Path) -> None:
-    workspace = init_fixture_workspace(tmp_path / "ws")
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    (workspace / "evolve.yaml").touch()
+    (workspace / ".git").mkdir()
 
     result = run_evolve(
         "preflight",
@@ -196,3 +199,34 @@ def test_preflight_rejects_recipe_with_omitted_seed(tmp_path: Path) -> None:
 
     assert result.returncode == 1
     assert "target.seed is required" in result.stdout
+
+
+def test_preflight_recipe_failure_short_circuits_later_checks(tmp_path: Path) -> None:
+    import yaml
+
+    config = yaml.safe_load(Path(SMOKE_RECIPE).read_text())
+    config["operators"]["select"] = {"variant": "greedy"}
+    del config["operators"]["record"]
+    recipe_dir = tmp_path / "recipe"
+    recipe_dir.mkdir()
+    recipe = recipe_dir / "evolve.yaml"
+    recipe.write_text(yaml.safe_dump(config, sort_keys=False))
+    workspace = tmp_path / "workspace"
+
+    result = run_evolve(
+        "preflight",
+        str(workspace),
+        "--recipe-path",
+        str(recipe),
+        "--seed",
+        str(tmp_path / "missing-seed"),
+        "--dataset",
+        str(tmp_path / "missing-dataset"),
+    )
+
+    assert result.returncode == 1
+    assert "operators.select.variant:" in result.stdout
+    assert "operators.record:" in result.stdout
+    assert "seed directory does not exist" not in result.stdout
+    assert "does not resolve to a local task directory" not in result.stdout
+    assert not workspace.exists()
