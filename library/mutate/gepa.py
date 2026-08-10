@@ -12,10 +12,79 @@ from evolve.agent import AgentCommandError
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import MutateOperator, MutateResult, OperatorContext
 from evolve.patching import create_candidate_patch, load_surface_policy, patch_parent_ref
+from library._shared.config import (
+    boolean,
+    config_object,
+    mapping,
+    nonnegative_int,
+    positive_int,
+    reject_unknown,
+    string,
+    string_list,
+)
 from library._shared.gepa import component_paths, path_in_scopes, read_json, selected_component_names
 from library.mutate._runners import run_agent, runner_name
 from library.mutate._support.artifacts import render_artifact_guidance
 from library.mutate._support.workspace import workspace_contract
+
+_RUNNER_KEYS = {
+    "runner",
+    "agent",
+    "model",
+    "environment",
+    "environment_kwargs",
+    "image",
+    "workdir",
+    "agent_kwargs",
+    "agent_env",
+    "agent_pythonpath",
+    "jobs_dir",
+}
+_CONFIG_KEYS = _RUNNER_KEYS | {
+    "expose_gate_data",
+    "editable_roots",
+    "components",
+    "component_strategy",
+    "max_examples",
+    "required_placeholders",
+    "max_retries",
+}
+
+
+def validate_config(raw: dict[str, object]) -> dict[str, object]:
+    config = config_object(raw)
+    reject_unknown(config, _CONFIG_KEYS)
+    strategy = string(config, "component_strategy", "round_robin")
+    if strategy not in {"round_robin", "all"}:
+        raise ValueError("component_strategy must be 'round_robin' or 'all'")
+    normalized = _runner_config(config)
+    normalized.update(
+        {
+            "expose_gate_data": boolean(config, "expose_gate_data", False),
+            "editable_roots": string_list(config, "editable_roots", ["target"]),
+            "components": component_paths(config),
+            "component_strategy": strategy,
+            "max_examples": positive_int(config, "max_examples", 10),
+            "required_placeholders": string_list(config, "required_placeholders", []),
+            "max_retries": nonnegative_int(config, "max_retries", 0),
+        }
+    )
+    return normalized
+
+
+def _runner_config(config: dict[str, object]) -> dict[str, object]:
+    runner = string(config, "runner", "local")
+    if runner not in {"local", "harbor"}:
+        raise ValueError("runner must be 'local' or 'harbor'")
+    normalized: dict[str, object] = {"runner": runner}
+    for key in ("agent", "model", "environment", "image", "workdir", "agent_pythonpath", "jobs_dir"):
+        if key in config:
+            normalized[key] = string(config, key, "")
+    for key in ("environment_kwargs", "agent_kwargs", "agent_env"):
+        if key in config:
+            normalized[key] = mapping(config, key, {})
+    return normalized
+
 
 GEPA_PROMPT = """# GEPA Reflective Mutation
 
@@ -180,4 +249,4 @@ class GepaMutate(MutateOperator):
 
 
 if __name__ == "__main__":
-    sdk.main(GepaMutate)
+    sdk.main(GepaMutate, validate_config=validate_config)

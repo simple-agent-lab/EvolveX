@@ -12,7 +12,18 @@ from typing import Any
 
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import AnalyzeOperator, AnalyzeResult, OperatorContext
+from library._shared.config import config_object, positive_int, reject_unknown
 from library._shared.gepa import component_paths, read_json
+
+
+def validate_config(raw: dict[str, object]) -> dict[str, object]:
+    config = config_object(raw)
+    reject_unknown(config, {"components", "max_cases", "field_limit"})
+    return {
+        "components": component_paths(config),
+        "max_cases": positive_int(config, "max_cases", 32),
+        "field_limit": positive_int(config, "field_limit", 4000),
+    }
 
 
 def _write_json(path: Path, payload: object) -> None:
@@ -160,4 +171,4 @@ class GepaAnalyze(AnalyzeOperator):
 
 
 if __name__ == "__main__":
-    sdk.main(GepaAnalyze)
+    sdk.main(GepaAnalyze, validate_config=validate_config)

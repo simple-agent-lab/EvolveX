@@ -2,6 +2,13 @@
 
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import MutateOperator, MutateResult
+from library._shared.config import config_object, reject_unknown
+
+
+def validate_config(raw: dict[str, object]) -> dict[str, object]:
+    config = config_object(raw)
+    reject_unknown(config, set())
+    return config
 
 
 class SkeletonMutate(MutateOperator):
@@ -13,4 +20,4 @@ class SkeletonMutate(MutateOperator):
 
 
 if __name__ == "__main__":
-    sdk.main(SkeletonMutate)
+    sdk.main(SkeletonMutate, validate_config=validate_config)

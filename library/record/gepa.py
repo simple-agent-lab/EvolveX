@@ -10,7 +10,14 @@ from typing import Any
 
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import OperatorContext, RecordOperator, RecordResult
+from library._shared.config import config_object, reject_unknown
 from library._shared.gepa import read_json
+
+
+def validate_config(raw: dict[str, object]) -> dict[str, object]:
+    config = config_object(raw)
+    reject_unknown(config, set())
+    return config
 
 
 def _relative(path: Path, workspace: Path) -> str | None:
@@ -62,4 +69,4 @@ class GepaRecord(RecordOperator):
 
 
 if __name__ == "__main__":
-    sdk.main(GepaRecord)
+    sdk.main(GepaRecord, validate_config=validate_config)

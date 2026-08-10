@@ -2,6 +2,16 @@
 
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import SelectOperator, SelectResult
+from library._shared.config import config_object, reject_unknown
+
+
+def validate_config(raw: dict[str, object]) -> dict[str, object]:
+    config = config_object(raw)
+    reject_unknown(config, {"seed"})
+    seed = config.get("seed", 0)
+    if isinstance(seed, bool) or not isinstance(seed, int):
+        raise ValueError("seed must be an integer")
+    return {"seed": seed}
 
 
 def _generation_key(row):
@@ -21,4 +31,4 @@ class SkeletonSelect(SelectOperator):
 
 
 if __name__ == "__main__":
-    sdk.main(SkeletonSelect)
+    sdk.main(SkeletonSelect, validate_config=validate_config)

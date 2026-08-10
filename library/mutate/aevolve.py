@@ -13,6 +13,16 @@ from evolve.agent import AgentCommandError
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import MutateOperator, MutateResult, OperatorContext
 from evolve.patching import create_candidate_patch, load_surface_policy, patch_parent_ref
+from library._shared.config import (
+    boolean,
+    config_object,
+    mapping,
+    nonnegative_int,
+    positive_int,
+    reject_unknown,
+    string,
+    string_list,
+)
 from library.mutate._runners import run_agent, runner_name
 from library.mutate._support.artifacts import render_artifact_guidance
 from library.mutate._support.evidence import load_feedback
@@ -20,6 +30,78 @@ from library.mutate._support.workspace import workspace_contract
 
 DEFAULT_INLINE_EVIDENCE_CHARS = 50_000
 TRAJECTORY_ONLY_VARIANT = "trajectory_only"
+_RUNNER_KEYS = {
+    "runner",
+    "agent",
+    "model",
+    "environment",
+    "environment_kwargs",
+    "image",
+    "workdir",
+    "agent_kwargs",
+    "agent_env",
+    "agent_pythonpath",
+    "jobs_dir",
+}
+_CONFIG_KEYS = _RUNNER_KEYS | {
+    "trajectory_only",
+    "expose_gate_data",
+    "editable_roots",
+    "evolve_prompts",
+    "evolve_skills",
+    "evolve_memory",
+    "prompt_path",
+    "skills_dir",
+    "memory_dir",
+    "history_cycles",
+    "max_observations",
+    "feedback_chars",
+    "evidence_chars",
+    "required_placeholders",
+    "max_retries",
+}
+
+
+def validate_config(raw: dict[str, object]) -> dict[str, object]:
+    config = config_object(raw)
+    reject_unknown(config, _CONFIG_KEYS)
+    normalized = _runner_config(config)
+    normalized.update(
+        {
+            "trajectory_only": boolean(config, "trajectory_only", False),
+            "expose_gate_data": boolean(config, "expose_gate_data", False),
+            "editable_roots": string_list(config, "editable_roots", ["target"]),
+            "evolve_prompts": boolean(config, "evolve_prompts", True),
+            "evolve_skills": boolean(config, "evolve_skills", True),
+            "evolve_memory": boolean(config, "evolve_memory", True),
+            "history_cycles": positive_int(config, "history_cycles", 2),
+            "max_observations": positive_int(config, "max_observations", 30),
+            "feedback_chars": positive_int(config, "feedback_chars", 300),
+            "evidence_chars": positive_int(config, "evidence_chars", DEFAULT_INLINE_EVIDENCE_CHARS),
+            "max_retries": nonnegative_int(config, "max_retries", 0),
+        }
+    )
+    for key in ("prompt_path", "skills_dir", "memory_dir"):
+        if key in config:
+            normalized[key] = string(config, key, "")
+    if "required_placeholders" in config:
+        normalized["required_placeholders"] = string_list(config, "required_placeholders", [])
+    return normalized
+
+
+def _runner_config(config: dict[str, object]) -> dict[str, object]:
+    runner = string(config, "runner", "local")
+    if runner not in {"local", "harbor"}:
+        raise ValueError("runner must be 'local' or 'harbor'")
+    normalized: dict[str, object] = {"runner": runner}
+    for key in ("agent", "model", "environment", "image", "workdir", "agent_pythonpath", "jobs_dir"):
+        if key in config:
+            normalized[key] = string(config, key, "")
+    for key in ("environment_kwargs", "agent_kwargs", "agent_env"):
+        if key in config:
+            normalized[key] = mapping(config, key, {})
+    return normalized
+
 
 AEVOLVE_SYSTEM_PROMPT = """# A-Evolve Workspace Improvement
 
@@ -420,4 +502,4 @@ class AEvolveMutate(MutateOperator):
 
 
 if __name__ == "__main__":
-    sdk.main(AEvolveMutate)
+    sdk.main(AEvolveMutate, validate_config=validate_config)

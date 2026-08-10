@@ -6,6 +6,13 @@ actual improvement.
 
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import GateOperator, GateResult, OperatorContext, Row
+from library._shared.config import boolean, config_object, reject_unknown
+
+
+def validate_config(raw: dict[str, object]) -> dict[str, object]:
+    config = config_object(raw)
+    reject_unknown(config, {"strict"})
+    return {"strict": boolean(config, "strict", False)}
 
 
 def _hillclimb_gate(child: Row, parent: Row | None, *, strict: bool = False) -> tuple[bool, str]:
@@ -33,4 +40,4 @@ class HillclimbGate(GateOperator):
 
 
 if __name__ == "__main__":
-    sdk.main(HillclimbGate)
+    sdk.main(HillclimbGate, validate_config=validate_config)

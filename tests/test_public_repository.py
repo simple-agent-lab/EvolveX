@@ -143,6 +143,16 @@ def test_required_public_repository_files_exist() -> None:
         ".github/ISSUE_TEMPLATE/bug_report.yml",
         ".github/ISSUE_TEMPLATE/feature_request.yml",
         ".github/ISSUE_TEMPLATE/config.yml",
+        "library/_shared/config.py",
+        "library/select/_skeleton.py",
+        "library/rollout/_skeleton.py",
+        "library/analyze/_skeleton.py",
+        "library/mutate/_skeleton.py",
+        "library/validate/_skeleton.py",
+        "library/novelty/_skeleton.py",
+        "library/gate/_skeleton.py",
+        "library/record/_skeleton.py",
+        "library/reflect/_skeleton.py",
     )
     assert [path for path in required if not (ROOT / path).is_file()] == []
 

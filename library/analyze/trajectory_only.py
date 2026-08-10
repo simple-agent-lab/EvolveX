@@ -24,7 +24,60 @@ from evolve.trace_analysis import (
     trajectory_signal_records,
     write_evidence_bundle,
 )
+from library._shared.config import (
+    boolean,
+    config_object,
+    mapping,
+    positive_float,
+    positive_int,
+    reject_unknown,
+    string,
+)
 from library.mutate._runners import run_readonly_agent
+
+_CONFIG_KEYS = {
+    "history_cycles",
+    "max_observations",
+    "max_chars",
+    "judge_max_concurrent",
+    "judge_retry_attempts",
+    "judge_timeout_s",
+    "judge_agent",
+    "judge_agent_kwargs",
+    "judge_agent_env",
+    "judge_model",
+    "judge_inherit_openai_credentials",
+    "agent",
+    "agent_kwargs",
+    "model",
+    "pass_threshold",
+}
+
+
+def validate_config(raw: dict[str, object]) -> dict[str, object]:
+    config = config_object(raw)
+    reject_unknown(config, _CONFIG_KEYS)
+    normalized: dict[str, object] = {
+        "history_cycles": positive_int(config, "history_cycles", 2),
+        "max_observations": positive_int(config, "max_observations", 30),
+        "max_chars": positive_int(config, "max_chars", 30_000),
+        "judge_max_concurrent": positive_int(config, "judge_max_concurrent", 4),
+        "judge_retry_attempts": positive_int(config, "judge_retry_attempts", 3),
+        "judge_timeout_s": positive_float(config, "judge_timeout_s", 600.0),
+        "judge_inherit_openai_credentials": boolean(config, "judge_inherit_openai_credentials", False),
+    }
+    threshold = config.get("pass_threshold", 1.0)
+    if isinstance(threshold, bool) or not isinstance(threshold, (int, float)) or not math.isfinite(float(threshold)):
+        raise ValueError("pass_threshold must be a finite number")
+    normalized["pass_threshold"] = float(threshold)
+    for key in ("judge_agent", "judge_model", "agent", "model"):
+        if key in config:
+            normalized[key] = string(config, key, "")
+    for key in ("judge_agent_kwargs", "judge_agent_env", "agent_kwargs"):
+        if key in config:
+            normalized[key] = mapping(config, key, {})
+    return normalized
+
 
 Case = dict[str, Any]
 
@@ -222,4 +275,4 @@ class TrajectoryOnly(AnalyzeOperator):
 
 
 if __name__ == "__main__":
-    sdk.main(TrajectoryOnly)
+    sdk.main(TrajectoryOnly, validate_config=validate_config)

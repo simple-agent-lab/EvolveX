@@ -92,9 +92,10 @@ def _inspect(operator: LibraryOperator, mode: str, config: dict[str, object], ti
         environment = dict(os.environ)
         existing_path = environment.get("PYTHONPATH")
         environment["PYTHONPATH"] = str(cwd) if not existing_path else f"{cwd}{os.pathsep}{existing_path}"
+        launcher = "import runpy, sys; source = sys.argv.pop(1); runpy.run_path(source, run_name='__main__')"
         try:
             completed = subprocess.run(
-                [sys.executable, str(source), mode, "--config", json.dumps(config)],
+                [sys.executable, "-c", launcher, str(source), mode, "--config", json.dumps(config)],
                 cwd=cwd,
                 env=environment,
                 capture_output=True,

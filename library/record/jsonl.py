@@ -10,6 +10,13 @@ from typing import Any
 from evolve.evaluation.evidence import task_passed
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import ArchiveView, OperatorContext, RecordOperator, RecordResult, Row
+from library._shared.config import config_object, reject_unknown
+
+
+def validate_config(raw: dict[str, object]) -> dict[str, object]:
+    config = config_object(raw)
+    reject_unknown(config, set())
+    return config
 
 
 def _record_fields_from_run_dir(run_dir: Path) -> dict[str, Any]:
@@ -69,4 +76,4 @@ class JsonlRecord(RecordOperator):
 
 
 if __name__ == "__main__":
-    sdk.main(JsonlRecord)
+    sdk.main(JsonlRecord, validate_config=validate_config)
