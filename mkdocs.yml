@@ -7,6 +7,7 @@ edit_uri: edit/main/docs/
 
 theme:
   name: material
+  custom_dir: docs/overrides
   logo: evolve-mark.svg
   favicon: evolve-mark.svg
   language: en
@@ -79,6 +80,9 @@ markdown_extensions:
 
 plugins:
   - search
+
+extra_javascript:
+  - javascripts/repository-stats.js
 
 exclude_docs: |
   designs/
