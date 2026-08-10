@@ -6,6 +6,7 @@ import {
   artifactPresentation,
   compareGenerationIds,
   finalResultGeneration,
+  generationLineage,
   generationsThrough,
   scoreAxis,
   scoreTrend,
@@ -31,6 +32,25 @@ test('overview final result uses the best eligible canonical generation, not the
   ]);
 
   assert.equal(result.genid, '4');
+});
+
+test('champion lineage follows recorded parents rather than generation order', () => {
+  const lineage = generationLineage([
+    {genid: '0', parent: null},
+    {genid: '1', parent: '0'},
+    {genid: '2', parent: '0'},
+    {genid: '4', parent: '1'},
+  ], '4');
+
+  assert.deepEqual(lineage.map((item) => item.genid), ['0', '1', '4']);
+});
+
+test('champion lineage stops safely at missing parents and cycles', () => {
+  const missing = generationLineage([{genid: '4', parent: '1'}], '4');
+  const cycle = generationLineage([{genid: '1', parent: '2'}, {genid: '2', parent: '1'}], '2');
+
+  assert.deepEqual(missing.map((item) => item.genid), ['4']);
+  assert.deepEqual(cycle.map((item) => item.genid), ['1', '2']);
 });
 
 test('score chart crops its score axis and keeps generation labels', () => {

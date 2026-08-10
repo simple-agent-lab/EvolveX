@@ -30,6 +30,19 @@ export function finalResultGeneration(generations) {
   }, null);
 }
 
+export function generationLineage(generations, selectedId) {
+  const byId = new Map(generations.map((item) => [String(item.genid), item]));
+  const lineage = [];
+  const seen = new Set();
+  let current = byId.get(String(selectedId));
+  while (current && !seen.has(String(current.genid))) {
+    lineage.push(current);
+    seen.add(String(current.genid));
+    current = current.parent == null ? null : byId.get(String(current.parent));
+  }
+  return lineage.reverse();
+}
+
 export function artifactHref(id) {
   return `/artifacts/${encodeURIComponent(id)}`;
 }

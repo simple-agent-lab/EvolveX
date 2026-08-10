@@ -69,7 +69,7 @@ def create_viewer_app(workspace: Path, *, bridge: HarborBridge | None = None) ->
         if request.method not in {"GET", "HEAD", "OPTIONS"} or _is_action_path(path):
             return Response(status_code=405, headers={"Allow": "GET, HEAD, OPTIONS"})
         response = await call_next(request)
-        if path.startswith(("/evolve-assets/", "/generations", "/trials", "/artifacts")) or path == "/":
+        if path.startswith(("/evolve-assets/", "/generations", "/trials", "/artifacts", "/review")) or path == "/":
             response.headers["Cache-Control"] = "no-store"
         return response
 
@@ -89,20 +89,51 @@ def create_viewer_app(workspace: Path, *, bridge: HarborBridge | None = None) ->
         return detail
 
     @app.get("/api/evolve/generations/{genid}/diff")
-    def generation_diff(genid: str, context: int = Query(8, ge=3, le=30)) -> Response:
-        detail = store.refresh().generation_details.get(genid)
+    def generation_diff(
+        genid: str,
+        context: int = Query(8, ge=3, le=30),
+        base: str | None = Query(None),
+    ) -> Response:
+        bundle = store.refresh()
+        detail = bundle.generation_details.get(genid)
         if detail is None:
             raise HTTPException(status_code=404, detail=f"generation {genid!r} not found")
         parent = detail.summary.parent
-        paths = [path for path in detail.change.changed_paths if path == "target" or path.startswith("target/")]
-        if parent is None or not paths:
+        comparison_base = base or parent
+        if comparison_base is None or comparison_base == genid:
+            raise HTTPException(status_code=404, detail="expanded generation diff is unavailable")
+        cursor = detail
+        ancestors: set[str] = set()
+        while cursor.summary.parent is not None and cursor.summary.parent not in ancestors:
+            parent_id = cursor.summary.parent
+            ancestors.add(parent_id)
+            cursor = bundle.generation_details.get(parent_id)
+            if cursor is None:
+                break
+        if comparison_base not in ancestors:
+            raise HTTPException(status_code=400, detail="diff base is not an ancestor of this generation")
+        if base is None:
+            paths = [path for path in detail.change.changed_paths if path == "target" or path.startswith("target/")]
+        else:
+            names = git(
+                workspace,
+                "diff",
+                "--name-only",
+                f"gen/{comparison_base}",
+                f"gen/{genid}",
+                "--",
+                "target",
+                check=False,
+            )
+            paths = [path for path in names.stdout.splitlines() if path == "target" or path.startswith("target/")]
+        if not paths:
             raise HTTPException(status_code=404, detail="expanded generation diff is unavailable")
         result = git(
             workspace,
             "diff",
             "--no-ext-diff",
             f"--unified={context}",
-            f"gen/{parent}",
+            f"gen/{comparison_base}",
             f"gen/{genid}",
             "--",
             *paths,
@@ -117,6 +148,7 @@ def create_viewer_app(workspace: Path, *, bridge: HarborBridge | None = None) ->
             headers={
                 "Cache-Control": "no-store",
                 "X-Evolve-Artifact-Truncated": str(len(encoded) > MAX_ARTIFACT_PREVIEW_BYTES).lower(),
+                "X-Evolve-Diff-Base": comparison_base,
             },
         )
 
@@ -179,6 +211,7 @@ def create_viewer_app(workspace: Path, *, bridge: HarborBridge | None = None) ->
     app.mount("/evolve-assets", StaticFiles(directory=evolve_static), name="evolve-assets")
 
     @app.get("/", include_in_schema=False)
+    @app.get("/review", include_in_schema=False)
     @app.get("/generations", include_in_schema=False)
     @app.get("/generations/{genid}", include_in_schema=False)
     @app.get("/trials", include_in_schema=False)

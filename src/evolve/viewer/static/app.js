@@ -2,6 +2,7 @@ import {
   artifactHref,
   artifactPresentation,
   finalResultGeneration,
+  generationLineage,
   generationsThrough,
   scoreTrend,
   splitDiffFiles,
@@ -152,6 +153,9 @@ async function renderRoute(pathname, params) {
   } else if (pathname === '/trials') {
     activateNavigation('trials');
     await renderTrials(params);
+  } else if (pathname === '/review') {
+    activateNavigation('review');
+    await renderReview(params);
   } else if (pathname === '/generations') {
     activateNavigation('generations');
     renderGenerations();
@@ -176,7 +180,7 @@ async function renderOverview() {
   content.innerHTML = `
     <div class="page-heading">
       <div><h2>Experiment overview</h2><p>Global final result, experiment health, and generation history.</p></div>
-      ${finalResultId ? `<a class="button" data-evolve-link href="/generations/${encodeURIComponent(finalResultId)}">Open champion agent · G${escapeHtml(finalResultId)}</a>` : ''}
+      ${finalResultId ? `<div class="page-actions"><a class="button" data-evolve-link href="/review">Review champion changes</a><a class="button" data-evolve-link href="/generations/${encodeURIComponent(finalResultId)}">Open champion agent · G${escapeHtml(finalResultId)}</a></div>` : ''}
     </div>
     <div class="stack">
       ${healthCard(experiment, finalDetail, true)}
@@ -323,6 +327,126 @@ function artifactCard(artifacts) {
   </section>`;
 }
 
+async function renderReview(params) {
+  const generations = state.snapshot.generations;
+  const champion = finalResultGeneration(generations);
+  if (!champion) {
+    content.innerHTML = '<div class="empty"><strong>No champion agent yet</strong>The review will appear after a generation has an eligible canonical score.</div>';
+    return;
+  }
+  const lineage = generationLineage(generations, champion.genid);
+  const genesis = lineage[0];
+  const requestedId = params.get('generation');
+  const requested = lineage.find((item) => item.genid === requestedId && item.parent != null);
+  const selected = requested || champion;
+  const cumulative = requested == null;
+  const baseId = cumulative ? genesis?.genid : selected.parent;
+  const detailEntries = await Promise.all(lineage.map(async (item) => {
+    try {
+      return [item.genid, await getJson(`/api/evolve/generations/${encodeURIComponent(item.genid)}`)];
+    } catch {
+      return [item.genid, null];
+    }
+  }));
+  const details = new Map(detailEntries);
+  let diffText = '';
+  let diffError = null;
+  if (baseId != null && baseId !== selected.genid) {
+    const query = new URLSearchParams({context: '8'});
+    if (cumulative) query.set('base', baseId);
+    try {
+      const response = await fetch(`/api/evolve/generations/${encodeURIComponent(selected.genid)}/diff?${query}`, {cache: 'no-store'});
+      if (!response.ok) throw new Error(`Champion diff returned ${response.status}`);
+      diffText = await response.text();
+    } catch (error) {
+      diffError = error;
+    }
+  }
+  const presentation = {mode: 'diff', language: 'diff', text: diffText};
+  const diffFiles = splitDiffFiles(diffText);
+  const additions = diffFiles.reduce((total, file) => total + file.additions, 0);
+  const deletions = diffFiles.reduce((total, file) => total + file.deletions, 0);
+  const originalLabel = `Generation ${baseId ?? '—'}`;
+  const modifiedLabel = `Generation ${selected.genid}`;
+  const heading = cumulative ? 'Champion agent changes' : `Generation ${selected.genid} parent change`;
+  const description = cumulative
+    ? `All files required to reproduce champion G${selected.genid} from genesis G${baseId}.`
+    : `The recorded modification from parent G${baseId} to G${selected.genid}.`;
+
+  content.classList.add('diff-mode');
+  content.innerHTML = `
+    <div class="page-heading artifact-heading">
+      <div><p class="eyebrow">Champion review</p><h2>${escapeHtml(heading)}</h2><p>${escapeHtml(description)}</p></div>
+      <div class="page-actions"><a class="button" data-evolve-link href="/generations/${encodeURIComponent(champion.genid)}">Open champion · G${escapeHtml(champion.genid)}</a></div>
+    </div>
+    <div class="review-layout">
+      <aside class="card review-lineage" aria-label="Champion lineage">
+        <div class="review-lineage-header"><p class="eyebrow">Selected lineage</p><h3>Champion lineage</h3><p>Follow each accepted parent modification that produced the champion.</p></div>
+        <a class="review-cumulative ${cumulative ? 'active' : ''}" href="/review" data-evolve-link aria-current="${cumulative ? 'page' : 'false'}">
+          <span><strong>Cumulative changes</strong><small>Genesis G${escapeHtml(genesis?.genid ?? '—')} → Champion G${escapeHtml(champion.genid)}</small></span>
+          <b>${lineage.length} generations</b>
+        </a>
+        <ol class="review-lineage-list">
+          ${lineage.map((item, index) => reviewLineageItem(item, details.get(item.genid), index === 0, !cumulative && item.genid === selected.genid)).join('')}
+        </ol>
+      </aside>
+      <section class="card artifact-card review-diff-card">
+        <div class="diff-toolbar">
+          <div class="diff-generation-flow">
+            <span><small>Original</small><strong>${escapeHtml(originalLabel)}</strong></span>
+            <b aria-hidden="true">→</b>
+            <span><small>Modified</small><strong>${escapeHtml(modifiedLabel)}</strong></span>
+          </div>
+          <div class="diff-summary" aria-label="Diff summary">
+            <span><strong>${diffFiles.length}</strong> files</span><span class="plus">+${additions}</span><span class="minus">−${deletions}</span><span>8 lines context</span>
+          </div>
+          <div class="diff-toolbar-actions">
+            <div class="diff-segmented" aria-label="Diff layout">
+              <button class="diff-layout-button" type="button" data-diff-layout="side-by-side" aria-pressed="true">Split</button>
+              <button class="diff-layout-button" type="button" data-diff-layout="line-by-line" aria-pressed="false">Unified</button>
+            </div>
+            <button class="button" id="artifact-wrap" type="button" aria-pressed="false">Wrap lines</button>
+          </div>
+        </div>
+        ${diffFiles.length > 1 ? diffFileTabs(diffFiles) : ''}
+        <div id="diff-comparison-labels" class="diff-comparison-labels">
+          <div><span>Original</span><strong>${escapeHtml(originalLabel)}</strong></div>
+          <div><span>Modified</span><strong>${escapeHtml(modifiedLabel)}</strong></div>
+        </div>
+        ${diffError ? `<div class="artifact-notice review-diff-notice">${escapeHtml(diffError.message)}</div>` : ''}
+        ${!diffError && !diffFiles.length ? '<div class="empty"><strong>No target changes</strong>The champion matches its comparison base.</div>' : '<div id="artifact-preview" class="artifact-preview no-wrap"></div>'}
+      </section>
+    </div>`;
+  if (diffFiles.length) bindArtifactPreview(presentation, diffFiles, true);
+}
+
+function reviewLineageItem(summary, detail, genesis, selected) {
+  const change = detail?.change;
+  const paths = change?.changed_paths || [];
+  if (genesis) {
+    return `<li class="review-step genesis"><span class="review-step-dot" aria-hidden="true"></span><div><div class="review-step-title"><strong>Generation ${escapeHtml(summary.genid)}</strong>${badge(summary.status)}</div><p>Genesis agent · score ${number(summary.score)}</p><small>Starting point for the champion lineage.</small></div></li>`;
+  }
+  const rationale = change?.rationale?.trim() || 'No modification rationale was recorded.';
+  return `<li class="review-step ${selected ? 'selected' : ''}">
+    <span class="review-step-dot" aria-hidden="true"></span>
+    <a href="/review?generation=${encodeURIComponent(summary.genid)}" data-evolve-link aria-current="${selected ? 'step' : 'false'}">
+      <div class="review-step-title"><strong>Generation ${escapeHtml(summary.genid)}</strong><span class="review-step-score">Score ${number(summary.score)}</span></div>
+      <p>Parent G${escapeHtml(summary.parent)} → G${escapeHtml(summary.genid)}</p>
+      <small>${escapeHtml(rationale)}</small>
+      ${paths.length ? `<ul class="review-paths">${paths.map((path) => `<li title="${escapeHtml(path)}">${escapeHtml(path)}</li>`).join('')}</ul>` : ''}
+      <span class="review-step-stat">${paths.length} files <i class="plus">+${change?.insertions ?? 0}</i> <i class="minus">−${change?.deletions ?? 0}</i></span>
+    </a>
+  </li>`;
+}
+
+function diffFileTabs(diffFiles) {
+  return `<div class="diff-file-tabs" role="tablist" aria-label="Modified files">
+    ${diffFiles.map((file, index) => `<button type="button" role="tab" data-diff-file="${index}" aria-selected="${index === 0}" tabindex="${index === 0 ? 0 : -1}">
+      <span>${escapeHtml(file.path)}</span><small><i class="plus">+${file.additions}</i><i class="minus">−${file.deletions}</i></small>
+    </button>`).join('')}
+  </div>`;
+}
+
 async function loadArtifact(artifactId) {
   const cached = state.artifactCache.get(artifactId);
   if (cached) return cached;
@@ -397,11 +521,7 @@ async function renderArtifact(artifactId) {
           <button class="button" id="artifact-wrap" type="button" aria-pressed="false">Wrap lines</button>
         </div>
       </div>` : `<div class="artifact-meta"><span>${escapeHtml(metadata.kind || 'text')}</span><span>${formatBytes(metadata.size)}</span></div>`}
-      ${diffFiles.length > 1 ? `<div class="diff-file-tabs" role="tablist" aria-label="Modified files">
-        ${diffFiles.map((file, index) => `<button type="button" role="tab" data-diff-file="${index}" aria-selected="${index === 0}" tabindex="${index === 0 ? 0 : -1}">
-          <span>${escapeHtml(file.path)}</span><small><i class="plus">+${file.additions}</i><i class="minus">−${file.deletions}</i></small>
-        </button>`).join('')}
-      </div>` : ''}
+      ${diffFiles.length > 1 ? diffFileTabs(diffFiles) : ''}
       ${isDiff && genid ? `<div id="diff-comparison-labels" class="diff-comparison-labels">
         <div><span>Original</span><strong>${generation?.parent == null ? 'Parent version' : `Generation ${escapeHtml(generation.parent)}`}</strong></div>
         <div><span>Modified</span><strong>Generation ${escapeHtml(genid)}</strong></div>
@@ -409,9 +529,13 @@ async function renderArtifact(artifactId) {
       <div id="artifact-preview" class="artifact-preview no-wrap"></div>
     </section>`;
 
-  const preview = document.querySelector('#artifact-preview');
-  const wrapButton = document.querySelector('#artifact-wrap');
-  wrapButton.addEventListener('click', () => {
+  bindArtifactPreview(presentation, diffFiles, isDiff);
+}
+
+function bindArtifactPreview(presentation, diffFiles, isDiff) {
+  const preview = content.querySelector('#artifact-preview');
+  const wrapButton = content.querySelector('#artifact-wrap');
+  wrapButton?.addEventListener('click', () => {
     const wrapping = preview.classList.toggle('wrap');
     preview.classList.toggle('no-wrap', !wrapping);
     wrapButton.setAttribute('aria-pressed', String(wrapping));
@@ -420,18 +544,18 @@ async function renderArtifact(artifactId) {
   let selectedFile = 0;
   let selectedLayout = isDiff ? 'side-by-side' : 'line-by-line';
   const renderSelection = () => {
-    document.querySelector('.artifact-card').dataset.diffLayout = selectedLayout;
+    content.querySelector('.artifact-card').dataset.diffLayout = selectedLayout;
     preview.replaceChildren();
     preview.classList.remove('diff-preview');
     const selectedPresentation = diffFiles.length ? {...presentation, text: diffFiles[selectedFile].text} : presentation;
     renderArtifactPresentation(preview, selectedPresentation, {outputFormat: selectedLayout, drawFileList: false});
-    document.querySelector('#diff-comparison-labels')?.toggleAttribute('hidden', selectedLayout !== 'side-by-side');
-    document.querySelectorAll('[data-diff-layout]').forEach((button) => {
+    content.querySelector('#diff-comparison-labels')?.toggleAttribute('hidden', selectedLayout !== 'side-by-side');
+    content.querySelectorAll('[data-diff-layout]').forEach((button) => {
       const active = button.dataset.diffLayout === selectedLayout;
       button.classList.toggle('primary', active);
       button.setAttribute('aria-pressed', String(active));
     });
-    document.querySelectorAll('[data-diff-file]').forEach((button, index) => {
+    content.querySelectorAll('[data-diff-file]').forEach((button, index) => {
       const active = index === selectedFile;
       button.setAttribute('aria-selected', String(active));
       button.tabIndex = active ? 0 : -1;
@@ -445,15 +569,15 @@ async function renderArtifact(artifactId) {
       preview.scrollTop = 0;
       preview.querySelectorAll('.d2h-file-side-diff').forEach((pane) => { pane.scrollLeft = 0; });
     }
-    if (focus) document.querySelector(`[data-diff-file="${selectedFile}"]`)?.focus();
+    if (focus) content.querySelector(`[data-diff-file="${selectedFile}"]`)?.focus();
   };
-  document.querySelectorAll('[data-diff-layout]').forEach((button) => {
+  content.querySelectorAll('[data-diff-layout]').forEach((button) => {
     button.addEventListener('click', () => {
       selectedLayout = button.dataset.diffLayout;
       renderSelection();
     });
   });
-  document.querySelectorAll('[data-diff-file]').forEach((button) => {
+  content.querySelectorAll('[data-diff-file]').forEach((button) => {
     button.addEventListener('click', (event) => selectFile(Number(button.dataset.diffFile), false, event.isTrusted));
     button.addEventListener('keydown', (event) => {
       if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;

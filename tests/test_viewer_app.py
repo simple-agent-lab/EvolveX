@@ -73,6 +73,8 @@ def test_generation_diff_adds_bounded_parent_context(viewer_workspace: Path) -> 
 
     with TestClient(create_viewer_app(viewer_workspace)) as client:
         response = client.get("/api/evolve/generations/1/diff", params={"context": 5})
+        cumulative = client.get("/api/evolve/generations/1/diff", params={"context": 5, "base": "0"})
+        invalid = client.get("/api/evolve/generations/1/diff", params={"context": 5, "base": "missing"})
 
     assert response.status_code == 200
     assert "-line 8" in response.text
@@ -80,6 +82,9 @@ def test_generation_diff_adds_bounded_parent_context(viewer_workspace: Path) -> 
     assert " line 13" in response.text
     assert " line 14" not in response.text
     assert response.headers["cache-control"] == "no-store"
+    assert cumulative.status_code == 200
+    assert cumulative.headers["x-evolve-diff-base"] == "0"
+    assert invalid.status_code == 400
 
 
 def test_trial_pagination_and_filters(viewer_workspace: Path) -> None:
@@ -158,7 +163,14 @@ def test_composed_app_blocks_mutating_and_get_shaped_actions(viewer_workspace: P
 
 def test_frontend_routes_serve_evolve_shell(viewer_workspace: Path) -> None:
     with TestClient(create_viewer_app(viewer_workspace)) as client:
-        for path in ("/", "/generations", "/generations/1", "/trials", "/artifacts/example"):
+        for path in (
+            "/",
+            "/review",
+            "/generations",
+            "/generations/1",
+            "/trials",
+            "/artifacts/example",
+        ):
             response = client.get(path)
             assert response.status_code == 200
             assert 'id="evolve-viewer"' in response.text
@@ -179,7 +191,7 @@ def test_frontend_has_required_navigation_and_refresh_contract() -> None:
     javascript = (static / "app.js").read_text()
     styles = (static / "styles.css").read_text()
 
-    assert all(label in html for label in ("Overview", "Generations", "Trials"))
+    assert all(label in html for label in ("Overview", "Generations", "Review", "Trials"))
     assert "3000" in javascript
     assert "/api/evolve/snapshot" in javascript
     assert "Full Harbor inspection" in javascript
@@ -191,6 +203,9 @@ def test_frontend_has_required_navigation_and_refresh_contract() -> None:
     assert "Global final result" in javascript
     assert "Global champion from canonical evaluation" in javascript
     assert "Champion agent ·" in javascript
+    assert "Champion lineage" in javascript
+    assert "Cumulative changes" in javascript
+    assert "All files required to reproduce champion" in javascript
     assert "hasTrainScore && !globalResult" in javascript
     assert "overviewPlaceholderCard" in javascript
     assert "performance-pages" in javascript
