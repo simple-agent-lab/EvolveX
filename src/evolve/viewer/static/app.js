@@ -91,6 +91,7 @@ function captureViewState() {
     focusedId: content.contains(document.activeElement) ? document.activeElement.id : null,
     artifactWrap: document.querySelector('#artifact-preview')?.classList.contains('wrap') || false,
     performancePages: [...content.querySelectorAll('[data-performance-card]')].map((card) => Number(card.dataset.page) || 1),
+    championStep: Number(content.querySelector('[data-champion-step]')?.dataset.championStep) || 0,
     diffFile: content.querySelector('[data-diff-file][aria-selected="true"]')?.dataset.diffFile ?? null,
     diffLayout: content.querySelector('[data-diff-layout][aria-pressed="true"]')?.dataset.diffLayout ?? null,
   };
@@ -103,6 +104,9 @@ function restoreViewState(saved) {
     if (!control) continue;
     control.value = item.value;
     if (item.checked != null && 'checked' in control) control.checked = item.checked;
+  }
+  for (let index = 0; index < saved.championStep; index += 1) {
+    content.querySelector('[data-champion-next]')?.click();
   }
   [...content.querySelectorAll('.trend-scroll, .table-wrap, .artifact-preview')].forEach((element, index) => {
     const position = saved.scrollers[index];
@@ -417,8 +421,6 @@ async function championArtifactProgression(artifactId, genid, params) {
   const champion = finalResultGeneration(state.snapshot.generations);
   if (!champion || champion.genid !== championId) return null;
   const lineage = generationLineage(state.snapshot.generations, championId);
-  const index = lineage.findIndex((item) => item.genid === genid);
-  if (index <= 0) return null;
   const details = await Promise.all(lineage.slice(1).map(async (item) => {
     try {
       return await getJson(`/api/evolve/generations/${encodeURIComponent(item.genid)}`);
@@ -426,19 +428,29 @@ async function championArtifactProgression(artifactId, genid, params) {
       return null;
     }
   }));
-  const currentDetail = details[index - 1];
-  if (currentDetail?.change?.patch_artifact_id !== artifactId) return null;
-  const nextSummary = lineage[index + 1] || null;
-  const nextDetail = nextSummary ? details[index] : null;
-  return {
-    champion,
-    genesis: lineage[0],
-    index,
-    total: lineage.length - 1,
-    currentDetail,
-    nextSummary,
-    nextArtifactId: nextDetail?.change?.patch_artifact_id || null,
-  };
+  if (!details.length || details[0]?.change?.patch_artifact_id !== artifactId || lineage[1]?.genid !== genid) return null;
+  const steps = await Promise.all(details.map(async (detail, index) => {
+    const summary = lineage[index + 1];
+    let text = '';
+    try {
+      const response = await fetch(`/api/evolve/generations/${encodeURIComponent(summary.genid)}/diff?context=8`, {cache: 'no-store'});
+      if (response.ok) text = await response.text();
+    } catch { /* An unavailable step remains visible in the replay. */ }
+    return {summary, parent: lineage[index], detail, text, files: splitDiffFiles(text)};
+  }));
+  const filesByPath = new Map();
+  for (const step of steps) {
+    for (const path of step.detail?.change?.changed_paths || []) {
+      if (!filesByPath.has(path)) filesByPath.set(path, {path, additions: 0, deletions: 0});
+    }
+    for (const file of step.files) {
+      const aggregate = filesByPath.get(file.path) || {path: file.path, additions: 0, deletions: 0};
+      aggregate.additions += file.additions;
+      aggregate.deletions += file.deletions;
+      filesByPath.set(file.path, aggregate);
+    }
+  }
+  return {champion, genesis: lineage[0], steps, files: [...filesByPath.values()]};
 }
 
 async function renderArtifact(artifactId, params = new URLSearchParams()) {
@@ -454,16 +466,18 @@ async function renderArtifact(artifactId, params = new URLSearchParams()) {
   const generationMatch = metadata.relative_path.match(/^runs\/gen-([^/]+)\//);
   const genid = generationMatch?.[1] || null;
   const generation = genid ? state.snapshot.generations.find((item) => item.genid === genid) : null;
-  const progression = await championArtifactProgression(artifactId, genid, params);
-  const backHref = progression ? '/' : genid ? `/generations/${encodeURIComponent(genid)}` : '/';
   let presentation = artifactPresentation(metadata, text);
   const isDiff = presentation.mode === 'diff';
+  const progression = isDiff ? await championArtifactProgression(artifactId, genid, params) : null;
+  if (progression) {
+    renderChampionArtifact(progression);
+    return;
+  }
+  const backHref = genid ? `/generations/${encodeURIComponent(genid)}` : '/';
   let expandedContext = null;
   if (isDiff && genid) {
     try {
-      const query = new URLSearchParams({context: '8'});
-      if (progression) query.set('base', progression.genesis.genid);
-      const response = await fetch(`/api/evolve/generations/${encodeURIComponent(genid)}/diff?${query}`, {cache: 'no-store'});
+      const response = await fetch(`/api/evolve/generations/${encodeURIComponent(genid)}/diff?context=8`, {cache: 'no-store'});
       if (response.ok) {
         const expanded = await response.text();
         if (expanded) {
@@ -474,25 +488,14 @@ async function renderArtifact(artifactId, params = new URLSearchParams()) {
     } catch { /* Fall back to the registered patch artifact. */ }
   }
   const diffFiles = isDiff ? splitDiffFiles(presentation.text) : [];
-  const title = progression ? 'Champion evolution diff' : isDiff && genid ? `Generation ${genid} diff` : metadata.label;
-  const originalGeneration = progression ? progression.genesis.genid : generation?.parent;
-  const diffAdditions = progression
-    ? diffFiles.reduce((total, file) => total + file.additions, 0)
-    : generation?.insertions;
-  const diffDeletions = progression
-    ? diffFiles.reduce((total, file) => total + file.deletions, 0)
-    : generation?.deletions;
-  const nextHref = progression?.nextArtifactId
-    ? `${artifactHref(progression.nextArtifactId)}?champion=${encodeURIComponent(progression.champion.genid)}`
-    : null;
+  const title = isDiff && genid ? `Generation ${genid} diff` : metadata.label;
   content.classList.toggle('diff-mode', isDiff);
   content.innerHTML = `
     <div class="page-heading artifact-heading">
-      <div><p class="eyebrow">${progression ? 'Champion replay' : isDiff ? 'Generation comparison' : 'Artifact preview'}</p><h2>${escapeHtml(title)}</h2><p class="artifact-path">${progression ? `Step ${progression.index} of ${progression.total} · cumulative changes through Generation ${escapeHtml(genid)}` : escapeHtml(metadata.relative_path)}</p></div>
+      <div><p class="eyebrow">${isDiff ? 'Generation comparison' : 'Artifact preview'}</p><h2>${escapeHtml(title)}</h2><p class="artifact-path">${escapeHtml(metadata.relative_path)}</p></div>
       <div class="page-actions">
-        <a class="button" data-evolve-link href="${backHref}">← ${progression ? 'Overview' : genid ? `Generation ${escapeHtml(genid)}` : 'Overview'}</a>
+        <a class="button" data-evolve-link href="${backHref}">← ${genid ? `Generation ${escapeHtml(genid)}` : 'Overview'}</a>
         <a class="button" target="_blank" href="${escapeHtml(metadata.content_url)}">Raw</a>
-        ${nextHref ? `<a class="button primary champion-next-button" data-evolve-link href="${nextHref}">Next · Generation ${escapeHtml(progression.nextSummary.genid)} →</a>` : progression ? '<span class="champion-reached">Champion reached</span>' : ''}
         ${isDiff ? '' : '<button class="button" id="artifact-wrap" type="button" aria-pressed="false">Wrap lines</button>'}
       </div>
     </div>
@@ -500,14 +503,14 @@ async function renderArtifact(artifactId, params = new URLSearchParams()) {
     <section class="card artifact-card">
       ${isDiff ? `<div class="diff-toolbar">
         <div class="diff-generation-flow">
-          <span><small>Original</small><strong>${originalGeneration == null ? 'Parent version' : `Generation ${escapeHtml(originalGeneration)}`}</strong></span>
+          <span><small>Original</small><strong>${generation?.parent == null ? 'Parent version' : `Generation ${escapeHtml(generation.parent)}`}</strong></span>
           <b aria-hidden="true">→</b>
           <span><small>Modified</small><strong>Generation ${escapeHtml(genid || '—')}</strong></span>
         </div>
         <div class="diff-summary" aria-label="Diff summary">
-          <span><strong>${progression ? diffFiles.length : generation?.change_files ?? '—'}</strong> files</span>
-          <span class="plus">+${diffAdditions ?? '—'}</span>
-          <span class="minus">−${diffDeletions ?? '—'}</span>
+          <span><strong>${generation?.change_files ?? '—'}</strong> files</span>
+          <span class="plus">+${generation?.insertions ?? '—'}</span>
+          <span class="minus">−${generation?.deletions ?? '—'}</span>
           ${expandedContext == null ? '' : `<span>${expandedContext} lines context</span>`}
         </div>
         <div class="diff-toolbar-actions">
@@ -520,15 +523,154 @@ async function renderArtifact(artifactId, params = new URLSearchParams()) {
       </div>` : `<div class="artifact-meta"><span>${escapeHtml(metadata.kind || 'text')}</span><span>${formatBytes(metadata.size)}</span></div>`}
       ${diffFiles.length > 1 ? diffFileTabs(diffFiles) : ''}
       ${isDiff && genid ? `<div id="diff-comparison-labels" class="diff-comparison-labels">
-        <div><span>Original</span><strong>${originalGeneration == null ? 'Parent version' : `Generation ${escapeHtml(originalGeneration)}`}</strong></div>
+        <div><span>Original</span><strong>${generation?.parent == null ? 'Parent version' : `Generation ${escapeHtml(generation.parent)}`}</strong></div>
         <div><span>Modified</span><strong>Generation ${escapeHtml(genid)}</strong></div>
       </div>` : ''}
       <div id="artifact-preview" class="artifact-preview no-wrap"></div>
     </section>`;
 
-  bindArtifactPreview(presentation, diffFiles, isDiff, {
-    initialFilePath: progression?.currentDetail?.change?.changed_paths?.[0],
+  bindArtifactPreview(presentation, diffFiles, isDiff);
+}
+
+function renderChampionArtifact(progression) {
+  content.classList.add('diff-mode');
+  content.innerHTML = `
+    <div class="page-heading artifact-heading">
+      <div><p class="eyebrow">Champion replay</p><h2>Champion evolution diff</h2><p class="artifact-path" data-champion-step-label></p></div>
+      <div class="page-actions">
+        <a class="button" data-evolve-link href="/">← Overview</a>
+        <button class="button" type="button" data-champion-previous disabled>← Previous</button>
+        <button class="button primary champion-next-button" type="button" data-champion-next>Next →</button>
+      </div>
+    </div>
+    <section class="card artifact-card" data-champion-step="0">
+      <div class="diff-toolbar">
+        <div class="diff-generation-flow">
+          <span><small>Original</small><strong data-step-original></strong></span>
+          <b aria-hidden="true">→</b>
+          <span><small>Modified</small><strong data-step-modified></strong></span>
+        </div>
+        <div class="diff-summary" aria-label="Diff summary">
+          <span><strong data-step-files>0</strong> files</span>
+          <span class="plus" data-step-additions>+0</span>
+          <span class="minus" data-step-deletions>−0</span>
+          <span>8 lines context</span>
+        </div>
+        <div class="diff-toolbar-actions">
+          <div class="diff-segmented" aria-label="Diff layout">
+            <button class="diff-layout-button" type="button" data-diff-layout="side-by-side" aria-pressed="true">Split</button>
+            <button class="diff-layout-button" type="button" data-diff-layout="line-by-line" aria-pressed="false">Unified</button>
+          </div>
+          <button class="button" id="artifact-wrap" type="button" aria-pressed="false">Wrap lines</button>
+        </div>
+      </div>
+      ${diffFileTabs(progression.files)}
+      <div id="diff-comparison-labels" class="diff-comparison-labels">
+        <div><span>Original</span><strong data-step-original></strong></div>
+        <div><span>Modified</span><strong data-step-modified></strong></div>
+      </div>
+      <div id="artifact-preview" class="artifact-preview no-wrap"></div>
+    </section>`;
+  bindChampionReplay(progression);
+}
+
+function bindChampionReplay(progression) {
+  const preview = content.querySelector('#artifact-preview');
+  const card = content.querySelector('[data-champion-step]');
+  const previous = content.querySelector('[data-champion-previous]');
+  const next = content.querySelector('[data-champion-next]');
+  const wrapButton = content.querySelector('#artifact-wrap');
+  let stepIndex = 0;
+  let selectedFile = progression.steps[0]?.files[0]?.path || progression.files[0]?.path || null;
+  let selectedLayout = 'side-by-side';
+  let filePinned = false;
+
+  const resetScroll = () => {
+    preview.scrollLeft = 0;
+    preview.scrollTop = 0;
+    preview.querySelectorAll('.d2h-file-side-diff').forEach((pane) => { pane.scrollLeft = 0; });
+  };
+  const renderSelection = () => {
+    const step = progression.steps[stepIndex];
+    const stepFile = step.files.find((file) => file.path === selectedFile);
+    const additions = step.files.reduce((total, file) => total + file.additions, 0);
+    const deletions = step.files.reduce((total, file) => total + file.deletions, 0);
+    const originalLabel = `Generation ${step.parent.genid}`;
+    const modifiedLabel = `Generation ${step.summary.genid}`;
+    card.dataset.championStep = String(stepIndex);
+    card.dataset.diffLayout = selectedLayout;
+    content.querySelector('[data-champion-step-label]').textContent = `Step ${stepIndex + 1} of ${progression.steps.length} · ${originalLabel} → ${modifiedLabel}`;
+    content.querySelectorAll('[data-step-original]').forEach((element) => { element.textContent = originalLabel; });
+    content.querySelectorAll('[data-step-modified]').forEach((element) => { element.textContent = modifiedLabel; });
+    content.querySelector('[data-step-files]').textContent = String(step.files.length);
+    content.querySelector('[data-step-additions]').textContent = `+${additions}`;
+    content.querySelector('[data-step-deletions]').textContent = `−${deletions}`;
+    previous.disabled = stepIndex === 0;
+    next.disabled = stepIndex === progression.steps.length - 1;
+    next.textContent = next.disabled ? 'Champion reached' : `Next · Generation ${progression.steps[stepIndex + 1].summary.genid} →`;
+    preview.replaceChildren();
+    preview.classList.remove('diff-preview');
+    if (stepFile) {
+      renderArtifactPresentation(preview, {mode: 'diff', language: 'diff', text: stepFile.text}, {
+        outputFormat: selectedLayout,
+        drawFileList: false,
+      });
+    } else {
+      preview.innerHTML = `<div class="champion-no-change"><strong>${escapeHtml(selectedFile || 'This file')}</strong><span>did not change from ${escapeHtml(originalLabel)} to ${escapeHtml(modifiedLabel)}.</span></div>`;
+    }
+    content.querySelector('#diff-comparison-labels')?.toggleAttribute('hidden', selectedLayout !== 'side-by-side');
+    content.querySelectorAll('[data-diff-layout]').forEach((button) => {
+      const active = button.dataset.diffLayout === selectedLayout;
+      button.classList.toggle('primary', active);
+      button.setAttribute('aria-pressed', String(active));
+    });
+    content.querySelectorAll('[data-diff-file]').forEach((button, index) => {
+      const active = progression.files[index]?.path === selectedFile;
+      button.setAttribute('aria-selected', String(active));
+      button.tabIndex = active ? 0 : -1;
+    });
+  };
+  const selectFile = (index, focus = false, shouldReset = true) => {
+    const bounded = Math.max(0, Math.min(progression.files.length - 1, index));
+    selectedFile = progression.files[bounded]?.path || null;
+    filePinned = true;
+    renderSelection();
+    if (shouldReset) resetScroll();
+    if (focus) content.querySelector(`[data-diff-file="${bounded}"]`)?.focus();
+  };
+  const selectStep = (index) => {
+    stepIndex = Math.max(0, Math.min(progression.steps.length - 1, index));
+    if (!filePinned && progression.steps[stepIndex].files[0]) {
+      selectedFile = progression.steps[stepIndex].files[0].path;
+    }
+    renderSelection();
+    resetScroll();
+  };
+  previous.addEventListener('click', () => selectStep(stepIndex - 1));
+  next.addEventListener('click', () => selectStep(stepIndex + 1));
+  wrapButton.addEventListener('click', () => {
+    const wrapping = preview.classList.toggle('wrap');
+    preview.classList.toggle('no-wrap', !wrapping);
+    wrapButton.setAttribute('aria-pressed', String(wrapping));
+    wrapButton.textContent = wrapping ? 'Do not wrap' : 'Wrap lines';
   });
+  content.querySelectorAll('[data-diff-layout]').forEach((button) => {
+    button.addEventListener('click', () => {
+      selectedLayout = button.dataset.diffLayout;
+      renderSelection();
+    });
+  });
+  content.querySelectorAll('[data-diff-file]').forEach((button) => {
+    button.addEventListener('click', (event) => selectFile(Number(button.dataset.diffFile), false, event.isTrusted));
+    button.addEventListener('keydown', (event) => {
+      if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+      event.preventDefault();
+      const current = progression.files.findIndex((file) => file.path === selectedFile);
+      const offset = event.key === 'ArrowRight' ? 1 : -1;
+      selectFile((current + offset + progression.files.length) % progression.files.length, true);
+    });
+  });
+  renderSelection();
 }
 
 function bindArtifactPreview(presentation, diffFiles, isDiff, options = {}) {

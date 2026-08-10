@@ -69,6 +69,7 @@ main.diff-mode { width: min(1480px, 100%); }
 .button { display: inline-flex; align-items: center; justify-content: center; min-height: 34px; padding: 0 12px; color: var(--ink); background: white; border: 1px solid var(--line-strong); border-radius: 8px; font-size: 12px; font-weight: 650; text-decoration: none; cursor: pointer; }
 .button:hover { border-color: #9eaaa4; background: #fafcfb; }
 .button.primary { color: white; background: var(--accent); border-color: var(--accent); }
+.button:disabled { color: #929c97; background: #eef1ef; border-color: #d9dfdc; cursor: default; }
 .stack { display: grid; gap: 18px; }
 .grid-two { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(310px, .85fr); gap: 18px; }
 .card { min-width: 0; padding: 20px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
@@ -134,7 +135,9 @@ main.diff-mode { width: min(1480px, 100%); }
 .champion-diff-actions { display: flex; align-items: center; gap: 10px; padding-top: 15px; border-top: 1px solid var(--line); }
 .champion-diff-actions span { color: var(--muted); font-size: 9px; }
 .champion-next-button { min-width: 142px; }
-.champion-reached { display: inline-flex; align-items: center; min-height: 34px; padding: 0 11px; color: #126842; background: var(--accent-soft); border-radius: 8px; font-size: 11px; font-weight: 750; }
+.champion-no-change { min-height: 240px; display: grid; place-content: center; gap: 6px; padding: 28px; color: var(--muted); background: #f7f9f8; text-align: center; }
+.champion-no-change strong { color: var(--ink); font: 650 11px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.champion-no-change span { font-size: 11px; }
 .diff-toolbar { display: grid; grid-template-columns: minmax(270px, 1fr) auto auto; align-items: center; gap: 22px; padding: 14px 16px; background: #fff; border-bottom: 1px solid var(--line); }
 .diff-generation-flow { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .diff-generation-flow > span { display: grid; gap: 2px; min-width: 0; }

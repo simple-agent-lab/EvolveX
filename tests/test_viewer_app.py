@@ -208,7 +208,9 @@ def test_frontend_has_required_navigation_and_refresh_contract() -> None:
     assert "View diff" in javascript
     assert "Champion replay" in javascript
     assert "Next · Generation" in javascript
-    assert "cumulative changes through Generation" in javascript
+    assert "data-champion-next" in javascript
+    assert "next.addEventListener('click'" in javascript
+    assert "did not change from" in javascript
     assert "hasTrainScore && !globalResult" in javascript
     assert "championDiffCard" in javascript
     assert "performance-pages" in javascript
