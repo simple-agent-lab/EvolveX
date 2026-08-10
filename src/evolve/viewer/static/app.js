@@ -1,6 +1,7 @@
 import {
   artifactHref,
   artifactPresentation,
+  finalResultGeneration,
   generationsThrough,
   scoreTrend,
   snapshotRevision,
@@ -149,22 +150,31 @@ async function renderOverview() {
   const snapshot = state.snapshot;
   const experiment = snapshot.experiment;
   const focus = experiment.focus_generation;
-  const detail = focus ? await getJson(`/api/evolve/generations/${encodeURIComponent(focus)}`) : null;
+  const finalResult = finalResultGeneration(snapshot.generations);
+  const finalResultId = finalResult?.genid || null;
+  const [latestDetail, finalDetail] = await Promise.all([
+    focus ? getJson(`/api/evolve/generations/${encodeURIComponent(focus)}`) : null,
+    finalResultId ? getJson(`/api/evolve/generations/${encodeURIComponent(finalResultId)}`) : null,
+  ]);
   const recent = snapshot.generations.slice(-6).reverse();
   content.innerHTML = `
     <div class="page-heading">
-      <div><h2>Experiment overview</h2><p>Current health, latest modification, and benchmark movement.</p></div>
-      ${focus ? `<a class="button" data-evolve-link href="/generations/${encodeURIComponent(focus)}">Open generation ${escapeHtml(focus)}</a>` : ''}
+      <div><h2>Experiment overview</h2><p>Global final result, experiment health, and generation history.</p></div>
+      ${finalResultId ? `<a class="button" data-evolve-link href="/generations/${encodeURIComponent(finalResultId)}">Open final result · G${escapeHtml(finalResultId)}</a>` : ''}
     </div>
     <div class="stack">
-      ${healthCard(experiment, detail)}
+      ${healthCard(experiment, latestDetail)}
       <div class="grid-two">
-        ${changeCard(detail)}
-        ${performanceCard(detail, snapshot.generations)}
+        ${overviewPlaceholderCard()}
+        ${performanceCard(finalDetail, snapshot.generations, true)}
       </div>
       ${generationTable(recent, 'Recent generations')}
     </div>`;
   bindPerformancePagers();
+}
+
+function overviewPlaceholderCard() {
+  return '<section class="card overview-placeholder" aria-label="Reserved overview panel"></section>';
 }
 
 function healthCard(experiment, detail) {
@@ -203,12 +213,15 @@ function changeCard(detail) {
   </section>`;
 }
 
-function performanceCard(detail, generations) {
+function performanceCard(detail, generations, globalResult = false) {
   const performance = detail?.performance || {};
   const delta = performance.delta;
   const hasTrainScore = performance.train_score_before != null && performance.train_score_after != null;
+  const canonicalSubtitle = globalResult
+    ? `Global champion · Generation ${escapeHtml(detail?.summary?.genid || '—')}`
+    : 'Canonical evaluation only';
   return `<section class="card performance-card" data-performance-card data-page="1">
-    <div class="card-header"><div><h3>Performance</h3><p data-performance-subtitle>Canonical evaluation only</p></div><div class="performance-header-actions">${performance.contract_certified == null ? '' : badge(performance.contract_certified ? 'certified' : 'uncertified')}${hasTrainScore ? '<div class="performance-pager" aria-label="Performance pages"><button class="performance-page-button" type="button" data-performance-previous aria-label="Previous performance page" disabled>‹</button><span><strong data-performance-page-number>1</strong> / 2</span><button class="performance-page-button" type="button" data-performance-next aria-label="Next performance page">›</button></div>' : ''}</div></div>
+    <div class="card-header"><div><h3>${globalResult ? 'Final performance' : 'Performance'}</h3><p data-performance-subtitle data-canonical-label="${canonicalSubtitle}">${canonicalSubtitle}</p></div><div class="performance-header-actions">${performance.contract_certified == null ? '' : badge(performance.contract_certified ? 'certified' : 'uncertified')}${hasTrainScore ? '<div class="performance-pager" aria-label="Performance pages"><button class="performance-page-button" type="button" data-performance-previous aria-label="Previous performance page" disabled>‹</button><span><strong data-performance-page-number>1</strong> / 2</span><button class="performance-page-button" type="button" data-performance-next aria-label="Next performance page">›</button></div>' : ''}</div></div>
     <div data-performance-page="1">
       <div class="score-value">${number(performance.score)}${delta == null ? '' : `<span class="score-delta ${delta >= 0 ? 'plus' : 'minus'}">${delta >= 0 ? '+' : ''}${number(delta)}</span>`}</div>
       ${scoreTrend(generations, detail?.summary?.genid)}
@@ -230,7 +243,7 @@ function setPerformancePage(card, page) {
   const numberLabel = card.querySelector('[data-performance-page-number]');
   const subtitle = card.querySelector('[data-performance-subtitle]');
   if (numberLabel) numberLabel.textContent = String(selected);
-  if (subtitle) subtitle.textContent = selected === 1 ? 'Canonical evaluation only' : 'GEPA train score change';
+  if (subtitle) subtitle.textContent = selected === 1 ? subtitle.dataset.canonicalLabel : 'GEPA train score change';
   const previous = card.querySelector('[data-performance-previous]');
   const next = card.querySelector('[data-performance-next]');
   if (previous) previous.disabled = selected === 1;

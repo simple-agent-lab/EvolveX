@@ -5,6 +5,7 @@ import {
   artifactHref,
   artifactPresentation,
   compareGenerationIds,
+  finalResultGeneration,
   generationsThrough,
   scoreTrend,
   snapshotRevision,
@@ -17,6 +18,17 @@ test('generation ordering treats 10 as newer than 2', () => {
     generationsThrough([{genid: '0'}, {genid: '2'}, {genid: '10'}], '2').map((item) => item.genid),
     ['0', '2'],
   );
+});
+
+test('overview final result uses the best eligible canonical generation, not the latest attempt', () => {
+  const result = finalResultGeneration([
+    {genid: '0', score: 0.58, selection_eligible: true},
+    {genid: '4', score: 0.68, selection_eligible: true},
+    {genid: '9', score: 0.63, selection_eligible: true},
+    {genid: '10', score: null, selection_eligible: false},
+  ]);
+
+  assert.equal(result.genid, '4');
 });
 
 test('score chart has fixed score ticks and generation labels', () => {

@@ -159,6 +159,8 @@ def test_frontend_has_required_navigation_and_refresh_contract() -> None:
         label in javascript
         for label in ("Previous performance page", "Next performance page", "GEPA train score change")
     )
+    assert "Global final result" in javascript
+    assert "overviewPlaceholderCard" in javascript
 
 
 @pytest.mark.parametrize(

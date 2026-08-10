@@ -22,6 +22,14 @@ export function generationsThrough(generations, selectedId) {
   return generations.filter((item) => compareGenerationIds(item.genid, selectedId) <= 0);
 }
 
+export function finalResultGeneration(generations) {
+  return generations.reduce((best, candidate) => {
+    if (candidate.score == null || candidate.selection_eligible === false) return best;
+    if (best == null || Number(candidate.score) > Number(best.score)) return candidate;
+    return best;
+  }, null);
+}
+
 export function artifactHref(id) {
   return `/artifacts/${encodeURIComponent(id)}`;
 }
