@@ -46,7 +46,7 @@
 
 <p align="center">
   <a href="docs/assets/benchmark-results.svg">
-    <img src="docs/assets/benchmark-results.svg" alt="Terminal Bench 2 and Tau cubed Banking results for AHE, Hyperagents, A Evolve, and GEPA with MiniSWE and Codex target agents. Each stacked bar labels the seed score inside the dark section and the best score plus improvement above the light section.">
+    <img src="docs/assets/benchmark-results.svg" alt="Terminal Bench 2 and Tau cubed Banking results for AHE, Hyperagents, A-Evolve, and GEPA with MiniSWE and Codex target agents. Each stacked bar labels the seed score inside the dark section and the best score plus improvement above the light section.">
   </a>
 </p>
 
@@ -179,7 +179,7 @@ Split: **50 train / 19 gate / 20 sealed**.
       <td>14 → 14<br><img src="docs/assets/benchmark-deltas/no-change-count-0.svg" alt="(+0)" width="56" height="20"></td>
     </tr>
     <tr>
-      <td>A Evolve</td>
+      <td>A-Evolve</td>
       <td>29 → 34<br><img src="docs/assets/benchmark-deltas/gain-count-5.svg" alt="(+5)" width="56" height="20"></td>
       <td>11 → 15<br><img src="docs/assets/benchmark-deltas/gain-count-4.svg" alt="(+4)" width="56" height="20"></td>
       <td>14 → 13<br><img src="docs/assets/benchmark-deltas/loss-count-1.svg" alt="(−1)" width="56" height="20"></td>
@@ -204,7 +204,7 @@ Split: **50 train / 19 gate / 20 sealed**.
       <td>13 → 15<br><img src="docs/assets/benchmark-deltas/gain-count-2.svg" alt="(+2)" width="56" height="20"></td>
     </tr>
     <tr>
-      <td>A Evolve</td>
+      <td>A-Evolve</td>
       <td>29 → 29<br><img src="docs/assets/benchmark-deltas/no-change-count-0.svg" alt="(+0)" width="56" height="20"></td>
       <td>10 → 10<br><img src="docs/assets/benchmark-deltas/no-change-count-0.svg" alt="(+0)" width="56" height="20"></td>
       <td>13 → 13<br><img src="docs/assets/benchmark-deltas/no-change-count-0.svg" alt="(+0)" width="56" height="20"></td>
@@ -247,7 +247,7 @@ Split: **50 train / 20 gate / 27 sealed**.
       <td>5 → 10<br><img src="docs/assets/benchmark-deltas/gain-count-5.svg" alt="(+5)" width="56" height="20"></td>
     </tr>
     <tr>
-      <td>A Evolve</td>
+      <td>A-Evolve</td>
       <td>15 → 17<br><img src="docs/assets/benchmark-deltas/gain-count-2.svg" alt="(+2)" width="56" height="20"></td>
       <td>7 → 9<br><img src="docs/assets/benchmark-deltas/gain-count-2.svg" alt="(+2)" width="56" height="20"></td>
       <td>5 → 8<br><img src="docs/assets/benchmark-deltas/gain-count-3.svg" alt="(+3)" width="56" height="20"></td>
@@ -272,7 +272,7 @@ Split: **50 train / 20 gate / 27 sealed**.
       <td>2 → 13<br><img src="docs/assets/benchmark-deltas/gain-count-11.svg" alt="(+11)" width="56" height="20"></td>
     </tr>
     <tr>
-      <td>A Evolve</td>
+      <td>A-Evolve</td>
       <td>15 → 19<br><img src="docs/assets/benchmark-deltas/gain-count-4.svg" alt="(+4)" width="56" height="20"></td>
       <td>6 → 9<br><img src="docs/assets/benchmark-deltas/gain-count-3.svg" alt="(+3)" width="56" height="20"></td>
       <td>2 → 5<br><img src="docs/assets/benchmark-deltas/gain-count-3.svg" alt="(+3)" width="56" height="20"></td>
