@@ -205,6 +205,10 @@ def test_frontend_has_required_navigation_and_refresh_contract() -> None:
     assert "Champion diff" in javascript
     assert "Champion files" in javascript
     assert "Parent modification history" in javascript
+    assert "View diff" in javascript
+    assert "Champion replay" in javascript
+    assert "Next · Generation" in javascript
+    assert "cumulative changes through Generation" in javascript
     assert "hasTrainScore && !globalResult" in javascript
     assert "championDiffCard" in javascript
     assert "performance-pages" in javascript

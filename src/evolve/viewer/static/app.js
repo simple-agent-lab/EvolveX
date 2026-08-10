@@ -149,7 +149,7 @@ async function renderRoute(pathname, params) {
   content.classList.remove('diff-mode');
   if (pathname.startsWith('/artifacts/')) {
     activateNavigation(null);
-    await renderArtifact(decodeURIComponent(pathname.slice('/artifacts/'.length)));
+    await renderArtifact(decodeURIComponent(pathname.slice('/artifacts/'.length)), params);
   } else if (pathname === '/trials') {
     activateNavigation('trials');
     await renderTrials(params);
@@ -222,6 +222,10 @@ function championDiffCard(review) {
   const {champion, lineage, details, genesis, files, available} = review;
   const additions = files.reduce((total, file) => total + file.additions, 0);
   const deletions = files.reduce((total, file) => total + file.deletions, 0);
+  const firstChange = lineage.slice(1).map((item) => details.get(item.genid)).find((detail) => detail?.change?.patch_artifact_id);
+  const diffHref = firstChange
+    ? `${artifactHref(firstChange.change.patch_artifact_id)}?champion=${encodeURIComponent(champion.genid)}`
+    : null;
   return `<section class="card champion-diff-card">
     <div class="card-header">
       <div><h3>Champion diff</h3><p>Genesis G${escapeHtml(genesis?.genid ?? '—')} → Champion G${escapeHtml(champion.genid)}</p></div>
@@ -237,6 +241,7 @@ function championDiffCard(review) {
         ${lineage.map((summary, index) => championHistoryItem(summary, details.get(summary.genid), index === 0)).join('')}
       </ol>
     </div>
+    ${diffHref ? `<div class="champion-diff-actions"><a class="button primary" data-evolve-link href="${diffHref}">View diff</a><span>Replay accepted changes generation by generation</span></div>` : ''}
   </section>`;
 }
 
@@ -406,7 +411,37 @@ async function loadArtifact(artifactId) {
   return loaded;
 }
 
-async function renderArtifact(artifactId) {
+async function championArtifactProgression(artifactId, genid, params) {
+  const championId = params?.get('champion');
+  if (!championId || !genid) return null;
+  const champion = finalResultGeneration(state.snapshot.generations);
+  if (!champion || champion.genid !== championId) return null;
+  const lineage = generationLineage(state.snapshot.generations, championId);
+  const index = lineage.findIndex((item) => item.genid === genid);
+  if (index <= 0) return null;
+  const details = await Promise.all(lineage.slice(1).map(async (item) => {
+    try {
+      return await getJson(`/api/evolve/generations/${encodeURIComponent(item.genid)}`);
+    } catch {
+      return null;
+    }
+  }));
+  const currentDetail = details[index - 1];
+  if (currentDetail?.change?.patch_artifact_id !== artifactId) return null;
+  const nextSummary = lineage[index + 1] || null;
+  const nextDetail = nextSummary ? details[index] : null;
+  return {
+    champion,
+    genesis: lineage[0],
+    index,
+    total: lineage.length - 1,
+    currentDetail,
+    nextSummary,
+    nextArtifactId: nextDetail?.change?.patch_artifact_id || null,
+  };
+}
+
+async function renderArtifact(artifactId, params = new URLSearchParams()) {
   content.innerHTML = '<section class="loading-card" aria-busy="true"><span class="spinner" aria-hidden="true"></span><div><strong>Loading artifact</strong><p>Reading the bounded preview.</p></div></section>';
   let loaded;
   try {
@@ -419,13 +454,16 @@ async function renderArtifact(artifactId) {
   const generationMatch = metadata.relative_path.match(/^runs\/gen-([^/]+)\//);
   const genid = generationMatch?.[1] || null;
   const generation = genid ? state.snapshot.generations.find((item) => item.genid === genid) : null;
-  const backHref = genid ? `/generations/${encodeURIComponent(genid)}` : '/';
+  const progression = await championArtifactProgression(artifactId, genid, params);
+  const backHref = progression ? '/' : genid ? `/generations/${encodeURIComponent(genid)}` : '/';
   let presentation = artifactPresentation(metadata, text);
   const isDiff = presentation.mode === 'diff';
   let expandedContext = null;
   if (isDiff && genid) {
     try {
-      const response = await fetch(`/api/evolve/generations/${encodeURIComponent(genid)}/diff?context=8`, {cache: 'no-store'});
+      const query = new URLSearchParams({context: '8'});
+      if (progression) query.set('base', progression.genesis.genid);
+      const response = await fetch(`/api/evolve/generations/${encodeURIComponent(genid)}/diff?${query}`, {cache: 'no-store'});
       if (response.ok) {
         const expanded = await response.text();
         if (expanded) {
@@ -436,14 +474,25 @@ async function renderArtifact(artifactId) {
     } catch { /* Fall back to the registered patch artifact. */ }
   }
   const diffFiles = isDiff ? splitDiffFiles(presentation.text) : [];
-  const title = isDiff && genid ? `Generation ${genid} diff` : metadata.label;
+  const title = progression ? 'Champion evolution diff' : isDiff && genid ? `Generation ${genid} diff` : metadata.label;
+  const originalGeneration = progression ? progression.genesis.genid : generation?.parent;
+  const diffAdditions = progression
+    ? diffFiles.reduce((total, file) => total + file.additions, 0)
+    : generation?.insertions;
+  const diffDeletions = progression
+    ? diffFiles.reduce((total, file) => total + file.deletions, 0)
+    : generation?.deletions;
+  const nextHref = progression?.nextArtifactId
+    ? `${artifactHref(progression.nextArtifactId)}?champion=${encodeURIComponent(progression.champion.genid)}`
+    : null;
   content.classList.toggle('diff-mode', isDiff);
   content.innerHTML = `
     <div class="page-heading artifact-heading">
-      <div><p class="eyebrow">${isDiff ? 'Generation comparison' : 'Artifact preview'}</p><h2>${escapeHtml(title)}</h2><p class="artifact-path">${escapeHtml(metadata.relative_path)}</p></div>
+      <div><p class="eyebrow">${progression ? 'Champion replay' : isDiff ? 'Generation comparison' : 'Artifact preview'}</p><h2>${escapeHtml(title)}</h2><p class="artifact-path">${progression ? `Step ${progression.index} of ${progression.total} · cumulative changes through Generation ${escapeHtml(genid)}` : escapeHtml(metadata.relative_path)}</p></div>
       <div class="page-actions">
-        <a class="button" data-evolve-link href="${backHref}">← ${genid ? `Generation ${escapeHtml(genid)}` : 'Overview'}</a>
+        <a class="button" data-evolve-link href="${backHref}">← ${progression ? 'Overview' : genid ? `Generation ${escapeHtml(genid)}` : 'Overview'}</a>
         <a class="button" target="_blank" href="${escapeHtml(metadata.content_url)}">Raw</a>
+        ${nextHref ? `<a class="button primary champion-next-button" data-evolve-link href="${nextHref}">Next · Generation ${escapeHtml(progression.nextSummary.genid)} →</a>` : progression ? '<span class="champion-reached">Champion reached</span>' : ''}
         ${isDiff ? '' : '<button class="button" id="artifact-wrap" type="button" aria-pressed="false">Wrap lines</button>'}
       </div>
     </div>
@@ -451,14 +500,14 @@ async function renderArtifact(artifactId) {
     <section class="card artifact-card">
       ${isDiff ? `<div class="diff-toolbar">
         <div class="diff-generation-flow">
-          <span><small>Original</small><strong>${generation?.parent == null ? 'Parent version' : `Generation ${escapeHtml(generation.parent)}`}</strong></span>
+          <span><small>Original</small><strong>${originalGeneration == null ? 'Parent version' : `Generation ${escapeHtml(originalGeneration)}`}</strong></span>
           <b aria-hidden="true">→</b>
           <span><small>Modified</small><strong>Generation ${escapeHtml(genid || '—')}</strong></span>
         </div>
         <div class="diff-summary" aria-label="Diff summary">
-          <span><strong>${generation?.change_files ?? '—'}</strong> files</span>
-          <span class="plus">+${generation?.insertions ?? '—'}</span>
-          <span class="minus">−${generation?.deletions ?? '—'}</span>
+          <span><strong>${progression ? diffFiles.length : generation?.change_files ?? '—'}</strong> files</span>
+          <span class="plus">+${diffAdditions ?? '—'}</span>
+          <span class="minus">−${diffDeletions ?? '—'}</span>
           ${expandedContext == null ? '' : `<span>${expandedContext} lines context</span>`}
         </div>
         <div class="diff-toolbar-actions">
@@ -471,16 +520,18 @@ async function renderArtifact(artifactId) {
       </div>` : `<div class="artifact-meta"><span>${escapeHtml(metadata.kind || 'text')}</span><span>${formatBytes(metadata.size)}</span></div>`}
       ${diffFiles.length > 1 ? diffFileTabs(diffFiles) : ''}
       ${isDiff && genid ? `<div id="diff-comparison-labels" class="diff-comparison-labels">
-        <div><span>Original</span><strong>${generation?.parent == null ? 'Parent version' : `Generation ${escapeHtml(generation.parent)}`}</strong></div>
+        <div><span>Original</span><strong>${originalGeneration == null ? 'Parent version' : `Generation ${escapeHtml(originalGeneration)}`}</strong></div>
         <div><span>Modified</span><strong>Generation ${escapeHtml(genid)}</strong></div>
       </div>` : ''}
       <div id="artifact-preview" class="artifact-preview no-wrap"></div>
     </section>`;
 
-  bindArtifactPreview(presentation, diffFiles, isDiff);
+  bindArtifactPreview(presentation, diffFiles, isDiff, {
+    initialFilePath: progression?.currentDetail?.change?.changed_paths?.[0],
+  });
 }
 
-function bindArtifactPreview(presentation, diffFiles, isDiff) {
+function bindArtifactPreview(presentation, diffFiles, isDiff, options = {}) {
   const preview = content.querySelector('#artifact-preview');
   const wrapButton = content.querySelector('#artifact-wrap');
   wrapButton?.addEventListener('click', () => {
@@ -489,7 +540,7 @@ function bindArtifactPreview(presentation, diffFiles, isDiff) {
     wrapButton.setAttribute('aria-pressed', String(wrapping));
     wrapButton.textContent = wrapping ? 'Do not wrap' : 'Wrap lines';
   });
-  let selectedFile = 0;
+  let selectedFile = Math.max(0, diffFiles.findIndex((file) => file.path === options.initialFilePath));
   let selectedLayout = isDiff ? 'side-by-side' : 'line-by-line';
   const renderSelection = () => {
     content.querySelector('.artifact-card').dataset.diffLayout = selectedLayout;
