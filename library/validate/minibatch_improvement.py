@@ -41,10 +41,9 @@ def validate_config(raw: dict[str, object]) -> dict[str, object]:
     criterion = string(config, "criterion", "strict")
     if criterion not in {"strict", "non_decreasing"}:
         raise ValueError("criterion must be 'strict' or 'non_decreasing'")
-    normalized: dict[str, object] = {
-        "criterion": criterion,
-        "max_retries": nonnegative_int(config, "max_retries", 0),
-    }
+    normalized: dict[str, object] = {"criterion": criterion}
+    if "max_retries" in config:
+        normalized["max_retries"] = nonnegative_int(config, "max_retries", 0)
     if "n_concurrent" in config:
         normalized["n_concurrent"] = positive_int(config, "n_concurrent", 1)
     for key in ("agent_setup_timeout_multiplier", "agent_timeout_multiplier"):

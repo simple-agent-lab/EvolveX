@@ -51,11 +51,12 @@ def validate_config(raw: dict[str, object]) -> dict[str, object]:
     normalized: dict[str, object] = {
         "max_tasks": positive_int(config, "max_tasks", 90),
         "max_concurrent": positive_int(config, "max_concurrent", 16),
-        "timeout_per_task": positive_float(config, "timeout_per_task", 600.0),
         "retry_attempts": positive_int(config, "retry_attempts", 1),
         "field_limit": positive_int(config, "field_limit", 2000),
         "pass_threshold": _finite_number(config, "pass_threshold", 1.0),
     }
+    if "timeout_per_task" in config:
+        normalized["timeout_per_task"] = positive_float(config, "timeout_per_task", 600.0)
     if "debugger_max_retries" in config:
         normalized["debugger_max_retries"] = nonnegative_int(config, "debugger_max_retries", 0)
     for key in ("debugger", "debugger_agent_kwargs", "agent_kwargs"):

@@ -8,6 +8,7 @@ import pytest
 
 from evolve.agent import AgentCommandError, AgentRunResult
 from evolve.frozen.interfaces import OperatorContext
+from evolve.operator_library import resolve_operator, validate_operator_config
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -205,6 +206,38 @@ def test_ahe_debugger_can_be_configured_without_mutate(tmp_path: Path) -> None:
         "agent_kwargs": {"reasoning_effort": "medium"},
         "max_retries": 0,
     }
+
+
+def test_ahe_normalized_config_preserves_nested_debugger_timeout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _module()
+    ctx = _ctx(tmp_path)
+    normalized = validate_operator_config(
+        resolve_operator("analyze", "ahe"),
+        {
+            "debugger": {
+                "runner": "harbor",
+                "agent": "debug-agent",
+                "model": "debug-model",
+                "timeout_s": 17,
+            }
+        },
+    )
+    ctx.config.clear()
+    ctx.config.update(normalized)
+    observed_timeouts: list[float] = []
+
+    def capture_timeout(*args, **kwargs):
+        observed_timeouts.append(kwargs["timeout_s"])
+        return _fake_debugger(*args, **kwargs)
+
+    monkeypatch.setattr(module, "run_readonly_agent", capture_timeout)
+    job = module._build_jobs([_case("task-a", "failed", 0)], 90)[0]
+
+    module._run_debugger_job(ctx.checkout, ctx, job)
+
+    assert observed_timeouts == [17.0]
 
 
 def test_ahe_miniswe_debugger_prompt_includes_submission_protocol() -> None:

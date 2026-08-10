@@ -131,6 +131,19 @@ def test_every_recipe_selected_config_is_accepted() -> None:
         ),
         (
             "analyze",
+            "ahe",
+            {"debugger": {"timeout_s": 17, "provider_option": {"opaque": True}}},
+            {
+                "max_tasks": 90,
+                "max_concurrent": 16,
+                "retry_attempts": 1,
+                "field_limit": 2000,
+                "pass_threshold": 1.0,
+                "debugger": {"timeout_s": 17, "provider_option": {"opaque": True}},
+            },
+        ),
+        (
+            "analyze",
             "gepa",
             {"components": {"prompt": "target/prompt.md"}, "max_cases": 5, "field_limit": 800},
             {"components": {"prompt": ["target/prompt.md"]}, "max_cases": 5, "field_limit": 800},
@@ -196,7 +209,6 @@ def test_every_recipe_selected_config_is_accepted() -> None:
             {"criterion": "non_decreasing", "environment_kwargs": {"opaque": {"x": 1}}},
             {
                 "criterion": "non_decreasing",
-                "max_retries": 0,
                 "environment_kwargs": {"opaque": {"x": 1}},
             },
         ),

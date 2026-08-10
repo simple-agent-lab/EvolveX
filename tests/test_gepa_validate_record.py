@@ -4,6 +4,7 @@ import random
 from pathlib import Path
 
 from evolve.frozen.interfaces import OperatorContext, RolloutResult
+from evolve.operator_library import resolve_operator, validate_operator_config
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -67,6 +68,38 @@ def test_gepa_validation_replays_exact_parent_minibatch_and_accepts_improvement(
     assert comparison["parent_total"] == 1
     assert comparison["child_total"] == 2
     assert comparison["delta"] == 1
+
+
+def test_gepa_validation_preserves_harbor_retry_fallback_when_omitted(tmp_path: Path, monkeypatch) -> None:
+    module = _module("gepa_validate_retry_under_test", ROOT / "library/validate/minibatch_improvement.py")
+    harbor = _module("harbor_retry_under_test", ROOT / "library/rollout/harbor.py")
+    normalized = validate_operator_config(
+        resolve_operator("validate", "minibatch_improvement"), {"criterion": "strict"}
+    )
+    ctx = _ctx(tmp_path, normalized)
+    parent_path = ctx.run_dir / "rollout/cases.json"
+    parent_path.parent.mkdir(parents=True)
+    parent_path.write_text(json.dumps([{"task_name": "task-a", "outcome": "failed", "reward": 0}]))
+    effective_retries: list[int] = []
+
+    class FakeRollout:
+        def rollout(self, _checkout, child_ctx):
+            effective_retries.append(
+                harbor._configured_max_retries(child_ctx.config, {"EVOLVE_HARBOR_MAX_RETRIES": "4"})
+            )
+            root = child_ctx.run_dir / "rollout"
+            root.mkdir(parents=True)
+            root.joinpath("cases.json").write_text(
+                json.dumps([{"task_name": "task-a", "outcome": "passed", "reward": 1}])
+            )
+            root.joinpath("harbor.log").write_text("ok\n")
+            return RolloutResult(summary={"infra_errors": 0}, artifacts=["rollout/cases.json"])
+
+    monkeypatch.setattr(module, "HarborRollout", FakeRollout)
+
+    module.MinibatchImprovementValidate().validate(tmp_path, ctx)
+
+    assert effective_retries == [4]
 
 
 def test_gepa_validation_excludes_infra_scores_and_rejects_incomplete_comparison(tmp_path: Path, monkeypatch) -> None:
