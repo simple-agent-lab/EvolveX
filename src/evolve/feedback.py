@@ -125,7 +125,7 @@ def _rollout_history(workspace: Path, rows: list[Row], history_k: int) -> list[R
                 "verdict": row.get("verdict"),
                 "reason": row.get("reason"),
                 "mutated": row.get("mutated"),
-                "analyze_variant": manifest.get("selected_variant"),
+                "analyze_operator": manifest.get("selected_variant"),
                 "rollout_metrics": metrics,
                 "raw_evidence_dir": evidence_root.relative_to(workspace).as_posix() if evidence_root.is_dir() else None,
                 "source_tag": row.get("tag"),

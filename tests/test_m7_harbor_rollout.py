@@ -638,11 +638,12 @@ def test_trajectory_only_does_not_treat_pre_tool_commentary_as_final_response() 
     assert records[0]["signals"]["completed"] is False
 
 
-def test_feedback_bundle_copies_selected_evidence_and_history(tmp_path: Path) -> None:
+def test_feedback_history_uses_analyze_operator_not_retired_variant_key(tmp_path: Path) -> None:
     workspace, _ = init_workspace(tmp_path)
     historical = workspace / "runs" / "gen-0" / "analyze" / "evidence"
     historical.mkdir(parents=True)
     (historical / "metrics.json").write_text(json.dumps({"trials": 2}))
+    (historical / "manifest.json").write_text(json.dumps({"selected_variant": "failure_patterns"}))
     run_dir = workspace / "runs" / "gen-1"
     evidence = run_dir / "analyze" / "evidence"
     evidence.mkdir(parents=True)
@@ -657,6 +658,8 @@ def test_feedback_bundle_copies_selected_evidence_and_history(tmp_path: Path) ->
     assert "feedback/evidence/history.json" in manifest
     history = json.loads((run_dir / "feedback" / "evidence" / "history.json").read_text())
     assert history[0]["raw_evidence_dir"] == "runs/gen-0/analyze/evidence"
+    assert history[0]["analyze_operator"] == "failure_patterns"
+    assert "analyze_variant" not in history[0]
     index = (run_dir / "feedback" / "index.md").read_text()
     assert "[selected trace evidence](evidence/selected.md)" in index
     assert "[current trace analysis]" not in index

@@ -73,7 +73,7 @@ Implement `rollout`. Return `RolloutResult` with fields `summary` and
 `rollout/artifacts.json`. `summary` is a JSON object; `artifacts` is a list of
 artifact paths or labels.
 
-### Trace Analyzer
+### Analyze
 
 ABC signature:
 
@@ -87,26 +87,26 @@ Implement `analyze`. Read method-neutral rollout artifacts such as
 the subprocess writes `analyze/summary.json` and
 `analyze/artifacts.json`.
 
-After trace analysis, the mechanism writes the normalized feedback bundle under
-`runs/gen-<id>/feedback/` for the meta-agent to read. If the analyzer writes
+After analysis, the mechanism writes the normalized feedback bundle under
+`runs/gen-<id>/feedback/` for the mutation operator to read. If the analyzer writes
 `analyze/feedback.md` and `analyze/evidence/selected.md`, the
 mechanism copies the bounded selection into the feedback bundle.
 
-### Meta-Agent
+### Mutate
 
 ABC signature:
 
 ```python
-def run(self, checkout: Path, observation: str, ctx) -> MutateResult:
+def mutate(self, checkout: Path, observation: str, ctx) -> MutateResult:
 ```
 
-Implement `run`. Return `MutateResult` with fields `changed`, `notes`, and
+Implement `mutate`. Return `MutateResult` with fields `changed`, `notes`, and
 `usage`. The subprocess writes `mutate/changed.json`, may write
 `mutate/rationale.md`, and writes `mutate/usage.json`. `usage` is a JSON
 object, commonly including `usd`.
 
 The workspace also exposes gitignored durable storage under `artifacts/`.
-`artifacts/user/` is user-managed, while a meta-agent may persist arbitrary
+`artifacts/user/` is user-managed, while the mutation operator may persist arbitrary
 files only under `artifacts/generations/<EVOLVE_GENID>/`. An optional free-form
 `handoff.md` in that directory is the handoff convention. Shipped prompts point
 to the selected parent's handoff when it exists; absence is non-fatal. Harbor
