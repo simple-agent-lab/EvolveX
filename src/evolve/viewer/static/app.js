@@ -153,9 +153,6 @@ async function renderRoute(pathname, params) {
   } else if (pathname === '/trials') {
     activateNavigation('trials');
     await renderTrials(params);
-  } else if (pathname === '/review') {
-    activateNavigation('review');
-    await renderReview(params);
   } else if (pathname === '/generations') {
     activateNavigation('generations');
     renderGenerations();
@@ -173,19 +170,18 @@ async function renderOverview() {
   const experiment = snapshot.experiment;
   const finalResult = finalResultGeneration(snapshot.generations);
   const finalResultId = finalResult?.genid || null;
-  const finalDetail = finalResultId
-    ? await getJson(`/api/evolve/generations/${encodeURIComponent(finalResultId)}`)
-    : null;
+  const championChanges = finalResult ? await loadChampionChanges(finalResult, snapshot.generations) : null;
+  const finalDetail = finalResultId ? championChanges?.details.get(finalResultId) : null;
   const recent = snapshot.generations.slice(-6).reverse();
   content.innerHTML = `
     <div class="page-heading">
       <div><h2>Experiment overview</h2><p>Global final result, experiment health, and generation history.</p></div>
-      ${finalResultId ? `<div class="page-actions"><a class="button" data-evolve-link href="/review">Review champion changes</a><a class="button" data-evolve-link href="/generations/${encodeURIComponent(finalResultId)}">Open champion agent · G${escapeHtml(finalResultId)}</a></div>` : ''}
+      ${finalResultId ? `<div class="page-actions"><a class="button" data-evolve-link href="/generations/${encodeURIComponent(finalResultId)}">Open champion agent · G${escapeHtml(finalResultId)}</a></div>` : ''}
     </div>
     <div class="stack">
       ${healthCard(experiment, finalDetail, true)}
       <div class="grid-two">
-        ${overviewPlaceholderCard()}
+        ${championDiffCard(championChanges)}
         ${performanceCard(finalDetail, snapshot.generations, true)}
       </div>
       ${generationTable(recent, 'Recent generations')}
@@ -193,8 +189,72 @@ async function renderOverview() {
   bindPerformancePagers();
 }
 
-function overviewPlaceholderCard() {
-  return '<section class="card overview-placeholder" aria-label="Reserved overview panel"></section>';
+async function loadChampionChanges(champion, generations) {
+  const lineage = generationLineage(generations, champion.genid);
+  const detailEntries = await Promise.all(lineage.map(async (item) => {
+    try {
+      return [item.genid, await getJson(`/api/evolve/generations/${encodeURIComponent(item.genid)}`)];
+    } catch {
+      return [item.genid, null];
+    }
+  }));
+  const details = new Map(detailEntries);
+  const genesis = lineage[0];
+  let files = [];
+  let available = false;
+  if (genesis && genesis.genid !== champion.genid) {
+    const query = new URLSearchParams({context: '8', base: genesis.genid});
+    try {
+      const response = await fetch(`/api/evolve/generations/${encodeURIComponent(champion.genid)}/diff?${query}`, {cache: 'no-store'});
+      if (response.ok) {
+        files = splitDiffFiles(await response.text());
+        available = true;
+      }
+    } catch { /* Keep the overview available when a Git diff cannot be read. */ }
+  }
+  return {champion, lineage, details, genesis, files, available};
+}
+
+function championDiffCard(review) {
+  if (!review) {
+    return '<section class="card champion-diff-card"><div class="empty"><strong>No champion diff yet</strong>Changes will appear after an eligible generation is evaluated.</div></section>';
+  }
+  const {champion, lineage, details, genesis, files, available} = review;
+  const additions = files.reduce((total, file) => total + file.additions, 0);
+  const deletions = files.reduce((total, file) => total + file.deletions, 0);
+  return `<section class="card champion-diff-card">
+    <div class="card-header">
+      <div><h3>Champion diff</h3><p>Genesis G${escapeHtml(genesis?.genid ?? '—')} → Champion G${escapeHtml(champion.genid)}</p></div>
+      <div class="diff-stat"><span>${files.length} files</span><span class="plus">+${additions}</span><span class="minus">−${deletions}</span></div>
+    </div>
+    <div class="champion-diff-section">
+      <div class="champion-diff-label"><strong>Champion files</strong><span>All final target changes</span></div>
+      ${files.length ? `<ul class="file-list champion-file-list">${files.map((file) => `<li><span>${escapeHtml(file.path)}</span><small><i class="plus">+${file.additions}</i><i class="minus">−${file.deletions}</i></small></li>`).join('')}</ul>` : `<div class="champion-diff-empty">${available ? 'The champion matches the genesis target.' : 'The cumulative Git diff is unavailable.'}</div>`}
+    </div>
+    <div class="champion-diff-section">
+      <div class="champion-diff-label"><strong>Parent modification history</strong><span>${lineage.length} generations in the champion lineage</span></div>
+      <ol class="champion-history">
+        ${lineage.map((summary, index) => championHistoryItem(summary, details.get(summary.genid), index === 0)).join('')}
+      </ol>
+    </div>
+  </section>`;
+}
+
+function championHistoryItem(summary, detail, genesis) {
+  if (genesis) {
+    return `<li><span class="champion-history-marker" aria-hidden="true"></span><div><div class="champion-history-title"><strong>G${escapeHtml(summary.genid)} · Genesis agent</strong><span>Score ${number(summary.score)}</span></div><p>Starting point</p></div></li>`;
+  }
+  const change = detail?.change;
+  const paths = change?.changed_paths || [];
+  return `<li>
+    <span class="champion-history-marker" aria-hidden="true"></span>
+    <div>
+      <div class="champion-history-title"><strong>G${escapeHtml(summary.parent)} → G${escapeHtml(summary.genid)}</strong><span>Score ${number(summary.score)}</span></div>
+      <p>${paths.length} files <i class="plus">+${change?.insertions ?? 0}</i> <i class="minus">−${change?.deletions ?? 0}</i></p>
+      ${paths.length ? `<ul>${paths.map((path) => `<li title="${escapeHtml(path)}">${escapeHtml(path)}</li>`).join('')}</ul>` : ''}
+      ${change?.patch_artifact_id ? `<a data-evolve-link href="${artifactHref(change.patch_artifact_id)}">View parent diff</a>` : ''}
+    </div>
+  </li>`;
 }
 
 function healthCard(experiment, detail, globalResult = false) {
@@ -325,118 +385,6 @@ function artifactCard(artifacts) {
   return `<section class="card"><div class="card-header"><div><h3>Artifacts</h3><p>Registered stage and evaluation evidence</p></div><span class="muted">${artifacts.length} files</span></div>
     ${artifacts.length ? `<ul class="artifact-list">${artifacts.map((artifact) => `<li><a ${artifact.previewable ? `href="${artifactHref(artifact.id)}" data-evolve-link` : ''}><span>${escapeHtml(artifact.relative_path)}</span><span class="subtle">${formatBytes(artifact.size)}</span></a></li>`).join('')}</ul>` : '<div class="empty">No registered artifacts for this generation.</div>'}
   </section>`;
-}
-
-async function renderReview(params) {
-  const generations = state.snapshot.generations;
-  const champion = finalResultGeneration(generations);
-  if (!champion) {
-    content.innerHTML = '<div class="empty"><strong>No champion agent yet</strong>The review will appear after a generation has an eligible canonical score.</div>';
-    return;
-  }
-  const lineage = generationLineage(generations, champion.genid);
-  const genesis = lineage[0];
-  const requestedId = params.get('generation');
-  const requested = lineage.find((item) => item.genid === requestedId && item.parent != null);
-  const selected = requested || champion;
-  const cumulative = requested == null;
-  const baseId = cumulative ? genesis?.genid : selected.parent;
-  const detailEntries = await Promise.all(lineage.map(async (item) => {
-    try {
-      return [item.genid, await getJson(`/api/evolve/generations/${encodeURIComponent(item.genid)}`)];
-    } catch {
-      return [item.genid, null];
-    }
-  }));
-  const details = new Map(detailEntries);
-  let diffText = '';
-  let diffError = null;
-  if (baseId != null && baseId !== selected.genid) {
-    const query = new URLSearchParams({context: '8'});
-    if (cumulative) query.set('base', baseId);
-    try {
-      const response = await fetch(`/api/evolve/generations/${encodeURIComponent(selected.genid)}/diff?${query}`, {cache: 'no-store'});
-      if (!response.ok) throw new Error(`Champion diff returned ${response.status}`);
-      diffText = await response.text();
-    } catch (error) {
-      diffError = error;
-    }
-  }
-  const presentation = {mode: 'diff', language: 'diff', text: diffText};
-  const diffFiles = splitDiffFiles(diffText);
-  const additions = diffFiles.reduce((total, file) => total + file.additions, 0);
-  const deletions = diffFiles.reduce((total, file) => total + file.deletions, 0);
-  const originalLabel = `Generation ${baseId ?? '—'}`;
-  const modifiedLabel = `Generation ${selected.genid}`;
-  const heading = cumulative ? 'Champion agent changes' : `Generation ${selected.genid} parent change`;
-  const description = cumulative
-    ? `All files required to reproduce champion G${selected.genid} from genesis G${baseId}.`
-    : `The recorded modification from parent G${baseId} to G${selected.genid}.`;
-
-  content.classList.add('diff-mode');
-  content.innerHTML = `
-    <div class="page-heading artifact-heading">
-      <div><p class="eyebrow">Champion review</p><h2>${escapeHtml(heading)}</h2><p>${escapeHtml(description)}</p></div>
-      <div class="page-actions"><a class="button" data-evolve-link href="/generations/${encodeURIComponent(champion.genid)}">Open champion · G${escapeHtml(champion.genid)}</a></div>
-    </div>
-    <div class="review-layout">
-      <aside class="card review-lineage" aria-label="Champion lineage">
-        <div class="review-lineage-header"><p class="eyebrow">Selected lineage</p><h3>Champion lineage</h3><p>Follow each accepted parent modification that produced the champion.</p></div>
-        <a class="review-cumulative ${cumulative ? 'active' : ''}" href="/review" data-evolve-link aria-current="${cumulative ? 'page' : 'false'}">
-          <span><strong>Cumulative changes</strong><small>Genesis G${escapeHtml(genesis?.genid ?? '—')} → Champion G${escapeHtml(champion.genid)}</small></span>
-          <b>${lineage.length} generations</b>
-        </a>
-        <ol class="review-lineage-list">
-          ${lineage.map((item, index) => reviewLineageItem(item, details.get(item.genid), index === 0, !cumulative && item.genid === selected.genid)).join('')}
-        </ol>
-      </aside>
-      <section class="card artifact-card review-diff-card">
-        <div class="diff-toolbar">
-          <div class="diff-generation-flow">
-            <span><small>Original</small><strong>${escapeHtml(originalLabel)}</strong></span>
-            <b aria-hidden="true">→</b>
-            <span><small>Modified</small><strong>${escapeHtml(modifiedLabel)}</strong></span>
-          </div>
-          <div class="diff-summary" aria-label="Diff summary">
-            <span><strong>${diffFiles.length}</strong> files</span><span class="plus">+${additions}</span><span class="minus">−${deletions}</span><span>8 lines context</span>
-          </div>
-          <div class="diff-toolbar-actions">
-            <div class="diff-segmented" aria-label="Diff layout">
-              <button class="diff-layout-button" type="button" data-diff-layout="side-by-side" aria-pressed="true">Split</button>
-              <button class="diff-layout-button" type="button" data-diff-layout="line-by-line" aria-pressed="false">Unified</button>
-            </div>
-            <button class="button" id="artifact-wrap" type="button" aria-pressed="false">Wrap lines</button>
-          </div>
-        </div>
-        ${diffFiles.length > 1 ? diffFileTabs(diffFiles) : ''}
-        <div id="diff-comparison-labels" class="diff-comparison-labels">
-          <div><span>Original</span><strong>${escapeHtml(originalLabel)}</strong></div>
-          <div><span>Modified</span><strong>${escapeHtml(modifiedLabel)}</strong></div>
-        </div>
-        ${diffError ? `<div class="artifact-notice review-diff-notice">${escapeHtml(diffError.message)}</div>` : ''}
-        ${!diffError && !diffFiles.length ? '<div class="empty"><strong>No target changes</strong>The champion matches its comparison base.</div>' : '<div id="artifact-preview" class="artifact-preview no-wrap"></div>'}
-      </section>
-    </div>`;
-  if (diffFiles.length) bindArtifactPreview(presentation, diffFiles, true);
-}
-
-function reviewLineageItem(summary, detail, genesis, selected) {
-  const change = detail?.change;
-  const paths = change?.changed_paths || [];
-  if (genesis) {
-    return `<li class="review-step genesis"><span class="review-step-dot" aria-hidden="true"></span><div><div class="review-step-title"><strong>Generation ${escapeHtml(summary.genid)}</strong>${badge(summary.status)}</div><p>Genesis agent · score ${number(summary.score)}</p><small>Starting point for the champion lineage.</small></div></li>`;
-  }
-  const rationale = change?.rationale?.trim() || 'No modification rationale was recorded.';
-  return `<li class="review-step ${selected ? 'selected' : ''}">
-    <span class="review-step-dot" aria-hidden="true"></span>
-    <a href="/review?generation=${encodeURIComponent(summary.genid)}" data-evolve-link aria-current="${selected ? 'step' : 'false'}">
-      <div class="review-step-title"><strong>Generation ${escapeHtml(summary.genid)}</strong><span class="review-step-score">Score ${number(summary.score)}</span></div>
-      <p>Parent G${escapeHtml(summary.parent)} → G${escapeHtml(summary.genid)}</p>
-      <small>${escapeHtml(rationale)}</small>
-      ${paths.length ? `<ul class="review-paths">${paths.map((path) => `<li title="${escapeHtml(path)}">${escapeHtml(path)}</li>`).join('')}</ul>` : ''}
-      <span class="review-step-stat">${paths.length} files <i class="plus">+${change?.insertions ?? 0}</i> <i class="minus">−${change?.deletions ?? 0}</i></span>
-    </a>
-  </li>`;
 }
 
 function diffFileTabs(diffFiles) {

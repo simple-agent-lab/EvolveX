@@ -69,7 +69,7 @@ def create_viewer_app(workspace: Path, *, bridge: HarborBridge | None = None) ->
         if request.method not in {"GET", "HEAD", "OPTIONS"} or _is_action_path(path):
             return Response(status_code=405, headers={"Allow": "GET, HEAD, OPTIONS"})
         response = await call_next(request)
-        if path.startswith(("/evolve-assets/", "/generations", "/trials", "/artifacts", "/review")) or path == "/":
+        if path.startswith(("/evolve-assets/", "/generations", "/trials", "/artifacts")) or path == "/":
             response.headers["Cache-Control"] = "no-store"
         return response
 
@@ -211,7 +211,6 @@ def create_viewer_app(workspace: Path, *, bridge: HarborBridge | None = None) ->
     app.mount("/evolve-assets", StaticFiles(directory=evolve_static), name="evolve-assets")
 
     @app.get("/", include_in_schema=False)
-    @app.get("/review", include_in_schema=False)
     @app.get("/generations", include_in_schema=False)
     @app.get("/generations/{genid}", include_in_schema=False)
     @app.get("/trials", include_in_schema=False)

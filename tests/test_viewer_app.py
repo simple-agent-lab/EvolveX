@@ -165,7 +165,6 @@ def test_frontend_routes_serve_evolve_shell(viewer_workspace: Path) -> None:
     with TestClient(create_viewer_app(viewer_workspace)) as client:
         for path in (
             "/",
-            "/review",
             "/generations",
             "/generations/1",
             "/trials",
@@ -191,7 +190,7 @@ def test_frontend_has_required_navigation_and_refresh_contract() -> None:
     javascript = (static / "app.js").read_text()
     styles = (static / "styles.css").read_text()
 
-    assert all(label in html for label in ("Overview", "Generations", "Review", "Trials"))
+    assert all(label in html for label in ("Overview", "Generations", "Trials"))
     assert "3000" in javascript
     assert "/api/evolve/snapshot" in javascript
     assert "Full Harbor inspection" in javascript
@@ -203,11 +202,11 @@ def test_frontend_has_required_navigation_and_refresh_contract() -> None:
     assert "Global final result" in javascript
     assert "Global champion from canonical evaluation" in javascript
     assert "Champion agent ·" in javascript
-    assert "Champion lineage" in javascript
-    assert "Cumulative changes" in javascript
-    assert "All files required to reproduce champion" in javascript
+    assert "Champion diff" in javascript
+    assert "Champion files" in javascript
+    assert "Parent modification history" in javascript
     assert "hasTrainScore && !globalResult" in javascript
-    assert "overviewPlaceholderCard" in javascript
+    assert "championDiffCard" in javascript
     assert "performance-pages" in javascript
     assert "panel.classList.toggle('is-active', active)" in javascript
     assert all(
