@@ -149,10 +149,11 @@ main.diff-mode { width: min(1480px, 100%); }
 .artifact-preview .d2h-tag { padding: 3px 6px; color: #4f655a; background: #e8eeeb; border-radius: 999px; font: 750 8px Inter, ui-sans-serif, sans-serif; letter-spacing: .04em; }
 .artifact-preview .d2h-file-collapse { color: var(--muted); font: 600 10px Inter, ui-sans-serif, sans-serif; cursor: pointer; }
 .artifact-preview .d2h-file-collapse-input { accent-color: var(--accent); }
-.artifact-card[data-diff-layout="side-by-side"] .d2h-files-diff { min-width: 860px; }
+.artifact-preview .d2h-files-diff { overflow: hidden; }
+.artifact-preview .d2h-file-side-diff { box-sizing: border-box; max-width: 50%; overflow-x: auto; overflow-y: hidden; vertical-align: top; }
 .artifact-preview .d2h-file-side-diff + .d2h-file-side-diff { border-left: 1px solid #dfe5e2; }
 .artifact-preview .d2h-diff-table { font-size: 11px; }
-.artifact-preview .d2h-code-side-linenumber, .artifact-preview .d2h-code-linenumber { width: 38px; min-width: 38px; color: #8c9791; background: #f7f9f8; border-color: #e2e7e4; font-size: 9px; }
+.artifact-preview .d2h-code-side-linenumber, .artifact-preview .d2h-code-linenumber { color: #8c9791; background: #f7f9f8; border-color: #e2e7e4; font-size: 9px; }
 .artifact-preview .d2h-cntx { background: #fff; }
 .artifact-preview .d2h-info { color: #65756d; background: #edf2ef; border-color: #dfe6e2; }
 .artifact-preview .d2h-ins { background: #e9f8ef; }
@@ -160,7 +161,6 @@ main.diff-mode { width: min(1480px, 100%); }
 .artifact-preview .d2h-ins .d2h-change { background: #bfe8ce; }
 .artifact-preview .d2h-del .d2h-change { background: #f2c3c3; }
 .artifact-preview .d2h-emptyplaceholder { background: #f7f9f8; }
-.artifact-preview .d2h-code-side-line, .artifact-preview .d2h-code-line { padding-inline: 7px; }
 .artifact-preview .d2h-diff-tbody tr:hover > td { filter: brightness(.985); }
 .artifact-preview.wrap .d2h-code-line-ctn { white-space: pre-wrap; overflow-wrap: anywhere; }
 .diff-stat { display: flex; gap: 10px; color: var(--muted); font-size: 11px; }

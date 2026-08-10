@@ -423,9 +423,14 @@ async function renderArtifact(artifactId) {
       button.tabIndex = active ? 0 : -1;
     });
   };
-  const selectFile = (index, focus = false) => {
+  const selectFile = (index, focus = false, resetScroll = true) => {
     selectedFile = Math.max(0, Math.min(diffFiles.length - 1, index));
     renderSelection();
+    if (resetScroll) {
+      preview.scrollLeft = 0;
+      preview.scrollTop = 0;
+      preview.querySelectorAll('.d2h-file-side-diff').forEach((pane) => { pane.scrollLeft = 0; });
+    }
     if (focus) document.querySelector(`[data-diff-file="${selectedFile}"]`)?.focus();
   };
   document.querySelectorAll('[data-diff-layout]').forEach((button) => {
@@ -435,7 +440,7 @@ async function renderArtifact(artifactId) {
     });
   });
   document.querySelectorAll('[data-diff-file]').forEach((button) => {
-    button.addEventListener('click', () => selectFile(Number(button.dataset.diffFile)));
+    button.addEventListener('click', (event) => selectFile(Number(button.dataset.diffFile), false, event.isTrusted));
     button.addEventListener('keydown', (event) => {
       if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
       event.preventDefault();
