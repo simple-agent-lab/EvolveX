@@ -3,7 +3,7 @@
 The adapter is intentionally limited to ``evolve.harbor_local:LocalEnvironment``.
 It preserves Harbor's installed-agent implementations as the authority for CLI
 invocation, authentication, usage accounting, and ATIF conversion while adding a
-single backend-agnostic entry point for local Evolve runs.
+single backend-agnostic entry point for local RSIHub runs.
 """
 
 from __future__ import annotations

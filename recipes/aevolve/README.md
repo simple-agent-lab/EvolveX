@@ -1,7 +1,7 @@
 # A-Evolve
 
 This recipe maps the default `AEvolveEngine` workspace-mutation pass from
-`a-evolve` onto EvolveX's existing operator protocol.
+`a-evolve` onto RSIHub's existing operator protocol.
 
 Each generation uses a fixed train split as the observation batch and converts
 Harbor's complete ordered events into A-Evolve's `trajectory_only` evidence:
@@ -17,7 +17,7 @@ successful evolution pass, matching `AEvolveEngine`.
 
 The mapping is:
 
-| A-Evolve responsibility | EvolveX implementation |
+| A-Evolve responsibility | RSIHub implementation |
 | --- | --- |
 | solve tasks and retain observations | Harbor rollout |
 | behavior-only observation view | `trace_analyzer: trajectory_only` |

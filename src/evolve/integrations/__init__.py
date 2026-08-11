@@ -1,1 +1,1 @@
-"""External runtime integrations owned by EvolveX."""
+"""External runtime integrations owned by RSIHub."""

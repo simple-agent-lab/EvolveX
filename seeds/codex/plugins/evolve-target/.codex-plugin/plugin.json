@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "Candidate-owned Codex behaviors evolved against coding benchmarks.",
   "author": {
-    "name": "Evolve Framework"
+    "name": "RSIHub Framework"
   },
   "license": "Apache-2.0",
   "keywords": [
@@ -11,10 +11,10 @@
     "hooks"
   ],
   "interface": {
-    "displayName": "Evolve Target",
+    "displayName": "RSIHub Target",
     "shortDescription": "Evolvable Codex benchmark behavior",
-    "longDescription": "Candidate-owned lifecycle hooks and context evaluated by Evolve Framework.",
-    "developerName": "Evolve Framework",
+    "longDescription": "Candidate-owned lifecycle hooks and context evaluated by RSIHub Framework.",
+    "developerName": "RSIHub Framework",
     "category": "Developer Tools",
     "capabilities": [
       "Hooks"

@@ -10,8 +10,8 @@
 ## Install for development
 
 ```bash
-git clone https://github.com/simple-agent-lab/EvolveX.git
-cd EvolveX
+git clone https://github.com/simple-agent-lab/RSIHub.git
+cd RSIHub
 uv sync --dev --locked
 uv run --frozen evolve --help
 ```
@@ -90,4 +90,4 @@ reports unmet preconditions as one checklist.
 - [Run preflight, smoke tests, and recovery commands](guides/operations.md)
 - [Configure meta-agent execution](guides/meta-agents.md)
 - [Use the trusted local Harbor backend](guides/local-environment.md)
-- [Understand recipes in the source repository](https://github.com/simple-agent-lab/EvolveX/tree/main/recipes)
+- [Understand recipes in the source repository](https://github.com/simple-agent-lab/RSIHub/tree/main/recipes)
