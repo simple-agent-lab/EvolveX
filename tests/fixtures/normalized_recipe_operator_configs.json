@@ -1,0 +1,407 @@
+{
+  "aevolve": {
+    "analyze": {
+      "history_cycles": 2,
+      "judge_inherit_openai_credentials": false,
+      "judge_max_concurrent": 4,
+      "judge_retry_attempts": 1,
+      "judge_timeout_s": 600.0,
+      "max_chars": 30000,
+      "max_observations": 30,
+      "pass_threshold": 1.0
+    },
+    "gate": {
+      "strict": true
+    },
+    "mutate": {
+      "agent": "codex",
+      "editable_roots": [
+        "target"
+      ],
+      "environment": "docker",
+      "evidence_chars": 50000,
+      "evolve_memory": false,
+      "evolve_prompts": true,
+      "evolve_skills": true,
+      "expose_gate_data": false,
+      "feedback_chars": 300,
+      "history_cycles": 2,
+      "image": "evolve-meta-agent-codex:20260805-codex0145",
+      "max_observations": 30,
+      "max_retries": 1,
+      "memory_dir": "target/memory",
+      "model": "gpt-5.4",
+      "prompt_path": "target/prompt.md",
+      "runner": "harbor",
+      "skills_dir": "target/skills",
+      "trajectory_only": true
+    },
+    "record": {},
+    "rollout": {
+      "agent_setup_timeout_multiplier": 1.0,
+      "budget_tasks": 10,
+      "field_limit": 2000,
+      "max_retries": 1,
+      "n_concurrent": 4,
+      "pass_threshold": 1.0,
+      "reuse_completed": false,
+      "seed": 0,
+      "task_sampling": "head"
+    },
+    "select": {
+      "seed": 0
+    }
+  },
+  "ahe": {
+    "analyze": {
+      "debugger_agent_kwargs": {
+        "max_tokens": 64000,
+        "reasoning_effort": "high"
+      },
+      "field_limit": 2000,
+      "max_concurrent": 10,
+      "max_tasks": 30,
+      "pass_threshold": 1.0,
+      "retry_attempts": 1,
+      "timeout_per_task": 600.0
+    },
+    "gate": {},
+    "mutate": {
+      "agent": "evolve.integrations.harbor.miniswe_task_file:InstalledMiniSweAgent",
+      "agent_kwargs": {
+        "cost_limit": 0,
+        "max_tokens": 64000,
+        "reasoning_effort": "high"
+      },
+      "editable_roots": [
+        "target"
+      ],
+      "environment": "docker",
+      "expose_gate_data": false,
+      "image": "evolve-meta-agent-app:20260724-tools-mswe245",
+      "max_retries": 1,
+      "memory_dir": "target/memory",
+      "model": "openai/gpt-5.4-2026-03-05",
+      "prompt_path": "target/src/minisweagent/config/mini.yaml",
+      "runner": "harbor",
+      "skills_dir": "target/skills"
+    },
+    "record": {},
+    "rollout": {
+      "field_limit": 2000,
+      "pass_threshold": 1.0
+    },
+    "select": {
+      "seed": 0
+    }
+  },
+  "ahe_codex": {
+    "analyze": {
+      "debugger_agent_kwargs": {
+        "reasoning_effort": "high"
+      },
+      "debugger_max_retries": 2,
+      "field_limit": 2000,
+      "max_concurrent": 5,
+      "max_tasks": 30,
+      "pass_threshold": 1.0,
+      "retry_attempts": 1,
+      "timeout_per_task": 600.0
+    },
+    "gate": {},
+    "mutate": {
+      "agent": "codex",
+      "agent_kwargs": {
+        "reasoning_effort": "high"
+      },
+      "editable_roots": [
+        "target"
+      ],
+      "environment": "docker",
+      "expose_gate_data": false,
+      "image": "evolve-meta-agent-codex:20260805-codex0145",
+      "max_retries": 1,
+      "model": "gpt-5.4",
+      "prompt_path": "target/prompt.md",
+      "runner": "harbor",
+      "skills_dir": "target/skills"
+    },
+    "record": {},
+    "rollout": {
+      "field_limit": 2000,
+      "pass_threshold": 1.0
+    },
+    "select": {
+      "seed": 0
+    }
+  },
+  "gepa": {
+    "analyze": {
+      "components": {
+        "system_prompt": [
+          "target/prompt.md"
+        ],
+        "task_execution_skill": [
+          "target/skills/task-execution"
+        ]
+      },
+      "field_limit": 4000,
+      "max_cases": 10
+    },
+    "gate": {},
+    "mutate": {
+      "agent": "codex",
+      "component_strategy": "round_robin",
+      "components": {
+        "system_prompt": [
+          "target/prompt.md"
+        ],
+        "task_execution_skill": [
+          "target/skills/task-execution"
+        ]
+      },
+      "editable_roots": [
+        "target"
+      ],
+      "environment": "docker",
+      "expose_gate_data": false,
+      "image": "evolve-meta-agent-codex:20260805-codex0145",
+      "max_examples": 10,
+      "max_retries": 1,
+      "model": "gpt-5.4",
+      "required_placeholders": [],
+      "runner": "harbor"
+    },
+    "record": {},
+    "rollout": {
+      "agent_setup_timeout_multiplier": 1.0,
+      "budget_tasks": 10,
+      "field_limit": 2000,
+      "max_retries": 1,
+      "n_concurrent": 4,
+      "pass_threshold": 1.0,
+      "reuse_completed": false,
+      "seed": 0,
+      "task_sampling": "generation_shuffle"
+    },
+    "select": {
+      "seed": 0
+    },
+    "validate": {
+      "agent_setup_timeout_multiplier": 1.0,
+      "criterion": "strict",
+      "max_retries": 1,
+      "n_concurrent": 4
+    }
+  },
+  "gepa_local": {
+    "analyze": {
+      "components": {
+        "knowledge": [
+          "target/knowledge.md"
+        ]
+      },
+      "field_limit": 2000,
+      "max_cases": 8
+    },
+    "gate": {},
+    "mutate": {
+      "agent": "evolve.integrations.harbor.local_auto_agent:LocalAutoAgent",
+      "agent_kwargs": {
+        "model_by_agent": {
+          "codex": "gpt-5.4"
+        }
+      },
+      "component_strategy": "round_robin",
+      "components": {
+        "knowledge": [
+          "target/knowledge.md"
+        ]
+      },
+      "editable_roots": [
+        "target"
+      ],
+      "environment": "evolve.harbor_local:LocalEnvironment",
+      "expose_gate_data": false,
+      "max_examples": 10,
+      "max_retries": 1,
+      "required_placeholders": [],
+      "runner": "harbor"
+    },
+    "record": {},
+    "rollout": {
+      "budget_tasks": 8,
+      "environment": "evolve.harbor_local:LocalEnvironment",
+      "field_limit": 2000,
+      "max_retries": 1,
+      "n_concurrent": 2,
+      "pass_threshold": 1.0,
+      "reuse_completed": false,
+      "seed": 0,
+      "task_sampling": "head"
+    },
+    "select": {
+      "seed": 0
+    },
+    "validate": {
+      "criterion": "non_decreasing",
+      "environment": "evolve.harbor_local:LocalEnvironment",
+      "max_retries": 1,
+      "n_concurrent": 2
+    }
+  },
+  "hill_climb": {
+    "analyze": {
+      "history_cycles": 2,
+      "max_chars": 30000,
+      "max_observations": 30
+    },
+    "gate": {
+      "strict": false
+    },
+    "mutate": {
+      "agent": "codex",
+      "editable_roots": [
+        "target"
+      ],
+      "environment": "docker",
+      "expose_gate_data": false,
+      "image": "evolve-meta-agent-codex:20260805-codex0145",
+      "max_retries": 1,
+      "memory_dir": "target/memory",
+      "model": "gpt-5.4",
+      "prompt_path": "target/src/minisweagent/config/mini.yaml",
+      "runner": "harbor",
+      "skills_dir": "target/skills"
+    },
+    "record": {},
+    "rollout": {
+      "agent_setup_timeout_multiplier": 1.0,
+      "budget_tasks": 32,
+      "field_limit": 2000,
+      "max_retries": 1,
+      "n_concurrent": 16,
+      "pass_threshold": 1.0,
+      "reuse_completed": false,
+      "seed": 0,
+      "task_sampling": "head"
+    },
+    "select": {
+      "seed": 0
+    }
+  },
+  "hill_climb_codex": {
+    "analyze": {
+      "history_cycles": 2,
+      "max_chars": 30000,
+      "max_observations": 30
+    },
+    "gate": {
+      "strict": false
+    },
+    "mutate": {
+      "agent": "codex",
+      "editable_roots": [
+        "target"
+      ],
+      "environment": "docker",
+      "expose_gate_data": false,
+      "image": "evolve-meta-agent-codex:20260805-codex0145",
+      "max_retries": 1,
+      "memory_dir": "target/memory",
+      "model": "gpt-5.4",
+      "prompt_path": "target/prompt.md",
+      "runner": "harbor",
+      "skills_dir": "target/skills"
+    },
+    "record": {},
+    "rollout": {
+      "agent_setup_timeout_multiplier": 1.0,
+      "budget_tasks": 16,
+      "field_limit": 2000,
+      "max_retries": 1,
+      "n_concurrent": 4,
+      "pass_threshold": 1.0,
+      "reuse_completed": false,
+      "seed": 0,
+      "task_sampling": "head"
+    },
+    "select": {
+      "seed": 0
+    }
+  },
+  "hyperagents": {
+    "analyze": {
+      "history_cycles": 2,
+      "max_chars": 30000,
+      "max_observations": 30
+    },
+    "gate": {},
+    "mutate": {
+      "agent": "evolve.integrations.harbor.miniswe_task_file:InstalledMiniSweAgent",
+      "agent_kwargs": {
+        "cost_limit": 0,
+        "max_tokens": 64000,
+        "reasoning_effort": "high"
+      },
+      "editable_roots": [
+        "target",
+        "operators"
+      ],
+      "environment": "docker",
+      "expose_gate_data": false,
+      "image": "evolve-meta-agent-app:20260724-tools-mswe245",
+      "max_retries": 1,
+      "memory_dir": "target/memory",
+      "model": "openai/gpt-5.4-2026-03-05",
+      "prompt_path": "target/src/minisweagent/config/mini.yaml",
+      "runner": "harbor",
+      "skills_dir": "target/skills"
+    },
+    "record": {},
+    "rollout": {
+      "field_limit": 2000,
+      "pass_threshold": 1.0
+    },
+    "select": {
+      "seed": 0
+    },
+    "validate": {}
+  },
+  "hyperagents_codex": {
+    "analyze": {
+      "history_cycles": 2,
+      "max_chars": 30000,
+      "max_observations": 30
+    },
+    "gate": {},
+    "mutate": {
+      "agent": "codex",
+      "agent_kwargs": {
+        "reasoning_effort": "high"
+      },
+      "editable_roots": [
+        "target",
+        "operators"
+      ],
+      "environment": "docker",
+      "expose_gate_data": false,
+      "image": "evolve-meta-agent-codex:20260805-codex0145",
+      "max_retries": 1,
+      "memory_dir": "target/memory",
+      "model": "gpt-5.4",
+      "prompt_path": "target/prompt.md",
+      "runner": "harbor",
+      "skills_dir": "target/skills"
+    },
+    "record": {},
+    "rollout": {
+      "field_limit": 2000,
+      "pass_threshold": 1.0
+    },
+    "select": {
+      "seed": 0
+    },
+    "validate": {}
+  }
+}
