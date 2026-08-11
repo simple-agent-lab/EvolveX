@@ -1,8 +1,8 @@
-# EvolveX Logo Exploration Implementation Plan
+# RSIHub Logo Exploration Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Produce a structurally verified, visually audited gallery of exactly 50 refined EvolveX logo concepts in the approved 18/16/16 art-direction split without changing the public repository logo.
+**Goal:** Produce a structurally verified, visually audited gallery of exactly 50 refined RSIHub logo concepts in the approved 18/16/16 art-direction split without changing the public repository logo.
 
 **Architecture:** Keep the exploration in an internal, force-tracked `docs/superpowers/artifacts/` package. Each concept is a self-contained SVG presentation sheet with reusable vector mark and wordmark symbols plus light, dark, monochrome, and 32-pixel proofs; a JSON manifest is the source of truth, a standard-library validator enforces the structural contract, and a standard-library builder produces one self-contained gallery for browser selection.
 
@@ -16,7 +16,7 @@
 - Remain recognizable at 32 pixels and legible at 16 pixels where practical.
 - Work in one-color black and white before relying on color.
 - Use no more than two main brand colors in the primary version.
-- Include an intentional EvolveX wordmark treatment; do not use an unmodified default system font as the final typographic expression.
+- Include an intentional RSIHub wordmark treatment; do not use an unmodified default system font as the final typographic expression.
 - Avoid neural-network dots, circuit traces, brains, atoms, glowing orbs, chat bubbles, generic trees, and random gradient X marks.
 - Do not copy or closely imitate reference-project marks.
 - Keep `README.md`, `docs/evolve-mark.svg`, `docs/evolve-lineage.svg`, and `tools/generate_readme_assets.py` unchanged until the user explicitly approves a winner.
@@ -26,14 +26,14 @@
 
 | Path | Responsibility |
 | --- | --- |
-| `docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/README.md` | Local viewing, validation, rendering, and selection instructions. |
-| `docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/manifest.json` | Ordered source of truth for collection counts, stable IDs, names, files, palettes, motifs, and wordmark construction. |
-| `docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/validate.py` | Standard-library structural validator for the manifest and each SVG sheet. |
-| `docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/build_gallery.py` | Deterministically inline manifest metadata and SVG sheets into one self-contained comparison gallery. |
-| `docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/gallery.html` | Generated multi-select browser gallery; never hand-edit. |
-| `docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/concepts/*.svg` | Fifty self-contained SVG presentation sheets named by stable concept ID and slug. |
-| `docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/tests/test_exploration.py` | Focused validator and deterministic-gallery tests. |
-| `docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/audit.md` | Final visual audit record and replacement decisions for rejected concepts. |
+| `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/README.md` | Local viewing, validation, rendering, and selection instructions. |
+| `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/manifest.json` | Ordered source of truth for collection counts, stable IDs, names, files, palettes, motifs, and wordmark construction. |
+| `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/validate.py` | Standard-library structural validator for the manifest and each SVG sheet. |
+| `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/build_gallery.py` | Deterministically inline manifest metadata and SVG sheets into one self-contained comparison gallery. |
+| `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/gallery.html` | Generated multi-select browser gallery; never hand-edit. |
+| `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/*.svg` | Fifty self-contained SVG presentation sheets named by stable concept ID and slug. |
+| `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/tests/test_exploration.py` | Focused validator and deterministic-gallery tests. |
+| `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/audit.md` | Final visual audit record and replacement decisions for rejected concepts. |
 
 ## SVG Presentation Contract
 
@@ -53,11 +53,11 @@ The root also records `data-concept-id`, `data-collection`, `data-primary-color`
 ### Task 1: Build the exploration contract, validator, and gallery pipeline
 
 **Files:**
-- Create: `docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/README.md`
-- Create: `docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/manifest.json`
-- Create: `docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/validate.py`
-- Create: `docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/build_gallery.py`
-- Create: `docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/tests/test_exploration.py`
+- Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/README.md`
+- Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/manifest.json`
+- Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/validate.py`
+- Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/build_gallery.py`
+- Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/tests/test_exploration.py`
 
 **Interfaces:**
 - Produces: `load_manifest(root: Path) -> dict[str, object]`.
@@ -107,7 +107,7 @@ def test_gallery_render_is_deterministic(tmp_path: Path) -> None:
 Run:
 
 ```bash
-uv run --frozen pytest -q docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/tests/test_exploration.py
+uv run --frozen pytest -q docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/tests/test_exploration.py
 ```
 
 Expected: collection fails because `validate.py` and `build_gallery.py` do not exist.
@@ -141,7 +141,7 @@ def main(argv: list[str] | None = None) -> int:
     """Write the requested output, or fail under --check when bytes differ."""
 ```
 
-With no `--output`, target `gallery.html` beside the script. The HTML must have three collection filters, a visible selected-count label, multi-select cards keyed by stable concept ID, localStorage key `evolvex-logo-shortlist-v1`, and no network references.
+With no `--output`, target `gallery.html` beside the script. The HTML must have three collection filters, a visible selected-count label, multi-select cards keyed by stable concept ID, localStorage key `rsihub-logo-shortlist-v1`, and no network references.
 
 - [ ] **Step 5: Add the empty manifest and operating instructions**
 
@@ -171,7 +171,7 @@ uv run --frozen python build_gallery.py --check
 Run:
 
 ```bash
-uv run --frozen pytest -q docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/tests/test_exploration.py
+uv run --frozen pytest -q docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/tests/test_exploration.py
 ```
 
 Expected: all tests pass.
@@ -179,32 +179,32 @@ Expected: all tests pass.
 - [ ] **Step 7: Commit the contract and pipeline**
 
 ```bash
-git add -f docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration
-git commit -m "design: add EvolveX logo exploration pipeline"
+git add -f docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration
+git commit -m "design: add RSIHub logo exploration pipeline"
 ```
 
 ### Task 2: Author 18 minimal original mascot concepts
 
 **Files:**
-- Create: `docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/concepts/M01-tessellated-tern.svg`
-- Create: `docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/concepts/M02-split-tail-finch.svg`
-- Create: `docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/concepts/M03-nautilus-runner.svg`
-- Create: `docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/concepts/M04-axolotl-x.svg`
-- Create: `docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/concepts/M05-orbit-moth.svg`
-- Create: `docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/concepts/M06-compass-beetle.svg`
-- Create: `docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/concepts/M07-paper-crane.svg`
-- Create: `docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/concepts/M08-gecko-mark.svg`
-- Create: `docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/concepts/M09-kite-ray.svg`
-- Create: `docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/concepts/M10-firefly-beacon.svg`
-- Create: `docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/concepts/M11-salamander-curve.svg`
-- Create: `docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/concepts/M12-pangolin-spiral.svg`
-- Create: `docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/concepts/M13-heron-step.svg`
-- Create: `docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/concepts/M14-evo-mote.svg`
-- Create: `docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/concepts/M15-mosaic-turtle.svg`
-- Create: `docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/concepts/M16-swift-arrow.svg`
-- Create: `docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/concepts/M17-quiet-fox.svg`
-- Create: `docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/concepts/M18-curious-quill.svg`
-- Modify: `docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/manifest.json`
+- Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/M01-tessellated-tern.svg`
+- Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/M02-split-tail-finch.svg`
+- Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/M03-nautilus-runner.svg`
+- Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/M04-axolotl-x.svg`
+- Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/M05-orbit-moth.svg`
+- Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/M06-compass-beetle.svg`
+- Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/M07-paper-crane.svg`
+- Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/M08-gecko-mark.svg`
+- Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/M09-kite-ray.svg`
+- Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/M10-firefly-beacon.svg`
+- Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/M11-salamander-curve.svg`
+- Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/M12-pangolin-spiral.svg`
+- Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/M13-heron-step.svg`
+- Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/M14-evo-mote.svg`
+- Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/M15-mosaic-turtle.svg`
+- Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/M16-swift-arrow.svg`
+- Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/M17-quiet-fox.svg`
+- Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/M18-curious-quill.svg`
+- Modify: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/manifest.json`
 
 **Interfaces:**
 - Consumes: the SVG presentation contract and validator from Task 1.
@@ -225,12 +225,12 @@ For each entry set `collection` to `mascot`, `wordmark` to `custom-path`, `font_
 
 - [ ] **Step 2: Draw M01–M06 and run the partial validator**
 
-Draw each as a distinct closed silhouette, not the same body with changed ears or wings. At 32 pixels, preserve only eyes or one signature cut when it materially improves recognition. Use vector paths for the EvolveX wordmark and the exact presentation contract.
+Draw each as a distinct closed silhouette, not the same body with changed ears or wings. At 32 pixels, preserve only eyes or one signature cut when it materially improves recognition. Use vector paths for the RSIHub wordmark and the exact presentation contract.
 
 Run:
 
 ```bash
-uv run --frozen python docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/validate.py
+uv run --frozen python docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/validate.py
 ```
 
 Expected: no errors for files M01–M06; missing-file errors remain for M07–M18.
@@ -248,7 +248,7 @@ Use tall editorial proportion for the heron, a non-animal soft geometric mote, a
 Run:
 
 ```bash
-uv run --frozen python docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/validate.py --family mascot
+uv run --frozen python docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/validate.py --family mascot
 ```
 
 Expected: `validated 18 mascot concepts` and exit code `0`.
@@ -256,8 +256,8 @@ Expected: `validated 18 mascot concepts` and exit code `0`.
 - [ ] **Step 5: Render contact sheets and reject weak silhouettes**
 
 ```bash
-mkdir -p /tmp/evolvex-logo-mascot-preview
-qlmanage -t -s 1200 -o /tmp/evolvex-logo-mascot-preview docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/concepts/M*.svg
+mkdir -p /tmp/rsihub-logo-mascot-preview
+qlmanage -t -s 1200 -o /tmp/rsihub-logo-mascot-preview docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/M*.svg
 ```
 
 Inspect both the large lockup and embedded 32-pixel proof. Replace any concept that reads as an emoji, resembles a reference mascot, or needs its name to explain the silhouette.
@@ -265,15 +265,15 @@ Inspect both the large lockup and embedded 32-pixel proof. Replace any concept t
 - [ ] **Step 6: Commit the mascot collection**
 
 ```bash
-git add -f docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/manifest.json docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/concepts/M*.svg
-git commit -m "design: explore EvolveX mascot identities"
+git add -f docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/manifest.json docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/M*.svg
+git commit -m "design: explore RSIHub mascot identities"
 ```
 
 ### Task 3: Author 16 playful open-source concepts
 
 **Files:**
-- Create: `docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/concepts/P01-confetti-x.svg` through `P16-joyful-slash.svg`, with every intermediate path specified in the inventory below
-- Modify: `docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/manifest.json`
+- Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/P01-confetti-x.svg` through `P16-joyful-slash.svg`, with every intermediate path specified in the inventory below
+- Modify: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/manifest.json`
 
 **Interfaces:**
 - Consumes: the SVG presentation contract and validator from Task 1.
@@ -317,7 +317,7 @@ Keep P09–P16 bold enough for 32 pixels, but do not add faces, eyes, or mascot 
 Run:
 
 ```bash
-uv run --frozen python docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/validate.py --family playful
+uv run --frozen python docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/validate.py --family playful
 ```
 
 Expected: `validated 16 playful concepts` and exit code `0`.
@@ -325,8 +325,8 @@ Expected: `validated 16 playful concepts` and exit code `0`.
 - [ ] **Step 4: Render and audit the playful collection**
 
 ```bash
-mkdir -p /tmp/evolvex-logo-playful-preview
-qlmanage -t -s 1200 -o /tmp/evolvex-logo-playful-preview docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/concepts/P*.svg
+mkdir -p /tmp/rsihub-logo-playful-preview
+qlmanage -t -s 1200 -o /tmp/rsihub-logo-playful-preview docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/P*.svg
 ```
 
 Replace marks that look like generic app icons, emoji, children's products, or minor variations of another card.
@@ -334,15 +334,15 @@ Replace marks that look like generic app icons, emoji, children's products, or m
 - [ ] **Step 5: Commit the playful collection**
 
 ```bash
-git add -f docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/manifest.json docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/concepts/P*.svg
-git commit -m "design: explore playful EvolveX identities"
+git add -f docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/manifest.json docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/P*.svg
+git commit -m "design: explore playful RSIHub identities"
 ```
 
 ### Task 4: Author 16 technical editorial concepts
 
 **Files:**
-- Create: `docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/concepts/T01-cut-e-wordmark.svg` through `T16-horizon-wordmark.svg`
-- Modify: `docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/manifest.json`
+- Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/T01-cut-e-wordmark.svg` through `T16-horizon-wordmark.svg`
+- Modify: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/manifest.json`
 
 **Interfaces:**
 - Consumes: the SVG presentation contract and validator from Task 1.
@@ -384,7 +384,7 @@ Give T09–T16 different typographic voices: seal, index, ruled proof, modular, 
 Run:
 
 ```bash
-uv run --frozen python docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/validate.py --family editorial
+uv run --frozen python docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/validate.py --family editorial
 ```
 
 Expected: `validated 16 editorial concepts` and exit code `0`.
@@ -392,8 +392,8 @@ Expected: `validated 16 editorial concepts` and exit code `0`.
 - [ ] **Step 4: Render and audit the editorial collection**
 
 ```bash
-mkdir -p /tmp/evolvex-logo-editorial-preview
-qlmanage -t -s 1200 -o /tmp/evolvex-logo-editorial-preview docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/concepts/T*.svg
+mkdir -p /tmp/rsihub-logo-editorial-preview
+qlmanage -t -s 1200 -o /tmp/rsihub-logo-editorial-preview docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/T*.svg
 ```
 
 Reject any concept that looks like an unmodified typeface, a cryptocurrency token, or a generic SaaS monogram.
@@ -401,24 +401,24 @@ Reject any concept that looks like an unmodified typeface, a cryptocurrency toke
 - [ ] **Step 5: Commit the editorial collection**
 
 ```bash
-git add -f docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/manifest.json docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/concepts/T*.svg
-git commit -m "design: explore editorial EvolveX identities"
+git add -f docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/manifest.json docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/T*.svg
+git commit -m "design: explore editorial RSIHub identities"
 ```
 
 ### Task 5: Build the complete multi-select gallery
 
 **Files:**
-- Regenerate: `docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/gallery.html`
-- Modify: `docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/README.md`
+- Regenerate: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/gallery.html`
+- Modify: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/README.md`
 
 **Interfaces:**
 - Consumes: all 50 manifest entries and SVG sheets from Tasks 2–4.
-- Produces: self-contained `gallery.html` with stable multi-selection persisted under `evolvex-logo-shortlist-v1`.
+- Produces: self-contained `gallery.html` with stable multi-selection persisted under `rsihub-logo-shortlist-v1`.
 
 - [ ] **Step 1: Validate the complete source set**
 
 ```bash
-uv run --frozen python docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/validate.py --complete
+uv run --frozen python docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/validate.py --complete
 ```
 
 Expected: `validated 50 concepts: mascot=18 playful=16 editorial=16` and exit code `0`.
@@ -426,8 +426,8 @@ Expected: `validated 50 concepts: mascot=18 playful=16 editorial=16` and exit co
 - [ ] **Step 2: Generate the gallery**
 
 ```bash
-uv run --frozen python docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/build_gallery.py
-uv run --frozen python docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/build_gallery.py --check
+uv run --frozen python docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/build_gallery.py
+uv run --frozen python docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/build_gallery.py --check
 ```
 
 Expected: the first command writes `gallery.html`; the second reports `gallery.html is current`.
@@ -437,29 +437,29 @@ Expected: the first command writes `gallery.html`; the second reports `gallery.h
 Generate a fresh semantic screen filename under the active companion content directory:
 
 ```bash
-uv run --frozen python docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/build_gallery.py --output .superpowers/brainstorm/83265-1786351892/content/logo-gallery-refined-50.html
+uv run --frozen python docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/build_gallery.py --output .superpowers/brainstorm/83265-1786351892/content/logo-gallery-refined-50.html
 ```
 
 Confirm the server's `state/server-info` exists and `state/server-stopped` does not before sharing the existing keyed URL.
 
 - [ ] **Step 4: Test browser interaction manually**
 
-In the companion, select one concept from each collection, reload, and confirm all three selections persist. Toggle collection filters and confirm the selected count remains unchanged. Clear selections and confirm localStorage key `evolvex-logo-shortlist-v1` becomes an empty array.
+In the companion, select one concept from each collection, reload, and confirm all three selections persist. Toggle collection filters and confirm the selected count remains unchanged. Clear selections and confirm localStorage key `rsihub-logo-shortlist-v1` becomes an empty array.
 
 - [ ] **Step 5: Commit the generated gallery and instructions**
 
 ```bash
-git add -f docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/gallery.html docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/README.md
-git commit -m "design: publish EvolveX logo comparison gallery"
+git add -f docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/gallery.html docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/README.md
+git commit -m "design: publish RSIHub logo comparison gallery"
 ```
 
 ### Task 6: Perform the quality audit and replace rejected concepts
 
 **Files:**
-- Create: `docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/audit.md`
-- Modify as required: `docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/concepts/*.svg`
-- Modify as required: `docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/manifest.json`
-- Regenerate: `docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/gallery.html`
+- Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/audit.md`
+- Modify as required: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/*.svg`
+- Modify as required: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/manifest.json`
+- Regenerate: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/gallery.html`
 
 **Interfaces:**
 - Consumes: the complete gallery from Task 5.
@@ -487,9 +487,9 @@ Keep the stable ID, but change the name, slug, motif, palette if needed, manifes
 - [ ] **Step 4: Revalidate and regenerate**
 
 ```bash
-uv run --frozen python docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/validate.py --complete
-uv run --frozen python docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/build_gallery.py
-uv run --frozen python docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/build_gallery.py --check
+uv run --frozen python docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/validate.py --complete
+uv run --frozen python docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/build_gallery.py
+uv run --frozen python docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/build_gallery.py --check
 ```
 
 Expected: all commands pass after replacements.
@@ -497,14 +497,14 @@ Expected: all commands pass after replacements.
 - [ ] **Step 5: Commit the audited set**
 
 ```bash
-git add -f docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration
-git commit -m "design: audit EvolveX logo exploration"
+git add -f docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration
+git commit -m "design: audit RSIHub logo exploration"
 ```
 
 ### Task 7: Run final verification and hand off the shortlist
 
 **Files:**
-- Verify only: `docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/`
+- Verify only: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/`
 - Do not modify: `README.md`, `docs/evolve-mark.svg`, `docs/evolve-lineage.svg`, `tools/generate_readme_assets.py`
 
 **Interfaces:**
@@ -514,9 +514,9 @@ git commit -m "design: audit EvolveX logo exploration"
 - [ ] **Step 1: Run focused structural checks**
 
 ```bash
-uv run --frozen pytest -q docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/tests/test_exploration.py
-uv run --frozen python docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/validate.py --complete
-uv run --frozen python docs/superpowers/artifacts/2026-08-10-evolvex-logo-exploration/build_gallery.py --check
+uv run --frozen pytest -q docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/tests/test_exploration.py
+uv run --frozen python docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/validate.py --complete
+uv run --frozen python docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/build_gallery.py --check
 ```
 
 Expected: all tests pass, all 50 concepts validate, and the gallery is current.

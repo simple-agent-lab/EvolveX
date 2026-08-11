@@ -123,6 +123,7 @@ git commit -m "refactor: rename generated workspaces to RSIHub"
 
 **Files:**
 - Modify: `tests/test_public_repository.py`
+- Modify: `tests/test_coherence.py`
 - Modify: `tests/test_release_artifact.py`
 - Modify: `pyproject.toml`
 - Modify: `uv.lock`
@@ -266,10 +267,10 @@ git commit -m "refactor: rename project identity to RSIHub"
 - Modify: `docs/development/{coding-style.md,documentation.md}`
 - Modify: `docs/getting-started.md`, `docs/guides/operations.md`, `docs/index.md`
 - Modify: `docs/reference/{environment-variables.md,operators.md,terminology.md}`
-- Move: `docs/superpowers/plans/2026-08-10-evolvex-arxiv-report.md` to `docs/superpowers/plans/2026-08-10-rsihub-arxiv-report.md`
-- Move: `docs/superpowers/plans/2026-08-10-evolvex-logo-exploration.md` to `docs/superpowers/plans/2026-08-10-rsihub-logo-exploration.md`
-- Move: `docs/superpowers/specs/2026-08-10-evolvex-arxiv-report-design.md` to `docs/superpowers/specs/2026-08-10-rsihub-arxiv-report-design.md`
-- Move: `docs/superpowers/specs/2026-08-10-evolvex-logo-exploration-design.md` to `docs/superpowers/specs/2026-08-10-rsihub-logo-exploration-design.md`
+- Move: `docs/superpowers/plans/2026-08-10-rsihub-arxiv-report.md` to `docs/superpowers/plans/2026-08-10-rsihub-arxiv-report.md`
+- Move: `docs/superpowers/plans/2026-08-10-rsihub-logo-exploration.md` to `docs/superpowers/plans/2026-08-10-rsihub-logo-exploration.md`
+- Move: `docs/superpowers/specs/2026-08-10-rsihub-arxiv-report-design.md` to `docs/superpowers/specs/2026-08-10-rsihub-arxiv-report-design.md`
+- Move: `docs/superpowers/specs/2026-08-10-rsihub-logo-exploration-design.md` to `docs/superpowers/specs/2026-08-10-rsihub-logo-exploration-design.md`
 - Modify: all tracked `docs/superpowers/{plans,specs}/*.md` files reported by the guard
 - Modify: `evals/README.md`
 - Modify: `evals/skills/make-paper-poster/{prepare_dataset.py,recipe/evaluator/prepare_poster_runtime.py}`
@@ -356,6 +357,14 @@ SVG `<title>`, `<desc>`, and accessible copy while preserving SVG geometry.
 Do not replace the standalone verb/package/config/interface forms listed in
 Global Constraints. In particular, retain `src/evolve`, `evolve init`,
 `evolve.yaml`, `.evolve`, `EVOLVE_*`, `evolve-agent`, and A-Evolve.
+
+Resolve the approved repository-policy conflict in `tests/test_coherence.py`:
+rename `test_local_superpowers_artifacts_are_not_tracked` to
+`test_local_superpowers_runtime_artifacts_are_not_tracked`, make its
+`git ls-files` command inspect only `.superpowers`, and keep the assertion that
+runtime scratch must be untracked. Deliberately committed design and plan
+records under `docs/superpowers` are now allowed and remain covered by the
+tracked-source identity guard.
 
 - [ ] **Step 4: Re-run the guard until it passes**
 

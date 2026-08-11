@@ -20,7 +20,7 @@ Each candidate is identified by an immutable source repository, generation
 tag, and resolved commit. The evaluated agent is the `target/` tree from that
 tag, not the source repository's current checkout.
 
-| Host | Benchmark | Method / target | Source repository relative to `/data00/home/zimuwang/simple-evolve-agent-full89-20260724` | Tag | Commit |
+| Host | Benchmark | Method / target | Source repository relative to `/data00/home/zimuwang/simple-agent-lab/RSIHub-full89-20260724` | Tag | Commit |
 | --- | --- | --- | --- | --- | --- |
 | DevBox | Terminal-Bench 2 | AHE / MiniSWE | `workspaces/ahe-terminal-bench-2` | `gen/6` | `1f9de64bb4f2a1689818f237af7e425422191f0a` |
 | DevBoxS | Terminal-Bench 2 | HyperAgents / MiniSWE | `workspaces/hyperagents-terminal-bench-2-full-20260730-r2` | `gen/10` | `90fc97b05ebbe976c7467f36db886eca4622e8c4` |
@@ -38,7 +38,7 @@ the full commit to equal the value above.
 
 Create a new evaluation root on each host under:
 
-`/data00/home/zimuwang/simple-evolve-agent-full89-20260724/full-evals/champion-full-20260810/`
+`/data00/home/zimuwang/simple-agent-lab/RSIHub-full89-20260724/full-evals/champion-full-20260810/`
 
 Every matrix row receives a separate Git-backed evaluation workspace. The
 workspace uses the audited corrected-rerun evaluator pattern for its benchmark
@@ -60,7 +60,7 @@ seed directory.
 
 Terminal-Bench 2 uses the complete dataset at:
 
-`/data00/home/zimuwang/simple-evolve-agent-full89-20260724/terminal-bench-2-full89`
+`/data00/home/zimuwang/simple-agent-lab/RSIHub-full89-20260724/terminal-bench-2-full89`
 
 The selected task manifest must contain exactly 89 unique task IDs, and each
 ID must resolve to exactly one task in that dataset.
@@ -68,7 +68,7 @@ ID must resolve to exactly one task in that dataset.
 Tau3 Banking uses this corrected 97-instance safe-health v0.33 dataset on both
 hosts:
 
-`/data00/home/zimuwang/simple-evolve-agent-full89-20260724/datasets/tau3-banking-97-codex-safe-health-v033-1d244f5dca42944b67a379b44bfeb9f5748f189d-seed626729-r1`
+`/data00/home/zimuwang/simple-agent-lab/RSIHub-full89-20260724/datasets/tau3-banking-97-codex-safe-health-v033-1d244f5dca42944b67a379b44bfeb9f5748f189d-seed626729-r1`
 
 The selected manifest must contain exactly 97 unique task IDs. All four Tau3
 evaluations use simulator seed `626729` at the runtime call site. A

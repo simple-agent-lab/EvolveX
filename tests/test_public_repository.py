@@ -1,5 +1,6 @@
 import re
 import shlex
+import subprocess
 import tomllib
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -11,6 +12,32 @@ from evolve import __version__
 ROOT = Path(__file__).resolve().parents[1]
 RELATIVE_LINK = re.compile(r"\[[^\]]+\]\((?!https?://|mailto:|#)([^)#]+)")
 SVG_NS = {"svg": "http://www.w3.org/2000/svg"}
+
+
+def test_tracked_files_use_only_current_project_identity() -> None:
+    retired = ("evolve" + "x", "simple-" + "evolve-agent")
+    result = subprocess.run(
+        ["git", "ls-files", "-z"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+    )
+    paths = [Path(raw.decode()) for raw in result.stdout.split(b"\0") if raw]
+    stale: list[str] = []
+    for relative in paths:
+        folded_path = relative.as_posix().casefold()
+        for identity in retired:
+            if identity in folded_path:
+                stale.append(f"path:{relative}")
+        try:
+            text = (ROOT / relative).read_text()
+        except UnicodeDecodeError:
+            continue
+        folded_text = text.casefold()
+        for identity in retired:
+            if identity in folded_text:
+                stale.append(f"text:{relative}")
+    assert sorted(set(stale)) == []
 
 
 def _relative_luminance(color: str) -> float:

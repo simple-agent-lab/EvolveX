@@ -1,8 +1,8 @@
-# EvolveX Logo Exploration Design
+# RSIHub Logo Exploration Design
 
 ## Objective
 
-Create a broad, art-directed logo exploration for EvolveX, then use the
+Create a broad, art-directed logo exploration for RSIHub, then use the
 comparison to select a smaller set for production refinement. The exploration
 must feel memorable and intentional at GitHub-avatar scale while remaining
 credible in research papers, documentation, and developer tooling.
@@ -39,7 +39,7 @@ Every concept must satisfy these rules:
 - Remain recognizable at 32 pixels and legible at 16 pixels where practical.
 - Work in one-color black and white before relying on color.
 - Use no more than two main brand colors in the primary version.
-- Include an intentional EvolveX wordmark treatment; do not use an unmodified
+- Include an intentional RSIHub wordmark treatment; do not use an unmodified
   default system font as the final typographic expression.
 - Avoid generic AI and developer-tool imagery: neural-network dots, circuit
   traces, brains, atoms, glowing orbs, chat bubbles, generic trees, and random

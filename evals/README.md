@@ -2,7 +2,7 @@
 
 `evals/` contains reviewable evaluation definitions and recorded result
 snapshots for project-owned agents and skills. It is a research and quality
-evaluation area, not the evaluator runtime used by a generated EvolveX
+evaluation area, not the evaluator runtime used by a generated RSIHub
 workspace.
 
 ## Current layout

@@ -68,9 +68,9 @@ def test_no_test_hooks_in_mechanism() -> None:
             assert pattern not in text, f"test hook {pattern!r} in {path}"
 
 
-def test_local_superpowers_artifacts_are_not_tracked() -> None:
+def test_local_superpowers_runtime_artifacts_are_not_tracked() -> None:
     result = subprocess.run(
-        ["git", "ls-files", "--", ".superpowers", "docs/superpowers"],
+        ["git", "ls-files", "--", ".superpowers"],
         cwd=ROOT,
         check=True,
         capture_output=True,

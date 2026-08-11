@@ -1,26 +1,26 @@
-# EvolveX arXiv Report Implementation Plan
+# RSIHub arXiv Report Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Produce a concise, publication-quality arXiv systems report that introduces EvolveX as a composable framework for self-improving agents.
+**Goal:** Produce a concise, publication-quality arXiv systems report that introduces RSIHub as a composable framework for self-improving agents.
 
-**Architecture:** Keep the manuscript in the nested `arxiv/` Overleaf Git repository and split prose by paper section. Use a two-column LaTeX article, one TikZ architecture figure, one method-composition table, one compact recipe listing, and an evidence section gated by the partner readiness record. Treat the root EvolveX repository as the source of truth for architecture, recipe mappings, commands, and retained results.
+**Architecture:** Keep the manuscript in the nested `arxiv/` Overleaf Git repository and split prose by paper section. Use a two-column LaTeX article, one TikZ architecture figure, one method-composition table, one compact recipe listing, and an evidence section gated by the partner readiness record. Treat the root RSIHub repository as the source of truth for architecture, recipe mappings, commands, and retained results.
 
 **Tech Stack:** LaTeX (`article`, TikZ, `booktabs`, `tabularx`, `listings`, `natbib`, `hyperref`, `cleveref`), BibTeX, `latexmk`, Poppler (`pdfinfo`, `pdftoppm`), Markdown readiness tracking, Git/Overleaf.
 
 ## Global Constraints
 
-- Work in `/Users/bytedance/Desktop/simple-evolve-agent/arxiv` for manuscript changes; it is an independent Git repository.
+- Work in `/Users/bytedance/Desktop/simple-agent-lab/RSIHub/arxiv` for manuscript changes; it is an independent Git repository.
 - Preserve the root repository's unrelated untracked `.codex/` and `arxiv/` entries and do not stage them from the root repository.
-- Use **EvolveX: A Composable Framework for Self-Improving Agents** as the working title.
+- Use **RSIHub: A Composable Framework for Self-Improving Agents** as the working title.
 - Use “self-improving agents” as the main public term; use recursive self-improvement only in motivation or related work.
 - Give researchers and practitioners equal emphasis.
 - Aim for six to seven pages of main content; treat this as a writing budget rather than a hard limit.
-- Describe one coherent EvolveX system. Do not put implementation-readiness or current-versus-target language in the paper.
+- Describe one coherent RSIHub system. Do not put implementation-readiness or current-versus-target language in the paper.
 - Present the fixed lifecycle as `select -> rollout -> analyze? -> mutate -> validate? -> novelty? -> evaluate -> gate -> record -> reflect?`.
 - Keep `evaluate` framework-owned and treat other enabled stages as replaceable policy operators.
 - Use “diverse” or “representative” methods; do not claim support for every method or guaranteed improvement.
-- Cite original papers and primary project sources for technical claims. Mark EvolveX mappings as adaptations when fidelity is not demonstrated.
+- Cite original papers and primary project sources for technical claims. Mark RSIHub mappings as adaptations when fidelity is not demonstrated.
 - Keep experiment selection and claim readiness in `notes/report-readiness.md`, which must not be included in the compiled manuscript.
 - Do not introduce quantitative claims until the readiness record names the source artifact, denominator, aggregation, and approved wording.
 - Compile after every manuscript task. Render and inspect the affected pages after every meaningful layout change.
@@ -86,7 +86,7 @@ tab:results
 - Create: `arxiv/notes/report-readiness.md`
 
 **Interfaces:**
-- Consumes: approved design at `docs/superpowers/specs/2026-08-10-evolvex-arxiv-report-design.md`.
+- Consumes: approved design at `docs/superpowers/specs/2026-08-10-rsihub-arxiv-report-design.md`.
 - Produces: a compiling two-column manuscript shell, stable section labels, and the decision gate consumed by Task 7.
 
 - [ ] **Step 1: Verify the nested paper repository baseline**
@@ -141,10 +141,10 @@ Use this document structure and retain the existing author until the partner rec
 \usepackage[hidelinks]{hyperref}
 \usepackage[nameinlink,capitalise]{cleveref}
 
-\definecolor{evolvexblue}{HTML}{2563EB}
-\definecolor{evolvexgreen}{HTML}{0F766E}
-\definecolor{evolvexgold}{HTML}{B45309}
-\definecolor{evolvexgray}{HTML}{F3F4F6}
+\definecolor{rsihubblue}{HTML}{2563EB}
+\definecolor{rsihubgreen}{HTML}{0F766E}
+\definecolor{rsihubgold}{HTML}{B45309}
+\definecolor{rsihubgray}{HTML}{F3F4F6}
 
 \lstset{
   basicstyle=\ttfamily\footnotesize,
@@ -155,7 +155,7 @@ Use this document structure and retain the existing author until the partner rec
   showstringspaces=false
 }
 
-\title{EvolveX: A Composable Framework for Self-Improving Agents}
+\title{RSIHub: A Composable Framework for Self-Improving Agents}
 \author{Zimu Wang}
 \date{}
 
@@ -163,11 +163,11 @@ Use this document structure and retain the existing author until the partner rec
 \maketitle
 
 \begin{abstract}
-EvolveX is a composable framework for building and studying self-improving
+RSIHub is a composable framework for building and studying self-improving
 agents. It separates a fixed experimental lifecycle from replaceable method
 operators, allowing researchers to reproduce, ablate, and combine improvement
 strategies while practitioners reuse one execution and evidence substrate. This
-report presents the abstraction, architecture, and workflow of EvolveX.
+report presents the abstraction, architecture, and workflow of RSIHub.
 \end{abstract}
 
 \input{sections/01-introduction}
@@ -199,8 +199,8 @@ Use these heading/label pairs:
 ```text
 Self-Improvement as Composition / sec:composition
 Design Principles / sec:principles
-EvolveX Architecture / sec:architecture
-Using and Extending EvolveX / sec:usage
+RSIHub Architecture / sec:architecture
+Using and Extending RSIHub / sec:usage
 Related Work / sec:related-work
 Conclusion / sec:conclusion
 ```
@@ -210,11 +210,11 @@ Conclusion / sec:conclusion
 Create `notes/report-readiness.md` with the following sections and initial decisions:
 
 ```markdown
-# EvolveX Report Readiness
+# RSIHub Report Readiness
 
 ## Approved framing
 
-- Working title: EvolveX: A Composable Framework for Self-Improving Agents
+- Working title: RSIHub: A Composable Framework for Self-Improving Agents
 - Primary contribution: composable infrastructure for self-improving agents
 - Audience: researchers and practitioners with equal emphasis
 - Main-body writing budget: six to seven pages
@@ -234,10 +234,10 @@ Create `notes/report-readiness.md` with the following sections and initial decis
 
 | Claim | Required evidence | Source | State |
 | --- | --- | --- | --- |
-| Recipes compose reusable operators | Recipe schema, operator library, generated workspace | EvolveX repository | Ready for manuscript verification |
-| Evaluation is framework-owned | Interface and architecture source | EvolveX repository | Ready for manuscript verification |
-| Different methods share one lifecycle | Source-backed method/operator matrix | Original papers and EvolveX recipes | Requires fidelity review |
-| EvolveX improves agent outcomes | Complete result artifact with denominator | Partner-selected artifact | Requires evidence selection |
+| Recipes compose reusable operators | Recipe schema, operator library, generated workspace | RSIHub repository | Ready for manuscript verification |
+| Evaluation is framework-owned | Interface and architecture source | RSIHub repository | Ready for manuscript verification |
+| Different methods share one lifecycle | Source-backed method/operator matrix | Original papers and RSIHub recipes | Requires fidelity review |
+| RSIHub improves agent outcomes | Complete result artifact with denominator | Partner-selected artifact | Requires evidence selection |
 | Operator replacement enables controlled research | Reproducible swap or ablation record | Partner-selected artifact | Requires evidence selection |
 
 ## Candidate evidence
@@ -268,7 +268,7 @@ Expected: compilation succeeds; no undefined controls, missing inputs, or overfu
 
 ```bash
 git add .gitignore main.tex sections notes/report-readiness.md
-git commit -m "docs: scaffold EvolveX systems report"
+git commit -m "docs: scaffold RSIHub systems report"
 ```
 
 ---
@@ -288,7 +288,7 @@ git commit -m "docs: scaffold EvolveX systems report"
 Read these root-repository sources in full:
 
 ```text
-docs/superpowers/specs/2026-08-10-evolvex-arxiv-report-design.md
+docs/superpowers/specs/2026-08-10-rsihub-arxiv-report-design.md
 docs/superpowers/specs/2026-08-10-lego-operator-library-design.md
 docs/concepts/design.md
 ARCHITECTURE.md
@@ -309,10 +309,10 @@ Create `figures/architecture.tex` as a `figure*` with four labeled bands: Compos
     >=Latex,
     box/.style={draw=black!35, rounded corners=2pt, align=center,
       minimum height=6mm, inner xsep=4pt, fill=white},
-    policy/.style={box, draw=evolvexblue!65, fill=evolvexblue!7},
-    fixed/.style={box, draw=evolvexgreen!70, fill=evolvexgreen!8,
+    policy/.style={box, draw=rsihubblue!65, fill=rsihubblue!7},
+    fixed/.style={box, draw=rsihubgreen!70, fill=rsihubgreen!8,
       line width=0.8pt},
-    evidence/.style={box, draw=evolvexgold!65, fill=evolvexgold!8},
+    evidence/.style={box, draw=rsihubgold!65, fill=rsihubgold!8},
     flow/.style={->, draw=black!55, line width=0.6pt}
   ]
     \node[box, text width=18mm] (recipe) {Recipe};
@@ -349,7 +349,7 @@ Create `figures/architecture.tex` as a `figure*` with four labeled bands: Compos
     \draw[flow] (agent) -- (evaluator);
     \draw[flow] (evaluator) -- (output);
   \end{tikzpicture}
-  \caption{EvolveX separates declarative method composition and replaceable
+  \caption{RSIHub separates declarative method composition and replaceable
   policy operators from framework-owned evaluation and evidence. Optional
   stages are marked with question marks.}
   \label{fig:architecture}
@@ -379,8 +379,8 @@ Run:
 
 ```bash
 latexmk -pdf -interaction=nonstopmode -halt-on-error main.tex
-mkdir -p /tmp/evolvex-paper-pages
-pdftoppm -png -r 144 main.pdf /tmp/evolvex-paper-pages/page
+mkdir -p /tmp/rsihub-paper-pages
+pdftoppm -png -r 144 main.pdf /tmp/rsihub-paper-pages/page
 rg -n 'Overfull \\hbox|Underfull \\hbox|LaTeX Warning: Reference|Undefined control sequence' main.log
 ```
 
@@ -390,7 +390,7 @@ Expected: the figure fits across both columns, stage labels remain legible, arro
 
 ```bash
 git add figures/architecture.tex sections/04-architecture.tex
-git commit -m "docs: explain EvolveX architecture"
+git commit -m "docs: explain RSIHub architecture"
 ```
 
 ---
@@ -422,7 +422,7 @@ zhang2026hyperagents    arXiv:2603.19461
 
 Copy author lists, titles, year, venue or archive, identifier, and URL from the original paper page or official repository citation block. Do not copy BibTeX from aggregators.
 
-- [ ] **Step 2: Derive the EvolveX method mapping from repository evidence**
+- [ ] **Step 2: Derive the RSIHub method mapping from repository evidence**
 
 Inspect:
 
@@ -445,7 +445,7 @@ Structure `sections/02-composition.tex` as:
 2. Fragmentation paragraph: monolithic implementations frustrate reproduction, ablation, and hybridization.
 3. `table*` with rows AHE, A-Evolve, GEPA, HyperAgents, and hill climbing; columns `select`, `rollout`, `analyze`, `mutate`, `validate`, `novelty`, `gate`, and `reflect`.
 4. Interpretation paragraph: the table localizes differences without claiming the algorithms are identical.
-5. One sentence distinguishing faithful reproduction from EvolveX adaptation, using the readiness labels.
+5. One sentence distinguishing faithful reproduction from RSIHub adaptation, using the readiness labels.
 
 Use `\footnotesize`, `\tabcolsep` adjustment, `booktabs`, and abbreviated operator names only when the caption defines them. Label the table `tab:method-composition` and cite original method papers in the method-name cells or adjacent prose.
 
@@ -470,7 +470,7 @@ Expected: no undefined citations and every bibliography record is cited from the
 - [ ] **Step 5: Render and inspect the method table**
 
 ```bash
-pdftoppm -png -r 144 main.pdf /tmp/evolvex-paper-pages/page
+pdftoppm -png -r 144 main.pdf /tmp/rsihub-paper-pages/page
 rg -n 'Overfull \\hbox' main.log
 ```
 
@@ -501,7 +501,7 @@ Use this paragraph structure:
 
 1. Self-improving agents are increasingly built through evaluator-guided changes to prompts, skills, tools, harness code, and improvement policy.
 2. Existing methods repeatedly rebuild the same experiment mechanics inside method-specific systems.
-3. State the thesis: EvolveX factorizes a shared lifecycle from replaceable operators so methods can be reproduced, ablated, and combined like Lego pieces.
+3. State the thesis: RSIHub factorizes a shared lifecycle from replaceable operators so methods can be reproduced, ablated, and combined like Lego pieces.
 4. Explain the dual value: researchers edit compositions; practitioners run recipes on one substrate.
 5. Present a compact contribution list covering the compositional model, reusable framework, research workbench, and reliable experimental foundation.
 
@@ -549,7 +549,7 @@ Expected: introduction occupies no more than one page of the two-column main bod
 
 ```bash
 git add sections/01-introduction.tex sections/03-design-principles.tex
-git commit -m "docs: frame EvolveX composability principles"
+git commit -m "docs: frame RSIHub composability principles"
 ```
 
 ---
@@ -560,7 +560,7 @@ git commit -m "docs: frame EvolveX composability principles"
 - Modify: `arxiv/sections/05-usage.tex`
 
 **Interfaces:**
-- Consumes: target recipe syntax and stable CLI behavior from the EvolveX repository.
+- Consumes: target recipe syntax and stable CLI behavior from the RSIHub repository.
 - Produces: `lst:recipe`, the four-step practitioner flow, and the one-operator research example.
 
 - [ ] **Step 1: Verify the final recipe and CLI syntax**
@@ -615,7 +615,7 @@ Do not report an outcome for this example unless Task 7 approves a matching arti
 
 ```bash
 latexmk -pdf -interaction=nonstopmode -halt-on-error main.tex
-pdftoppm -png -r 144 main.pdf /tmp/evolvex-paper-pages/page
+pdftoppm -png -r 144 main.pdf /tmp/rsihub-paper-pages/page
 rg -n 'Overfull \\hbox|Undefined control sequence' main.log
 ```
 
@@ -625,7 +625,7 @@ Expected: YAML and shell commands wrap without clipping, remain legible, and the
 
 ```bash
 git add sections/05-usage.tex
-git commit -m "docs: show EvolveX composition workflow"
+git commit -m "docs: show RSIHub composition workflow"
 ```
 
 ---
@@ -658,8 +658,8 @@ Add a BibTeX record only after verifying its title, authors, identifier, and URL
 Use one paragraph per idea group. Each paragraph answers:
 
 - what abstraction the prior work provides;
-- what EvolveX reuses or learns from it; and
-- what EvolveX adds at the cross-method infrastructure level.
+- what RSIHub reuses or learns from it; and
+- what RSIHub adds at the cross-method infrastructure level.
 
 Avoid novelty claims based only on the absence of a cited paper. Phrase broad positioning as scope, not priority.
 
@@ -678,7 +678,7 @@ Include one compact limitation sentence: the abstraction makes operator boundari
 The final abstract is 120–170 words and contains, in order:
 
 1. the fragmented-infrastructure problem;
-2. EvolveX's fixed-lifecycle/replaceable-operator idea;
+2. RSIHub's fixed-lifecycle/replaceable-operator idea;
 3. the researcher and practitioner capabilities;
 4. the trustworthy experiment substrate; and
 5. one evidence sentence only if Task 7 has already approved a quantitative result.
@@ -699,7 +699,7 @@ Expected: all citations and cross-references resolve; the non-experimental main 
 
 ```bash
 git add main.tex references.bib sections/07-related-work.tex sections/08-conclusion.tex
-git commit -m "docs: complete EvolveX report narrative"
+git commit -m "docs: complete RSIHub report narrative"
 ```
 
 ---
@@ -742,8 +742,8 @@ Use these research questions, dropping any question whose evidence was explicitl
 
 ```text
 RQ1: Can representative self-improvement methods be expressed through one lifecycle?
-RQ2: Does EvolveX support controlled operator replacement while holding the evaluation contract fixed?
-RQ3: Do selected EvolveX recipes produce measurable improvements on agent benchmarks?
+RQ2: Does RSIHub support controlled operator replacement while holding the evaluation contract fixed?
+RQ3: Do selected RSIHub recipes produce measurable improvements on agent benchmarks?
 ```
 
 Answer RQ1 with `\cref{tab:method-composition}` rather than duplicating the table. Use one compact `table*` labeled `tab:results` for approved quantitative results. Put task-level detail, costs, and extended configurations in an appendix only if the partner record approves an appendix.
@@ -765,7 +765,7 @@ Run the artifact-specific aggregation command recorded in the readiness review l
 ```bash
 latexmk -pdf -interaction=nonstopmode -halt-on-error main.tex
 rg -n 'Citation.*undefined|Reference.*undefined|There were undefined|Overfull \\hbox' main.log
-pdftoppm -png -r 144 main.pdf /tmp/evolvex-paper-pages/page
+pdftoppm -png -r 144 main.pdf /tmp/rsihub-paper-pages/page
 ```
 
 Expected: every number matches the audited artifact, captions name denominators and splits, and the results asset is legible without exceeding the main-body writing budget.
@@ -774,7 +774,7 @@ Expected: every number matches the audited artifact, captions name denominators 
 
 ```bash
 git add main.tex references.bib sections/06-experiments.tex notes/report-readiness.md
-git commit -m "docs: add EvolveX experimental illustrations"
+git commit -m "docs: add RSIHub experimental illustrations"
 ```
 
 ---
@@ -816,8 +816,8 @@ Expected: successful build, no unresolved citations/references, no undefined con
 Run:
 
 ```bash
-mkdir -p /tmp/evolvex-paper-final-pages
-pdftoppm -png -r 168 main.pdf /tmp/evolvex-paper-final-pages/page
+mkdir -p /tmp/rsihub-paper-final-pages
+pdftoppm -png -r 168 main.pdf /tmp/rsihub-paper-final-pages/page
 ```
 
 Inspect every rendered page for:
@@ -850,7 +850,7 @@ Expected: only intended source, bibliography, figure, and readiness files are mo
 
 ```bash
 git add main.tex references.bib sections figures notes/report-readiness.md .gitignore
-git commit -m "docs: finalize EvolveX arXiv report draft"
+git commit -m "docs: finalize RSIHub arXiv report draft"
 ```
 
 - [ ] **Step 7: Hand the rendered draft to the authors**

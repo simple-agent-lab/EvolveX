@@ -1,4 +1,4 @@
 interface:
-  display_name: "EvolveX Agent"
+  display_name: "RSIHub Agent"
   short_description: "Evolve agents with reusable operators and evidence"
   default_prompt: "Use $evolve-agent to operate this workspace and improve the agent through an evidence-backed generation."

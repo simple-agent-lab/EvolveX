@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Make EvolveX a composable evolution framework in which reusable behavior lives
+Make RSIHub a composable evolution framework in which reusable behavior lives
 in a central operator library and recipes declaratively combine those operators
 inside one fixed, trustworthy lifecycle.
 
@@ -35,7 +35,7 @@ failure handling, and evidence integrity predictable.
 
 ## Vocabulary
 
-**Stage** is a fixed semantic slot in the EvolveX lifecycle.
+**Stage** is a fixed semantic slot in the RSIHub lifecycle.
 
 **Operator** is one reusable implementation of a stage. Operators live in the
 repository-level `library/` catalog.
@@ -142,7 +142,7 @@ library/_shared/model_runner.py
 
 Underscore-prefixed files and directories are never selectable operators.
 
-The initial authoring model assumes a source checkout or fork of EvolveX.
+The initial authoring model assumes a source checkout or fork of RSIHub.
 Adding a new operator means adding a file to the repository-level library.
 Separately installed user libraries are deferred.
 

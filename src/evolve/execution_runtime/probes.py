@@ -210,7 +210,7 @@ def probe_execution_runtime(
                 ],
                 None
                 if mount_verified
-                else "use a path shared with the Docker daemon or run EvolveX on the daemon host",
+                else "use a path shared with the Docker daemon or run RSIHub on the daemon host",
             )
         )
 

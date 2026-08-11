@@ -79,8 +79,8 @@ jobs:
       # runner has no global one — configure it so any stray git op still works.
       - name: Configure git identity
         run: |
-          git config --global user.name "evolvex-ci"
-          git config --global user.email "evolvex-ci@example.invalid"
+          git config --global user.name "rsihub-ci"
+          git config --global user.email "rsihub-ci@example.invalid"
           git config --global init.defaultBranch main
 
       # The default tier is the coherence guard (ARCHITECTURE + line budgets +

@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="740" viewBox="0 0 1600 740" role="img" aria-labelledby="title desc">
-<title id="title">EvolveX benchmark results</title>
+<title id="title">RSIHub benchmark results</title>
 <desc id="desc">Terminal Bench 2 and Tau cubed Banking results for four evolution methods with MiniSWE and Codex target agents. MiniSWE is grouped left and Codex right in each panel. Dark bar sections show seed scores; light sections show improvement to the best score.</desc>
 <rect width="1600" height="740" rx="18" fill="#FFFFFF"/>
 <style>text{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.title{font-size:25px;font-weight:750;fill:#0F172A}.axis{font-size:12px;fill:#64748B}.method{font-size:11px;font-weight:650;fill:#334155}.seed{font-size:11px;font-weight:750;fill:#FFFFFF}.best{font-size:11px;font-weight:800;fill:#0F172A}.agent{font-size:13px;font-weight:750}.legend{font-size:13px;font-weight:650;fill:#334155}.note{font-size:12px;fill:#64748B}</style>

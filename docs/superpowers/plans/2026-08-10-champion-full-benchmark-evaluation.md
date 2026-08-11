@@ -20,7 +20,7 @@
 - Full launch is forbidden unless all eight one-instance preflights pass.
 - Retry only missing or infrastructure-owned failures once; never replace a scoreable primary result.
 - Never print or persist authentication tokens, API keys, proxy URLs, or `auth.json` contents.
-- Keep all one-off generated files below `/data00/home/zimuwang/simple-evolve-agent-full89-20260724/full-evals/champion-full-20260810/` on the remote hosts and `/private/tmp/champion-full-20260810/` locally.
+- Keep all one-off generated files below `/data00/home/zimuwang/simple-agent-lab/RSIHub-full89-20260724/full-evals/champion-full-20260810/` on the remote hosts and `/private/tmp/champion-full-20260810/` locally.
 
 ---
 
@@ -28,10 +28,10 @@
 
 **Files:**
 - Create locally: `/private/tmp/champion-full-20260810/matrix.json`
-- Create remotely: `/data00/home/zimuwang/simple-evolve-agent-full89-20260724/full-evals/champion-full-20260810/audit/host-readiness-DevBox.json`
-- Create remotely: `/data00/home/zimuwang/simple-evolve-agent-full89-20260724/full-evals/champion-full-20260810/audit/host-readiness-DevBoxS.json`
-- Create remotely: `/data00/home/zimuwang/simple-evolve-agent-full89-20260724/full-evals/champion-full-20260810/manifests/tb2-all-89.txt`
-- Create remotely: `/data00/home/zimuwang/simple-evolve-agent-full89-20260724/full-evals/champion-full-20260810/manifests/tau3-all-97.txt`
+- Create remotely: `/data00/home/zimuwang/simple-agent-lab/RSIHub-full89-20260724/full-evals/champion-full-20260810/audit/host-readiness-DevBox.json`
+- Create remotely: `/data00/home/zimuwang/simple-agent-lab/RSIHub-full89-20260724/full-evals/champion-full-20260810/audit/host-readiness-DevBoxS.json`
+- Create remotely: `/data00/home/zimuwang/simple-agent-lab/RSIHub-full89-20260724/full-evals/champion-full-20260810/manifests/tb2-all-89.txt`
+- Create remotely: `/data00/home/zimuwang/simple-agent-lab/RSIHub-full89-20260724/full-evals/champion-full-20260810/manifests/tau3-all-97.txt`
 
 **Interfaces:**
 - Consumes: the eight source repositories and commits in the approved design; both complete datasets; configured SSH hosts `DevBox` and `DevBoxS`.
@@ -89,13 +89,13 @@ Expected: the resolved commit exactly equals the matrix commit and `target` exis
 For TB2, enumerate direct child directories containing `task.toml` under:
 
 ```text
-/data00/home/zimuwang/simple-evolve-agent-full89-20260724/terminal-bench-2-full89
+/data00/home/zimuwang/simple-agent-lab/RSIHub-full89-20260724/terminal-bench-2-full89
 ```
 
 For Tau3, enumerate direct child directories containing `task.toml` under:
 
 ```text
-/data00/home/zimuwang/simple-evolve-agent-full89-20260724/datasets/tau3-banking-97-codex-safe-health-v033-1d244f5dca42944b67a379b44bfeb9f5748f189d-seed626729-r1
+/data00/home/zimuwang/simple-agent-lab/RSIHub-full89-20260724/datasets/tau3-banking-97-codex-safe-health-v033-1d244f5dca42944b67a379b44bfeb9f5748f189d-seed626729-r1
 ```
 
 Sort with bytewise `C` locale and write one directory name per line. Require 89/89 and 97/97 unique lines respectively.
@@ -118,8 +118,8 @@ Expected: DevBox is approved for 75 workers, DevBoxS for 25, both datasets have 
 
 **Files:**
 - Create locally: `/private/tmp/champion-full-20260810/prepare_eval.py`
-- Create remotely: `/data00/home/zimuwang/simple-evolve-agent-full89-20260724/full-evals/champion-full-20260810/bin/prepare_eval.py`
-- Create remotely per row: `/data00/home/zimuwang/simple-evolve-agent-full89-20260724/full-evals/champion-full-20260810/workspaces/<row-id>/`
+- Create remotely: `/data00/home/zimuwang/simple-agent-lab/RSIHub-full89-20260724/full-evals/champion-full-20260810/bin/prepare_eval.py`
+- Create remotely per row: `/data00/home/zimuwang/simple-agent-lab/RSIHub-full89-20260724/full-evals/champion-full-20260810/workspaces/<row-id>/`
 - Create remotely per row: `workspaces/<row-id>/evaluation-provenance.json`
 
 **Interfaces:**
@@ -178,7 +178,7 @@ Use the prepared evaluator's candidate-runtime preparation in install-only mode 
 
 **Files:**
 - Create locally: `/private/tmp/champion-full-20260810/evaluate_row.py`
-- Create remotely: `/data00/home/zimuwang/simple-evolve-agent-full89-20260724/full-evals/champion-full-20260810/bin/evaluate_row.py`
+- Create remotely: `/data00/home/zimuwang/simple-agent-lab/RSIHub-full89-20260724/full-evals/champion-full-20260810/bin/evaluate_row.py`
 - Create remotely per row: `preflight/<row-id>/`
 - Create remotely: `audit/preflight-summary.json`
 
@@ -218,7 +218,7 @@ Write `audit/preflight-summary.json` with eight rows and `all_passed`. Continue 
 
 **Files:**
 - Create locally: `/private/tmp/champion-full-20260810/launch_wave.py`
-- Create remotely: `/data00/home/zimuwang/simple-evolve-agent-full89-20260724/full-evals/champion-full-20260810/bin/launch_wave.py`
+- Create remotely: `/data00/home/zimuwang/simple-agent-lab/RSIHub-full89-20260724/full-evals/champion-full-20260810/bin/launch_wave.py`
 - Create remotely per TB2 row: `primary/<row-id>/`
 - Create remotely: `audit/wave1-primary.json`
 
@@ -294,7 +294,7 @@ Build a 97-ID classification table per row and require candidate commit, manifes
 
 **Files:**
 - Create locally: `/private/tmp/champion-full-20260810/audit_results.py`
-- Create remotely: `/data00/home/zimuwang/simple-evolve-agent-full89-20260724/full-evals/champion-full-20260810/bin/audit_results.py`
+- Create remotely: `/data00/home/zimuwang/simple-agent-lab/RSIHub-full89-20260724/full-evals/champion-full-20260810/bin/audit_results.py`
 - Create remotely per affected row: `retry/<row-id>/tasks.txt`
 - Create remotely per row: `results/<row-id>/task_vector.json`
 - Create remotely: `results/summary.json`

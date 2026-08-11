@@ -77,7 +77,7 @@ Codex agents may use an explicit auth file instead of an API key:
 CODEX_AUTH_JSON_PATH=/absolute/path/to/auth.json
 ```
 
-The path must exist on the host. EvolveX does not implicitly search
+The path must exist on the host. RSIHub does not implicitly search
 `~/.codex/auth.json` for an experiment run. Non-Codex agents do not accept a
 Codex auth file.
 
@@ -168,7 +168,7 @@ cause HTTP clients to fail before a model request is made.
 Do not copy another machine's proxy or `NO_PROXY` values. They are
 host/network-specific.
 
-## Variables managed by EvolveX
+## Variables managed by RSIHub
 
 Variables such as the following are generated for an individual operator or
 evaluation attempt and should not normally be set by users:

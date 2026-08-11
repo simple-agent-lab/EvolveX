@@ -1,4 +1,4 @@
-# Running EvolveX Reliably
+# Running RSIHub Reliably
 
 Use the lightweight checks for local skill and plugin iteration. Use the
 experiment checks before a real multi-generation benchmark run.
@@ -77,7 +77,7 @@ the shared content-bound Terminal-Bench subset and selected recipe image with:
 ```
 
 To download the complete upstream Harbor dataset without preparing the pinned
-EvolveX subset, export it directly:
+RSIHub subset, export it directly:
 
 ```bash
 uv run --frozen harbor download terminal-bench@2.0 \

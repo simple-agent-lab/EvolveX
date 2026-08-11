@@ -1,19 +1,19 @@
-# EvolveX arXiv Report Design
+# RSIHub arXiv Report Design
 
 ## Purpose
 
-Create a concise systems report that introduces EvolveX as a composable
+Create a concise systems report that introduces RSIHub as a composable
 framework for self-improving agents. The report serves researchers who design
 and compare self-improvement methods and practitioners who want to run those
 methods against real agent systems.
 
-The manuscript describes one coherent EvolveX system. Implementation planning,
+The manuscript describes one coherent RSIHub system. Implementation planning,
 readiness, and unresolved experiment choices are tracked outside the paper and
 must not appear as a current-versus-target narrative in the manuscript.
 
 ## Working Title
 
-> **EvolveX: A Composable Framework for Self-Improving Agents**
+> **RSIHub: A Composable Framework for Self-Improving Agents**
 
 The title is provisional, but the phrase "self-improving agents" is the public
 term for the paper. Recursive self-improvement may appear in the motivation and
@@ -30,7 +30,7 @@ infrastructure for each method.
 
 ## Thesis
 
-EvolveX factorizes self-improvement into a shared experimental lifecycle and
+RSIHub factorizes self-improvement into a shared experimental lifecycle and
 interchangeable operators. Researchers can reproduce, modify, ablate, and
 combine methods like Lego pieces, while practitioners can run them through one
 consistent framework.
@@ -85,7 +85,7 @@ The report follows a composable "Lego" architecture narrative:
    preserves comparable evidence.
 5. Demonstrate the same abstraction from a researcher's and a practitioner's
    perspective.
-6. Close with compact empirical illustrations and the role EvolveX can play as
+6. Close with compact empirical illustrations and the role RSIHub can play as
    shared infrastructure for self-improving agents.
 
 This borrows the design-principles-to-architecture-to-evaluation logic of the
@@ -98,7 +98,7 @@ PyTorch systems paper without copying its section structure.
 Budget: approximately three quarters to one page.
 
 - Establish the fragmentation problem.
-- Introduce the Lego analogy and EvolveX.
+- Introduce the Lego analogy and RSIHub.
 - State the thesis and contributions.
 - Preview the researcher and practitioner value.
 
@@ -121,7 +121,7 @@ State three principles:
 2. simple and explicit composition; and
 3. trustworthy experiments by construction.
 
-### 4. EvolveX Architecture
+### 4. RSIHub Architecture
 
 Budget: approximately two to two and one half pages.
 
@@ -134,7 +134,7 @@ This is the technical center of the report. It covers:
 - framework-owned evaluation, lineage, and evidence; and
 - isolation and failure boundaries.
 
-### 5. Using and Extending EvolveX
+### 5. Using and Extending RSIHub
 
 Budget: approximately three quarters to one page.
 
@@ -148,7 +148,7 @@ Budget: approximately three quarters to one page.
 
 Budget: approximately three quarters to one page.
 
-The section's stable purpose is to illustrate that EvolveX can express
+The section's stable purpose is to illustrate that RSIHub can express
 different self-improvement methods, support controlled recomposition, and
 produce measurable agent improvements. Candidate evidence is managed in the
 private readiness file and selected through partner review before the final
@@ -158,10 +158,10 @@ manuscript is written.
 
 Budget: approximately one half to three quarters of a page.
 
-- Position EvolveX by ideas rather than through a paper-by-paper catalog.
+- Position RSIHub by ideas rather than through a paper-by-paper catalog.
 - Relate it to self-improving agents, evaluator-guided optimization, agent
   evaluation infrastructure, and composable systems such as PyTorch and veRL.
-- Conclude with EvolveX's intended role as shared research and application
+- Conclude with RSIHub's intended role as shared research and application
   infrastructure.
 
 ## Conceptual Architecture
@@ -254,7 +254,7 @@ composition for researchers.
 
 The main body contains at most four primary assets:
 
-1. **Figure 1 - EvolveX architecture.** Recipes, replaceable operators, fixed
+1. **Figure 1 - RSIHub architecture.** Recipes, replaceable operators, fixed
    lifecycle, trusted runtime, and evidence flow.
 2. **Table 1 - Method composition.** Representative methods mapped onto
    lifecycle stages.
@@ -304,7 +304,7 @@ manuscript narrative.
 - Explain abstractions through one running example.
 - Prefer concrete boundaries and trade-offs over feature inventories.
 - Use "composable framework for self-improving agents" consistently.
-- Avoid claims that EvolveX supports every method or guarantees improvement.
+- Avoid claims that RSIHub supports every method or guarantees improvement.
 - Keep commands, schemas, and exhaustive component inventories in external
   documentation or appendices.
 
@@ -318,7 +318,7 @@ Group related work by ideas:
 4. composable research systems, including PyTorch and veRL.
 
 The method-composition section cites original method papers when it describes
-their goals or maps them into EvolveX. The report must distinguish a faithful
+their goals or maps them into RSIHub. The report must distinguish a faithful
 reproduction from an adaptation or inspired recipe.
 
 ## Optional Appendices
