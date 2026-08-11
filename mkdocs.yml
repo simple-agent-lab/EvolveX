@@ -45,6 +45,7 @@ nav:
       - Running Evolve reliably: guides/operations.md
       - Meta-agent execution: guides/meta-agents.md
       - Local Harbor environment: guides/local-environment.md
+      - Prime Agent: guides/prime-agent.md
   - Reference:
       - Environment Variables: reference/environment-variables.md
       - Operator overview: reference/operators.md
