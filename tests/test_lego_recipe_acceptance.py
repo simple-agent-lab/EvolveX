@@ -1,4 +1,5 @@
 import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -23,6 +24,9 @@ def prepare_source_style_project(tmp_path: Path) -> Path:
     project.mkdir()
     for name in ("library", "recipes", "scaffolds", "seeds", "skills", "containers"):
         shutil.copytree(ROOT / name, project / name)
+    shutil.copy2(ROOT / "pyproject.toml", project / "pyproject.toml")
+    (project / "src/evolve").mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", str(project)], check=True)
     return project
 
 
@@ -46,15 +50,15 @@ def invoke_cli(*args: str):
 
 TEST_MUTATE_OPERATOR = """
 from evolve.frozen import sdk
-from evolve.frozen.config import Config
+from evolve.frozen.config import Config, integer
 from evolve.frozen.interfaces import MutateOperator, MutateResult
 
-CONFIG = Config({})
+CONFIG = Config({"attempts": integer(default=2, minimum=1)})
 
 class TestEditor(MutateOperator):
     def mutate(self, checkout, observation, ctx):
         target = checkout / "target/agent.py"
-        target.write_text(target.read_text() + "\\n# edited by test_editor\\n")
+        target.write_text(target.read_text() + f"\\n# edited by test_editor attempts={ctx.config['attempts']}\\n")
         return MutateResult(changed=["target/agent.py"], notes=["deterministic test edit"], usage={"usd": 0})
 
 if __name__ == "__main__":
@@ -66,12 +70,14 @@ def test_user_adds_operator_composes_recipe_and_runs_one_generation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     project = prepare_source_style_project(tmp_path)
+    monkeypatch_source_root(monkeypatch, project)
     operator = project / "library/mutate/test_editor.py"
+    created = invoke_cli("operator", "new", "mutate", "test_editor")
+    assert created.exit_code == 0, created.output
     operator.write_text(TEST_MUTATE_OPERATOR)
     recipe = write_lego_smoke_recipe(project)
 
-    monkeypatch_source_root(monkeypatch, project)
-
+    assert invoke_cli("operator", "describe", "mutate/test_editor").exit_code == 0
     assert invoke_cli("operator", "check", "mutate/test_editor").exit_code == 0
     assert invoke_cli("recipe", "check", str(recipe)).exit_code == 0
 
@@ -94,6 +100,9 @@ def test_user_adds_operator_composes_recipe_and_runs_one_generation(
         str(FIXTURE_SEEDS / "dummy"),
     )
     assert initialized.exit_code == 0, initialized.output
+    normalized = yaml.safe_load((workspace / "evolve.yaml").read_text())
+    assert normalized["operators"]["mutate"]["config"] == {"attempts": 2}
+    assert invoke_cli("operator", "active", str(workspace)).exit_code == 0
     monkeypatch.setenv("EVAL_STUB", "1")
     completed = invoke_cli(
         "run",
