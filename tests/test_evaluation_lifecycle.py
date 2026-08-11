@@ -7,6 +7,7 @@ from conftest import git, init_workspace, smoke_agent_command
 
 from evolve.archive import MECHANISM_EVAL_FIELD, read_events, rows_by_genid
 from evolve.driver import RunOptions, run
+from evolve.feedback import write_feedback_bundle
 
 
 def _lifecycle_workspace(tmp_path: Path, outcomes: dict[str, list[str]]) -> Path:
@@ -22,14 +23,16 @@ def _lifecycle_workspace(tmp_path: Path, outcomes: dict[str, list[str]]) -> Path
         "run_dir.mkdir(parents=True, exist_ok=True)\n"
         "purpose = os.environ['EVOLVE_EVAL_KIND']\n"
         "attempt = int(run_dir.name[len('attempt-'):])\n"
-        "sequence = outcomes.get(purpose, outcomes.get('candidate', ['benchmark_complete']))\n"
-        "task = json.loads(Path(os.environ['EVOLVE_RUN_PLAN']).read_text())['tasks'][0]\n"
+        "sequence = outcomes.get(\n"
+        "    purpose, ['benchmark_complete'] if purpose == 'anchor' else outcomes.get('candidate', ['benchmark_complete'])\n"
+        ")\n"
+        "tasks = json.loads(Path(os.environ['EVOLVE_RUN_PLAN']).read_text())['tasks']\n"
         "outcome = sequence[min(attempt - 1, len(sequence) - 1)]\n"
         "owner = 'candidate' if outcome == 'candidate_invalid' else 'benchmark_agent'\n"
         "reward = 1.0 if outcome == 'benchmark_complete' else (0.0 if outcome == 'timeout' else None)\n"
         "vector = {'schema_version': 1, 'tasks': {task: {'trials': [{\n"
         "    'trial': 0, 'status': outcome, 'reward': reward, 'owner': owner,\n"
-        "}]}}}\n"
+        "}]} for task in tasks}}\n"
         "(run_dir / 'task_vector.json').write_text(json.dumps(vector) + '\\n')\n"
     )
     script.chmod(script.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
@@ -51,6 +54,55 @@ def _evaluation_events(workspace: Path, genid: str) -> list[dict[str, object]]:
         for event in read_events(workspace / "archive.jsonl")
         if str(event.get("genid")) == genid and event.get(MECHANISM_EVAL_FIELD) is True
     ]
+
+
+def test_run_evaluates_genesis_gate_and_private_sealed_anchor_once(tmp_path: Path) -> None:
+    workspace = _lifecycle_workspace(
+        tmp_path,
+        {
+            "genesis": ["benchmark_complete"],
+            "anchor": ["benchmark_complete"],
+        },
+    )
+
+    run(RunOptions(workspace, max_generations=0))
+    run(RunOptions(workspace, max_generations=0))
+
+    events = _evaluation_events(workspace, "0")
+    assert [event["purpose"] for event in events] == ["genesis", "anchor"]
+    splits = json.loads((workspace / "evaluator/splits.json").read_text())["tasks"]
+    assert set(events[0]["task_set_members"]) == set(splits["gate"][:1])
+    assert set(events[1]["task_set_members"]) == set(splits["sealed"])
+    row = rows_by_genid(workspace)["0"]
+    assert row["purpose"] == "genesis"
+    anchors = [entry for entry in row["evals"] if entry.get("kind") == "anchor"]
+    assert len(anchors) == 1
+    assert anchors[0]["purpose"] == "anchor"
+    assert anchors[0]["selection_eligible"] is False
+
+    feedback_run = workspace / "runs" / "gen-privacy-check"
+    write_feedback_bundle(workspace=workspace, run_dir=feedback_run)
+    visible_feedback = "\n".join(
+        path.read_text(errors="ignore") for path in (feedback_run / "feedback").rglob("*") if path.is_file()
+    )
+    assert not any(task in visible_feedback for task in splits["sealed"])
+    assert '"purpose": "anchor"' not in visible_feedback
+
+
+def test_genesis_sealed_anchor_failure_stops_before_first_generation(tmp_path: Path) -> None:
+    workspace = _lifecycle_workspace(
+        tmp_path,
+        {
+            "genesis": ["benchmark_complete"],
+            "anchor": ["infrastructure_failed"],
+        },
+    )
+
+    with pytest.raises(RuntimeError, match="genesis sealed anchor infrastructure_failed"):
+        run(RunOptions(workspace, max_generations=1))
+
+    assert not (workspace / "runs/gen-1").exists()
+    assert git(workspace, "tag", "--list", "gen/1") == ""
 
 
 def test_candidate_infrastructure_failure_is_recorded_without_automatic_retry(

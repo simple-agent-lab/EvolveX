@@ -1230,6 +1230,9 @@ def test_harbor_bundle_never_exposes_gate_or_sealed_data(tmp_path: Path, traject
     private_eval = checkout / "runs" / "evaluations" / "genesis"
     private_eval.mkdir(parents=True)
     (private_eval / "trajectory.json").write_text("gate-secret-task reward=1\n")
+    private_anchor = checkout / "runs" / "evaluations" / "anchor"
+    private_anchor.mkdir(parents=True)
+    (private_anchor / "trajectory.json").write_text("sealed-secret-task reward=1\n")
     prior_evidence = checkout / "runs" / "gen-0" / "analyze" / "evidence"
     prior_evidence.mkdir(parents=True)
     (prior_evidence / "history.json").write_text('{"task_name":"train-task"}\n')
@@ -1388,7 +1391,7 @@ def test_harbor_bundle_exposes_gate_data_only_when_enabled(tmp_path: Path) -> No
     evaluator = checkout / "evaluator"
     evaluator.mkdir()
     (evaluator / "splits.json").write_text(
-        json.dumps({"tasks": {"train": ["train-task"], "gate": ["gate-task"], "sealed": ["sealed-task"]}})
+        json.dumps({"tasks": {"train": ["train-task"], "gate": ["gate-task"], "sealed": []}})
     )
     _git(checkout, "add", "evaluator/splits.json")
     _git(checkout, "commit", "-qm", "record task partitions")
@@ -1409,6 +1412,21 @@ def test_harbor_bundle_exposes_gate_data_only_when_enabled(tmp_path: Path) -> No
         assert _git(bundle.workspace, "log", "--all", "--", "evaluator/splits.json")
     finally:
         shutil.rmtree(bundle.staging, ignore_errors=True)
+
+
+def test_harbor_bundle_rejects_gate_visibility_when_sealed_split_exists(tmp_path: Path) -> None:
+    checkout, run_dir = _checkout(tmp_path)
+    evaluator = checkout / "evaluator"
+    evaluator.mkdir()
+    (evaluator / "splits.json").write_text(
+        json.dumps({"tasks": {"train": ["train-task"], "gate": ["gate-task"], "sealed": ["sealed-task"]}})
+    )
+    ctx = _ctx(checkout, run_dir)
+    ctx.config["expose_gate_data"] = True
+    runner = _harbor_runner_module()
+
+    with pytest.raises(RuntimeError, match="sealed split is non-empty"):
+        runner._prepare_bundle(checkout, ctx, ["target"], runner.load_surface_policy(checkout))
 
 
 @pytest.mark.parametrize("expose_gate_data", [False, True])

@@ -72,8 +72,10 @@ _Avoid_: version, variant
 A candidate's position in the lineage, numbered and tagged `gen/<id>`.
 
 **Baseline**:
-The certified generation-zero evaluation of the untouched seed. Recorded in
-the archive with purpose `genesis`.
+The certified generation-zero primary evaluation of the untouched seed.
+Recorded in the archive with purpose `genesis`. A separate non-selectable
+generation-zero `anchor` evaluates the same seed on the sealed split and is not
+mutation feedback.
 _Avoid_: genesis (in prose)
 
 **Parent**:

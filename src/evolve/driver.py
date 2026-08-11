@@ -64,6 +64,7 @@ from .git import (
 from .operators import OperatorResult, operator_timeout, run_operator
 from .population import best_row, fixed_evaluation_identity, format_genid, generation_number, valid_genid
 from .report import materialize_best_ever
+from .splits import load_manifest, selected_task_names
 from .surface import check_paths, surface_patterns
 
 PENDING_GATE_RECORD_NOTE = "mechanism evaluation recorded before gate/record"
@@ -145,6 +146,7 @@ def _run_locked(options: RunOptions, workspace: Path) -> None:
             "or run evolve repair after preserving any edits"
         )
     _ensure_genesis_evaluated(workspace)
+    _ensure_genesis_anchor_evaluated(workspace)
     operators_config = operator_blocks(workspace)
 
     for gen in range(1, options.max_generations + 1):
@@ -198,7 +200,7 @@ def _maybe_final_anchor(workspace: Path, generation: int) -> None:
     )
     if candidate is None:
         return
-    if any(isinstance(entry, dict) and entry.get("kind") == "anchor" for entry in candidate.get("evals", [])):
+    if _has_complete_anchor(candidate):
         return
     genid = str(candidate["genid"])
     _evaluate_once(
@@ -894,6 +896,44 @@ def _ensure_genesis_evaluated(workspace: Path) -> None:
         raise RuntimeError(
             f"genesis {result.outcome.value}: fix the seed or infrastructure and initialize a new workspace"
         )
+
+
+def _ensure_genesis_anchor_evaluated(workspace: Path) -> None:
+    manifest = load_manifest(workspace / "evaluator" / "splits.json")
+    if not selected_task_names(manifest, "sealed"):
+        return
+    row = rows_by_genid(workspace).get("0", {})
+    if _has_complete_anchor(row):
+        return
+    result = _evaluate_once(
+        workspace,
+        "gen/0",
+        "0",
+        purpose="anchor",
+        metadata={
+            "parent": row.get("parent"),
+            "mutated": row.get("mutated", []),
+            "surface_violations": row.get("surface_violations", []),
+            "note": "genesis sealed anchor evaluated; excluded from mutate feedback",
+            "pending_gate_record": False,
+            "kind": "anchor",
+            "round": 0,
+        },
+    )
+    if result.outcome is not Outcome.BENCHMARK_COMPLETE:
+        raise RuntimeError(
+            f"genesis sealed anchor {result.outcome.value}: fix the seed or infrastructure and resume the workspace"
+        )
+
+
+def _has_complete_anchor(row: dict[str, Any]) -> bool:
+    return any(
+        isinstance(entry, dict)
+        and entry.get("kind") == "anchor"
+        and entry.get("purpose") == "anchor"
+        and entry.get("outcome") == Outcome.BENCHMARK_COMPLETE.value
+        for entry in row.get("evals", []) or []
+    )
 
 
 def _evaluate_once(
