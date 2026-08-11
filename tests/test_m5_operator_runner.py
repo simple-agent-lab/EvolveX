@@ -120,6 +120,7 @@ def test_sdk_context_uses_framework_timeout_and_fixed_fan_out(tmp_path: Path) ->
         """
         import json
         from evolve.frozen import sdk
+        from evolve.frozen.config import Config
         from evolve.frozen.interfaces import SelectOperator, SelectResult
 
         class Probe(SelectOperator):
@@ -133,7 +134,7 @@ def test_sdk_context_uses_framework_timeout_and_fixed_fan_out(tmp_path: Path) ->
                 return SelectResult(["0"])
 
         if __name__ == "__main__":
-            sdk.main(Probe)
+            sdk.main(Probe, config_schema=Config({}))
         """,
     )
 

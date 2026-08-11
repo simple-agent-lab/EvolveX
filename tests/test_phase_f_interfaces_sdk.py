@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from evolve.frozen import sdk
+from evolve.frozen.config import Config
 from evolve.frozen.interfaces import (
     PayloadValidationError,
     ValidateOperator,
@@ -88,7 +89,7 @@ def test_sdk_main_runs_select_operator_and_writes_parents(tmp_path: Path, monkey
 
     _set_sdk_env(monkeypatch, tmp_path, genid="5", config={"seed": 123, "fan_out": 3})
 
-    sdk.main(TinySelect)
+    sdk.main(TinySelect, config_schema=Config({}))
 
     assert json.loads((tmp_path / "run" / "parents.json").read_text()) == {"parents": ["0"]}
 
@@ -131,7 +132,7 @@ def test_sdk_main_runs_analyze_operator_and_writes_analyze_artifacts(
 
     _set_sdk_env(monkeypatch, tmp_path)
 
-    sdk.main(TinyAnalyze)
+    sdk.main(TinyAnalyze, config_schema=Config({}))
 
     analyze_dir = tmp_path / "run" / "analyze"
     assert json.loads((analyze_dir / "summary.json").read_text()) == {"failed": ["task-1"]}
@@ -159,7 +160,7 @@ def test_sdk_main_runs_mutate_operator_and_writes_mutate_artifacts(
     rollout_dir.mkdir(parents=True)
     (rollout_dir / "summary.json").write_text('{"failed": ["task-1"]}\n')
 
-    sdk.main(TinyMutate)
+    sdk.main(TinyMutate, config_schema=Config({}))
 
     mutate_dir = tmp_path / "run" / "mutate"
     assert json.loads((mutate_dir / "changed.json").read_text()) == ["target/agent.py"]
@@ -176,7 +177,7 @@ def test_sdk_main_runs_validate_operator_and_writes_result(tmp_path: Path, monke
         def validate(self, checkout: Path, ctx) -> ValidateResult:
             return ValidateResult(accept=True, reason="imports pass", artifacts=["validate/imports.log"])
 
-    sdk.main(TinyValidate)
+    sdk.main(TinyValidate, config_schema=Config({}))
 
     assert json.loads((run_dir / "validate" / "result.json").read_text()) == {
         "accept": True,

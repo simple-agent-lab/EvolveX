@@ -561,7 +561,7 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
         assert (workspace / "skills/evolve-agent/references" / method_card).is_file()
     for helper in (
         "library/__init__.py",
-        "library/_shared/config.py",
+        "library/select/_config.py",
         "library/mutate/_config.py",
         "library/_shared/runners/local.py",
         "library/mutate/_support/workspace.py",

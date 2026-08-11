@@ -10,6 +10,7 @@ from evolve.frozen.interfaces import OperatorContext
 
 _REJECTING_VALIDATE = """
 from evolve.frozen import sdk
+from evolve.frozen.config import Config
 from evolve.frozen.interfaces import ValidateOperator, ValidateResult
 
 
@@ -19,7 +20,7 @@ class RejectingValidate(ValidateOperator):
 
 
 if __name__ == "__main__":
-    sdk.main(RejectingValidate)
+    sdk.main(RejectingValidate, config_schema=Config({}))
 """
 
 

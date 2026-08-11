@@ -120,7 +120,7 @@ def test_materialization_supports_packaged_traversables(tmp_path) -> None:
     helper = b"\x89PNG\r\n\x1a\n\x00\xff"
     with zipfile.ZipFile(archive, "w") as package:
         package.writestr("library/__init__.py", '"""Closed library."""\n')
-        package.writestr("library/_shared/config.py", "SHARED = True\n")
+        package.writestr("library/_shared/helper.py", "SHARED = True\n")
         package.writestr("library/select/greedy.py", source)
         package.writestr("library/select/_support/payload.bin", helper)
     library = zipfile.Path(archive) / "library"
@@ -138,7 +138,7 @@ def test_materialization_supports_packaged_traversables(tmp_path) -> None:
     materialized = materialize_operators({"select": binding}, library=library)
 
     assert materialized.files["library/__init__.py"] == b'"""Closed library."""\n'
-    assert materialized.files["library/_shared/config.py"] == "SHARED = True\n"
+    assert materialized.files["library/_shared/helper.py"] == "SHARED = True\n"
     assert materialized.files["library/select/_support/payload.bin"] == helper
 
 

@@ -178,6 +178,7 @@ def test_analyze_run_materializes_driver_equivalent_feedback(tmp_path: Path) -> 
     (workspace / "operators/analyze.py").write_text(
         """
 from evolve.frozen import sdk
+from evolve.frozen.config import Config
 from evolve.frozen.interfaces import AnalyzeOperator, AnalyzeResult
 
 class TestAnalyzer(AnalyzeOperator):
@@ -189,7 +190,7 @@ class TestAnalyzer(AnalyzeOperator):
         return AnalyzeResult({"cases": 1}, ["analyze/evidence/selected.md"])
 
 if __name__ == "__main__":
-    sdk.main(TestAnalyzer)
+    sdk.main(TestAnalyzer, config_schema=Config({}))
 """.lstrip()
     )
     rollout = run_evolve(
@@ -316,6 +317,7 @@ def test_select_runs_the_champion_operator_version(tmp_path: Path) -> None:
     (child / "operators/select.py").write_text(
         """
 from evolve.frozen import sdk
+from evolve.frozen.config import Config
 from evolve.frozen.interfaces import SelectOperator, SelectResult
 
 class ChampionSelect(SelectOperator):
@@ -324,7 +326,7 @@ class ChampionSelect(SelectOperator):
         return SelectResult(["0"])
 
 if __name__ == "__main__":
-    sdk.main(ChampionSelect)
+    sdk.main(ChampionSelect, config_schema=Config({}))
 """.lstrip()
     )
     validated = run_evolve(

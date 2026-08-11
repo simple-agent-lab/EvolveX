@@ -13,6 +13,7 @@ from evolve.frozen.interfaces import ArchiveView
 
 _NO_PATCH_MUTATE = """
 from evolve.frozen import sdk
+from evolve.frozen.config import Config
 from evolve.frozen.interfaces import MutateOperator, MutateResult
 
 
@@ -22,12 +23,13 @@ class NoPatchMutate(MutateOperator):
 
 
 if __name__ == "__main__":
-    sdk.main(NoPatchMutate)
+    sdk.main(NoPatchMutate, config_schema=Config({}))
 """
 
 
 _PATCH_MUTATE = """
 from evolve.frozen import sdk
+from evolve.frozen.config import Config
 from evolve.frozen.interfaces import MutateOperator, MutateResult
 
 
@@ -39,7 +41,7 @@ class PatchMutate(MutateOperator):
 
 
 if __name__ == "__main__":
-    sdk.main(PatchMutate)
+    sdk.main(PatchMutate, config_schema=Config({}))
 """
 
 
@@ -62,6 +64,7 @@ raise SystemExit("record exploded")
 def _gate(decision: str) -> str:
     return f"""
 from evolve.frozen import sdk
+from evolve.frozen.config import Config
 from evolve.frozen.interfaces import GateOperator, GateResult
 
 
@@ -71,7 +74,7 @@ class FixedGate(GateOperator):
 
 
 if __name__ == "__main__":
-    sdk.main(FixedGate)
+    sdk.main(FixedGate, config_schema=Config({{}}))
 """
 
 
@@ -96,6 +99,7 @@ run_dir = Path(os.environ["EVOLVE_RUN_DIR"])
 
 _REJECTING_VALIDATE = """
 from evolve.frozen import sdk
+from evolve.frozen.config import Config
 from evolve.frozen.interfaces import ValidateOperator, ValidateResult
 
 
@@ -105,7 +109,7 @@ class RejectingValidate(ValidateOperator):
 
 
 if __name__ == "__main__":
-    sdk.main(RejectingValidate)
+    sdk.main(RejectingValidate, config_schema=Config({}))
 """
 
 

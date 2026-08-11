@@ -19,6 +19,7 @@ def _init_hyperagents_smoke(tmp_path: Path) -> tuple[Path, Path]:
 def _write_newest_select(workspace: Path) -> None:
     (workspace / "operators" / "select.py").write_text(
         "from evolve.frozen import sdk\n"
+        "from evolve.frozen.config import Config\n"
         "from evolve.frozen.interfaces import SelectOperator, SelectResult\n"
         "class S(SelectOperator):\n"
         "    def pick(self, archive, ctx):\n"
@@ -26,7 +27,7 @@ def _write_newest_select(workspace: Path) -> None:
         "        chosen = max(parents, key=lambda row: int(str(row['genid']).split('-', 1)[0]))\n"
         "        return SelectResult(parents=[str(chosen['genid'])])\n"
         "if __name__ == '__main__':\n"
-        "    sdk.main(S)\n"
+        "    sdk.main(S, config_schema=Config({}))\n"
     )
 
 
@@ -38,6 +39,7 @@ def test_hyperagents_mutate_change_affects_later_generation_not_current_one(tmp_
     _write_newest_select(workspace)
     (workspace / "operators" / "select.py").write_text(
         "from evolve.frozen import sdk\n"
+        "from evolve.frozen.config import Config\n"
         "from evolve.frozen.interfaces import SelectOperator, SelectResult\n"
         "class S(SelectOperator):\n"
         "    def pick(self, archive, ctx):\n"
@@ -45,10 +47,11 @@ def test_hyperagents_mutate_change_affects_later_generation_not_current_one(tmp_
         "        chosen = max(parents, key=lambda row: int(str(row['genid']).split('-', 1)[0]))\n"
         "        return SelectResult(parents=[str(chosen['genid'])])\n"
         "if __name__ == '__main__':\n"
-        "    sdk.main(S)\n"
+        "    sdk.main(S, config_schema=Config({}))\n"
     )
     (workspace / "operators" / "mutate.py").write_text(
         "from evolve.frozen import sdk\n"
+        "from evolve.frozen.config import Config\n"
         "from evolve.frozen.interfaces import MutateOperator, MutateResult\n"
         "class M(MutateOperator):\n"
         "    def mutate(self, checkout, observation, ctx):\n"
@@ -58,7 +61,7 @@ def test_hyperagents_mutate_change_affects_later_generation_not_current_one(tmp_
         f"        agent.write_text(agent.read_text() + '\\n# first-child\\n# FAIL {failed_task}\\n')\n"
         "        return MutateResult(changed=['operators/mutate.py', 'target/agent.py'], notes=['self changed'], usage={'usd': 0})\n"
         "if __name__ == '__main__':\n"
-        "    sdk.main(M)\n"
+        "    sdk.main(M, config_schema=Config({}))\n"
     )
     git(workspace, "add", "-A")
     git(workspace, "commit", "-qm", "enable hyperagents test")
