@@ -97,10 +97,11 @@ each workspace, immutable there because it sits outside the mutable surface
 | File | Budget (lines) | Responsibility (one line — keep it true) |
 | --- | --- | --- |
 | `frozen/__init__.py` | 50 | the frozen-ring definition (litmus + two homes: contract/gate vs the evaluator) — the canonical anchor a contributor reads |
+| `frozen/config.py` | 400 | dependency-free declarative operator config schemas, normalization, inspection descriptions, and path-aware errors |
 | `frozen/interfaces.py` | 350 | operator ABCs, registry, result schemas, and strict operator payload validation |
 | `frozen/sdk.py` | 350 | Python operator entrypoint and file-contract IO; no library algorithm policy |
 
-Total `src/evolve/` budget: **17830 lines**. The budget admits the explicit content-backed
+Total `src/evolve/` budget: **18230 lines**. The budget admits the explicit content-backed
 evaluation-contract boundaries, the opt-in in-place Harbor runtime, and the redacted trace-analysis
 boundary between rollout and feedback assembly; if the mechanism wants to
 grow past that, something belongs in a workspace operator instead —
