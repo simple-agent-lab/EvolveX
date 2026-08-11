@@ -55,8 +55,20 @@ The JSON result files are evidence snapshots, not live status. Read their
 revision and protocol metadata before comparing them with the current skill;
 the historical baseline predates the full suite and is not a current-revision
 claim. The repository test requires recorded case IDs to remain a valid subset
-of the available cases and recomputes recorded arithmetic; it never fabricates
+of the inventory captured by that historical run, verifies the exact unreported
+authoring-ID partition, and recomputes recorded arithmetic; it never fabricates
 missing scores. It does not start Agents or a grader.
+
+No formal paired behavior run covers the rewritten guided-authoring head:
+current-revision coverage is **0/25 behavior cases**. The historical
+`current_results.json` covers the 16 pre-authoring behavior IDs on its older
+subject revision; the nine `authoring-*` IDs have no result row. The
+qualitative pressure reports produced while authoring the skill are separate
+development feedback: they are not a complete paired campaign, were not blind
+graded under this protocol, and are not score snapshots. No invocation case in
+this inventory, whether original or newly added, has a recorded runner result;
+invocation coverage is **0/8**, as reflected by `cases_run: 0` in the historical
+snapshot.
 
 ## Local checks and prompt rendering
 

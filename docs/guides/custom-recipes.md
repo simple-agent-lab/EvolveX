@@ -5,6 +5,29 @@ evaluator contract, and execution runtime for an experiment. It is an
 initialization input: `evolve init` copies its resolved configuration and
 operator code into a new workspace.
 
+This page is a configuration reference, not authority to start source or
+deployment work. For guided authoring, follow the repository playbooks in
+`skills/evolve-agent/references/experiment-design.md`,
+`recipe-authoring.md`, `operator-authoring.md`, and `deployment.md`.
+
+Before copying a recipe, qualify the evaluator's coverage, determinism,
+leakage boundary, runtime compatibility, positive and negative calibration,
+limitations, and supported claims. Stop or route to evaluation authoring if
+that evidence is insufficient. Record the target, mutable surface, evaluator,
+partitions, runtime boundary, budget, alternatives, and risks in the task
+record, then obtain architecture approval. Materialize the custom recipe and
+its durable `README.md` only after that approval.
+
+Author the approved recipe in this order:
+
+1. target and mutable surface;
+2. qualified evaluator, partitions, and runtime contract;
+3. operator composition and configuration.
+
+After each coherent phase, run the complete recipe check and record a
+checkpoint before proceeding. The reference sections below explain individual
+fields and are not a different authoring order.
+
 ## Start from the nearest supported recipe
 
 Copy the recipe whose behavior is closest to the experiment you want:
@@ -15,20 +38,22 @@ cp -R recipes/gepa my-recipes/my-gepa
 ```
 
 Keep `evolve.yaml` at the root of the copied directory. A custom recipe can be
-passed either as a directory or as its YAML file:
+passed either as a directory or as its YAML file. Recipe resolution imports
+selected named operators. Before executing it, statically review every entry
+file and local import for import-time filesystem, network, process, credential,
+deployment, or model side effects. Then run the check with no ambient
+credentials in a disposable, network-disabled environment whose readable
+files, writable temporary directory, executable tools, and environment
+variables are explicitly allowlisted:
 
 ```bash
-uv run --frozen evolve recipe check "$PWD/my-recipes/my-gepa/evolve.yaml"
+uv run --frozen evolve recipe check "$PWD/my-recipes/my-gepa/evolve.yaml" --json
 ```
 
-Resolve and validate the complete operator composition before running the
-environment-specific preflight:
-
-```bash
-uv run --frozen evolve preflight /tmp/my-experiment \
-  --recipe-path "$PWD/my-recipes/my-gepa" \
-  --dataset /absolute/path/to/harbor/tasks
-```
+Rerun that full check after every phase and on the exact source-review tree.
+A passing check proves resolution, schemas, and normalized configuration. It
+does not qualify evaluator behavior, prove authentication or runtime
+readiness, approve source, or authorize deployment.
 
 Use `--recipe` only for names shipped under the repository's `recipes/`
 directory. Use `--recipe-path` for your own recipe. The two options cannot be
@@ -84,17 +109,11 @@ target:
   revision: 0123456789abcdef0123456789abcdef01234567
 ```
 
-For local development, override the recipe seed without editing the recipe:
-
-```bash
-uv run --frozen evolve preflight /tmp/my-experiment \
-  --recipe-path "$PWD/my-recipes/my-gepa" \
-  --seed /absolute/path/to/my-agent \
-  --dataset /absolute/path/to/harbor/tasks
-```
-
-The same `--seed` value must be supplied to `evolve init`. A Git revision
-should be pinned for a reproducible experiment.
+For local development, record an absolute local target path as the eventual
+`--seed` override without editing the recipe. Add it to the prospective
+preflight command only after source approval, using the isolation and approval
+procedure below, and supply that same `--seed` value to `evolve init`. A Git
+revision should be pinned for a reproducible experiment.
 
 ## Declare the mutable surface
 
@@ -130,6 +149,9 @@ measurement infrastructure must remain outside the mutable surface.
 
 ## Select and configure operators
 
+Configure this section only after the evaluator, partition, and runtime phase
+has passed its checkpoint. It appears here solely as a field reference.
+
 Each enabled stage selects exactly one named `operator` or one explicit
 `script`. `timeout_s` belongs to the stage binding; all operator-specific
 settings live under `config`:
@@ -144,7 +166,9 @@ operators:
 ```
 
 Named operators are portable because the source catalog owns their identity.
-To add one:
+The inspection commands in the following sequence execute operator code.
+Before any invocation, apply the static review and credential-free isolated
+boundary described above. To add one:
 
 1. Run `evolve operator new <stage> <name>` in a source checkout.
 2. Implement the corresponding interface from `evolve.frozen.interfaces`.
@@ -153,6 +177,8 @@ To add one:
 4. Run `evolve operator describe <stage>/<name>` and
    `evolve operator check <stage>/<name> --config '<json>'`.
 5. Select it in `evolve.yaml`, then run `evolve recipe check`.
+
+Successful import or schema output is not behavior validation.
 
 ```yaml
 operators:
@@ -217,7 +243,9 @@ explicitly intends to expose protected evaluation history.
 
 The repository's `setup_terminal_bench.sh` helper only accepts the supported
 recipe names. For a custom recipe, you are responsible for making every image
-named in `evolve.yaml` available to Docker:
+named in `evolve.yaml` available to Docker. The following commands are command
+shapes, not source-authoring steps. Obtain separate explicit authority for any
+image build, download, or other environment mutation before running them:
 
 ```bash
 docker build -t my-mutate-runner:latest containers/meta-agent-codex
@@ -244,7 +272,18 @@ rules, runtime identity, cache paths, proxies, and the startup checklist.
 
 ## Validate before initialization
 
-Run the prospective preflight first:
+Obtain source approval for the exact Git tree, durable rationale, normalized
+recipe check, identities, evidence, and limitations before prospective
+preflight. Reject credential-bearing URLs: remove URL userinfo and secret query
+parameters before command execution or output retention, and use an out-of-band
+authentication mechanism.
+
+Prospective `evolve preflight` is a read-only initialization checklist. Recipe
+resolution still executes named operator inspection, so repeat static review
+and run it with no ambient credentials in the same allowlisted,
+network-disabled isolation boundary. Its representable inputs are the
+destination, exactly one of recipe or recipe path, optional seed, dataset, and
+task limit, and the declared `EVOLVE_RUNTIME_DIGEST` shown below:
 
 ```bash
 export EVOLVE_RUNTIME_DIGEST="sha256:replace-with-your-runtime-digest"
@@ -258,3 +297,11 @@ uv run --frozen evolve preflight /tmp/my-experiment \
 Fix every failed check before `evolve init`. After changing a recipe, target,
 operator, evaluator asset, image, or dataset membership, initialize a **new**
 workspace. Existing workspaces are intentionally frozen experiment records.
+
+The command does not generate a receipt or validate authentication identity,
+remote reachability, credential validity, or actual evaluator/runtime
+readiness. Manually sanitize stdout before retaining it. In the task or recipe
+record, save the exact secret-free command, sanitized stdout, independently
+established Git/content/image/runtime identities and digests, and every
+unchecked assumption. Request deployment approval bound to that packet before
+`evolve init`; baseline evaluation spend requires separate authority.

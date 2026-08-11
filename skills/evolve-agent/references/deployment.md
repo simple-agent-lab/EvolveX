@@ -21,10 +21,37 @@ redesign the measurement contract to make an environment check pass.
 
 ## Gather current preflight evidence
 
-Run `evolve preflight` using exactly the recipe, seed, dataset, evaluator
-runtime, authentication mode, and destination intended for initialization.
-Preflight writes nothing. Retain its receipt together with the current source,
-recipe, evaluator, dataset, and runtime identities and their recorded digests.
+For an uninitialized destination, `evolve preflight` is a read-only prospective
+init checklist. It writes no receipt. It checks the recipe, seed, dataset,
+declared runtime digest, required tools, task limit, and destination conditions
+represented by the command; its stdout is not a generated receipt and does not
+validate runtime availability or which authentication identity owns or can
+access an external service.
+
+Audit the command inputs before execution. Reject a seed, dataset, endpoint, or
+other URL containing userinfo credentials or secret-bearing query parameters;
+obtain a credential-free URL rather than passing or persisting the secret. Keep
+credentials out of command arguments. Prospective preflight echoes Git seed
+URLs verbatim, so use separately authorized out-of-band Git authentication
+rather than embedding it in the URL. Inspect raw stdout without retaining it,
+redact any unexpected userinfo, query secret, token, key, credential, or proxy
+literal, and only then save the sanitized output manually.
+
+Prospective preflight resolves selected named operators. Recheck their static
+import safety, then run the checklist in the credential-free, allowlisted
+[operator-inspection sandbox](operator-authoring.md). Supply only the inputs the
+command represents: destination, exactly one of `--recipe` or `--recipe-path`,
+optional `--seed`, `--dataset`, and `--tasks`, plus the declared
+`EVOLVE_RUNTIME_DIGEST`. Do not load deployment credentials.
+
+In the task record and recipe rationale, retain the exact secret-free command,
+sanitized stdout, independently computed source, recipe, operator, evaluator,
+dataset, and runtime identities or digests, and every assumption the checklist
+did not verify. Record intended authentication identity, runtime availability,
+image readiness, remote-service reachability, Git revision and content, disk
+capacity, evaluator smoke, and external-service access as unchecked deployment
+assumptions unless independently verified. Call this a prospective preflight
+record, not a mechanism-generated receipt.
 
 Classify any failure before proposing a remedy:
 

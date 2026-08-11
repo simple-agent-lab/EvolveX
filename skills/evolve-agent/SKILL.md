@@ -14,14 +14,29 @@ requirements → contract → baseline → evidence → hypothesis
 
 ## 1. Route from filesystem evidence
 
-- **Initialized workspace:** read `AGENTS.md`, `evolve.yaml`, and `program.md`;
-  run `./evolve status .`, `./evolve verify .`, and
-  `./evolve operator active . --json`; then read
+Check the two complete marker sets first and use the first matching context:
+
+- **Initialized workspace:** `evolve.yaml`, `.evolve-components.json`,
+  `archive.jsonl`, and the workspace-local `./evolve` launcher all exist. Read
+  `AGENTS.md`, `evolve.yaml`, and `program.md`; run `./evolve status .`,
+  `./evolve verify .`, and `./evolve operator active . --json`; then read
   [the workspace contract](references/workspace-contract.md).
-- **EvolveX source checkout:** read
+- **EvolveX source checkout:** `.git`, `pyproject.toml`, `src/evolve/`,
+  `library/`, and `recipes/` all exist. Read
   [the decision protocol](references/decision-protocol.md) and
   [experiment design](references/experiment-design.md) before source work.
-- **External target project:** treat it as the candidate. Before the user
+- **Partial or ambiguous EvolveX markers:** neither set is complete, but at
+  least one EvolveX-specific marker exists: `src/evolve/`, `library/`,
+  `recipes/`, `.evolve-components.json`, `archive.jsonl`, or `./evolve`.
+  Report the markers that are present and missing, then ask one focused
+  question for the authoritative target, EvolveX checkout, or initialized-
+  workspace root. An importable or installed EvolveX package is not evidence
+  of a writable source checkout. Do not guess a context or begin source or
+  workspace actions until the location is clear.
+- **External target project:** candidate source exists, neither complete set
+  matches, and no EvolveX-specific marker exists. Generic `.git` and
+  `pyproject.toml` files are ordinary target-project evidence and do not make
+  the context ambiguous. Treat it as the candidate. Before the user
   decides, present both entry choices and their consequences:
   - **Repository-local entry:** use a thin target-repository platform adapter
     that routes to this canonical skill. It is portable and pinned with the
@@ -35,7 +50,9 @@ requirements → contract → baseline → evidence → hypothesis
   obtain separate explicit approval for each required action. Actual
   `.codex`/`.claude` adapter implementation belongs to the separately planned
   distribution-adapters project; do not claim it is implemented here.
-- **Insufficient context:** ask one focused location question and do not guess.
+- **Insufficient context:** no recognizable candidate source and no complete or
+  partial EvolveX marker set exists. Ask one focused question for the target,
+  source-checkout, or initialized-workspace location and do not guess.
 
 State the evidence for the classification.
 
@@ -51,8 +68,14 @@ selection. For every material choice, present the options and use
 
 Use [experiment design](references/experiment-design.md) for a new experiment.
 Read [scientific foundations](references/scientific-foundations.md) when
-measurement semantics or research claims change. Read only the method cards
-whose evidence requirements fit the experiment:
+measurement semantics or research claims change. Do not use the method table
+until experiment design has qualified evaluator coverage, determinism, leakage,
+runtime compatibility, calibration, limitations, and supported claims. During
+design, catalog listing is filesystem-only; before a needed operator
+description, read [operator inspection safety](references/operator-authoring.md)
+and use its static review and credential-free isolation procedure. Do not
+scaffold or edit source before architecture approval. Then read only the method
+cards whose evidence requirements fit the experiment:
 
 | Observable condition | Method | Read |
 | --- | --- | --- |
@@ -65,20 +88,28 @@ whose evidence requirements fit the experiment:
 End design with architecture approval bound to the recorded experiment brief.
 Do not write source or deploy before approval.
 
-**Completion check:** The recipe rationale names the evaluator-first contract,
-selected composition, rejected alternatives, custom capability gaps, risks,
-unknowns, and architecture approval.
+**Completion check:** The task-record rationale names the evaluator-first
+contract, selected composition, rejected alternatives, custom capability gaps,
+risks, unknowns, and architecture approval; an approved custom recipe later
+preserves it in `README.md`.
 
 ## 3. Author and review source
 
-Inspect capabilities through `uv run --frozen evolve operator list --json` and
-`uv run --frozen evolve operator describe <stage>/<name> --json`. Configure an
-existing operator when it fits. When the approved gap requires reusable code,
-read [operator authoring](references/operator-authoring.md).
+Inspect catalog identities through
+`uv run --frozen evolve operator list --json`. When the approved composition
+needs a custom recipe, read
+[recipe authoring](references/recipe-authoring.md). Before executing
+`uv run --frozen evolve operator describe <stage>/<name> --json`, an operator
+check, a recipe check, prospective preflight, or newly authored code, read
+[operator authoring](references/operator-authoring.md) and use its static
+import-safety review and credential-free isolated environment. Configure an
+existing operator when it fits; author reusable source only for an approved
+capability gap.
 
 Run operator checks, focused tests, and
-`uv run --frozen evolve recipe check <recipe-path> --json`. Present source
-approval bound to the Git diff or commit and normalized check evidence.
+`uv run --frozen evolve recipe check <recipe-path> --json` inside that
+boundary. Present source approval bound to the Git diff or commit and
+normalized check evidence.
 
 **Completion check:** Every custom operator has a named catalog identity,
 declarative config, focused behavior test, valid recipe binding, limitations,

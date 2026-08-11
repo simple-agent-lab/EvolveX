@@ -63,6 +63,7 @@ def test_release_wheel_has_one_resource_owner_and_complete_metadata() -> None:
             "evolve/skills/evolve-agent/references/decision-protocol.md",
             "evolve/skills/evolve-agent/references/deployment.md",
             "evolve/skills/evolve-agent/references/experiment-design.md",
+            "evolve/skills/evolve-agent/references/recipe-authoring.md",
             "evolve/skills/evolve-agent/references/operator-authoring.md",
             "evolve/skills/evolve-agent/references/workspace-contract.md",
             "evolve/containers/meta-agent/Dockerfile",

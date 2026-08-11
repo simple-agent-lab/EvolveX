@@ -103,6 +103,7 @@ skills/evolve-agent/
 └── references/
     ├── decision-protocol.md          # new
     ├── experiment-design.md          # new
+    ├── recipe-authoring.md           # new
     ├── operator-authoring.md         # new
     ├── evaluation-authoring.md       # new
     ├── evaluator-engine-authoring.md # new

@@ -1,7 +1,10 @@
 # Author a reusable operator
 
-Use this playbook only in a writable EvolveX source checkout after architecture
-approval identifies a capability that the live catalog does not provide. Read
+Use the catalog-inspection and import-safety sections in a writable EvolveX
+source checkout while designing the architecture. Inspection gathers evidence;
+it does not authorize source changes. Use the scaffolding, implementation, and
+composition sections only after architecture approval identifies a capability
+that the live catalog does not provide and the user selects new source. Read
 `decision-protocol.md` before crossing the source-approval boundary.
 
 ## Prove the capability gap
@@ -10,6 +13,16 @@ Discover the live catalog before reading or writing an implementation:
 
 ```bash
 uv run --frozen evolve operator list --json
+```
+
+Catalog listing is filesystem-only. `operator describe` and `operator check`
+execute the entry file in a subprocess, and that subprocess inherits the
+environment used to launch the CLI. A subprocess boundary is not a security
+sandbox. Before inspecting any entry whose imports have not already been
+reviewed, use the import-safety and isolation procedure below. Inside that
+boundary, inspect the relevant schema:
+
+```bash
 uv run --frozen evolve operator describe mutate/hyperagents --json
 ```
 
@@ -91,11 +104,34 @@ Keep exceptional custom normalization narrow and JSON-compatible. A declarative
 schema is the public contract: do not add a second procedural validation path
 for the same configuration.
 
+## Review import safety before execution
+
+Read the entry file and every project-local module it imports before running
+`describe` or `check`. Import time may define constants, declarative schemas,
+classes, and functions, and the guarded `sdk.main(...)` entrypoint may answer
+the requested inspection mode. Reject code whose import path performs
+application filesystem reads or writes, network access, process or thread
+creation, credential or environment-secret access, deployment, model calls, or
+any other effect unrelated to returning the inspection payload. An import-time
+effect is an authoring failure even if it appears harmless in the current
+checkout.
+
+Run inspection inside a disposable sandbox or container with networking
+disabled, the reviewed source mounted read-only, and only a disposable temp
+directory writable. Construct the process environment from an explicit
+allowlist such as the required executable path, locale, and temporary
+`HOME`/`TMPDIR`; do not inherit the host environment, load `.env`, mount auth
+files, or pass token, key, secret, cloud, proxy, model, or deployment variables.
+If this credential-free boundary is unavailable, stop rather than inspect the
+entry. The CLI's own subprocess does not provide this isolation.
+
 ## Test behavior, then inspect normalization
 
 Add a focused behavior test for the approved policy. Cover its failure boundary
 and assert the stage's typed result; configuration inspection does not replace
-this test. Run the smallest relevant test node, then capture catalog evidence:
+this test. Recheck static import safety after the final source edit, then run
+the smallest relevant test node and capture catalog evidence inside the same
+credential-free, allowlisted isolation boundary:
 
 ```bash
 uv run --frozen evolve operator describe analyze/failure_triage --json
@@ -112,7 +148,7 @@ the schema contract, not a reason to permit arbitrary recipe values.
 
 Select the named entry under the recipe stage's `operator:` key. Put only
 operator-owned values below that stage's nested `config:` mapping, then check
-the complete recipe:
+the complete recipe inside the same credential-free isolation boundary:
 
 ```bash
 uv run --frozen evolve recipe check /absolute/path/to/evolve.yaml --json

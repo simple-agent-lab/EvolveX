@@ -58,6 +58,7 @@ def test_evolve_agent_progressive_references_resolve() -> None:
     expected_links = {
         "references/decision-protocol.md",
         "references/experiment-design.md",
+        "references/recipe-authoring.md",
         "references/operator-authoring.md",
         "references/deployment.md",
         "references/workspace-contract.md",
@@ -74,6 +75,7 @@ def test_evolve_agent_progressive_references_resolve() -> None:
         "references/decision-protocol.md",
         "references/experiment-design.md",
         "references/operator-authoring.md",
+        "references/recipe-authoring.md",
         "references/deployment.md",
     ]
     positions = [body.index(f"]({link})") for link in authoring_links]
