@@ -1,4 +1,4 @@
 interface:
   display_name: "EvolveX Agent"
-  short_description: "Evolve agents with reusable operators and evidence"
-  default_prompt: "Use $evolve-agent to operate this workspace and improve the agent through an evidence-backed generation."
+  short_description: "Design and run evidence-backed agent evolution"
+  default_prompt: "Use $evolve-agent to design or operate this evolution experiment through informed, evidence-backed decisions."

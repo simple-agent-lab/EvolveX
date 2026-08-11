@@ -4,7 +4,7 @@
       "name": "evolve-agent",
       "path": "evolve-agent/SKILL.md",
       "role": "outer-and-workspace",
-      "summary": "Method guide and workspace operating manual for evidence-driven agent evolution."
+      "summary": "Design and operate evidence-driven evolution experiments."
     }
   ]
 }

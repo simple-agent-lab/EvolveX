@@ -1,48 +1,47 @@
 ---
 name: evolve-agent
-description: "Run evidence-driven evolution of agents, prompts, skills, and agent harnesses. Use when asked to initialize or operate an evolution workspace, choose Hill Climb, A-Evolve, GEPA, AHE, or HyperAgents, invoke evolution operators directly, improve a candidate through repeated evaluation, analyze traces or lineage, recover interrupted evolution, or report an evidence-backed champion."
+description: "Design, initialize, or operate an evolution workspace for agents, prompts, skills, and agent harnesses. Use when asked to turn requirements into an EvolveX recipe, choose or author reusable operators, deploy a frozen workspace, run generations, inspect lineage, recover state, or report an evidence-backed champion."
 ---
 
-# Build an evidence chain
+# Design and operate an evidence chain
 
-Treat evolution as an evidence chain:
+Treat evolution as:
 
 ```text
-contract → baseline → evidence → hypothesis → candidate → evaluation → lineage
+requirements → contract → baseline → evidence → hypothesis
+             → candidate → evaluation → lineage
 ```
 
-A higher score alone is insufficient. Link every candidate to the evidence that
-motivated it, its exact snapshot, frozen evaluation, and lineage decision.
+## 1. Route from filesystem evidence
 
-## 1. Establish the contract
+- **Initialized workspace:** read `AGENTS.md`, `evolve.yaml`, and `program.md`;
+  run `./evolve status .`, `./evolve verify .`, and
+  `./evolve operator active . --json`; then read
+  [the workspace contract](references/workspace-contract.md).
+- **EvolveX source checkout:** read
+  [the decision protocol](references/decision-protocol.md) and
+  [experiment design](references/experiment-design.md) before source work.
+- **External target project:** treat it as the candidate, then use the same
+  decision and experiment-design playbooks to locate a writable EvolveX source
+  checkout. Do not clone or edit an installed package without approval.
+- **Insufficient context:** ask one focused location question and do not guess.
 
-Detect whether the current directory is an initialized evolution workspace.
+State the evidence for the classification.
 
-- In a workspace, read `AGENTS.md`, `evolve.yaml`, `program.md`, then run
-  `./evolve status .` and `./evolve verify .`.
-- For a new experiment, identify the target, mutable surface, evaluator, data
-  partitions, budget, and execution boundary before initialization.
-- Before choosing a method or authoring source for a new experiment, read [the
-  experiment-design playbook](references/experiment-design.md).
-- Read [the workspace contract](references/workspace-contract.md) before
-  creating, operating, recovering, or interpreting a workspace. Its "Create a
-  workspace" section gives the initialization and baseline-certification
-  commands and the preconditions they enforce.
+**Completion check:** Name the context, target, authoritative checkout or
+workspace, and next playbook.
 
-**Completion check:** Name the target, mutable surface, frozen evaluator (the
-`evaluator/` contract that scores every candidate), data
-partitions, candidate budget, and execution boundary. In an existing workspace,
-also identify the current champion, next generation, and interrupted state.
+## 2. Design before implementation
 
-## 2. Choose one method
+Define target, mutable surface, evaluator, partitions, budget, execution
+boundary, and proof required for acceptance. Evaluation precedes method
+selection. For every material choice, present the options and use
+[the decision protocol](references/decision-protocol.md).
 
-The method is fixed when the workspace is created; inside an existing
-workspace, follow the configured operators instead of re-choosing. For a new
-experiment, GEPA is the default; choose Hill Climb when the experiment needs
-the simplest attributable control. Match the method to the available evidence
-and allowed mutable surface. Read only the selected method card; it maps the
-method to shipped operator capabilities as well as explaining its scientific
-boundary.
+Use [experiment design](references/experiment-design.md) for a new experiment.
+Read [scientific foundations](references/scientific-foundations.md) when
+measurement semantics or research claims change. Read only the method cards
+whose evidence requirements fit the experiment:
 
 | Observable condition | Method | Read |
 | --- | --- | --- |
@@ -52,118 +51,95 @@ boundary.
 | Failures are execution-shaped and justify harness changes | AHE | [ahe.md](references/ahe.md) |
 | The evolution process itself may also change | HyperAgents | [hyperagents.md](references/hyperagents.md) |
 
-Read [scientific foundations](references/scientific-foundations.md) only when
-defining or changing evaluator semantics, partitions, acceptance rules, or
-research claims.
+End design with architecture approval bound to the recorded experiment brief.
+Do not write source or deploy before approval.
 
-**Completion check:** State why the method matches both the evidence and the
-declared mutable surface. If it does not, choose again before running anything.
+**Completion check:** The recipe rationale names the evaluator-first contract,
+selected composition, rejected alternatives, custom capability gaps, risks,
+unknowns, and architecture approval.
 
-For artifact-producing Skills, prefer replaying a selected parent's certified
-artifacts over executing that parent again. Re-execute the parent only when the
-current task set, evaluator identity, runtime identity, or required artifacts
-do not match the retained evidence. Execute every child freshly.
+## 3. Author and review source
 
-## 3. Author reusable operators in a source checkout
+Inspect capabilities through `uv run --frozen evolve operator list --json` and
+`uv run --frozen evolve operator describe <stage>/<name> --json`. Configure an
+existing operator when it fits. When the approved gap requires reusable code,
+read [operator authoring](references/operator-authoring.md).
 
-Use the catalog only after architecture approval identifies a capability gap;
-an initialized workspace is not a source-authoring target. Follow the
-[catalog-first operator-authoring playbook](references/operator-authoring.md)
-for discovery, declarative configuration, behavior testing, recipe composition,
-and the separate source-approval packet. A new workspace freezes the selected
-source, while existing workspaces retain their historical active operators.
-After source approval, use [the deployment playbook](references/deployment.md)
-to collect current preflight evidence, bind initialization to those exact
-identities, and hand the verified workspace to its operating contract.
+Run operator checks, focused tests, and
+`uv run --frozen evolve recipe check <recipe-path> --json`. Present source
+approval bound to the Git diff or commit and normalized check evidence.
 
-**Completion check:** The approved capability gap is resolved by a central
-catalog entry or an explicit deferral; the named entry has focused behavior and
-normalized-configuration evidence; the recipe is valid; and source approval is
-separate from deployment approval.
+**Completion check:** Every custom operator has a named catalog identity,
+declarative config, focused behavior test, valid recipe binding, limitations,
+and source approval.
 
-## 4. Prefer capabilities over source
+## 4. Prepare and deploy
 
-For agent-led evolution, start from the stable workspace interface:
+Read [deployment](references/deployment.md). Run read-only preflight, explain
+remediation options, and obtain deployment approval before initialization.
+Ask separately before live model or evaluation spend.
 
-```bash
-./evolve operator active . --json
-./evolve operator run . <stage> --genid <id> [stage arguments]
-```
+**Completion check:** The preflighted inputs match the initialized workspace,
+provenance and integrity verify, and any baseline spend was authorized.
 
-Treat `operator active --json` as the live authority for which stages are
-configured and whether their access is `direct`, `driver`, or `finalize`.
-Invoke configured direct operators, read their retained artifacts under
-`runs/gen-<id>/`, and make the candidate change yourself.
+## 5. Operate the frozen experiment
 
-Escalate progressively:
+Orient with `./evolve status .`, `./evolve verify .`, and
+`./evolve operator active . --json`. Treat active bindings—not file
+presence—as capability authority.
 
-1. Tune one call with `--config` when the capability is right but its bounds are
-   wrong.
-2. Read `PROTOCOL.md`, operator guidance, or `operators/README.md` when an input
-   or artifact is unclear.
-3. Read the active `operators/<stage>.py` only to diagnose behavior or change
-   the active evolution process.
-4. Read `library/<stage>/` only to compare or adapt another implementation.
+Choose exactly one control path for the next generation:
 
-Do not read implementation source merely to invoke a working operator. Do not
-edit `library/` and assume runtime behavior changed; active code lives under
-`operators/`.
+- Use `./evolve run . --max-generations 1` when the configured mutate stage
+  should own the edit.
+- Use `./evolve operator run . <stage> --genid <id>` and the mechanism-owned
+  fork, commit, eval, and finalize transitions when the outer Agent owns the
+  hypothesis and edit.
 
-Use the configured driver when its mutation stage should own the edit and an
-unattended run is desired:
+Do not run both paths for one generation. Tune a configured capability before
+reading source; read active operator source only to diagnose or explicitly
+change the running process.
 
-```bash
-./evolve run . --max-generations 1
-```
+**Completion check:** The chosen control path, parent, active direct stages,
+retained evidence, mutable surface, and interrupted state are all explicit.
 
-Driver and agent-led paths share the same evaluation and lineage mechanism. Do
-not run them concurrently or replace an existing driver with a custom loop.
-
-**Completion check:** Choose exactly one control path for the next generation.
-For agent-led evolution, name the configured direct operators and the artifacts
-that will justify the edit; source inspection must have a concrete reason.
-
-## 5. Close the loop
+## 6. Close the loop
 
 1. Establish and inspect the certified baseline.
-2. Select a parent and retain the method's required evidence.
-3. State one evidence-linked hypothesis and predicted effect.
-4. Produce one candidate inside the declared mutable surface.
-5. Run every configured admission check against the final candidate snapshot.
-6. Evaluate and finalize through the workspace mechanism.
-7. Verify lineage before beginning another generation.
+2. Select a parent through the configured select stage.
+3. Retain rollout and configured analysis evidence.
+4. State one evidence-linked hypothesis and predicted effect.
+5. Produce one candidate inside the declared mutable surface.
+6. Run surface and every configured final-tree admission check.
+7. Commit, evaluate, finalize, and verify through mechanism-owned transitions.
 
-**Completion check:** The candidate has an exact lineage identity; required
-admission decisions and evaluator-stamped results exist; lineage verification
-passes; accepted and rejected outcomes remain auditable.
+**Completion check:** The candidate has an exact lineage identity; admission
+and evaluator-stamped results exist; verification passes; accepted and rejected
+outcomes remain auditable; no child worktree is unaccounted for.
 
-## 6. Report only what the chain proves
+## 7. Report only what the chain proves
 
-Start from `./evolve report .`, which writes the experiment report and
-research-claim checklist from stamped records. Around it, report the baseline,
-champion, parent-child changes, accepted and rejected mutations, evaluation
-scope, retained evidence, and limitations. Tie every quality claim to
-evaluator-stamped artifacts from the run.
+Start from `./evolve report .`. Report baseline, champion, parent-child change,
+accepted and rejected mutations, evaluation partition, runtime identity,
+retained evidence, and limitations. Resolve conflicts in favor of verified
+evaluator-stamped lineage rather than generated summaries.
 
-**Completion check:** Every score and champion identity is derivable from
-trusted lineage records, and every generalization claim names its data
-partition.
+**Completion check:** Every score and champion identity derives from trusted
+lineage, and every generalization claim names its partition and evidence.
 
 ## Guard the chain
 
-- Keep one evaluator and runtime identity within an experiment. Start a new
-  experiment when the evaluator changes.
-- Take scores and champion state only from mechanism-owned stamped records.
+- Keep one evaluator and runtime identity within an experiment.
 - Keep optimization, gate, and sealed task identities disjoint.
 - Change only the declared mutable surface.
-- Treat linked worktrees outside `runs/worktrees/` as user-owned. Report them;
-  never remove or modify them without explicit authorization.
-- Match the execution boundary to candidate trust.
-- Keep credentials out of prompts, artifacts, and reports.
-- Spend live evaluation budget only when the request authorizes execution.
+- Preserve linked worktrees outside `runs/worktrees/` unless their owner
+  explicitly authorizes a change.
+- Keep credentials out of prompts, artifacts, recipes, and reports.
+- Spend live model or evaluation budget only when explicitly authorized.
 
 ## Historical-workspace note
 
-Older initialized workspaces retain the stage files and configuration frozen at
-creation time. Treat those as historical metadata only; start a new workspace
-to use the current operator model.
+Older initialized workspaces retain the mechanism, configuration, stage names,
+and source frozen at creation time. Operate them through their vendored
+`./evolve` and local skill; start a new workspace to use the current authoring
+model.

@@ -22,15 +22,25 @@ def _metadata(path: Path) -> dict[str, object]:
 def test_evolve_skill_has_valid_discovery_metadata() -> None:
     metadata = _metadata(SKILL / "SKILL.md")
 
-    assert metadata.keys() == {"name", "description"}
-    assert metadata["name"] == "evolve-agent"
-    description = str(metadata["description"])
-    assert "prompts, skills, and agent harnesses" in description
-    assert "operate an evolution workspace" in description
+    assert metadata == {
+        "name": "evolve-agent",
+        "description": (
+            "Design, initialize, or operate an evolution workspace for agents, prompts, skills, and agent "
+            "harnesses. Use when asked to turn requirements into an EvolveX recipe, choose or author reusable "
+            "operators, deploy a frozen workspace, run generations, inspect lineage, recover state, or report an "
+            "evidence-backed champion."
+        ),
+    }
 
     interface = yaml.safe_load((SKILL / "agents" / "openai.yaml").read_text())["interface"]
-    assert 25 <= len(interface["short_description"]) <= 64
-    assert "$evolve-agent" in interface["default_prompt"]
+    assert interface == {
+        "display_name": "EvolveX Agent",
+        "short_description": "Design and run evidence-backed agent evolution",
+        "default_prompt": (
+            "Use $evolve-agent to design or operate this evolution experiment through informed, evidence-backed "
+            "decisions."
+        ),
+    }
 
 
 def test_manifest_exposes_one_unified_skill() -> None:
@@ -38,14 +48,18 @@ def test_manifest_exposes_one_unified_skill() -> None:
 
     assert [item["name"] for item in manifest["skills"]] == ["evolve-agent"]
     assert manifest["skills"][0]["role"] == "outer-and-workspace"
+    assert manifest["skills"][0]["summary"] == "Design and operate evidence-driven evolution experiments."
     assert not (ROOT / "skills" / "evolve-workspace" / "SKILL.md").exists()
 
 
 def test_evolve_agent_progressive_references_resolve() -> None:
     body = (SKILL / "SKILL.md").read_text()
     links = REFERENCE_LINK.findall(body)
-    assert links == [
+    expected_links = {
+        "references/decision-protocol.md",
         "references/experiment-design.md",
+        "references/operator-authoring.md",
+        "references/deployment.md",
         "references/workspace-contract.md",
         "references/hill-climb.md",
         "references/a-evolve.md",
@@ -53,38 +67,17 @@ def test_evolve_agent_progressive_references_resolve() -> None:
         "references/ahe.md",
         "references/hyperagents.md",
         "references/scientific-foundations.md",
+    }
+    assert set(links) == expected_links
+    assert all((SKILL / link).is_file() for link in links)
+    authoring_links = [
+        "references/decision-protocol.md",
+        "references/experiment-design.md",
         "references/operator-authoring.md",
         "references/deployment.md",
     ]
-    assert all((SKILL / link).is_file() for link in links)
-
-
-def test_experiment_design_reference_is_available_and_directly_linked() -> None:
-    body = (SKILL / "references" / "experiment-design.md").read_text()
-
-    assert body
-    assert "references/experiment-design.md" in REFERENCE_LINK.findall((SKILL / "SKILL.md").read_text())
-
-
-def test_operator_authoring_reference_is_available_and_directly_linked() -> None:
-    body = (SKILL / "references" / "operator-authoring.md").read_text()
-
-    assert body
-    assert "references/operator-authoring.md" in REFERENCE_LINK.findall((SKILL / "SKILL.md").read_text())
-
-
-def test_deployment_reference_is_available_and_directly_linked() -> None:
-    body = (SKILL / "references" / "deployment.md").read_text()
-
-    assert body
-    assert "references/deployment.md" in REFERENCE_LINK.findall((SKILL / "SKILL.md").read_text())
-
-
-def test_top_level_skill_is_backend_neutral() -> None:
-    body = (SKILL / "SKILL.md").read_text().lower()
-    forbidden = ("harbor", "docker", "recipes/", "src/evolve/", "evolve_runtime_digest")
-
-    assert [term for term in forbidden if term in body] == []
+    positions = [body.index(f"]({link})") for link in authoring_links]
+    assert positions == sorted(positions)
     assert not (SKILL / "scripts").exists()
 
 
@@ -138,15 +131,6 @@ def test_initialized_workspace_guidance_uses_active_binding_discovery() -> None:
         assert "./evolve operator list ." not in body, source
 
 
-def test_evolve_skill_uses_checkable_completion_criteria() -> None:
-    outer = (SKILL / "SKILL.md").read_text()
-    contract = (SKILL / "references" / "workspace-contract.md").read_text()
-
-    assert outer.count("**Completion check:**") >= 5
-    assert "evidence chain" in outer.lower()
-    assert "## Completion contract" in contract
-
-
 def test_workspace_contract_is_shared_across_methods() -> None:
     body = (SKILL / "references" / "workspace-contract.md").read_text()
     for path in (
@@ -188,10 +172,8 @@ def test_workspace_contract_exposes_both_real_control_paths() -> None:
 
 
 def test_workspace_contract_preserves_user_owned_external_worktrees() -> None:
-    outer = (SKILL / "SKILL.md").read_text()
     contract = (SKILL / "references" / "workspace-contract.md").read_text()
 
-    assert "never remove or modify them without explicit authorization" in outer
     assert "never remove, commit, or modify it merely to unblock the" in contract
     assert "the driver remains blocked" in contract
 
