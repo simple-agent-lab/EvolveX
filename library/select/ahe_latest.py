@@ -2,16 +2,7 @@
 
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import ArchiveView, OperatorContext, SelectOperator, SelectResult
-from library._shared.config import config_object, reject_unknown
-
-
-def validate_config(raw: dict[str, object]) -> dict[str, object]:
-    config = config_object(raw)
-    reject_unknown(config, {"seed"})
-    seed = config.get("seed", 0)
-    if isinstance(seed, bool) or not isinstance(seed, int):
-        raise ValueError("seed must be an integer")
-    return {"seed": seed}
+from library.select._config import SELECT_CONFIG as CONFIG
 
 
 def _generation_key(row: dict[str, object]) -> tuple[int, str]:
@@ -29,4 +20,4 @@ class AheLatestSelect(SelectOperator):
 
 
 if __name__ == "__main__":
-    sdk.main(AheLatestSelect, validate_config=validate_config)
+    sdk.main(AheLatestSelect, config_schema=CONFIG)

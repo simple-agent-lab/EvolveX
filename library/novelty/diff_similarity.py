@@ -15,27 +15,23 @@ import subprocess
 from pathlib import Path
 
 from evolve.frozen import sdk
+from evolve.frozen.config import Config, integer, number
 from evolve.frozen.interfaces import NoveltyOperator, NoveltyResult, OperatorContext
-from library._shared.config import config_object, positive_int, reject_unknown
 
 
-def validate_config(raw: dict[str, object]) -> dict[str, object]:
-    config = config_object(raw)
-    reject_unknown(config, {"threshold", "history_k"})
-    threshold = config.get("threshold")
-    if "threshold" in config and (isinstance(threshold, bool) or not isinstance(threshold, (int, float))):
-        raise ValueError("threshold must be a finite number between 0 and 1")
-    threshold = threshold if "threshold" in config else os.environ.get("EVOLVE_NOVELTY_THRESHOLD", 0.98)
+def _threshold_default() -> float:
     try:
-        normalized_threshold = float(threshold)
+        return float(os.environ.get("EVOLVE_NOVELTY_THRESHOLD", "0.98"))
     except ValueError as error:
-        raise ValueError("threshold must be a finite number between 0 and 1") from error
-    if not 0 <= normalized_threshold <= 1 or normalized_threshold in {float("inf"), float("-inf")}:
-        raise ValueError("threshold must be a finite number between 0 and 1")
-    return {
-        "threshold": normalized_threshold,
-        "history_k": positive_int(config, "history_k", 8),
+        raise ValueError("EVOLVE_NOVELTY_THRESHOLD must be a finite number between 0 and 1") from error
+
+
+CONFIG = Config(
+    {
+        "threshold": number(default=_threshold_default(), minimum=0, maximum=1),
+        "history_k": integer(default=8, minimum=1),
     }
+)
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -74,4 +70,4 @@ class DiffSimilarityNovelty(NoveltyOperator):
 
 
 if __name__ == "__main__":
-    sdk.main(DiffSimilarityNovelty, validate_config=validate_config)
+    sdk.main(DiffSimilarityNovelty, config_schema=CONFIG)

@@ -6,7 +6,6 @@ import hashlib
 import importlib.util
 import inspect
 import json
-import math
 import re
 import tempfile
 from collections.abc import Callable
@@ -14,20 +13,15 @@ from pathlib import Path, PurePosixPath
 from typing import Any, cast
 
 from evolve.frozen import sdk
+from evolve.frozen.config import Config, integer, number
 from evolve.frozen.interfaces import ArchiveView, OperatorContext, RolloutOperator, RolloutResult
-from library._shared.config import config_object, positive_int, reject_unknown
 
-
-def validate_config(raw: dict[str, object]) -> dict[str, object]:
-    config = config_object(raw)
-    reject_unknown(config, {"field_limit", "pass_threshold"})
-    threshold = config.get("pass_threshold", 1.0)
-    if isinstance(threshold, bool) or not isinstance(threshold, (int, float)) or not math.isfinite(float(threshold)):
-        raise ValueError("pass_threshold must be a finite number")
-    return {
-        "field_limit": positive_int(config, "field_limit", 2000),
-        "pass_threshold": float(threshold),
+CONFIG = Config(
+    {
+        "field_limit": integer(default=2000, minimum=1),
+        "pass_threshold": number(default=1.0),
     }
+)
 
 
 _SHA256 = re.compile(r"[0-9a-f]{64}")
@@ -410,4 +404,4 @@ EvaluationReplayRollout = ParentEvaluationRollout
 
 
 if __name__ == "__main__":
-    sdk.main(ParentEvaluationRollout, validate_config=validate_config)
+    sdk.main(ParentEvaluationRollout, config_schema=CONFIG)

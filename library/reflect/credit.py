@@ -10,14 +10,10 @@ report as `used_insights`. Never rewrites the playbook.
 import hashlib
 
 from evolve.frozen import sdk
+from evolve.frozen.config import Config
 from evolve.frozen.interfaces import OperatorContext, ReflectOperator, ReflectResult
-from library._shared.config import config_object, reject_unknown
 
-
-def validate_config(raw: dict[str, object]) -> dict[str, object]:
-    config = config_object(raw)
-    reject_unknown(config, set())
-    return config
+CONFIG = Config({})
 
 
 class CreditReflect(ReflectOperator):
@@ -45,4 +41,4 @@ class CreditReflect(ReflectOperator):
 
 
 if __name__ == "__main__":
-    sdk.main(CreditReflect, validate_config=validate_config)
+    sdk.main(CreditReflect, config_schema=CONFIG)

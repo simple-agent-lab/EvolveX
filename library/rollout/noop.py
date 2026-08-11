@@ -6,14 +6,10 @@ It is the baseline recipe for pipelines that skip rollout before mutate.
 from pathlib import Path
 
 from evolve.frozen import sdk
+from evolve.frozen.config import Config
 from evolve.frozen.interfaces import OperatorContext, RolloutOperator, RolloutResult
-from library._shared.config import config_object, reject_unknown
 
-
-def validate_config(raw: dict[str, object]) -> dict[str, object]:
-    config = config_object(raw)
-    reject_unknown(config, set())
-    return config
+CONFIG = Config({})
 
 
 class NoopRollout(RolloutOperator):
@@ -22,4 +18,4 @@ class NoopRollout(RolloutOperator):
 
 
 if __name__ == "__main__":
-    sdk.main(NoopRollout, validate_config=validate_config)
+    sdk.main(NoopRollout, config_schema=CONFIG)
