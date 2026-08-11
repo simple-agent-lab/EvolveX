@@ -22,6 +22,8 @@ Detect whether the current directory is an initialized evolution workspace.
   `./evolve status .` and `./evolve verify .`.
 - For a new experiment, identify the target, mutable surface, evaluator, data
   partitions, budget, and execution boundary before initialization.
+- Before choosing a method or authoring source for a new experiment, read [the
+  experiment-design playbook](references/experiment-design.md).
 - Read [the workspace contract](references/workspace-contract.md) before
   creating, operating, recovering, or interpreting a workspace. Its "Create a
   workspace" section gives the initialization and baseline-certification

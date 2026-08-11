@@ -45,6 +45,7 @@ def test_evolve_agent_progressive_references_resolve() -> None:
     body = (SKILL / "SKILL.md").read_text()
     links = REFERENCE_LINK.findall(body)
     assert links == [
+        "references/experiment-design.md",
         "references/workspace-contract.md",
         "references/hill-climb.md",
         "references/a-evolve.md",
@@ -54,6 +55,13 @@ def test_evolve_agent_progressive_references_resolve() -> None:
         "references/scientific-foundations.md",
     ]
     assert all((SKILL / link).is_file() for link in links)
+
+
+def test_experiment_design_reference_is_available_and_directly_linked() -> None:
+    body = (SKILL / "references" / "experiment-design.md").read_text()
+
+    assert body
+    assert "references/experiment-design.md" in REFERENCE_LINK.findall((SKILL / "SKILL.md").read_text())
 
 
 def test_top_level_skill_is_backend_neutral_and_operator_first() -> None:
