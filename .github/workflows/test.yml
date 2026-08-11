@@ -151,5 +151,5 @@ jobs:
           # packaging and workspace scaffolding, not registry connectivity.
           EVAL_STUB=1 EVOLVE_HOME="$RUNNER_TEMP/wheel-smoke-home" EVOLVE_RUNTIME_DIGEST="sha256:release-artifact-smoke" "$GITHUB_WORKSPACE/.venv/bin/evolve" init "$RUNNER_TEMP/wheel-smoke" --recipe aevolve
           EVOLVE_HOME="$RUNNER_TEMP/wheel-smoke-home" "$GITHUB_WORKSPACE/.venv/bin/evolve" status "$RUNNER_TEMP/wheel-smoke"
-          test -f "$RUNNER_TEMP/wheel-smoke/LICENSE.evolvex"
-          test -f "$RUNNER_TEMP/wheel-smoke/NOTICE.evolvex"
+          test -f "$RUNNER_TEMP/wheel-smoke/LICENSE.rsihub"
+          test -f "$RUNNER_TEMP/wheel-smoke/NOTICE.rsihub"
