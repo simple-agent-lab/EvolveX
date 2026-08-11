@@ -432,7 +432,7 @@ Run:
 
 ```bash
 uv lock --check
-uv run --frozen mkdocs build --strict
+uv run --group docs --frozen mkdocs build --strict
 ```
 
 Expected: both commands exit 0; the docs build reports no missing renamed asset,

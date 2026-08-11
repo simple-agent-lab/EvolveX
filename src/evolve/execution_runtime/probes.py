@@ -208,9 +208,7 @@ def probe_execution_runtime(
                 else (mounted.stderr or mounted.stdout or "bind mount marker did not return to the host").strip()[
                     -1000:
                 ],
-                None
-                if mount_verified
-                else "use a path shared with the Docker daemon or run RSIHub on the daemon host",
+                None if mount_verified else "use a path shared with the Docker daemon or run RSIHub on the daemon host",
             )
         )
 
