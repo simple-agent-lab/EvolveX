@@ -106,7 +106,7 @@ def test_session_is_kept_only_when_refinement_is_expected(monkeypatch, auto_refi
 
     asyncio.run(_run(agent, environment))
 
-    run_command = agent.agent_commands[-1]
+    run_command = next(c for c in agent.agent_commands if "prime-agent --print" in c)
     assert expected in run_command
     assert forbidden not in run_command
 
@@ -243,11 +243,51 @@ def test_usage_is_summed_from_message_end_events(monkeypatch, tmp_path) -> None:
     assert context.cost_usd == pytest.approx(0.75)
 
 
-def test_model_name_must_carry_a_provider(monkeypatch) -> None:
+@pytest.mark.parametrize("model_name", ["gpt-without-provider", "/gpt", "openai/", "", None])
+def test_model_name_must_carry_both_provider_and_model(monkeypatch, model_name) -> None:
     module = _load(monkeypatch)
-    agent = module.PrimeAgent(model_name="gpt-without-provider")
+    agent = module.PrimeAgent(model_name=model_name)
 
     import asyncio
 
     with pytest.raises(ValueError, match="provider/model_name"):
         asyncio.run(_run(agent, FakeEnvironment()))
+
+
+def test_agent_failure_is_not_masked_by_tee(monkeypatch) -> None:
+    """`tee` closes the pipeline, so without pipefail a failed prime-agent run
+    reports success and Harbor scores it as a completed trial."""
+    module = _load(monkeypatch)
+    agent = module.PrimeAgent(model_name="openai/gpt")
+
+    import asyncio
+
+    asyncio.run(_run(agent, FakeEnvironment()))
+
+    run_command = next(c for c in agent.agent_commands if "prime-agent --print" in c)
+    assert "set -o pipefail" in run_command
+    assert run_command.index("set -o pipefail") < run_command.index("| stdbuf")
+
+
+def test_credentials_are_removed_before_the_export(monkeypatch, tmp_path) -> None:
+    """The export becomes a retained Harbor artifact, so auth.json must not
+    survive into it."""
+    module = _load(monkeypatch)
+    auth = tmp_path / "auth.json"
+    auth.write_text(json.dumps({"openai-codex": {"access": "secret"}}))
+    agent = module.PrimeAgent(model_name="openai/gpt", auth_json_path=auth, logs_dir=tmp_path / "logs")
+    environment = FakeEnvironment()
+
+    import asyncio
+
+    asyncio.run(_run(agent, environment))
+
+    assert (auth, "/tmp/prime-agent-dir/auth.json") in environment.uploads
+    removal = "rm -f /tmp/prime-agent-dir/auth.json"
+    assert any(removal in command for command in agent.agent_commands)
+    # …and it must happen before the directory leaves the container.
+    assert (
+        agent.agent_commands.index(next(c for c in agent.agent_commands if removal in c))
+        == len(agent.agent_commands) - 1
+    )
+    assert environment.downloads == [("/tmp/prime-agent-dir", tmp_path / "logs" / "prime-agent-dir")]

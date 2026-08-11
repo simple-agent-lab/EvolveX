@@ -179,9 +179,9 @@ class PrimeAgent(BaseInstalledAgent):
 
     @with_prompt_template
     async def run(self, instruction: str, environment, context: AgentContext) -> None:
-        if not self.model_name or "/" not in self.model_name:
+        provider, separator, model = (self.model_name or "").partition("/")
+        if not separator or not provider or not model:
             raise ValueError("Model name must be in the format provider/model_name")
-        provider, model = self.model_name.split("/", 1)
 
         await self._hydrate_agent_dir(environment)
 
@@ -204,6 +204,10 @@ class PrimeAgent(BaseInstalledAgent):
         await self.exec_as_agent(
             environment,
             command=(
+                # `tee` is last in the pipeline, so without pipefail a crashed or
+                # unauthenticated prime-agent still reports success and Harbor
+                # scores the trial as a completed run.
+                "set -o pipefail; "
                 f"{self._path_export()} "
                 f"prime-agent --print --mode json {session} "
                 f"--provider {shlex.quote(provider)} --model {shlex.quote(model)} "
@@ -215,6 +219,13 @@ class PrimeAgent(BaseInstalledAgent):
         )
 
         if self._export_agent_dir:
+            # Credentials must not outlive the trial: the export is a Harbor
+            # artifact that gets retained and shared, so drop auth.json before
+            # the directory leaves the container.
+            await self.exec_as_agent(
+                environment,
+                command=f"rm -f {shlex.quote(self._agent_dir)}/auth.json",
+            )
             # Captures harness_state.json plus anything the run persisted, so a
             # checkpoint chain can be rebuilt on the host afterwards.
             await environment.download_dir(self._agent_dir, self.logs_dir / EXPORT_DIRNAME)

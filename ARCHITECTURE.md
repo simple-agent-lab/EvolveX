@@ -78,7 +78,7 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `integrations/harbor/_agent_roles.py` | 50 | canonical MiniSWE role names and narrow compatibility aliases |
 | `integrations/harbor/_candidate_source.py` | 75 | exact candidate-source validation and archive-copy boundary |
 | `integrations/harbor/codex_candidate.py` | 75 | Codex adapter for OpenAI-compatible Responses endpoints |
-| `integrations/harbor/prime_agent.py` | 260 | Prime Agent adapter with continual-harness injection and export |
+| `integrations/harbor/prime_agent.py` | 275 | Prime Agent adapter with continual-harness injection and export |
 | `integrations/harbor/miniswe_candidate.py` | 550 | exact-candidate MiniSWE Harbor evaluator agent |
 | `integrations/harbor/miniswe_task_file.py` | 130 | large-task MiniSWE meta-agent transport |
 | `meta_agent_budget.py` | 150 | shared Harbor meta-agent retry and timeout budget calculations |
@@ -96,7 +96,7 @@ each workspace, immutable there because it sits outside the mutable surface
 | `frozen/interfaces.py` | 350 | operator ABCs, registry, result schemas, and strict operator payload validation |
 | `frozen/sdk.py` | 300 | Python operator entrypoint and file-contract IO; no library algorithm policy |
 
-Total `src/evolve/` budget: **16990 lines**. The budget admits the explicit content-backed
+Total `src/evolve/` budget: **17005 lines**. The budget admits the explicit content-backed
 evaluation-contract boundaries, the opt-in in-place Harbor runtime, and the redacted trace-analysis
 boundary between rollout and feedback assembly; if the mechanism wants to
 grow past that, something belongs in a workspace operator instead —

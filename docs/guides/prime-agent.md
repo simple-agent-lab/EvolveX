@@ -21,7 +21,9 @@ harbor run \
 `auth_json_path` points at the credential store Prime writes on the host
 (`~/.prime/agent/auth.json` after `prime-agent` `/login`); the adapter uploads
 it into the isolated agent directory it creates per trial. Credentials never
-need to be baked into an image.
+need to be baked into an image, and the adapter deletes `auth.json` from that
+directory before exporting it — the export is a retained Harbor artifact, so a
+token left in it would outlive the trial and travel with the results.
 
 In a recipe:
 
