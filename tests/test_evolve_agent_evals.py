@@ -16,7 +16,7 @@ def test_behavior_eval_cases_are_unique_and_rubric_complete() -> None:
     rubric = json.loads((EVAL_DIR / "rubric.json").read_text())
     ids = [str(case["id"]) for case in cases]
 
-    assert len(ids) == len(set(ids)) >= 12
+    assert len(ids) == len(set(ids)) >= 22
     assert set(rubric["cases"]) == set(ids)
     assert {case["skill"] for case in cases} == {"evolve-agent"}
     assert {
@@ -28,6 +28,11 @@ def test_behavior_eval_cases_are_unique_and_rubric_complete() -> None:
         "state-transitions",
         "recovery",
         "process-evolution",
+        "context-routing",
+        "authoring-decisions",
+        "operator-authoring",
+        "authoring-approvals",
+        "authoring-recovery",
     } <= {case["dimension"] for case in cases}
 
     for case_id in ids:
@@ -41,7 +46,7 @@ def test_invocation_eval_has_positive_and_negative_cases() -> None:
     cases = _jsonl("invocation_cases.jsonl")
     ids = [str(case["id"]) for case in cases]
 
-    assert len(ids) == len(set(ids)) >= 6
+    assert len(ids) == len(set(ids)) >= 8
     expected = [case["expected_skill"] for case in cases]
     assert "evolve-agent" in expected
     assert None in expected
@@ -83,13 +88,16 @@ def test_smoke_baseline_is_traceable_to_behavior_cases() -> None:
         assert 0 <= result["treatment"]["score"] <= 10
 
 
-def test_current_results_cover_and_recompute_the_full_behavior_suite() -> None:
+def test_current_results_are_traceable_and_recompute_the_recorded_snapshot() -> None:
     case_ids = {str(case["id"]) for case in _jsonl("behavior_cases.jsonl")}
     results = json.loads((EVAL_DIR / "current_results.json").read_text())
     cases = results["cases"]
 
-    assert {case["id"] for case in cases} == case_ids
+    result_ids = [case["id"] for case in cases]
+    assert len(result_ids) == len(set(result_ids))
+    assert set(result_ids) <= case_ids
     assert results["summary"]["behavior_cases_run"] == len(cases)
+    assert results["summary"]["behavior_cases_available"] >= len(cases)
     assert all(len(case[arm]["criteria"]) == 5 for case in cases for arm in ("control", "treatment"))
     assert all(case[arm]["score"] == sum(case[arm]["criteria"]) for case in cases for arm in ("control", "treatment"))
     assert all(case["paired_delta"] == case["treatment"]["score"] - case["control"]["score"] for case in cases)

@@ -7,7 +7,9 @@ the Agent repeats skill prose.
 ## What this suite proves
 
 - **Behavior:** with the same task, does the skill improve method selection,
-  evidence handling, control-path safety, lineage reasoning, and reporting?
+  evidence handling, control-path safety, lineage reasoning, reporting,
+  context routing, authoring decisions, operator authoring, approval safety,
+  and artifact-based authoring recovery?
 - **Invocation:** does a skill-aware runner load `evolve-agent` for evolution
   tasks and leave it unloaded for unrelated tasks?
 
@@ -47,13 +49,14 @@ with the prompt rather than autonomous routing.
 | `rubric.json` | Hidden behavioral criteria and hard failures. |
 | `render_prompt.py` | Emits one leak-free control or treatment prompt. |
 | `baseline_results.json` | A small, historical paired smoke baseline. |
-| `current_results.json` | The latest recorded full behavior-evaluation snapshot. |
+| `current_results.json` | The latest recorded full run for the skill revision and case set named inside that file; new cases may exist afterward. |
 
 The JSON result files are evidence snapshots, not live status. Read their
 revision and protocol metadata before comparing them with the current skill;
 the historical baseline predates the full suite and is not a current-revision
-claim. The repository test checks case coverage and arithmetic consistency; it
-does not start Agents or a grader.
+claim. The repository test requires recorded case IDs to remain a valid subset
+of the available cases and recomputes recorded arithmetic; it never fabricates
+missing scores. It does not start Agents or a grader.
 
 ## Local checks and prompt rendering
 
