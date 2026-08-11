@@ -1,10 +1,10 @@
 """Run the current checkout through Harbor and distill mutate feedback."""
 
 from evolve.frozen import sdk
-from library._shared.harbor import HarborRollout, validate_config
+from library._shared.harbor import CONFIG, HarborRollout
 
-__all__ = ["HarborRollout", "validate_config"]
+__all__ = ["CONFIG", "HarborRollout"]
 
 
 if __name__ == "__main__":
-    sdk.main(HarborRollout, validate_config=validate_config)
+    sdk.main(HarborRollout, config_schema=CONFIG)

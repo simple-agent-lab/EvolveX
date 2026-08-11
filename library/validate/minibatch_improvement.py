@@ -11,50 +11,39 @@ from pathlib import Path
 from typing import Any
 
 from evolve.frozen import sdk
+from evolve.frozen.config import Config, integer, number, string
+from evolve.frozen.config import object as object_field
 from evolve.frozen.interfaces import OperatorContext, ValidateOperator, ValidateResult
-from library._shared.config import (
-    config_object,
-    mapping,
-    nonnegative_int,
-    positive_float,
-    positive_int,
-    reject_unknown,
-    string,
-)
 from library._shared.gepa import read_json
 from library._shared.harbor import HarborRollout
 
-_CONFIG_KEYS = {
-    "criterion",
-    "n_concurrent",
-    "agent_setup_timeout_multiplier",
-    "agent_timeout_multiplier",
-    "verifier_timeout_multiplier",
-    "max_retries",
-    "environment",
-    "environment_kwargs",
-}
+
+def _positive_multipliers(config: dict[str, object]) -> None:
+    for key in (
+        "agent_setup_timeout_multiplier",
+        "agent_timeout_multiplier",
+        "verifier_timeout_multiplier",
+    ):
+        if key in config and float(config[key]) <= 0:
+            raise ValueError(f"{key} must be positive")
 
 
-def validate_config(raw: dict[str, object]) -> dict[str, object]:
-    config = config_object(raw)
-    reject_unknown(config, _CONFIG_KEYS)
-    criterion = string(config, "criterion", "strict")
-    if criterion not in {"strict", "non_decreasing"}:
-        raise ValueError("criterion must be 'strict' or 'non_decreasing'")
-    normalized: dict[str, object] = {"criterion": criterion}
-    if "max_retries" in config:
-        normalized["max_retries"] = nonnegative_int(config, "max_retries", 0)
-    if "n_concurrent" in config:
-        normalized["n_concurrent"] = positive_int(config, "n_concurrent", 1)
-    for key in ("agent_setup_timeout_multiplier", "agent_timeout_multiplier", "verifier_timeout_multiplier"):
-        if key in config:
-            normalized[key] = positive_float(config, key, 1.0)
-    if "environment" in config:
-        normalized["environment"] = string(config, "environment", "")
-    if "environment_kwargs" in config:
-        normalized["environment_kwargs"] = mapping(config, "environment_kwargs", {})
-    return normalized
+CONFIG = Config(
+    {
+        "criterion": string(
+            default="strict",
+            choices=("strict", "non_decreasing"),
+        ),
+        "n_concurrent": integer(minimum=1),
+        "agent_setup_timeout_multiplier": number(),
+        "agent_timeout_multiplier": number(),
+        "verifier_timeout_multiplier": number(),
+        "max_retries": integer(minimum=0),
+        "environment": string(),
+        "environment_kwargs": object_field(additional_properties=True),
+    },
+    refine=_positive_multipliers,
+)
 
 
 def _write_json(path: Path, payload: object) -> None:
@@ -214,4 +203,4 @@ class MinibatchImprovementValidate(ValidateOperator):
 
 
 if __name__ == "__main__":
-    sdk.main(MinibatchImprovementValidate, validate_config=validate_config)
+    sdk.main(MinibatchImprovementValidate, config_schema=CONFIG)
