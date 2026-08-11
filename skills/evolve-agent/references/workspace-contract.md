@@ -157,6 +157,12 @@ generation_id=1
 ./evolve operator run . select --genid "$generation_id"
 ```
 
+Parent evidence may be replayed only when the recorded task-set, evaluator,
+runtime, and artifact manifest/digest identities all match the current
+contract. A mismatch in any identity requires a fresh parent execution; never
+borrow an artifact merely because its method or parent id looks familiar.
+Every child candidate executes freshly, even when all parent identities match.
+
 Read `runs/gen-1/parents.json` and copy one returned numeric parent exactly:
 
 ```bash

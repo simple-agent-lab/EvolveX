@@ -128,18 +128,23 @@ not retain the earlier procedural `validate_config` example as a parallel API.
 
 ### Context routing
 
-The router recognizes four contexts from filesystem evidence:
+Starting at the current directory, the router searches it and every ancestor
+nearest-first. Each candidate root must contain a complete marker set itself;
+markers from different directories are never combined. It recognizes four
+contexts from filesystem evidence:
 
 | Context | Evidence | Next playbook |
 | --- | --- | --- |
 | External target project | candidate source but no EvolveX source or workspace markers | bootstrap and experiment design |
 | EvolveX source checkout | `.git`, `pyproject.toml`, `src/evolve/`, `library/`, and `recipes/` | source authoring |
 | Initialized workspace | `evolve.yaml`, `.evolve-components.json`, archive and workspace launcher | experiment operation |
-| Insufficient context | none of the above is conclusive | ask one focused location question |
+| Partial or insufficient context | no complete set, including cases where only `evolve.yaml` or another EvolveX-specific marker exists | ask one focused location question |
 
-The router reports the evidence for its classification. It does not infer a
-writable source checkout merely because an installed Python package is
-available.
+The nearest complete candidate wins when it unambiguously owns the requested
+work. Distinct competing candidates or an unclear target-to-root relationship
+require one focused question. The router reports the candidate roots and
+evidence for its classification. It does not infer a writable source checkout
+merely because an installed Python package is available.
 
 ### Platform and installation adapters
 
@@ -156,19 +161,20 @@ installed package or conceal reusable code beside a recipe.
 
 ## Decision protocol
 
-Every material choice is presented as a compact decision packet:
+Every material choice names the decision and why it matters, then presents a
+compact packet with all eight fields:
 
-1. **Decision:** what must be chosen and why it matters.
-2. **Options:** realistic supported choices, including deferral when valid.
-3. **Recommendation:** the preferred option and concrete reasons.
-4. **Trade-offs:** quality, cost, time, complexity, security, and
-   reproducibility.
+1. **Options:** realistic supported choices, including deferral when valid.
+2. **Differences:** quality, cost, time, complexity, security, and
+   reproducibility trade-offs.
+3. **Recommendation:** the preferred option.
+4. **Rationale:** evidence-linked reasons for that recommendation.
 5. **Consequences:** files, framework boundaries, services, credentials, or
    experiment state affected.
-6. **Reversibility:** whether the choice can change later or requires a new
-   frozen workspace.
+6. **Reversibility:** whether the choice can change later or requires renewed
+   source approval or a new frozen workspace.
 7. **Unknowns:** missing evidence and explicit assumptions.
-8. **Selection:** the user's confirmation before the agent proceeds.
+8. **Explicit selection:** the user's confirmation before the agent proceeds.
 
 A choice is material when it changes the measurement contract or supported
 claims, trust or credential boundary, external spend, source implementation,
@@ -186,8 +192,12 @@ Material decisions include at least:
 - authentication and external services;
 - source approval, deployment approval, and live budget use.
 
-Selections and rationale are recorded in the custom recipe's `README.md` or,
-for framework-wide evaluator-engine work, the maintained design documentation.
+Source-bound selections and rationale are recorded in the custom recipe's
+`README.md` or, for framework-wide evaluator-engine work, the maintained design
+documentation. Source approval freezes that rationale. Later evidence and
+approval events live in an append-only external task record or Git note keyed
+to the immutable source identity so recording them does not invalidate the
+approval they describe.
 
 ## End-to-end workflow
 
@@ -239,9 +249,10 @@ engine-specific design and threat review must be approved before engine source
 implementation begins; the general experiment architecture approval does not
 substitute for that review.
 
-Before optimization design begins, the user reviews scoring semantics,
-partitions, calibration evidence, limitations, and the claims the evaluator can
-support.
+Before optimization design begins, the user reviews score direction, domain,
+range and units, aggregation and weighting, missing/failure handling,
+thresholds, tie behavior, acceptance semantics, partitions, calibration
+evidence, limitations, and the claims the evaluator can support.
 
 ### 3. Design the evolution method
 
@@ -249,9 +260,13 @@ The agent reads only the relevant method cards, then queries the live PR #47
 surface:
 
 ```bash
-evolve operator list --json
-evolve operator describe <stage>/<name> --json
+uv run --frozen --no-sync evolve operator list --json
+uv run --frozen --no-sync evolve operator describe <stage>/<name> --json
 ```
+
+These commands use a verified pre-provisioned environment. If it is absent,
+the agent stops for separately approved remediation rather than allowing an
+inspection command to synchronize dependencies.
 
 It explains whether a supported recipe fits, proposes a code-free custom
 composition when necessary, and identifies gaps that require new operators.
@@ -278,14 +293,19 @@ and preserves unrelated changes. It may:
 
 Reusable named operator source stays at `library/<stage>/<name>.py`. Recipes
 contain selection and configuration, not reusable Python implementations.
+Guided authoring accepts named `operator:` bindings only. The resolver's legacy
+or expert `script:` escape lies outside this workflow and requires equivalent
+transitive review, isolation, tests, and exact binding identity.
 
 ### 5. Verify authoring artifacts
 
 Verification proceeds from inexpensive contracts to broader behavior:
 
 ```text
-operator describe/check
-→ recipe check
+static transitive import review
+→ operator describe/check for schema and normalized config
+→ recipe check for operator resolution, normalization, and composition
+→ static target/surface and evaluator configuration/schema review
 → focused operator tests
 → evaluator positive and negative controls
 → model-free evaluator smoke
@@ -293,22 +313,30 @@ operator describe/check
 → normalized composition and provenance review
 ```
 
-The agent then presents the **source approval** packet: the exact diff,
-normalized configuration, test and calibration evidence, limitations, expected
-runtime and cost, and the bytes initialization will freeze.
+The agent then presents the **source approval** packet: the exact diff and
+frozen recipe rationale; each separately named static, schema, configuration,
+recipe, behavior, and calibration result; limitations; expected runtime and
+cost; and the bytes initialization will freeze. Recipe check is not represented
+as target, evaluator, runtime, or deployment proof.
 
 ### 6. Prepare and deploy
 
-After source approval, the agent runs read-only preflight and reports failures
-with their resolution choices. It does not silently install dependencies,
+After source approval, the agent binds a pinned remote target revision or a
+reviewed local manifest/digest covering tracked, staged, unstaged, and untracked
+include/exclude decisions. It scans the exact vendored bytes for secrets, runs
+read-only preflight, and reports failures with their resolution choices. Raw
+preflight output exists only inside the disposable boundary: an allowlist
+scanner sanitizes or rejects it there, only sanitized content leaves, and the
+raw capture is destroyed. The agent does not silently install dependencies,
 download assets, build images, use credentials, or call models.
 
-Once prerequisites pass, the agent presents the **deployment approval** packet.
-On approval it initializes the workspace, verifies its frozen contract and
-provenance, and may run inexpensive candidate smoke checks. Material model or
-evaluation spend, including baseline certification, receives explicit
-authorization. The initialized workspace then enters the existing
-evidence-chain operating workflow.
+Once prerequisites pass, the agent presents the **deployment approval** packet
+in the append-only external record. On approval it immediately revalidates the
+target snapshot and secret scan, initializes the workspace, verifies its frozen
+contract and provenance, then asks separately before any candidate smoke or
+model call. Material model or evaluation spend, including baseline
+certification, receives explicit authorization. The initialized workspace then
+enters the existing evidence-chain operating workflow.
 
 ## Approval semantics
 
@@ -316,15 +344,17 @@ Approvals bind to exact artifacts and assumptions:
 
 - changing scoring semantics invalidates evaluation and downstream approvals;
 - changing operator behavior invalidates source approval;
-- changing the dataset, runtime identity, or recipe after preflight invalidates
-  deployment approval;
+- changing the target snapshot, dataset, runtime identity, or recipe after
+  preflight invalidates deployment approval;
+- appending evidence or approval text to an approved recipe rationale changes
+  source bytes and invalidates source and deployment approval;
 - changing a frozen workspace contract requires a new workspace.
 
 Architecture approval binds to the recorded decision set. Source approval
 binds to the reviewed Git diff or commit plus normalized operator and recipe
-checks. Deployment approval binds to the selected recipe, operator, evaluator,
-dataset, runtime identities and their recorded digests, together with the
-current preflight result.
+checks and the frozen rationale. Deployment approval binds to the selected
+recipe, operator, evaluator, exact target seed, dataset, runtime identities and
+their recorded digests, together with the current preflight result.
 
 The agent names which approval became stale and why. It never treats a general
 statement of intent as authorization for unrelated external or costly work.
@@ -336,13 +366,15 @@ A typical custom recipe is the resumable design record:
 ```text
 my-recipe/
 ├── evolve.yaml
-├── README.md          # goal, decisions, assumptions, evidence, limitations
+├── README.md          # frozen source rationale and limitations
 └── evaluator/         # permitted evaluator assets when needed
 ```
 
 Reusable operator source lives in `library/`; focused tests live in `tests/`.
 Framework-wide engine work also updates `src/evolve/`, evaluator scaffolds,
 `ARCHITECTURE.md`, and maintained public design documentation as required.
+Post-source evidence and approvals live outside the recipe tree in an
+append-only task record or Git note keyed to the approved source identity.
 
 The complete flow is:
 
@@ -423,7 +455,7 @@ substantial duplicated canonical instructions.
 
 Follow the repository test tiers: focused checks while iterating, relevant
 composition/resource/coherence tests for changed boundaries, and
-`uv run --frozen pytest -q` before handoff. Run slow generated-workspace tests
+`uv run --frozen --no-sync pytest -q` before handoff. Run slow generated-workspace tests
 only when their workflow is affected. Docker, Harbor, model, and live-campaign
 checks remain explicitly authorized manual validation.
 
@@ -461,8 +493,8 @@ The umbrella design is realized when:
 5. Existing Harbor tasks and newly authored Harbor evaluations are supported.
 6. Harbor-compatible evaluation and evaluator-engine development are both
    presented with their differences before the user chooses.
-7. Every material choice includes options, recommendation, trade-offs,
-   consequences, reversibility, and unknowns.
+7. Every material choice includes options, differences, recommendation,
+   rationale, consequences, reversibility, unknowns, and explicit selection.
 8. Architecture, source, and deployment approvals are enforced and invalidated
    when their inputs change.
 9. The workflow resumes from repository artifacts rather than hidden chat

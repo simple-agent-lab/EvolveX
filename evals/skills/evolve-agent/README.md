@@ -54,35 +54,37 @@ with the prompt rather than autonomous routing.
 The JSON result files are evidence snapshots, not live status. Read their
 revision and protocol metadata before comparing them with the current skill;
 the historical baseline predates the full suite and is not a current-revision
-claim. The repository test requires recorded case IDs to remain a valid subset
-of the inventory captured by that historical run, verifies the exact unreported
-authoring-ID partition, and recomputes recorded arithmetic; it never fabricates
-missing scores. It does not start Agents or a grader.
+claim. The repository test asserts the snapshots' exact historical inventories
+and denominators, verifies the exact unreported authoring-ID partition, and
+recomputes every recorded summary field; it never fabricates missing scores. It
+does not start Agents or a grader.
 
 No formal paired behavior run covers the rewritten guided-authoring head:
-current-revision coverage is **0/25 behavior cases**. The historical
+current-revision coverage is **0/26 behavior cases**. The historical
 `current_results.json` covers the 16 pre-authoring behavior IDs on its older
-subject revision; the nine `authoring-*` IDs have no result row. The
+subject revision; the ten `authoring-*` IDs have no result row. The two-case
+baseline was drawn from that exact 16-case historical inventory. The
 qualitative pressure reports produced while authoring the skill are separate
 development feedback: they are not a complete paired campaign, were not blind
 graded under this protocol, and are not score snapshots. No invocation case in
 this inventory, whether original or newly added, has a recorded runner result;
-invocation coverage is **0/8**, as reflected by `cases_run: 0` in the historical
-snapshot.
+invocation coverage is **0/8**. The historical snapshot's
+`cases_available: 6` records the exact pre-authoring invocation inventory and
+`cases_run: 0`; it is not the current denominator.
 
 ## Local checks and prompt rendering
 
 Run the deterministic asset checks:
 
 ```bash
-uv run pytest tests/test_evolve_agent_evals.py
+uv run --frozen --no-sync pytest tests/test_evolve_agent_evals.py
 ```
 
 Render a prompt for an external Agent runner with:
 
 ```bash
-uv run python evals/skills/evolve-agent/render_prompt.py outer-ahe-agent --arm treatment
-uv run python evals/skills/evolve-agent/render_prompt.py outer-ahe-agent --arm control
+uv run --frozen --no-sync python evals/skills/evolve-agent/render_prompt.py outer-ahe-agent --arm treatment
+uv run --frozen --no-sync python evals/skills/evolve-agent/render_prompt.py outer-ahe-agent --arm control
 ```
 
 The control prompt must not contain the skill instruction or rubric. The

@@ -12,18 +12,21 @@ that the live catalog does not provide and the user selects new source. Read
 Discover the live catalog before reading or writing an implementation:
 
 ```bash
-uv run --frozen evolve operator list --json
+uv run --frozen --no-sync evolve operator list --json
 ```
 
 Catalog listing is filesystem-only. `operator describe` and `operator check`
 execute the entry file in a subprocess, and that subprocess inherits the
 environment used to launch the CLI. A subprocess boundary is not a security
-sandbox. Before inspecting any entry whose imports have not already been
-reviewed, use the import-safety and isolation procedure below. Inside that
-boundary, inspect the relevant schema:
+sandbox. The `uv` invocation above must use a pre-provisioned environment;
+`--no-sync` prevents an unapproved install or synchronization. If the executable
+or environment is unavailable, stop for separately approved remediation.
+Before inspecting any entry whose imports have not already been reviewed, use
+the import-safety and isolation procedure below. Inside that boundary, inspect
+the relevant schema:
 
 ```bash
-uv run --frozen evolve operator describe mutate/hyperagents --json
+uv run --frozen --no-sync evolve operator describe mutate/hyperagents --json
 ```
 
 Explain why the relevant existing operators and their declared configuration
@@ -45,8 +48,8 @@ The approved capability determines the stage; do not treat `analyze` and
 Run the matching scaffold command from the source checkout:
 
 ```bash
-uv run --frozen evolve operator new analyze failure_triage
-uv run --frozen evolve operator new mutate critic_editor
+uv run --frozen --no-sync evolve operator new analyze failure_triage
+uv run --frozen --no-sync evolve operator new mutate critic_editor
 ```
 
 The reusable entry is `library/<stage>/<name>.py`. Recipes select and configure
@@ -134,10 +137,10 @@ the smallest relevant test node and capture catalog evidence inside the same
 credential-free, allowlisted isolation boundary:
 
 ```bash
-uv run --frozen evolve operator describe analyze/failure_triage --json
-uv run --frozen evolve operator check analyze/failure_triage --config '{}' --json
-uv run --frozen evolve operator describe mutate/critic_editor --json
-uv run --frozen evolve operator check mutate/critic_editor --config '{}' --json
+uv run --frozen --no-sync evolve operator describe analyze/failure_triage --json
+uv run --frozen --no-sync evolve operator check analyze/failure_triage --config '{}' --json
+uv run --frozen --no-sync evolve operator describe mutate/critic_editor --json
+uv run --frozen --no-sync evolve operator check mutate/critic_editor --config '{}' --json
 ```
 
 The description records the public schema and the check records the normalized
@@ -151,16 +154,25 @@ operator-owned values below that stage's nested `config:` mapping, then check
 the complete recipe inside the same credential-free isolation boundary:
 
 ```bash
-uv run --frozen evolve recipe check /absolute/path/to/evolve.yaml --json
+uv run --frozen --no-sync evolve recipe check /absolute/path/to/evolve.yaml --json
 ```
 
-Prepare a source-approval packet containing the Git diff or commit, operator
-description, normalized configuration, focused-test result, recipe-check
-output, limitations, and the exact source identity that initialization will
-freeze. Source approval authorizes the reviewed source change; it is distinct
-from deployment approval, which must bind the selected recipe, evaluator,
-dataset, runtime identities, preflight, and live-spend boundary before
-initialization.
+Keep each proof distinct: static transitive import review establishes that the
+entry is safe to inspect; `describe` and `check` establish the declared schema
+and normalized operator configuration; the focused test establishes operator
+behavior; and recipe check establishes selected-operator resolution,
+normalization, and composition. Recipe check does not establish target or
+surface correctness, evaluator semantics, runtime readiness, or deployment
+fitness.
+
+Prepare a source-approval packet containing the Git diff or commit, frozen
+recipe rationale, static review result, operator description, normalized
+configuration, focused-test result, scoped recipe-check output, separately
+reviewed target/surface and evaluator configuration, limitations, and the exact
+source identity that initialization will freeze. Source approval authorizes the
+reviewed source change; it is distinct from prospective preflight and
+deployment approval, which must bind the selected target, recipe, evaluator,
+dataset, runtime identities, and live-spend boundary before initialization.
 
 Editing the source catalog never changes an existing initialized workspace.
 Changed frozen content requires a new workspace and the approvals named by

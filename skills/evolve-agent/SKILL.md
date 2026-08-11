@@ -14,7 +14,9 @@ requirements → contract → baseline → evidence → hypothesis
 
 ## 1. Route from filesystem evidence
 
-Check the two complete marker sets first and use the first matching context:
+Starting at the current directory, inspect it and each ancestor nearest-first.
+Evaluate each directory as one root; never combine markers from different
+directories to manufacture a match. Collect the two complete marker sets:
 
 - **Initialized workspace:** `evolve.yaml`, `.evolve-components.json`,
   `archive.jsonl`, and the workspace-local `./evolve` launcher all exist. Read
@@ -26,8 +28,9 @@ Check the two complete marker sets first and use the first matching context:
   [the decision protocol](references/decision-protocol.md) and
   [experiment design](references/experiment-design.md) before source work.
 - **Partial or ambiguous EvolveX markers:** neither set is complete, but at
-  least one EvolveX-specific marker exists: `src/evolve/`, `library/`,
-  `recipes/`, `.evolve-components.json`, `archive.jsonl`, or `./evolve`.
+  least one EvolveX-specific marker exists: `evolve.yaml`, `src/evolve/`,
+  `library/`, `recipes/`, `.evolve-components.json`, `archive.jsonl`, or
+  `./evolve`.
   Report the markers that are present and missing, then ask one focused
   question for the authoritative target, EvolveX checkout, or initialized-
   workspace root. An importable or installed EvolveX package is not evidence
@@ -54,7 +57,11 @@ Check the two complete marker sets first and use the first matching context:
   partial EvolveX marker set exists. Ask one focused question for the target,
   source-checkout, or initialized-workspace location and do not guess.
 
-State the evidence for the classification.
+Choose the nearest complete candidate when it unambiguously owns the requested
+work. If filesystem evidence or a user-supplied path identifies distinct
+competing candidates, or the relationship between the nearest candidate and
+the requested target is unclear, report the candidate roots and ask one focused
+question. State the evidence for every classification.
 
 **Completion check:** Name the context, target, authoritative checkout or
 workspace, and next playbook.
@@ -70,8 +77,12 @@ Use [experiment design](references/experiment-design.md) for a new experiment.
 Read [scientific foundations](references/scientific-foundations.md) when
 measurement semantics or research claims change. Do not use the method table
 until experiment design has qualified evaluator coverage, determinism, leakage,
-runtime compatibility, calibration, limitations, and supported claims. During
-design, catalog listing is filesystem-only; before a needed operator
+runtime compatibility, score direction and domain, aggregation, failure and
+missing-result handling, thresholds, ties, acceptance semantics, calibration,
+limitations, and supported claims. During design, catalog listing is
+filesystem-only. Use a verified pre-provisioned `evolve` executable or
+`uv run --frozen --no-sync`; if neither is available, stop and request a
+separately approved environment-remediation action. Before a needed operator
 description, read [operator inspection safety](references/operator-authoring.md)
 and use its static review and credential-free isolation procedure. Do not
 scaffold or edit source before architecture approval. Then read only the method
@@ -95,21 +106,31 @@ preserves it in `README.md`.
 
 ## 3. Author and review source
 
-Inspect catalog identities through
-`uv run --frozen evolve operator list --json`. When the approved composition
-needs a custom recipe, read
+Inspect catalog identities through a verified pre-provisioned executable or
+`uv run --frozen --no-sync evolve operator list --json`. When the approved
+composition needs a custom recipe, read
 [recipe authoring](references/recipe-authoring.md). Before executing
-`uv run --frozen evolve operator describe <stage>/<name> --json`, an operator
-check, a recipe check, prospective preflight, or newly authored code, read
+`uv run --frozen --no-sync evolve operator describe <stage>/<name> --json`, an
+operator check, a recipe check, prospective preflight, or newly authored code,
+read
 [operator authoring](references/operator-authoring.md) and use its static
 import-safety review and credential-free isolated environment. Configure an
 existing operator when it fits; author reusable source only for an approved
 capability gap.
 
+Guided authoring permits only named `operator:` bindings. Reject `script:`
+bindings; the legacy expert escape is outside this workflow and needs an
+equivalent transitive source review, isolation boundary, behavior tests, and an
+exact binding identity under a separately approved process.
+
 Run operator checks, focused tests, and
-`uv run --frozen evolve recipe check <recipe-path> --json` inside that
-boundary. Present source approval bound to the Git diff or commit and
-normalized check evidence.
+`uv run --frozen --no-sync evolve recipe check <recipe-path> --json` inside
+that boundary. Treat recipe-check output only as operator resolution,
+normalization, and composition evidence. Name static target/surface review,
+operator config/schema checks, evaluator configuration checks, and focused
+behavior tests separately; prospective preflight remains a later deployment
+check. Present source approval bound to the Git diff or commit and this
+separated evidence.
 
 **Completion check:** Every custom operator has a named catalog identity,
 declarative config, focused behavior test, valid recipe binding, limitations,
@@ -120,6 +141,11 @@ and source approval.
 Read [deployment](references/deployment.md). Run read-only preflight, explain
 remediation options, and obtain deployment approval before initialization.
 Ask separately before live model or evaluation spend.
+
+Freeze the recipe rationale with the approved source identity. Store later
+preflight evidence, remediation authority, and deployment approval only in an
+append-only external task record or Git note keyed to that identity; those
+records must not change the approved source tree.
 
 **Completion check:** The preflighted inputs match the initialized workspace,
 provenance and integrity verify, and any baseline spend was authorized.
@@ -146,6 +172,11 @@ change the running process.
 retained evidence, mutable surface, and interrupted state are all explicit.
 
 ## 6. Close the loop
+
+A parent artifact may be replayed only when its task-set, evaluator, runtime,
+and artifact manifest/digest identities all match the current contract. Any
+mismatch requires a fresh parent execution. Every child candidate executes
+fresh regardless of method or matching parent evidence.
 
 1. Establish and inspect the certified baseline.
 2. Select a parent through the configured select stage.

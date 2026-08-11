@@ -96,11 +96,11 @@ Add an operator to a source checkout, validate it, and compose it without a
 registry edit:
 
 ```bash
-uv run --frozen evolve operator new mutate my_operator
-uv run --frozen evolve operator describe mutate/my_operator
-uv run --frozen evolve operator check mutate/my_operator --config '{}'
-uv run --frozen evolve operator list mutate
-uv run --frozen evolve recipe check /path/to/my-recipe/evolve.yaml
+uv run --frozen --no-sync evolve operator new mutate my_operator
+uv run --frozen --no-sync evolve operator describe mutate/my_operator
+uv run --frozen --no-sync evolve operator check mutate/my_operator --config '{}'
+uv run --frozen --no-sync evolve operator list mutate
+uv run --frozen --no-sync evolve recipe check /path/to/my-recipe/evolve.yaml
 ```
 
 After `evolve init`, use `./evolve operator active .` to inspect the frozen

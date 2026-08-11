@@ -34,14 +34,16 @@ or `library/analyze/artifact_rubric.py` and
 
 ## Apply the method
 
-1. Obtain the selected parent's evidence. Replay certified artifacts when they
-   match the current fixed task and evaluator identity; otherwise run it.
+1. Obtain the selected parent's evidence. Replay certified artifacts only when
+   task-set, evaluator, runtime, and artifact manifest/digest identities all
+   match; otherwise execute the parent freshly.
 2. In trajectory mode, compress behavioral events and infer likely outcomes
    without evaluator labels. In artifact mode, rank hard failures and weak
    rubrics from retained outputs without requiring a trajectory.
 3. Group recurring patterns and review any proposed skill drafts.
 4. Mutate the prompt and reusable skills within the mutable surface.
-5. Execute the child freshly on the fixed optimization task set.
+5. Execute the child freshly on the fixed optimization task set regardless of
+   whether parent evidence was replayed.
 6. Compare parent and child only when their task-set and evaluator identities
    match; reserve held-out or sealed tasks for a later generalization claim.
 7. Preserve the selected evidence, patch, evaluation, and decision.

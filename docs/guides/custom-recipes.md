@@ -12,11 +12,12 @@ deployment work. For guided authoring, follow the repository playbooks in
 
 Before copying a recipe, qualify the evaluator's coverage, determinism,
 leakage boundary, runtime compatibility, positive and negative calibration,
-limitations, and supported claims. Stop or route to evaluation authoring if
-that evidence is insufficient. Record the target, mutable surface, evaluator,
-partitions, runtime boundary, budget, alternatives, and risks in the task
-record, then obtain architecture approval. Materialize the custom recipe and
-its durable `README.md` only after that approval.
+score direction and domain, aggregation, missing/failure handling, thresholds,
+ties, acceptance semantics, limitations, and supported claims. Stop or route to
+evaluation authoring if that evidence is insufficient. Record the target,
+mutable surface, evaluator, partitions, runtime boundary, budget, alternatives,
+and risks in the task record, then obtain architecture approval. Materialize
+the custom recipe and its durable `README.md` only after that approval.
 
 Author the approved recipe in this order:
 
@@ -47,13 +48,18 @@ files, writable temporary directory, executable tools, and environment
 variables are explicitly allowlisted:
 
 ```bash
-uv run --frozen evolve recipe check "$PWD/my-recipes/my-gepa/evolve.yaml" --json
+uv run --frozen --no-sync evolve recipe check "$PWD/my-recipes/my-gepa/evolve.yaml" --json
 ```
 
-Rerun that full check after every phase and on the exact source-review tree.
-A passing check proves resolution, schemas, and normalized configuration. It
-does not qualify evaluator behavior, prove authentication or runtime
-readiness, approve source, or authorize deployment.
+Use a verified pre-provisioned executable or the `--no-sync` form above. If the
+environment is absent, stop for separately approved remediation instead of
+letting `uv` synchronize it. Rerun the full recipe check after every phase and
+on the exact source-review tree. A passing check proves selected-operator
+resolution, normalization, and composition only. Record static target/surface
+review, operator config/schema checks, evaluator configuration/schema checks,
+focused behavior tests, and calibration separately. Prospective preflight later
+checks its represented target, dataset, runtime, and destination inputs; no
+single check approves source or deployment.
 
 Use `--recipe` only for names shipped under the repository's `recipes/`
 directory. Use `--recipe-path` for your own recipe. The two options cannot be
@@ -152,9 +158,9 @@ measurement infrastructure must remain outside the mutable surface.
 Configure this section only after the evaluator, partition, and runtime phase
 has passed its checkpoint. It appears here solely as a field reference.
 
-Each enabled stage selects exactly one named `operator` or one explicit
-`script`. `timeout_s` belongs to the stage binding; all operator-specific
-settings live under `config`:
+In guided authoring, each enabled stage selects exactly one named `operator`.
+`timeout_s` belongs to the stage binding; all operator-specific settings live
+under `config`:
 
 ```yaml
 operators:
@@ -192,19 +198,12 @@ the built-in operator catalog. Helpers whose file or directory name begins
 with `_` are importable by entry files but are not discovered as operators;
 shared schema fragments may live in an underscore-prefixed stage helper.
 
-An explicit `script:` remains executable for an escape hatch:
-
-```yaml
-operators:
-  select:
-    script: ./custom/select.py
-    timeout_s: 600
-    config: {}
-```
-
-Relative paths resolve from the recipe directory, but script bindings are
-reported as non-portable: the recipe depends on that external filesystem path.
-Use a named library operator for a recipe intended to travel between checkouts.
+The resolver retains an explicit `script:` compatibility escape for legacy or
+expert use, but guided authoring must reject it. That path is outside the
+guided workflow because a relative file alone is not a portable catalog
+identity. An expert workflow must independently establish the exact bound
+bytes, review every transitive import, use the same credential-free isolation,
+and supply focused behavior tests before a separately approved source review.
 
 ## Configure the evaluator and split
 
@@ -238,6 +237,11 @@ content identities into `evaluator/splits.json`.
 
 Keep `operators.mutate.config.expose_gate_data: false` unless the experiment
 explicitly intends to expose protected evaluation history.
+
+Record scoring semantics beside the qualified evaluator: whether higher or
+lower is better; valid score domain, range, and unit; aggregation and weighting;
+handling of missing, invalid, timed-out, or failed cases; thresholds and ties;
+and the exact candidate acceptance or non-regression rule.
 
 ## Prepare images and authentication
 
@@ -273,10 +277,17 @@ rules, runtime identity, cache paths, proxies, and the startup checklist.
 ## Validate before initialization
 
 Obtain source approval for the exact Git tree, durable rationale, normalized
-recipe check, identities, evidence, and limitations before prospective
+recipe-check evidence, separately named static/config/schema checks,
+identities, evidence, and limitations before prospective
 preflight. Reject credential-bearing URLs: remove URL userinfo and secret query
 parameters before command execution or output retention, and use an out-of-band
 authentication mechanism.
+
+Source approval freezes the recipe `README.md` with that Git identity. Put
+later preflight evidence, remediation decisions, and deployment approval in an
+append-only external task record or Git note keyed to the immutable source
+identity and excluded from it. If new evidence changes a material decision,
+update the rationale and obtain renewed source approval.
 
 Prospective `evolve preflight` is a read-only initialization checklist. Recipe
 resolution still executes named operator inspection, so repeat static review
@@ -288,11 +299,19 @@ task limit, and the declared `EVOLVE_RUNTIME_DIGEST` shown below:
 ```bash
 export EVOLVE_RUNTIME_DIGEST="sha256:replace-with-your-runtime-digest"
 
-uv run --frozen evolve preflight /tmp/my-experiment \
+uv run --frozen --no-sync evolve preflight /tmp/my-experiment \
   --recipe-path "$PWD/my-recipes/my-gepa" \
   --seed /absolute/path/to/my-agent \
   --dataset /absolute/path/to/harbor/tasks
 ```
+
+Before preflight, bind the exact target seed. A remote Git seed needs a full
+immutable revision. A local seed needs a reviewed deterministic manifest/digest
+of the exact vendored set that accounts for tracked `HEAD`, staged, unstaged,
+and untracked content with explicit include/exclude decisions. Scan those exact
+included bytes for secrets, and revalidate the snapshot and scan immediately
+before initialization. A target change invalidates prospective evidence and
+deployment approval.
 
 Fix every failed check before `evolve init`. After changing a recipe, target,
 operator, evaluator asset, image, or dataset membership, initialize a **new**
@@ -300,8 +319,13 @@ workspace. Existing workspaces are intentionally frozen experiment records.
 
 The command does not generate a receipt or validate authentication identity,
 remote reachability, credential validity, or actual evaluator/runtime
-readiness. Manually sanitize stdout before retaining it. In the task or recipe
-record, save the exact secret-free command, sanitized stdout, independently
-established Git/content/image/runtime identities and digests, and every
-unchecked assumption. Request deployment approval bound to that packet before
-`evolve init`; baseline evaluation spend requires separate authority.
+readiness. Capture raw stdout and stderr only inside the disposable isolated
+boundary, pass it there through an allowlist scanner that redacts recognized
+secret forms and rejects unexpected fields, emit only sanitized content, then
+destroy the raw capture with the boundary. Stop if that containment or scanner
+is unavailable; post-display redaction is unsafe. Save the exact secret-free
+command, sanitized result, independently established source, target, content,
+image, and runtime identities and digests, and every unchecked assumption only
+in the external append-only record. Request deployment approval bound to that
+exact packet before `evolve init`; baseline evaluation spend requires separate
+authority.

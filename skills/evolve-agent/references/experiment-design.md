@@ -13,7 +13,7 @@ State the evidence for the classification.
 
 ## Establish the experiment brief
 
-Name the target, mutable surface, protected paths, desired behavior, observed failures, frozen evaluator, optimization/gate/sealed partitions, candidate budget, concurrency, timeouts, cost boundary, execution boundary, credentials mode, baseline requirement, and evidence required for acceptance and claims.
+Name the target, exact seed identity, mutable surface, protected paths, desired behavior, observed failures, frozen evaluator, optimization/gate/sealed partitions, candidate budget, concurrency, timeouts, cost boundary, execution boundary, credentials mode, baseline requirement, and evidence required for acceptance and claims.
 
 During design, write confirmed choices, assumptions, and limitations into the
 current task record. After architecture approval selects a custom recipe,
@@ -27,6 +27,9 @@ cards. Record:
 
 - **Coverage:** which required behaviors, known failures, edge cases, and
   optimization, gate, and sealed partitions are measured or missing.
+- **Scoring semantics:** score direction; domain, range, and units; aggregation
+  and weighting; handling of missing, invalid, timed-out, or failed cases;
+  thresholds; tie behavior; and the exact acceptance or non-regression rule.
 - **Determinism:** whether repeated runs of the same candidate under the same
   runtime reproduce inputs and outcomes, plus every known nondeterministic
   component and tolerance.
@@ -81,19 +84,21 @@ Use `scientific-foundations.md` when evaluator semantics, partitions, acceptance
 Read only the method cards supported by the available evidence. Present the nearest supported recipe, a code-free custom composition when needed, and deferral when the evaluator or target contract is incomplete. Explain the evidence each method consumes, the paths it may change, and the claims it can support.
 
 Inspect the live operator catalog before claiming that custom source is needed.
-Filesystem-only listing may run during design. Before `operator describe`, use
-the static review and credential-free isolation procedure in
-[operator authoring](operator-authoring.md); inspection is evidence gathering,
-not authority to scaffold or edit source. Do not use file presence in an
-initialized workspace as the source catalog.
+Filesystem-only listing may run during design through a verified
+pre-provisioned executable or `uv run --frozen --no-sync`; if neither is
+available, stop for separately approved environment remediation. Before
+`operator describe`, use the static review and credential-free isolation
+procedure in [operator authoring](operator-authoring.md); inspection is
+evidence gathering, not authority to scaffold or edit source. Do not use file
+presence in an initialized workspace as the source catalog.
 
 ## Record the architecture decision
 
 Before source work, present architecture approval bound to the target,
-evaluation identity, partitions, recipe composition, proposed custom operator
-gaps, mutable surface, runtime, budget, risks, unknowns, and task-record
-rationale. If approved, preserve that rationale in the custom recipe `README.md`
-created during source authoring.
+evaluation identity and scoring semantics, partitions, recipe composition,
+proposed custom operator gaps, mutable surface, runtime, budget, risks,
+unknowns, and task-record rationale. If approved, preserve that rationale in
+the custom recipe `README.md` created during source authoring.
 
 Do not initialize, build external assets, or implement source before the user
 approves this exact architecture. Do not call models except for a separately

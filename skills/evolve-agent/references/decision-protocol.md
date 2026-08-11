@@ -17,33 +17,39 @@ when it cannot change those boundaries and is disclosed in the next review.
 
 ## Decision packet
 
-Present one focused packet at a time:
+Name the decision and why it matters, then present one focused packet at a
+time with all eight fields:
 
-1. **Decision:** what must be chosen and why it matters.
-2. **Options:** realistic supported choices, including deferral when valid.
-3. **Recommendation:** the preferred option and concrete reasons.
-4. **Trade-offs:** quality, cost, time, complexity, security, and reproducibility.
+1. **Options:** realistic supported choices, including deferral when valid.
+2. **Differences:** concrete quality, cost, time, complexity, security, and
+   reproducibility trade-offs between those options.
+3. **Recommendation:** the preferred option.
+4. **Rationale:** evidence-linked reasons for that recommendation.
 5. **Consequences:** files, services, credentials, or experiment state affected.
-6. **Reversibility:** whether changing later requires new source or a workspace.
+6. **Reversibility:** whether changing later requires new source approval or a
+   new workspace.
 7. **Unknowns:** missing evidence and explicit assumptions.
-8. **Selection:** the user's choice before work crosses the boundary.
+8. **Explicit selection:** the user's choice before work crosses the boundary.
 
 Do not manufacture a false alternative. When only one safe option exists,
 explain why the rejected alternatives violate a named contract.
 
 ## Approval checkpoints
 
-**Architecture approval** binds to the recorded target, evaluator, partitions,
-recipe, operators, mutable surface, runtime, budget, risks, and unknowns.
+**Architecture approval** binds to the recorded target, evaluator and scoring
+semantics, partitions, recipe, operators, mutable surface, runtime, budget,
+risks, and unknowns.
 
 **Source approval** binds to the reviewed Git diff or commit, normalized
-operator configurations, recipe-check output, focused tests, calibration
-evidence already available, and documented limitations.
+operator configurations, recipe-check resolution/normalization/composition
+output, separately named static target/surface and evaluator config/schema
+checks, focused tests, calibration evidence already available, documented
+limitations, and the frozen recipe rationale.
 
 **Deployment approval** binds to the selected recipe, operator, evaluator,
-dataset, and runtime identities and their recorded digests, together with the
-current preflight result. It authorizes initialization, not unbounded live
-evaluation spend.
+dataset, exact target-seed snapshot, and runtime identities and their recorded
+digests, together with the current preflight result. It authorizes
+initialization, not unbounded live evaluation spend.
 
 ## Approval invalidation
 
@@ -58,10 +64,15 @@ evaluation spend.
   source and deployment approval because the reviewed and frozen bytes changed.
 - Any changed approved source or recipe bytes invalidate source and deployment
   approval, even when architecture remains valid.
-- Changed dataset, runtime identity, credentials mode, or preflight input
-  invalidates deployment approval. When that deployment input also changes
-  evaluation meaning or the execution or trust boundary, it falls under the
-  semantic rule above and invalidates architecture as well.
+- Changed target-seed snapshot, dataset, runtime identity, credentials mode, or
+  preflight input invalidates deployment approval. When that deployment input
+  also changes evaluation meaning or the execution or trust boundary, it falls
+  under the semantic rule above and invalidates architecture as well.
+- Any edit to an approved recipe `README.md`, including appending evidence or
+  approval text, changes approved recipe bytes and invalidates source and
+  deployment approval. A material decision change may require that edit; update
+  the rationale, then obtain renewed source approval instead of concealing it
+  in a deployment record.
 - Changed frozen experiment content requires a new workspace rather than an
   in-place historical rewrite.
 
@@ -71,14 +82,15 @@ Name the stale approval, the changed input, and the checks that must be rerun.
 
 Recover from repository evidence, not conversational memory:
 
-1. Read the recipe `README.md` rationale and current task record, inspect the
+1. Read the frozen recipe `README.md` rationale and the append-only external
+   task record or Git notes keyed to its approved source identity. Inspect the
    Git status and diff, and note any missing rationale as an unresolved gap.
    Recompute current recipe, operator, evaluator, dataset, and runtime
    identities or digests only from local read-only artifacts. Keep unknown
    external identities explicit rather than probing them during recovery.
-2. Reconstruct the architecture, source, and deployment checkpoint bindings.
-   Identify the last gate whose recorded inputs and semantics still match the
-   current tree.
+2. Reconstruct the architecture, source, target-seed, and deployment checkpoint
+   bindings. Identify the last gate whose recorded inputs and semantics still
+   match the current tree and exact vendored target snapshot.
 3. Preserve approved decisions whose bound inputs are unchanged. Do not reopen,
    rewrite, or discard settled work merely because the previous Agent stopped.
 4. Rerun inexpensive checks belonging to the current checkpoint: static
@@ -98,12 +110,22 @@ actually workspace recovery.
 ## Durable decision record
 
 Before source exists, record material decisions in the current task record.
-After architecture approval creates a custom recipe, preserve those decisions
-in its `README.md`. Each entry names a stable decision id, selected option,
-alternatives, recommendation, trade-offs, consequences, reversibility,
-unknowns, approval checkpoint, and binding source identity. Record superseding
-decisions instead of rewriting history silently.
+After architecture approval creates a custom recipe, preserve the source-bound
+decisions in its `README.md`. Each entry names a stable decision id, options,
+differences, recommendation, rationale, consequences, reversibility, unknowns,
+the user's explicit selection, and the checkpoint it governs. Record a
+superseding decision instead of rewriting history silently.
+
+Source approval freezes the recipe rationale with the approved Git identity.
+Record that approval event, then write preflight evidence, remediation
+authority, deployment approval, and initialization results only to an
+append-only external task record or Git note keyed to the immutable approved
+identity and excluded from that identity. Do not append them to the recipe
+`README.md`. If new evidence changes a material decision, update the rationale
+and return to the approval checkpoint invalidated by that source or semantic
+change.
 
 Do not treat chat text alone as durable approval. Before crossing a checkpoint,
 summarize the bound artifacts and capture the user's explicit selection in the
-current task record and recipe rationale.
+appropriate durable record without changing an identity that was already
+approved.
