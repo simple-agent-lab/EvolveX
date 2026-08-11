@@ -287,29 +287,6 @@ def test_every_library_operator_rejects_unknown_settings(operator: LibraryOperat
 
 
 @pytest.mark.parametrize(
-    ("stage", "expected"),
-    [
-        ("select", {"seed": 0}),
-        ("rollout", {}),
-        ("analyze", {}),
-        ("mutate", {}),
-        ("validate", {}),
-        ("novelty", {}),
-        ("gate", {}),
-        ("record", {}),
-        ("reflect", {}),
-    ],
-)
-def test_stage_skeleton_demonstrates_config_validation(stage: str, expected: dict[str, object]) -> None:
-    operator = LibraryOperator(stage=stage, name="_skeleton", source=ROOT / "library" / stage / "_skeleton.py")
-
-    assert describe_operator(operator)["config_validation"] is True
-    assert validate_operator_config(operator, {}) == expected
-    with pytest.raises(OperatorLibraryError, match="unknown settings: unexpected"):
-        validate_operator_config(operator, {"unexpected": True})
-
-
-@pytest.mark.parametrize(
     ("stage", "name", "config", "message"),
     [
         ("select", "random", {"seed": True}, "seed must be an integer"),

@@ -146,8 +146,7 @@ operators:
 Named operators are portable because the source catalog owns their identity.
 To add one:
 
-1. Run `evolve operator new <stage> <name>` in a source checkout, or copy the
-   closest `library/<stage>/_skeleton.py`.
+1. Run `evolve operator new <stage> <name>` in a source checkout.
 2. Implement the corresponding interface from `evolve.frozen.interfaces`.
 3. Validate configuration in the entry file and pass the validator to
    `sdk.main(..., validate_config=validate_config)`.

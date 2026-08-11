@@ -222,8 +222,7 @@ genid)`, and reports render coverage and certification independently from score.
 
 ## Write Your Own Named Operator
 
-1. Run `evolve operator new <stage> <name>` in a source checkout, or copy
-   `library/<stage>/_skeleton.py` to `library/<stage>/<name>.py`.
+1. Run `evolve operator new <stage> <name>` in a source checkout.
 2. Implement the stage method and return its result dataclass.
 3. Implement mandatory config validation with
    `library._shared.config.config_object`, normalizers, and `reject_unknown`;

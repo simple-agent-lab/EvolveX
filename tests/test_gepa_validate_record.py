@@ -71,8 +71,9 @@ def test_gepa_validation_replays_exact_parent_minibatch_and_accepts_improvement(
 
 
 def test_gepa_validation_preserves_harbor_retry_fallback_when_omitted(tmp_path: Path, monkeypatch) -> None:
+    from library._shared.harbor import execution as harbor
+
     module = _module("gepa_validate_retry_under_test", ROOT / "library/validate/minibatch_improvement.py")
-    harbor = _module("harbor_retry_under_test", ROOT / "library/_shared/harbor.py")
     normalized = validate_operator_config(
         resolve_operator("validate", "minibatch_improvement"), {"criterion": "strict"}
     )

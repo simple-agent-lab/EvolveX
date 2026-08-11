@@ -1,6 +1,6 @@
 """Newest parent selection chooses the youngest valid archive parent.
 
-It is a small proof variant written from PROTOCOL.md and the select skeleton.
+It is a small proof variant of the selection contract in PROTOCOL.md.
 """
 
 from evolve.frozen import sdk

@@ -218,4 +218,9 @@ def test_materialized_gepa_validate_imports_only_shared_harbor_runtime(tmp_path)
     )
 
     assert result.returncode == 0, result.stderr
-    assert "library/_shared/harbor.py" in materialized.files
+    assert "library/_shared/harbor/__init__.py" in materialized.files
+    assert "library/_shared/harbor/config.py" in materialized.files
+    assert "library/_shared/harbor/evidence.py" in materialized.files
+    assert "library/_shared/harbor/execution.py" in materialized.files
+    assert "library/_shared/harbor/rollout.py" in materialized.files
+    assert "library/_shared/harbor.py" not in materialized.files

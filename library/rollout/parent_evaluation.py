@@ -62,7 +62,7 @@ class _ArtifactSnapshot:
 
 
 def _load_collect_cases(checkout: Path) -> Callable[..., list[dict[str, Any]]]:
-    path = checkout / "library" / "_shared" / "harbor.py"
+    path = checkout / "library" / "_shared" / "harbor" / "evidence.py"
     if not path.is_file():
         raise SystemExit(f"vendored Harbor runtime is missing: {path}")
     spec = importlib.util.spec_from_file_location("evolve_parent_evaluation_harbor", path)

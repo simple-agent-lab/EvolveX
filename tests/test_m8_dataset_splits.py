@@ -480,9 +480,8 @@ def test_harbor_rollout_keeps_infra_tasks_without_outer_repair(tmp_path: Path, m
 
 
 def test_harbor_rollout_exact_task_replay_is_limited_to_frozen_train_split(tmp_path: Path, monkeypatch) -> None:
-    from test_m7_harbor_rollout import _harbor_rollout_module
+    from library._shared.harbor import execution as module
 
-    module = _harbor_rollout_module()
     monkeypatch.setattr(
         module,
         "select_dataset_tasks",
@@ -517,9 +516,8 @@ def test_harbor_rollout_exact_task_replay_is_limited_to_frozen_train_split(tmp_p
 
 
 def test_harbor_rollout_can_shuffle_train_minibatches_by_generation(tmp_path: Path, monkeypatch) -> None:
-    from test_m7_harbor_rollout import _harbor_rollout_module
+    from library._shared.harbor import execution as module
 
-    module = _harbor_rollout_module()
     names = [f"train-{index}" for index in range(20)]
     monkeypatch.setattr(module, "select_dataset_tasks", lambda *_args, **_kwargs: (names, "hash"))
 

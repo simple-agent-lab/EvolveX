@@ -26,8 +26,8 @@ library/
 ```
 
 Files and directories beginning with `_` are importable helpers and are not
-discovered as named operators. Each stage directory also has an `_skeleton.py`
-authoring starting point.
+discovered as named operators. Use `evolve operator new` to create a complete,
+stage-aware operator entry file.
 
 ## Author and validate an operator
 

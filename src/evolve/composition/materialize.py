@@ -54,11 +54,11 @@ def materialize_operators(
 
 def _stage_helper_files(root: Resource, stage: str) -> dict[str, str | bytes]:
     stage_root = root / stage
-    return _prefixed_helpers(stage_root, f"library/{stage}", exclude={"_skeleton.py"})
+    return _prefixed_helpers(stage_root, f"library/{stage}")
 
 
 def _root_helper_files(root: Resource) -> dict[str, str | bytes]:
-    files = _prefixed_helpers(root, "library", exclude=set())
+    files = _prefixed_helpers(root, "library")
     package_boundary = root / "__init__.py"
     if package_boundary.is_file():
         files["library/__init__.py"] = package_boundary.read_bytes()
@@ -89,17 +89,10 @@ def _walk_files(root: Resource, prefix: Path = Path("")) -> Iterator[tuple[Path,
 def _prefixed_helpers(
     root: Resource,
     destination: str,
-    *,
-    exclude: set[str],
 ) -> dict[str, str | bytes]:
     files: dict[str, str | bytes] = {}
     for source in sorted(root.iterdir(), key=lambda entry: entry.name):
-        if (
-            not source.name.startswith("_")
-            or source.name in exclude
-            or source.name == "__pycache__"
-            or source.name.endswith(".pyc")
-        ):
+        if not source.name.startswith("_") or source.name == "__pycache__" or source.name.endswith(".pyc"):
             continue
         if isinstance(source, Path) and source.is_symlink():
             raise ValueError(f"operator asset may not be a symlink: {source}")

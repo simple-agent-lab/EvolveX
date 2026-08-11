@@ -20,9 +20,14 @@ def test_real_recipe_binds_harbor_rollout_analyze_and_hyperagents_mutate() -> No
     assert mutate.source.read_text() == expected_source
 
     materialized = materialize_operators(bindings)
-    harbor_runtime = str(materialized.files["library/_shared/harbor.py"])
+    harbor_runtime = str(materialized.files["library/_shared/harbor/rollout.py"])
     assert '"target": "/opt/evolve/uv/cache"' in harbor_runtime
     assert '"target": "/installed-agent/uv-cache"' not in harbor_runtime
+    assert "library/_shared/harbor/__init__.py" in materialized.files
+    assert "library/_shared/harbor/config.py" in materialized.files
+    assert "library/_shared/harbor/evidence.py" in materialized.files
+    assert "library/_shared/harbor/execution.py" in materialized.files
+    assert "library/_shared/harbor.py" not in materialized.files
     assert "library/mutate/_config.py" in materialized.files
     assert "library/_shared/runners/local.py" in materialized.files
     assert "library/_shared/runners/harbor.py" in materialized.files
@@ -53,7 +58,6 @@ def test_materialization_preserves_binary_stage_helper_assets(tmp_path: Path) ->
     (library / "mutate" / "_support").mkdir()
     (library / "mutate" / "_support" / "backend.py").write_text("SUPPORT = True\n")
     (library / "mutate" / "_support" / "strategy.bin").write_bytes(b"\x86\x00")
-    (library / "mutate" / "_skeleton.py").write_text("MUST_NOT_COPY = True\n")
     (library / "mutate" / "__pycache__").mkdir()
     (library / "mutate" / "__pycache__" / "strategy.cpython-314.pyc").write_bytes(b"\x86\x00")
     binding = ResolvedOperator(
@@ -72,7 +76,6 @@ def test_materialization_preserves_binary_stage_helper_assets(tmp_path: Path) ->
     assert materialized.files["library/mutate/_support/backend.py"] == "SUPPORT = True\n"
     assert materialized.files["library/mutate/_support/strategy.bin"] == b"\x86\x00"
     assert "library/mutate/prompts/strategy.md" not in materialized.files
-    assert "library/mutate/_skeleton.py" not in materialized.files
     assert not any("__pycache__" in path or path.endswith(".pyc") for path in materialized.files)
 
 
