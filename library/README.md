@@ -5,14 +5,16 @@ entry at `library/<stage>/<name>.py` is a named operator; adding a valid file
 makes it discoverable without a registry edit. Recipes contain no operator
 code. They select a name and provide configuration, and initialization freezes
 only the recipe-selected active scripts into `operators/`. The generated
-`library/` contains the closed root underscore helper bundle plus the
-underscore helper bundle for each selected named stage; unselected public
-operators are never copied.
+`library/` contains generic helpers, method-private bundles required by the
+selected operators, and the helper bundle for each selected named stage;
+unselected public operators and method bundles are never copied.
 
 ```text
 library/
-├─ _shared/     shared underscore-prefixed helpers
+├─ _shared/     generic helpers shared by all methods
 │  └─ runners/ local · harbor
+├─ _methods_shared/
+│  └─ gepa/     GEPA-private helpers shared across its stages
 ├─ select/      greedy · newest · pareto · random · score_weighted
 ├─ rollout/     failure_focused · harbor · noop · parent_evaluation
 ├─ analyze/     failure_patterns · trace_browser · trajectory_only · …
@@ -26,8 +28,10 @@ library/
 ```
 
 Files and directories beginning with `_` are importable helpers and are not
-discovered as named operators. Use `evolve operator new` to create a complete,
-stage-aware operator entry file.
+discovered as named operators. `library/_shared/` is always materialized;
+`library/_methods_shared/<method>/` is materialized only when selected code
+imports it. Use `evolve operator new` to create a complete, stage-aware operator
+entry file.
 
 ## Author and validate an operator
 

@@ -99,7 +99,9 @@ def test_discovery_ignores_pycache(tmp_path: Path) -> None:
 def test_discovery_allows_shared_helpers(tmp_path: Path) -> None:
     root = tmp_path / "library"
     (root / "_shared").mkdir(parents=True)
-    (root / "_shared" / "gepa.py").touch()
+    (root / "_shared" / "helper.py").touch()
+    (root / "_methods_shared" / "gepa").mkdir(parents=True)
+    (root / "_methods_shared" / "gepa" / "__init__.py").touch()
     (root / "README.md").touch()
 
     assert discover_operators(root) == {}

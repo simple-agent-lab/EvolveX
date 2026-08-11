@@ -237,8 +237,12 @@ content identities into `evaluator/splits.json`.
 - **sealed** data is an evaluation anchor and must not be exposed as mutation
   feedback.
 
-Keep `operators.mutate.config.expose_gate_data: false` unless the experiment
-explicitly intends to expose protected evaluation history.
+At the first `evolve run`, EvolveX evaluates `gen/0` on the configured primary
+split and then evaluates it once on every sealed task. The sealed result is
+non-selectable and is not included in the mutation feedback bundle. Keep
+`operators.mutate.config.expose_gate_data: false` whenever a sealed split is
+present; every supported recipe does so, and the Harbor mutate runner rejects
+`true` for a non-empty sealed split.
 
 Record scoring semantics beside the qualified evaluator: whether higher or
 lower is better; valid score domain, range, and unit; aggregation and weighting;
@@ -254,7 +258,7 @@ shapes, not source-authoring steps. Obtain separate explicit authority for any
 image build, download, or other environment mutation before running them:
 
 ```bash
-docker build -t my-mutate-runner:latest containers/meta-agent-codex
+docker build -t my-mutate-runner:latest containers/mutate-codex
 docker image inspect my-mutate-runner:latest
 ```
 

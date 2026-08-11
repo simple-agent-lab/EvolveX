@@ -161,7 +161,7 @@ def test_jsonl_record_without_gate_preserves_terminal_annotation(tmp_path: Path)
     workspace, _evolve_home = init_workspace(tmp_path)
     run_dir = workspace / "runs" / "operator-failed"
     (run_dir / "mutate").mkdir(parents=True)
-    (run_dir / "mutate" / "rationale.md").write_text("meta-agent failed before gate\n")
+    (run_dir / "mutate" / "rationale.md").write_text("mutate failed before gate\n")
     ctx = OperatorContext(
         workspace=workspace,
         checkout=workspace,
@@ -177,4 +177,4 @@ def test_jsonl_record_without_gate_preserves_terminal_annotation(tmp_path: Path)
 
     fields = module["JsonlRecord"]().annotate({"genid": "1", "parent": "0"}, ctx).fields
 
-    assert fields == {"note": "meta-agent failed before gate"}
+    assert fields == {"note": "mutate failed before gate"}

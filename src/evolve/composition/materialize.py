@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import hashlib
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
@@ -48,6 +49,7 @@ def materialize_operators(
             if companion.is_file():
                 files[f"operators/{stage}.md"] = companion.read_text()
     files.update(_root_helper_files(root))
+    files.update(_method_helper_files(root, files))
     files["operators/README.md"] = _operator_index(bindings, frozen_sources)
     return OperatorMaterialization(files, components)
 
@@ -58,11 +60,53 @@ def _stage_helper_files(root: Resource, stage: str) -> dict[str, str | bytes]:
 
 
 def _root_helper_files(root: Resource) -> dict[str, str | bytes]:
-    files = _prefixed_helpers(root, "library")
+    files = _prefixed_helpers(root, "library", excluded={"_methods_shared"})
     package_boundary = root / "__init__.py"
     if package_boundary.is_file():
         files["library/__init__.py"] = package_boundary.read_bytes()
     return files
+
+
+def _method_helper_files(root: Resource, materialized: Mapping[str, str | bytes]) -> dict[str, str | bytes]:
+    files = {}
+    pending, copied = _method_dependencies(materialized), set()
+    methods_root = root / "_methods_shared"
+    while pending - copied:
+        name = min(pending - copied)
+        if not (methods_root / name).is_dir():
+            raise ValueError(f"missing method-shared helper bundle: {name}")
+        bundle = {
+            f"library/_methods_shared/{name}/{relative.as_posix()}": _content(source)
+            for relative, source in _walk_files(methods_root / name)
+        }
+        files.update(bundle)
+        copied.add(name)
+        pending.update(_method_dependencies(bundle))
+    package_boundary = methods_root / "__init__.py"
+    if copied and package_boundary.is_file():
+        files["library/_methods_shared/__init__.py"] = package_boundary.read_bytes()
+    return files
+
+
+def _method_dependencies(files: Mapping[str, str | bytes]) -> set[str]:
+    dependencies: set[str] = set()
+    prefix = "library._methods_shared"
+    for path, content in files.items():
+        if not path.endswith(".py"):
+            continue
+        for node in ast.walk(ast.parse(content.decode() if isinstance(content, bytes) else content, filename=path)):
+            if isinstance(node, ast.Import):
+                modules = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                modules = [node.module]
+                if node.module == prefix:
+                    dependencies.update(alias.name.split(".", 1)[0] for alias in node.names)
+            else:
+                continue
+            for module in modules:
+                if module.startswith(prefix + "."):
+                    dependencies.add(module.removeprefix(prefix + ".").split(".", 1)[0])
+    return dependencies
 
 
 def _content(source: Resource) -> str | bytes:
@@ -86,13 +130,11 @@ def _walk_files(root: Resource, prefix: Path = Path("")) -> Iterator[tuple[Path,
             yield relative, source
 
 
-def _prefixed_helpers(
-    root: Resource,
-    destination: str,
-) -> dict[str, str | bytes]:
+def _prefixed_helpers(root: Resource, destination: str, *, excluded: set[str] | None = None) -> dict[str, str | bytes]:
     files: dict[str, str | bytes] = {}
+    ignored = {"__pycache__"} | (excluded or set())
     for source in sorted(root.iterdir(), key=lambda entry: entry.name):
-        if not source.name.startswith("_") or source.name == "__pycache__" or source.name.endswith(".pyc"):
+        if source.name in ignored or not source.name.startswith("_") or source.name.endswith(".pyc"):
             continue
         if isinstance(source, Path) and source.is_symlink():
             raise ValueError(f"operator asset may not be a symlink: {source}")
@@ -117,8 +159,8 @@ def _operator_index(
         )
     return (
         "# Active operators\n\n"
-        "The loop runs exactly these recipe-selected scripts. The closed root and\n"
-        "selected-stage underscore helper bundles are frozen under `library/`;\n"
+        "The loop runs exactly these recipe-selected scripts. Generic, required\n"
+        "method-shared, and selected-stage helper bundles are frozen under `library/`;\n"
         "unselected catalog operators are not copied.\n\n"
         "| stage | active | what it does | source |\n"
         "| --- | --- | --- | --- |\n" + "\n".join(rows) + "\n"

@@ -71,14 +71,15 @@ With `expose_gate_data: false`, the task receives the selected parent,
 configuration, a clean Git baseline, and the `rollout`, `analyze`, and
 `feedback` inputs from current and prior generations. Evaluator files, task
 partitions, archive/receipt records, selection artifacts, gate/record
-directories, and gate/sealed evaluations are not copied. The clean Git baseline
-supports normal `git diff` and `git status` use without retaining sensitive
-paths in object history.
+directories, and gate/sealed evaluations—including the private `gen/0` sealed
+anchor—are not copied. The clean Git baseline supports normal `git diff` and
+`git status` use without retaining sensitive paths in object history.
 
-With `expose_gate_data: true`, the task instead receives the full Git history,
-evaluator and split files, archive/receipt records, and the retained run tree,
-including gate/sealed evaluations. Enable this only for methods whose intended
-feedback contract includes those results. The real host workspace is never
+With `expose_gate_data: true`, a workspace without sealed tasks instead receives
+the full Git history, evaluator and split files, archive/receipt records, and
+the retained run tree, including gate evaluations. The Harbor runner rejects
+this setting whenever the sealed split is non-empty, so the `gen/0` sealed
+anchor cannot enter a mutate workspace. The real host workspace is never
 mounted in either mode.
 
 The bundled recipes make this choice explicitly. All real recipes use `false`
@@ -130,7 +131,7 @@ mutate:
 Useful optional keys are:
 
 - `agent`: Harbor built-in name, `module.path:ClassName`, or supported ACP shorthand;
-- `expose_gate_data`: expose full evaluator/archive/run history, including gate/sealed data (defaults to `false`);
+- `expose_gate_data`: expose full evaluator/archive/run history only when the sealed split is empty (defaults to `false`);
 - `editable_roots`: top-level repository trees eligible for transactional import (defaults to `[target]`);
 - `model`: model identifier expected by that Harbor adapter;
 - `agent_kwargs`: mapping converted to repeated Harbor `--agent-kwarg key=value` flags;

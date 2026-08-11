@@ -299,7 +299,7 @@ def _copy_visible_run_inputs(ctx: OperatorContext, workspace: Path) -> None:
         )
 
 
-def _private_task_names(workspace: Path) -> tuple[str, ...]:
+def _private_task_names(workspace: Path, splits: tuple[str, ...] = ("gate", "sealed")) -> tuple[str, ...]:
     path = workspace / "evaluator" / "splits.json"
     try:
         payload = json.loads(path.read_text())
@@ -309,7 +309,7 @@ def _private_task_names(workspace: Path) -> tuple[str, ...]:
     if not isinstance(tasks, dict):
         return ()
     names: set[str] = set()
-    for split in ("gate", "sealed"):
+    for split in splits:
         values = tasks.get(split)
         if isinstance(values, list):
             names.update(name for name in values if isinstance(name, str) and name)
@@ -450,7 +450,10 @@ def _prepare_bundle(
     workspace = task_root / "workspace"
     try:
         task_root.mkdir(parents=True)
-        if _expose_gate_data(ctx.config):
+        expose_gate_data = _expose_gate_data(ctx.config)
+        if expose_gate_data and _private_task_names(ctx.workspace, ("sealed",)):
+            raise RuntimeError("expose_gate_data cannot be enabled when the sealed split is non-empty")
+        if expose_gate_data:
             git(checkout, "clone", "--quiet", "--no-hardlinks", str(checkout), str(workspace))
             git(workspace, "checkout", "--quiet", "--detach", head_commit(checkout))
             _copy_full_workspace_inputs(checkout, ctx, workspace)
@@ -459,7 +462,7 @@ def _prepare_bundle(
             _copy_checkout_inputs(checkout, workspace, _HIDDEN_WORKSPACE_ROOTS)
             _copy_visible_run_inputs(ctx, workspace)
         _copy_artifact_inputs(ctx, workspace)
-        if not _expose_gate_data(ctx.config):
+        if not expose_gate_data:
             private_names = _private_task_names(ctx.workspace)
             _redact_private_tasks_from_run_inputs(workspace, private_names)
             _assert_private_tasks_absent(workspace, prompt, private_names)

@@ -12,7 +12,7 @@ from typing import Any
 from evolve.frozen import sdk
 from evolve.frozen.config import Config, custom, number
 from evolve.frozen.interfaces import AnalyzeOperator, AnalyzeResult, OperatorContext
-from library._shared.gepa import component_paths, normalize_components, read_json
+from library._methods_shared.gepa import component_paths, normalize_components, read_json
 
 CONFIG = Config(
     {

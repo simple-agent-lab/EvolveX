@@ -32,7 +32,9 @@ EVAL_STUB=1 /tmp/evolve-demo/evolve run /tmp/evolve-demo --max-generations 0
 /tmp/evolve-demo/evolve verify /tmp/evolve-demo
 ```
 
-This verifies workspace generation, baseline evaluation, and archive integrity.
+This verifies workspace generation, the generation-zero primary evaluation,
+the generation-zero sealed anchor when the sealed split is non-empty, and
+archive integrity. Both evaluations must complete before generation one starts.
 It does not run a mutation round or measure agent quality. The first run may
 download the workspace's locked Python dependencies.
 

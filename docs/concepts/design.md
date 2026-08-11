@@ -22,6 +22,13 @@ implementation at `library/<stage>/<name>.py`. A **recipe** is code-free
 selection and configuration of operators. **Evaluate** is the framework-owned
 trusted mechanism and is never resolved from the operator library.
 
+At the start of `evolve run`, the mechanism evaluates the untouched `gen/0`
+seed on the configured primary split (normally `gate`) and then evaluates the
+same snapshot on the complete non-empty `sealed` split. The sealed result is a
+non-selectable `anchor`, is stored as auxiliary evidence, and is excluded from
+the mutation feedback projection. Generation one cannot begin until both
+required evaluations complete.
+
 ## Recipe-driven initialization
 
 `evolve init` resolves one supported recipe YAML, validates every named

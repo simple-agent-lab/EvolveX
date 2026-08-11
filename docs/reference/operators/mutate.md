@@ -38,7 +38,7 @@ operators:
       agent: codex
       model: gpt-5.4
       environment: docker
-      image: evolve-meta-agent-codex:20260805-codex0145
+      image: evolve-mutate-codex:20260805-codex0145
       editable_roots: [target]
       max_retries: 1
 ```

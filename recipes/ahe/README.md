@@ -74,9 +74,9 @@ Live runs need Docker, Harbor, model credentials, and an immutable evaluator
 runtime. Build the small workspace image once before running:
 
 ```bash
-IMAGE_CONTEXT="$(python -c 'from evolve.config import resource_root; print(resource_root("containers") / "meta-agent")')"
+IMAGE_CONTEXT="$(python -c 'from evolve.config import resource_root; print(resource_root("containers") / "mutate")')"
 docker build --build-arg MINISWE_VERSION=2.4.5 \
-  -t evolve-meta-agent-app:20260724-tools-mswe245 "$IMAGE_CONTEXT"
+  -t evolve-mutate-app:20260724-tools-mswe245 "$IMAGE_CONTEXT"
 ```
 
 The recipe never requires a local Codex command.
