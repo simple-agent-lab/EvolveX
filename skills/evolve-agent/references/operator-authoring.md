@@ -21,9 +21,18 @@ the new-source option.
 
 ## Scaffold one named catalog entry
 
-Run the scaffold command from the source checkout:
+The approved capability determines the stage; do not treat `analyze` and
+`mutate` as interchangeable:
+
+- An `analyze` operator turns rollout or evaluation evidence into retained
+  analysis. Implement `AnalyzeOperator.analyze(checkout, ctx) -> AnalyzeResult`.
+- A `mutate` operator changes the candidate from the supplied observation.
+  Implement `MutateOperator.mutate(checkout, observation, ctx) -> MutateResult`.
+
+Run the matching scaffold command from the source checkout:
 
 ```bash
+uv run --frozen evolve operator new analyze failure_triage
 uv run --frozen evolve operator new mutate critic_editor
 ```
 
@@ -34,7 +43,18 @@ underscore-prefixed helpers only for code shared by catalog entries.
 Implement the selected stage interface from `evolve.frozen.interfaces` and
 return its typed result. Declare every accepted setting once with
 `evolve.frozen.config.Config`, including descriptions, defaults, constraints,
-and required fields. For example:
+and required fields. An approved analysis capability uses its analysis contract:
+
+```python
+from evolve.frozen.interfaces import AnalyzeOperator, AnalyzeResult
+
+
+class FailureTriage(AnalyzeOperator):
+    def analyze(self, checkout, ctx) -> AnalyzeResult:
+        ...
+```
+
+An approved mutation capability uses its mutation contract and schema:
 
 ```python
 from evolve.frozen import sdk
@@ -78,6 +98,8 @@ and assert the stage's typed result; configuration inspection does not replace
 this test. Run the smallest relevant test node, then capture catalog evidence:
 
 ```bash
+uv run --frozen evolve operator describe analyze/failure_triage --json
+uv run --frozen evolve operator check analyze/failure_triage --config '{}' --json
 uv run --frozen evolve operator describe mutate/critic_editor --json
 uv run --frozen evolve operator check mutate/critic_editor --config '{}' --json
 ```

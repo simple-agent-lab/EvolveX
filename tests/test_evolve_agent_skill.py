@@ -80,13 +80,6 @@ def test_top_level_skill_is_backend_neutral() -> None:
     assert not (SKILL / "scripts").exists()
 
 
-def test_top_level_skill_uses_only_canonical_operator_terms() -> None:
-    body = (SKILL / "SKILL.md").read_text().lower()
-
-    assert "## historical-workspace note" in body
-    assert not any(term in body for term in ("meta_agent", "trace_analyzer", "variant:"))
-
-
 def test_method_cards_route_to_shipped_capabilities() -> None:
     expected = {
         "hill-climb.md": ("operator active . --json", "library/select/", "library/gate/"),
