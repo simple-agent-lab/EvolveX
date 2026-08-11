@@ -195,9 +195,11 @@ Material decisions include at least:
 Source-bound selections and rationale are recorded in the custom recipe's
 `README.md` or, for framework-wide evaluator-engine work, the maintained design
 documentation. Source approval freezes that rationale. Later evidence and
-approval events live in an append-only external task record or Git note keyed
-to the immutable source identity so recording them does not invalidate the
-approval they describe.
+approval events live in an authoritative immutable or append-only external hash
+chain so recording them does not invalidate the approval they describe. Each
+event names approver or actor identity, timestamp/event id, predecessor, and
+bound source and packet digests. An ordinary Git note is only a pointer or
+mirror unless externally anchored; it is not authority alone.
 
 ## End-to-end workflow
 
@@ -260,13 +262,16 @@ The agent reads only the relevant method cards, then queries the live PR #47
 surface:
 
 ```bash
-uv run --frozen --no-sync evolve operator list --json
-uv run --frozen --no-sync evolve operator describe <stage>/<name> --json
+evolve operator list --json
+evolve operator describe <stage>/<name> --json
 ```
 
-These commands use a verified pre-provisioned environment. If it is absent,
-the agent stops for separately approved remediation rather than allowing an
-inspection command to synchronize dependencies.
+These commands use a verified direct executable from an already-existing
+pre-provisioned environment. Executable inspection uses an exact reviewed
+source copy mounted read-only with all permitted writes redirected to
+disposable storage. The agent never runs authored imports from a writable
+checkout or lets inspection create or synchronize an environment. Missing
+prerequisites require separately approved remediation.
 
 It explains whether a supported recipe fits, proposes a code-free custom
 composition when necessary, and identifies gaps that require new operators.
@@ -294,8 +299,10 @@ and preserves unrelated changes. It may:
 Reusable named operator source stays at `library/<stage>/<name>.py`. Recipes
 contain selection and configuration, not reusable Python implementations.
 Guided authoring accepts named `operator:` bindings only. The resolver's legacy
-or expert `script:` escape lies outside this workflow and requires equivalent
-transitive review, isolation, tests, and exact binding identity.
+`script:` compatibility escape is not a guided expert mode. This repository
+supplies no named external script-review playbook, so any `script:` binding is
+a hard stop; the agent does not invent equivalent checks or an exception. Only
+a future named external playbook could define another flow; none is supplied.
 
 ### 5. Verify authoring artifacts
 
@@ -304,8 +311,9 @@ Verification proceeds from inexpensive contracts to broader behavior:
 ```text
 static transitive import review
 → operator describe/check for schema and normalized config
-→ recipe check for operator resolution, normalization, and composition
-→ static target/surface and evaluator configuration/schema review
+→ target phase: static target/surface review + narrowly scoped recipe check
+→ evaluator phase: config/schema review + narrowly scoped recipe-check rerun
+→ operator phase: behavior/config proof + narrowly scoped recipe-check rerun
 → focused operator tests
 → evaluator positive and negative controls
 → model-free evaluator smoke
@@ -313,30 +321,39 @@ static transitive import review
 → normalized composition and provenance review
 ```
 
-The agent then presents the **source approval** packet: the exact diff and
-frozen recipe rationale; each separately named static, schema, configuration,
-recipe, behavior, and calibration result; limitations; expected runtime and
-cost; and the bytes initialization will freeze. Recipe check is not represented
-as target, evaluator, runtime, or deployment proof.
+The agent then presents the **source approval** packet: either a clean commit or
+complete source-tree manifest/digest with explicit base, staged, unstaged,
+untracked, ignored, and exclusion coverage; packet digest; frozen rationale;
+target-digest-bound target/surface evidence; every separate static, schema,
+configuration, recipe, behavior, and calibration result; limitations; runtime
+and cost; and bytes initialization will freeze. Recipe check proves only
+operator resolution, normalization, and composition.
 
 ### 6. Prepare and deploy
 
-After source approval, the agent binds a pinned remote target revision or a
-reviewed local manifest/digest covering tracked, staged, unstaged, and untracked
-include/exclude decisions. It scans the exact vendored bytes for secrets, runs
-read-only preflight, and reports failures with their resolution choices. Raw
-preflight output exists only inside the disposable boundary: an allowlist
-scanner sanitizes or rejects it there, only sanitized content leaves, and the
-raw capture is destroyed. The agent does not silently install dependencies,
-download assets, build images, use credentials, or call models.
+Remote Git URL and full revision are source-approved recipe fields; guided
+deployment never supplies a remote `--seed` override. A local target manifest
+comes from the actual filesystem using framework copy exclusions and symlink
+semantics and covers tracked, staged, unstaged, untracked, and ignored entries,
+types, modes, digests, exclusions, and symlink containment. Built-ins receive a
+deterministic packaged-resource-tree digest. The exact included bytes are
+secret-scanned.
 
-Once prerequisites pass, the agent presents the **deployment approval** packet
-in the append-only external record. On approval it immediately revalidates the
-target snapshot and secret scan, initializes the workspace, verifies its frozen
-contract and provenance, then asks separately before any candidate smoke or
-model call. Material model or evaluation spend, including baseline
-certification, receives explicit authorization. The initialized workspace then
-enters the existing evidence-chain operating workflow.
+This repository ships no trusted containment launcher or sanitizer, so guided
+preflight stops unless a separate remediation decision supplies verified
+pre-provisioned named tools and accepted-output schema. The Agent does not
+improvise them. With those tools, reviewed source is read-only, raw output never
+leaves the disposable boundary, unexpected fields are rejected, only sanitized
+content is emitted, and raw bytes are destroyed.
+
+After separate preparation authority, a reviewed local closure is materialized
+as a content-addressed read-only immutable snapshot. Deployment approval binds
+that snapshot, the remote recipe revision, or the built-in digest in the
+authoritative hash chain. Initialization consumes that exact identity. Before
+accepting generation zero, the copied target manifest must equal the approved
+expected post-copy manifest, and remote provenance must name the exact revision.
+If a safe snapshot cannot be enforced or manifests differ, the flow stops.
+Candidate smoke and material evaluation spend require separate authority.
 
 ## Approval semantics
 
@@ -344,17 +361,20 @@ Approvals bind to exact artifacts and assumptions:
 
 - changing scoring semantics invalidates evaluation and downstream approvals;
 - changing operator behavior invalidates source approval;
-- changing the target snapshot, dataset, runtime identity, or recipe after
-  preflight invalidates deployment approval;
+- changing target bytes/layout invalidates target-bound checks plus source and
+  deployment approval; semantic target changes invalidate architecture too;
+- changing the dataset, runtime identity, or recipe after preflight invalidates
+  deployment approval;
 - appending evidence or approval text to an approved recipe rationale changes
   source bytes and invalidates source and deployment approval;
 - changing a frozen workspace contract requires a new workspace.
 
 Architecture approval binds to the recorded decision set. Source approval
-binds to the reviewed Git diff or commit plus normalized operator and recipe
-checks and the frozen rationale. Deployment approval binds to the selected
-recipe, operator, evaluator, exact target seed, dataset, runtime identities and
-their recorded digests, together with the current preflight result.
+binds to a clean commit or complete source manifest, packet digest,
+target-digest-bound checks, normalized operator and recipe evidence, and frozen
+rationale. Deployment approval binds to the source packet, recipe, operator,
+evaluator, exact remote revision/local immutable snapshot/built-in digest,
+dataset, runtime, expected post-copy manifest, and current preflight result.
 
 The agent names which approval became stale and why. It never treats a general
 statement of intent as authorization for unrelated external or costly work.
@@ -374,7 +394,8 @@ Reusable operator source lives in `library/`; focused tests live in `tests/`.
 Framework-wide engine work also updates `src/evolve/`, evaluator scaffolds,
 `ARCHITECTURE.md`, and maintained public design documentation as required.
 Post-source evidence and approvals live outside the recipe tree in an
-append-only task record or Git note keyed to the approved source identity.
+authoritative immutable or append-only external hash chain. Unanchored Git
+notes are convenience pointers only.
 
 The complete flow is:
 
@@ -454,8 +475,8 @@ substantial duplicated canonical instructions.
 ### Repository verification
 
 Follow the repository test tiers: focused checks while iterating, relevant
-composition/resource/coherence tests for changed boundaries, and
-`uv run --frozen --no-sync pytest -q` before handoff. Run slow generated-workspace tests
+composition/resource/coherence tests for changed boundaries, and `pytest -q`
+before handoff. Run slow generated-workspace tests
 only when their workflow is affected. Docker, Harbor, model, and live-campaign
 checks remain explicitly authorized manual validation.
 

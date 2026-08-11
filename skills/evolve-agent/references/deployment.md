@@ -8,13 +8,22 @@ lineage and may require side effects outside the source checkout.
 
 ## Confirm the approved source packet
 
-Start with the source-approval event in the append-only external task record or
-Git note keyed to the approved Git identity: the approved diff or commit,
-frozen recipe rationale, selected recipe and operator, normalized
-configuration, recipe-check output, focused-test evidence, and limitations. If
-any source bytes or configuration values changed, return to source approval
-before preparing a workspace. Do not append deployment evidence to the recipe
-`README.md`; changing that approved file would invalidate the source identity.
+Start with the authoritative immutable or append-only hash-chained
+source-approval event. Validate its approver identity, timestamp/event id,
+predecessor hash, clean source commit or complete source-tree manifest/digest,
+packet digest, and target digest bound to any target/surface evidence. A source
+manifest must name its base and cover staged, unstaged, untracked, ignored, and
+excluded paths. Validate the chain to its external immutable anchor. An ordinary
+Git note is only a convenience mirror or pointer unless externally anchored; it
+is not approval authority by itself.
+
+The approved packet also contains the frozen recipe rationale, selected recipe
+and operator, normalized configuration, narrowly scoped recipe-check output,
+separate source checks, focused-test evidence, and limitations. If source bytes,
+configuration, packet content, or target bytes/layout bound to source evidence
+changed, return to source approval before deployment. Reopen architecture too
+when target semantics changed. Do not append deployment evidence to the recipe
+`README.md`; that would change the approved source identity.
 
 Keep the Task 2 evaluation decision intact. Deployment uses the selected
 existing evaluation assets and their approved target, partitions, evaluator,
@@ -23,12 +32,14 @@ redesign the measurement contract to make an environment check pass.
 
 ## Gather current preflight evidence
 
-For an uninitialized destination, `evolve preflight` is a read-only prospective
-init checklist. It writes no receipt. It checks the recipe, seed, dataset,
-declared runtime digest, required tools, task limit, and destination conditions
-represented by the command; its stdout is not a generated receipt and does not
-validate runtime availability or which authentication identity owns or can
-access an external service.
+For an uninitialized destination, the `evolve preflight` CLI contract is a
+prospective init checklist and writes no destination receipt. Executing its
+process and selected operator imports is not inherently non-mutating; only the
+trusted boundary below may constrain side effects. The checklist covers the
+recipe, seed, dataset, declared runtime digest, required tools, task limit, and
+destination conditions represented by the command. Its stdout is not a receipt
+and does not validate runtime availability or which authentication identity
+owns or can access an external service.
 
 Audit the command inputs before execution. Reject a seed, dataset, endpoint, or
 other URL containing userinfo credentials or secret-bearing query parameters;
@@ -37,57 +48,82 @@ credentials out of command arguments. Prospective preflight echoes Git seed
 URLs verbatim, so use separately authorized out-of-band Git authentication
 rather than embedding it in the URL.
 
-Capture raw stdout and stderr only inside the disposable inspection boundary;
-do not stream them to the host terminal, Agent context, user, or durable record.
-Inside that boundary, pass the captured bytes through an allowlist scanner for
-the expected checklist fields and redact recognized secret forms. Reject the
-record rather than emit an unrecognized or unsafely redacted field. Emit only
-the sanitized result, then destroy the isolated boundary and its raw capture.
-If that scanner and containment are unavailable, stop; manual redaction after
-display is not an acceptable fallback. The sanitized output is still manual
-evidence, never a generated receipt.
+This repository supplies no trusted containment launcher or preflight-output
+sanitizer. Guided preflight therefore stops by default. It may proceed only
+after a separate remediation decision supplies a verified, pre-provisioned
+trusted containment launcher and allowlist sanitizer with recorded executable
+identity, version or digest, and exact accepted-output schema. The Agent must
+not improvise either tool or treat prose describing one as executable proof.
+
+When those named tools exist, capture raw stdout and stderr only inside their
+disposable boundary; never stream them to the host terminal, Agent context,
+user, or durable record. The named sanitizer must reject fields outside its
+approved schema, redact only recognized secret forms, and emit sanitized
+content. Destroy the raw capture with the boundary. Manual redaction after
+display is not a fallback. The sanitized output remains manual evidence, never
+a generated receipt.
 
 ## Bind the exact target seed
 
-Identify the exact bytes initialization would vendor, not merely the path or
-branch name:
+Identify the exact vendoring closure initialization will consume, not merely a
+path, Git status, or branch name:
 
-- For a remote Git seed, record the credential-free canonical URL and a full
-  immutable commit revision. A moving branch, tag, or default branch is not a
-  deployment identity.
-- For a local seed, review a deterministic manifest and digest of the exact
-  vendored set. For a Git working tree, the manifest must account separately
-  for tracked `HEAD` content, staged changes, unstaged changes, and untracked
-  paths, with an explicit include or exclude decision for every path represented
-  in each class. For a non-Git directory, record the corresponding sorted path,
-  file-type, mode, and content-digest manifest plus exclusions.
+- **Remote Git:** The source-approved recipe itself must contain the
+  credential-free canonical `target.seed` URL and full 40-character immutable
+  `target.revision`. Never pass a remote Git URL through `--seed`: that override
+  removes the recipe revision. Record the revision's tree digest and expected
+  vendored manifest.
+- **Local directory:** Walk the actual filesystem with the framework's copy
+  exclusions and symlink semantics. The deterministic manifest records every
+  included and excluded path; its Git classification when applicable (tracked
+  `HEAD`, staged, unstaged, untracked, or Git-ignored); file type; mode; content
+  digest; and symlink text target plus resolved containment result. Reject an
+  absolute, escaping, cyclic, broken, or otherwise unsafe symlink. Git status
+  alone is not a vendoring inventory.
+- **Built-in resource:** Recursively enumerate the exact packaged resource tree
+  the recipe names and compute a deterministic digest over sorted relative
+  path, file type, mode when represented, and content digest. Record the package
+  artifact identity and exclusion semantics with that resource-tree digest.
 
-Run secret detection over the exact included bytes, including included staged,
-unstaged, and untracked content. Stop on a finding without copying the secret
-value into evidence. Record only the approved manifest/digest, inclusion and
-exclusion decisions, scanner identity, and sanitized result. Recompute this
-identity immediately before initialization; any target snapshot change
-invalidates prospective evidence and deployment approval.
+Run secret detection over every included regular-file byte in that exact
+closure, including included ignored content. Stop on a finding without copying
+the secret into evidence. Record only the manifest/digest, inclusion and
+exclusion decisions, framework copy-semantics identity, scanner identity, and
+sanitized result.
 
-Prospective preflight resolves selected named operators. Recheck their static
-import safety, then run the checklist in the credential-free, allowlisted
-[operator-inspection sandbox](operator-authoring.md). Supply only the inputs the
-command represents: destination, exactly one of `--recipe` or `--recipe-path`,
-optional `--seed`, `--dataset`, and `--tasks`, plus the declared
-`EVOLVE_RUNTIME_DIGEST`. Use a verified pre-provisioned `evolve` executable or
-`uv run --frozen --no-sync`; do not let inspection install or synchronize an
-environment. If neither path is available, stop for a separately approved
-remediation packet. Do not load deployment credentials.
+For a local seed, eliminate the review-to-copy race. After separate authority
+for preparation, use a trusted snapshot facility to materialize the approved
+vendoring closure as a content-addressed, read-only immutable local snapshot.
+Verify its manifest/digest, bind deployment approval to it, and use only that
+snapshot path as the local `--seed`. If the available filesystem or framework
+cannot consume and enforce that safe snapshot, stop; recomputing a mutable path
+immediately before `init` is not atomic and is not an acceptable substitute.
 
-In the append-only external task record or Git note keyed to the approved
-source identity, retain the exact secret-free command, sanitized output,
-independently computed source, recipe, operator, target-seed, evaluator,
-dataset, and runtime identities or digests, and every assumption the checklist
-did not verify. Record intended authentication identity, runtime availability,
-image readiness, remote-service reachability, disk capacity, evaluator smoke,
-and external-service access as unchecked deployment assumptions unless
-independently verified. Call this a prospective preflight record, not a
-mechanism-generated receipt.
+Prospective preflight resolves selected named operators. Recheck static import
+safety, materialize the exact reviewed source in the named trusted containment
+launcher as read-only, and invoke the verified direct `evolve` executable from
+an already-existing pre-provisioned environment. Verify its recipe and catalog
+roots resolve to that read-only source identity. Redirect all permitted writes
+and caches to disposable storage; remain offline, load no environment file,
+and do not execute from the writable source checkout. If any prerequisite is
+absent, stop for separate remediation rather than create `.venv`, synchronize,
+download, or provision anything.
+
+Supply only the inputs represented by the command: destination, exactly one of
+`--recipe` or `--recipe-path`, optional **local immutable** `--seed`, dataset,
+task limit, and declared `EVOLVE_RUNTIME_DIGEST`. For remote Git or built-in
+targets, omit `--seed` so the source-approved recipe identity remains intact.
+Do not load deployment credentials.
+
+Append a hash-chained preflight event to the authoritative external record. It
+retains the exact secret-free command, sanitized output, containment and
+sanitizer identities/schema, independently computed source, packet, recipe,
+operator, target snapshot, evaluator, dataset, and runtime identities, and
+every unchecked assumption. Record intended authentication identity, runtime
+availability, image readiness, remote-service reachability, disk capacity,
+evaluator smoke, and external-service access as unchecked unless independently
+verified. Call this a prospective preflight record, not a mechanism-generated
+receipt.
 
 Classify any failure before proposing a remedy:
 
@@ -102,8 +138,10 @@ source approval before returning to deployment. Do not hide a source change in
 the external deployment record.
 
 Preflight evidence is current only for the exact inputs it checked. Re-run it
-when a recipe, selected source, target-seed snapshot, evaluator, dataset,
-runtime, credential mode, destination, or relevant digest changes.
+when a recipe, selected source or packet, target snapshot, evaluator, dataset,
+runtime, credential mode, destination, or relevant digest changes. A target
+change also invalidates target-digest-bound source evidence and source approval;
+rerun architecture approval when the target change is semantic.
 
 ## Request authority for side effects
 
@@ -124,30 +162,42 @@ approval record.
 ## Bind the deployment decision
 
 Present a deployment packet that names the approved source identity, selected
-recipe and operator configuration, exact target-seed revision or reviewed local
-manifest/digest, target inclusion and exclusion decisions, sanitized
-exact-content secret scan, evaluator and dataset identities, runtime and
-authentication identities, recorded digests, current preflight result,
-workspace destination, expected disk and runtime demand, initialization side
-effects, and remaining unknowns.
+packet digest, recipe and operator configuration, exact remote recipe revision,
+local immutable snapshot identity, or built-in resource-tree digest as
+applicable; expected post-copy target manifest; inclusion and exclusion
+decisions; sanitized exact-content secret scan; evaluator and dataset
+identities; runtime and authentication identities; recorded digests; current
+preflight result; workspace destination; expected disk and runtime demand;
+initialization side effects; and remaining unknowns.
 
 Deployment approval authorizes one initialization with that exact packet. A
 changed target snapshot, identity, digest, preflight input or result,
 destination, runtime, credential mode, or source/configuration invalidates the
 approval and requires a new packet and preflight. Append the approval to the
-external task record or Git note keyed to the approved source identity; do not
-edit the recipe rationale. Do not treat a general chat acknowledgement as an
-open-ended deployment grant.
+authoritative external hash chain with approver identity, timestamp/event id,
+predecessor, source and packet identities, and every deployment binding. Do not
+edit the recipe rationale or treat a general chat acknowledgement or ordinary
+unanchored Git note as an open-ended deployment grant.
 
 ## Initialize and verify the frozen workspace
 
-After deployment approval, recompute the exact target-seed identity and secret
-scan, then run `evolve init` with the exact preflighted inputs only if they still
-match the approved packet. Confirm that the resulting workspace has the
-expected rendered configuration, component provenance and frozen digests,
+After deployment approval, initialize a remote target only from the
+source-approved recipe-pinned URL/revision, a local target only from the
+approved content-addressed read-only snapshot, or a built-in target only after
+revalidating its approved resource-tree digest. Run the verified direct
+`evolve init` with the exact preflighted inputs. Do not use a mutable local path
+or a remote `--seed` override.
+
+Before accepting generation zero, independently manifest the copied
+`target/` using the same file, mode, symlink, exclusion, and deterministic
+framework-metadata rules and require exact equality with the approved expected
+post-copy manifest. For remote Git, also verify frozen provenance records the
+exact recipe revision and that the copied tree matches it. For built-in
+resources, verify the copied tree derives from the revalidated resource digest.
+Confirm rendered configuration, component provenance and frozen digests,
 generation-zero Git snapshot, readable status, and passing integrity
-verification. A mismatch is a failed handoff: stop, preserve the evidence, and
-return to the relevant approval or preflight boundary rather than repairing a
+verification. A mismatch is a failed handoff: stop, preserve evidence, and
+return to the relevant approval or preflight boundary rather than repair a
 frozen workspace in place.
 
 Initialization approval does not authorize candidate smoke, a model call, or

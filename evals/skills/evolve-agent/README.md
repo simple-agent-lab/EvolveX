@@ -32,8 +32,10 @@ Run every behavior case as a paired comparison:
    score. Do not treat stylistic similarity as improvement.
 
 Each criterion scores `0` (missing or wrong), `1` (partial), or `2` (complete).
-A response passes at `8/10` with no hard failure. Report aggregate pass rate,
-mean paired delta, and per-dimension failures.
+A response normally passes at `8/10` with no hard failure. A case may set a
+higher `pass_score` and machine-readable required fields; omission of a field
+marked required is a hard failure. Report aggregate pass rate, mean paired
+delta, and per-dimension failures.
 
 Invocation cases require a runner that exposes the real installed skill catalog
 and records whether the model loads a skill before answering. Do not prepend an
@@ -50,6 +52,7 @@ with the prompt rather than autonomous routing.
 | `render_prompt.py` | Emits one leak-free control or treatment prompt. |
 | `baseline_results.json` | A small, historical paired smoke baseline. |
 | `current_results.json` | The latest recorded full run for the skill revision and case set named inside that file; new cases may exist afterward. |
+| `historical_protocols.json` | Frozen protocol and inventory metadata for historical snapshots that do not embed complete scoring semantics. |
 
 The JSON result files are evidence snapshots, not live status. Read their
 revision and protocol metadata before comparing them with the current skill;
@@ -60,10 +63,12 @@ recomputes every recorded summary field; it never fabricates missing scores. It
 does not start Agents or a grader.
 
 No formal paired behavior run covers the rewritten guided-authoring head:
-current-revision coverage is **0/26 behavior cases**. The historical
+current-revision coverage is **0/29 behavior cases**. The historical
 `current_results.json` covers the 16 pre-authoring behavior IDs on its older
-subject revision; the ten `authoring-*` IDs have no result row. The two-case
-baseline was drawn from that exact 16-case historical inventory. The
+subject revision; 13 newer IDs have no result row: 12 `authoring-*` cases and
+the method-independent replay case. The two-case baseline was drawn from that
+exact 16-case historical inventory and uses the frozen protocol metadata keyed
+to its snapshot rather than today's mutable rubric. The
 qualitative pressure reports produced while authoring the skill are separate
 development feedback: they are not a complete paired campaign, were not blind
 graded under this protocol, and are not score snapshots. No invocation case in
@@ -77,14 +82,14 @@ invocation coverage is **0/8**. The historical snapshot's
 Run the deterministic asset checks:
 
 ```bash
-uv run --frozen --no-sync pytest tests/test_evolve_agent_evals.py
+pytest tests/test_evolve_agent_evals.py
 ```
 
 Render a prompt for an external Agent runner with:
 
 ```bash
-uv run --frozen --no-sync python evals/skills/evolve-agent/render_prompt.py outer-ahe-agent --arm treatment
-uv run --frozen --no-sync python evals/skills/evolve-agent/render_prompt.py outer-ahe-agent --arm control
+python evals/skills/evolve-agent/render_prompt.py outer-ahe-agent --arm treatment
+python evals/skills/evolve-agent/render_prompt.py outer-ahe-agent --arm control
 ```
 
 The control prompt must not contain the skill instruction or rubric. The

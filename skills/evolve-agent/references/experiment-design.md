@@ -85,12 +85,14 @@ Read only the method cards supported by the available evidence. Present the near
 
 Inspect the live operator catalog before claiming that custom source is needed.
 Filesystem-only listing may run during design through a verified
-pre-provisioned executable or `uv run --frozen --no-sync`; if neither is
-available, stop for separately approved environment remediation. Before
-`operator describe`, use the static review and credential-free isolation
+direct `evolve` executable in an already-existing pre-provisioned environment;
+if it is unavailable, stop for separately approved environment remediation.
+Inspection must not create or synchronize an environment. Before `operator
+describe`, use the static review and credential-free read-only isolation
 procedure in [operator authoring](operator-authoring.md); inspection is
-evidence gathering, not authority to scaffold or edit source. Do not use file
-presence in an initialized workspace as the source catalog.
+evidence gathering, not authority to scaffold, execute from a writable source
+checkout, or edit source. Do not use file presence in an initialized workspace
+as the source catalog.
 
 ## Record the architecture decision
 

@@ -7,26 +7,33 @@ composition sections only after architecture approval identifies a capability
 that the live catalog does not provide and the user selects new source. Read
 `decision-protocol.md` before crossing the source-approval boundary.
 
+This playbook authors named catalog entries only. A `script:` binding is a hard
+stop even when the user calls it expert. This repository has no named external
+script-review playbook, and these checks must not be repurposed into an ad hoc
+bypass.
+
 ## Prove the capability gap
 
 Discover the live catalog before reading or writing an implementation:
 
 ```bash
-uv run --frozen --no-sync evolve operator list --json
+evolve operator list --json
 ```
 
 Catalog listing is filesystem-only. `operator describe` and `operator check`
 execute the entry file in a subprocess, and that subprocess inherits the
 environment used to launch the CLI. A subprocess boundary is not a security
-sandbox. The `uv` invocation above must use a pre-provisioned environment;
-`--no-sync` prevents an unapproved install or synchronization. If the executable
-or environment is unavailable, stop for separately approved remediation.
-Before inspecting any entry whose imports have not already been reviewed, use
-the import-safety and isolation procedure below. Inside that boundary, inspect
-the relevant schema:
+sandbox. Resolve `evolve` to a verified direct executable in an already-existing
+pre-provisioned environment. If it is unavailable, stop for separately approved
+environment remediation. Do not invoke an environment manager from the
+writable source tree: flags such as `--frozen` and `--no-sync` do not by
+themselves prevent cache writes, `.venv` creation, environment-file loading, or
+other provisioning side effects. Before inspecting any entry whose imports
+have not already been reviewed, use the import-safety and isolation procedure
+below. Inside that boundary, inspect the relevant schema:
 
 ```bash
-uv run --frozen --no-sync evolve operator describe mutate/hyperagents --json
+evolve operator describe mutate/hyperagents --json
 ```
 
 Explain why the relevant existing operators and their declared configuration
@@ -48,8 +55,8 @@ The approved capability determines the stage; do not treat `analyze` and
 Run the matching scaffold command from the source checkout:
 
 ```bash
-uv run --frozen --no-sync evolve operator new analyze failure_triage
-uv run --frozen --no-sync evolve operator new mutate critic_editor
+evolve operator new analyze failure_triage
+evolve operator new mutate critic_editor
 ```
 
 The reusable entry is `library/<stage>/<name>.py`. Recipes select and configure
@@ -119,14 +126,19 @@ any other effect unrelated to returning the inspection payload. An import-time
 effect is an authoring failure even if it appears harmless in the current
 checkout.
 
-Run inspection inside a disposable sandbox or container with networking
-disabled, the reviewed source mounted read-only, and only a disposable temp
-directory writable. Construct the process environment from an explicit
-allowlist such as the required executable path, locale, and temporary
-`HOME`/`TMPDIR`; do not inherit the host environment, load `.env`, mount auth
-files, or pass token, key, secret, cloud, proxy, model, or deployment variables.
-If this credential-free boundary is unavailable, stop rather than inspect the
-entry. The CLI's own subprocess does not provide this isolation.
+After static review, materialize the exact reviewed source identity into a
+disposable inspection copy and mount it read-only in a sandbox or container
+with networking disabled. Never execute authored imports from the writable
+checkout. Verify that the direct executable's recipe and catalog roots resolve
+to that mounted copy, not to the writable checkout or a different install.
+Make only a disposable temp tree writable and redirect `HOME`,
+`TMPDIR`, bytecode, tool caches, and every other allowed write there. Construct
+the environment from an explicit allowlist containing the verified direct
+executable path and locale; do not inherit the host environment, load `.env`,
+mount auth files, or pass token, key, secret, cloud, proxy, model, or deployment
+variables. If this credential-free read-only boundary is unavailable, stop
+rather than inspect the entry. The CLI's own subprocess does not provide this
+isolation.
 
 ## Test behavior, then inspect normalization
 
@@ -137,10 +149,10 @@ the smallest relevant test node and capture catalog evidence inside the same
 credential-free, allowlisted isolation boundary:
 
 ```bash
-uv run --frozen --no-sync evolve operator describe analyze/failure_triage --json
-uv run --frozen --no-sync evolve operator check analyze/failure_triage --config '{}' --json
-uv run --frozen --no-sync evolve operator describe mutate/critic_editor --json
-uv run --frozen --no-sync evolve operator check mutate/critic_editor --config '{}' --json
+evolve operator describe analyze/failure_triage --json
+evolve operator check analyze/failure_triage --config '{}' --json
+evolve operator describe mutate/critic_editor --json
+evolve operator check mutate/critic_editor --config '{}' --json
 ```
 
 The description records the public schema and the check records the normalized
@@ -154,7 +166,7 @@ operator-owned values below that stage's nested `config:` mapping, then check
 the complete recipe inside the same credential-free isolation boundary:
 
 ```bash
-uv run --frozen --no-sync evolve recipe check /absolute/path/to/evolve.yaml --json
+evolve recipe check /absolute/path/to/evolve.yaml --json
 ```
 
 Keep each proof distinct: static transitive import review establishes that the
@@ -165,14 +177,15 @@ normalization, and composition. Recipe check does not establish target or
 surface correctness, evaluator semantics, runtime readiness, or deployment
 fitness.
 
-Prepare a source-approval packet containing the Git diff or commit, frozen
-recipe rationale, static review result, operator description, normalized
-configuration, focused-test result, scoped recipe-check output, separately
-reviewed target/surface and evaluator configuration, limitations, and the exact
-source identity that initialization will freeze. Source approval authorizes the
-reviewed source change; it is distinct from prospective preflight and
-deployment approval, which must bind the selected target, recipe, evaluator,
-dataset, runtime identities, and live-spend boundary before initialization.
+Prepare a source-approval packet containing either a clean commit or a complete
+source-tree manifest/digest with explicit base, staged, unstaged, untracked,
+ignored, and exclusion coverage; the frozen recipe rationale; static review;
+operator description; normalized configuration; focused test; scoped recipe
+check; target-digest-bound target/surface evidence; evaluator configuration;
+limitations; and a digest of the whole packet. Source approval authorizes that
+exact source and packet. It is distinct from prospective preflight and
+deployment approval, which bind the selected target, recipe, evaluator,
+dataset, runtime, and live-spend boundary before initialization.
 
 Editing the source catalog never changes an existing initialized workspace.
 Changed frozen content requires a new workspace and the approvals named by

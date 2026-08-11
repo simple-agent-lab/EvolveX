@@ -80,13 +80,16 @@ until experiment design has qualified evaluator coverage, determinism, leakage,
 runtime compatibility, score direction and domain, aggregation, failure and
 missing-result handling, thresholds, ties, acceptance semantics, calibration,
 limitations, and supported claims. During design, catalog listing is
-filesystem-only. Use a verified pre-provisioned `evolve` executable or
-`uv run --frozen --no-sync`; if neither is available, stop and request a
-separately approved environment-remediation action. Before a needed operator
-description, read [operator inspection safety](references/operator-authoring.md)
-and use its static review and credential-free isolation procedure. Do not
-scaffold or edit source before architecture approval. Then read only the method
-cards whose evidence requirements fit the experiment:
+filesystem-only. Invoke a verified direct `evolve` executable from an
+already-existing pre-provisioned environment. If it is absent, stop and request
+a separate environment-remediation decision; inspection may not create a
+`.venv`, synchronize, download, or provision anything. Before a needed
+operator description, read
+[operator inspection safety](references/operator-authoring.md) and use its
+static review and credential-free read-only isolation procedure. Do not execute
+authored source from a writable checkout. Do not scaffold or edit source before
+architecture approval. Then read only the method cards whose evidence
+requirements fit the experiment:
 
 | Observable condition | Method | Read |
 | --- | --- | --- |
@@ -106,31 +109,34 @@ preserves it in `README.md`.
 
 ## 3. Author and review source
 
-Inspect catalog identities through a verified pre-provisioned executable or
-`uv run --frozen --no-sync evolve operator list --json`. When the approved
-composition needs a custom recipe, read
+Inspect catalog identities through the verified direct pre-provisioned
+`evolve operator list --json`. When the approved composition needs a custom
+recipe, read
 [recipe authoring](references/recipe-authoring.md). Before executing
-`uv run --frozen --no-sync evolve operator describe <stage>/<name> --json`, an
-operator check, a recipe check, prospective preflight, or newly authored code,
-read
+`evolve operator describe <stage>/<name> --json`, an operator check, a recipe
+check, prospective preflight, or newly authored code, read
 [operator authoring](references/operator-authoring.md) and use its static
-import-safety review and credential-free isolated environment. Configure an
-existing operator when it fits; author reusable source only for an approved
-capability gap.
+import-safety review and credential-free environment with the exact reviewed
+source mounted read-only. Configure an existing operator when it fits; author
+reusable source only for an approved capability gap.
 
 Guided authoring permits only named `operator:` bindings. Reject `script:`
-bindings; the legacy expert escape is outside this workflow and needs an
-equivalent transitive source review, isolation boundary, behavior tests, and an
-exact binding identity under a separately approved process.
+bindings even when the user labels the task expert. This repository supplies no
+named external script-review playbook, so guided authoring must stop on
+`script:` rather than invent checks or an exception. Offer a named `operator:`
+binding or deferral. Only a future named external playbook could define another
+flow; none is supplied here.
 
-Run operator checks, focused tests, and
-`uv run --frozen --no-sync evolve recipe check <recipe-path> --json` inside
-that boundary. Treat recipe-check output only as operator resolution,
-normalization, and composition evidence. Name static target/surface review,
-operator config/schema checks, evaluator configuration checks, and focused
-behavior tests separately; prospective preflight remains a later deployment
-check. Present source approval bound to the Git diff or commit and this
-separated evidence.
+Run direct operator checks, focused tests, and
+`evolve recipe check <recipe-path> --json` inside that read-only boundary.
+Treat recipe-check output only as operator resolution, normalization, and
+composition evidence; rerun it after the target, evaluator, and operator
+phases. Name static target/surface review, operator config/schema checks,
+evaluator configuration checks, and focused behavior tests separately. Bind
+target/surface evidence to the exact target digest. Present source approval
+bound to either a clean commit or a complete source-tree manifest/digest with
+explicit base, staged, unstaged, untracked, ignored, and exclusion coverage,
+plus a digest of the whole packet. Prospective preflight remains deployment.
 
 **Completion check:** Every custom operator has a named catalog identity,
 declarative config, focused behavior test, valid recipe binding, limitations,
@@ -138,14 +144,26 @@ and source approval.
 
 ## 4. Prepare and deploy
 
-Read [deployment](references/deployment.md). Run read-only preflight, explain
-remediation options, and obtain deployment approval before initialization.
-Ask separately before live model or evaluation spend.
+Read [deployment](references/deployment.md). This repository supplies no
+trusted preflight containment launcher or allowlist sanitizer, so guided
+preflight stops unless a separate remediation decision supplies verified
+pre-provisioned named tools and schema; do not improvise them. Only then gather
+prospective evidence and obtain deployment approval before initialization. Ask
+separately before live model or evaluation spend.
 
-Freeze the recipe rationale with the approved source identity. Store later
-preflight evidence, remediation authority, and deployment approval only in an
-append-only external task record or Git note keyed to that identity; those
-records must not change the approved source tree.
+Keep a remote Git URL plus full revision in the source-approved recipe and
+never override it with remote `--seed`. A guided local override names only the
+approved content-addressed read-only snapshot of the exact framework vendoring
+closure. Revalidate built-in resource digests and require the copied target
+manifest and frozen remote revision to match before accepting generation zero.
+
+Freeze the recipe rationale with the approved source and packet identities.
+Record approval in an authoritative immutable or append-only hash-chained event
+with approver identity, timestamp/event id, predecessor, and source and packet
+digests. Store later preflight evidence, remediation authority, and deployment
+approval in the same external chain without changing the approved source tree.
+An ordinary Git note is only a convenience pointer or mirror unless externally
+anchored; it is not approval authority by itself.
 
 **Completion check:** The preflighted inputs match the initialized workspace,
 provenance and integrity verify, and any baseline spend was authorized.
@@ -173,10 +191,13 @@ retained evidence, mutable surface, and interrupted state are all explicit.
 
 ## 6. Close the loop
 
-A parent artifact may be replayed only when its task-set, evaluator, runtime,
-and artifact manifest/digest identities all match the current contract. Any
-mismatch requires a fresh parent execution. Every child candidate executes
-fresh regardless of method or matching parent evidence.
+A parent artifact may be replayed only when the selected parent candidate
+identity (candidate commit, generation id, and immutable tag resolution),
+task-set identity, evaluator `contract_id`, runtime identity, artifact
+manifest/digest, evaluation purpose and partition, and matching certified
+result all agree with the current request. Any mismatch requires fresh parent
+execution. Every child candidate executes fresh regardless of method or valid
+parent evidence.
 
 1. Establish and inspect the certified baseline.
 2. Select a parent through the configured select stage.

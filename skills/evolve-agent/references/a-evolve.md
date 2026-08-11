@@ -34,9 +34,11 @@ or `library/analyze/artifact_rubric.py` and
 
 ## Apply the method
 
-1. Obtain the selected parent's evidence. Replay certified artifacts only when
-   task-set, evaluator, runtime, and artifact manifest/digest identities all
-   match; otherwise execute the parent freshly.
+1. Resolve the selected parent's candidate commit, generation id, and immutable
+   meaning of any tag. Replay certified artifacts only when that candidate,
+   task-set, evaluator `contract_id`, runtime, artifact manifest/digest,
+   evaluation purpose and partition, and matching certified result all agree;
+   otherwise execute the parent freshly.
 2. In trajectory mode, compress behavioral events and infer likely outcomes
    without evaluator labels. In artifact mode, rank hard failures and weak
    rubrics from retained outputs without requiring a trajectory.

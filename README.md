@@ -96,12 +96,17 @@ Add an operator to a source checkout, validate it, and compose it without a
 registry edit:
 
 ```bash
-uv run --frozen --no-sync evolve operator new mutate my_operator
-uv run --frozen --no-sync evolve operator describe mutate/my_operator
-uv run --frozen --no-sync evolve operator check mutate/my_operator --config '{}'
-uv run --frozen --no-sync evolve operator list mutate
-uv run --frozen --no-sync evolve recipe check /path/to/my-recipe/evolve.yaml
+evolve operator new mutate my_operator
+evolve operator describe mutate/my_operator
+evolve operator check mutate/my_operator --config '{}'
+evolve operator list mutate
+evolve recipe check /path/to/my-recipe/evolve.yaml
 ```
+
+Use a verified direct `evolve` executable from an already-existing
+pre-provisioned environment. Guided inspection executes reviewed source only
+from its read-only isolation copy; it never provisions an environment or runs
+authored imports from a writable checkout.
 
 After `evolve init`, use `./evolve operator active .` to inspect the frozen
 bindings and `./evolve operator run ...` for direct stage orchestration. See
