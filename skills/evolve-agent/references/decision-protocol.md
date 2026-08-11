@@ -47,7 +47,9 @@ evaluation spend.
 
 ## Approval invalidation
 
-- Changed scoring semantics or partitions invalidate architecture and every
+- Changed target, evaluator, scoring semantics, partitions, recipe source,
+  selected operator behavior or configuration, mutable surface, runtime
+  identity, budget, risks, or unknowns invalidate architecture and every
   downstream approval.
 - Changed operator behavior or recipe source invalidates source and deployment
   approval.
