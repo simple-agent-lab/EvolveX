@@ -195,3 +195,9 @@ def test_wheel_includes_skill_resources() -> None:
     build = tomllib.loads((ROOT / "pyproject.toml").read_text())["tool"]["hatch"]["build"]["targets"]["wheel"]
     included = build["force-include"]
     assert included["skills"] == "evolve/skills"
+
+
+def test_decision_protocol_reference_is_available() -> None:
+    body = (SKILL / "references" / "decision-protocol.md").read_text()
+
+    assert body
