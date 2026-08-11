@@ -54,6 +54,7 @@ def test_evolve_agent_progressive_references_resolve() -> None:
         "references/hyperagents.md",
         "references/scientific-foundations.md",
         "references/operator-authoring.md",
+        "references/deployment.md",
     ]
     assert all((SKILL / link).is_file() for link in links)
 
@@ -70,6 +71,13 @@ def test_operator_authoring_reference_is_available_and_directly_linked() -> None
 
     assert body
     assert "references/operator-authoring.md" in REFERENCE_LINK.findall((SKILL / "SKILL.md").read_text())
+
+
+def test_deployment_reference_is_available_and_directly_linked() -> None:
+    body = (SKILL / "references" / "deployment.md").read_text()
+
+    assert body
+    assert "references/deployment.md" in REFERENCE_LINK.findall((SKILL / "SKILL.md").read_text())
 
 
 def test_top_level_skill_is_backend_neutral() -> None:

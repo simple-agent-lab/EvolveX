@@ -72,6 +72,9 @@ an initialized workspace is not a source-authoring target. Follow the
 for discovery, declarative configuration, behavior testing, recipe composition,
 and the separate source-approval packet. A new workspace freezes the selected
 source, while existing workspaces retain their historical active operators.
+After source approval, use [the deployment playbook](references/deployment.md)
+to collect current preflight evidence, bind initialization to those exact
+identities, and hand the verified workspace to its operating contract.
 
 **Completion check:** The approved capability gap is resolved by a central
 catalog entry or an explicit deferral; the named entry has focused behavior and
