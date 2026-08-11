@@ -44,6 +44,121 @@ The framework ships `aevolve`, `ahe`, `ahe_codex`, `gepa`, `gepa_local`,
 Development smoke recipes live under `tests/fixtures/recipes/` and are not part
 of the public recipe inventory.
 
+## Declarative operator configuration
+
+An operator owns one declarative `Config` schema. The schema is the single
+source of truth for accepted fields, required inputs, defaults, constraints,
+descriptions, normalization, and inspection. Operators receive the normalized
+result as the existing JSON-compatible `ctx.config` dictionary; configuration
+classes never enter the runtime operator interface.
+
+The design has two governing principles:
+
+1. The framework guarantees every required input and normalized output shape,
+   while operators retain an explicit escape hatch for genuinely custom JSON
+   fields and cross-field constraints.
+2. The declaration and implementation stay small and readable. EvolveX does
+   not implement the full JSON Schema standard or add a second configuration
+   framework.
+
+The framework-owned, dependency-free vocabulary lives in
+`evolve.frozen.config` because it is part of the frozen operator authoring
+contract. A typical operator declares:
+
+```python
+from evolve.frozen.config import Config, array, integer, string
+
+CONFIG = Config(
+    {
+        "strategy": string(
+            default="round_robin",
+            choices=("round_robin", "all"),
+            description="How components are selected.",
+        ),
+        "max_examples": integer(
+            default=10,
+            minimum=1,
+            description="Maximum examples to include.",
+        ),
+        "required_placeholders": array(
+            string(),
+            default=[],
+            description="Placeholders that edits must preserve.",
+        ),
+    }
+)
+```
+
+The operator exposes it through one SDK entrypoint:
+
+```python
+sdk.main(MyOperator, config_schema=CONFIG)
+```
+
+Field presence is explicit: `required=True` requires an input, `default=...`
+emits a value when absent, and a field with neither is optional and remains
+absent. Top-level unknown fields reject by default. Nested objects choose their
+own `additional_properties` policy. Shared declarations compose through
+`Config.extend(...)`; duplicate names reject instead of silently overriding a
+shared field. Defaults are validated when the schema is built and copied when
+used, so mutable JSON defaults are never shared between normalizations.
+
+The initial vocabulary is deliberately closed:
+
+- `string`, `integer`, `number`, and `boolean`;
+- `array`, `object`, and unrestricted JSON values;
+- required fields and JSON-compatible defaults;
+- choices, numeric bounds, and descriptions;
+- schema composition and nested additional-property policy;
+- one validation-only `refine` callback for cross-field constraints; and
+- one explicitly described custom field normalizer for legacy or otherwise
+  irreducible value shapes.
+
+There are no metaclasses, configuration inheritance hierarchy, automatic
+dependency injection, or promise of complete JSON Schema compatibility.
+Exceptional callbacks stay local: `refine` may report violations but may not
+rewrite the normalized mapping, while a custom field normalizer may transform
+only its own value. The engine still verifies that every custom result is valid
+JSON and requires the field to publish an input description for inspection.
+
+Configuration flows through the existing subprocess boundary:
+
+```text
+recipe YAML config
+  -> operator subprocess --validate-config
+  -> Config.normalize(raw)
+  -> normalized JSON object
+  -> resolved recipe and workspace evolve.yaml
+  -> ctx.config dictionary
+```
+
+Independent field violations are collected and rendered in deterministic path
+order. Messages identify the field and expected contract without echoing raw
+values, which may contain credentials. Invalid schema declarations, including
+contradictory required/default settings and non-JSON defaults, fail during
+operator inspection as authoring errors.
+
+`--describe` exports the same declaration as a JSON-compatible description for
+CLI and tooling use. The export resembles the useful subset of JSON Schema but
+is an EvolveX contract. Operator identity still comes from
+`library/<stage>/<name>.py`, prose metadata comes from its docstring, and stage
+output remains governed by the frozen result validators. Configuration does
+not absorb metadata, execution, lifecycle, or output validation.
+
+This refactor does not change the shape or meaning of any valid recipe YAML.
+Existing field names, defaults, and normalized values remain exact. All shipped
+operators migrate to `config_schema`; the procedural `validate_config` SDK path,
+per-operator allowed-key sets, and unused parsing helpers are removed rather
+than retained as a parallel system. Operators with no settings declare
+`Config({})`.
+
+Tests enforce the boundary at four levels: schema primitives and error paths;
+real subprocess inspection; a catalog requirement that every shipped operator
+has a valid schema; and exact before/after normalized configuration equality
+for every supported recipe. Initialization and runtime acceptance tests confirm
+that workspaces freeze the same dictionaries and operator behavior remains
+unchanged.
+
 ## Source ownership
 
 | Source | Responsibility |
