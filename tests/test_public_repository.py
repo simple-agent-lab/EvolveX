@@ -34,7 +34,7 @@ def test_architecture_visual_uses_identity_palette() -> None:
 
 
 def test_readme_visual_assets_have_accessible_svg_metadata() -> None:
-    for relative in ("docs/evolve-mark.svg", "docs/evolve-lineage.svg"):
+    for relative in ("docs/rsihub-mark.svg", "docs/evolve-lineage.svg"):
         root = ET.parse(ROOT / relative).getroot()
         assert root.attrib["role"] == "img"
         assert root.attrib["viewBox"]
@@ -46,7 +46,7 @@ def test_readme_visual_assets_have_accessible_svg_metadata() -> None:
 
 def test_selected_and_explored_graphics_have_three_to_one_contrast() -> None:
     expected_state_counts = {
-        "docs/evolve-mark.svg": {"selected": 5, "explored": 1},
+        "docs/rsihub-mark.svg": {"selected": 5, "explored": 1},
         "docs/evolve-lineage.svg": {"selected": 5, "explored": 4},
     }
     for relative, expected_counts in expected_state_counts.items():
@@ -125,10 +125,17 @@ def test_mkdocs_covers_custom_recipe_operator_and_experiment_workflows() -> None
 
 def test_license_metadata_and_notice_are_consistent() -> None:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]
+    assert project["name"] == "rsihub"
+    assert project["urls"] == {
+        "Homepage": "https://github.com/simple-agent-lab/RSIHub",
+        "Documentation": "https://simple-agent-lab.github.io/RSIHub/",
+        "Repository": "https://github.com/simple-agent-lab/RSIHub",
+        "Issues": "https://github.com/simple-agent-lab/RSIHub/issues",
+    }
     assert project["version"] == __version__
     assert project["license"] == "Apache-2.0"
     assert "Apache License" in (ROOT / "LICENSE").read_text()
-    assert (ROOT / "NOTICE").read_text().startswith("EvolveX\n")
+    assert (ROOT / "NOTICE").read_text().startswith("RSIHub\n")
 
 
 def test_required_public_repository_files_exist() -> None:

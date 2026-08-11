@@ -1,14 +1,14 @@
-site_name: EvolveX
+site_name: RSIHub
 site_description: Build agents that improve — and keep the evidence.
-site_url: https://simple-agent-lab.github.io/EvolveX/
-repo_url: https://github.com/simple-agent-lab/EvolveX
-repo_name: simple-agent-lab/EvolveX
+site_url: https://simple-agent-lab.github.io/RSIHub/
+repo_url: https://github.com/simple-agent-lab/RSIHub
+repo_name: simple-agent-lab/RSIHub
 edit_uri: edit/main/docs/
 
 theme:
   name: material
-  logo: evolve-mark.svg
-  favicon: evolve-mark.svg
+  logo: rsihub-mark.svg
+  favicon: rsihub-mark.svg
   language: en
   features:
     - navigation.sections
