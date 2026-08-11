@@ -45,9 +45,7 @@ def test_bridge_federates_multiple_roots_without_collisions(tmp_path: Path) -> N
 def test_bridge_removes_stale_links_and_cleans_up(tmp_path: Path) -> None:
     jobs = _harbor_jobs(tmp_path / "jobs", "job-a")
     bridge = HarborBridge(tmp_path / "workspace")
-    root = bridge.__enter__().refresh(
-        [JobRootReference(generation="1", purpose="candidate", path=jobs)]
-    ).root
+    root = bridge.__enter__().refresh([JobRootReference(generation="1", purpose="candidate", path=jobs)]).root
 
     bridge.refresh([])
     assert list(root.iterdir()) == []
@@ -74,15 +72,11 @@ def test_bridge_builds_full_harbor_trial_route(tmp_path: Path) -> None:
     jobs = _harbor_jobs(tmp_path / "jobs", "job-a", task="task-a", trial="trial one")
 
     with HarborBridge(tmp_path / "workspace") as bridge:
-        federation = bridge.refresh(
-            [JobRootReference(generation="3", purpose="candidate", path=jobs)]
-        )
+        federation = bridge.refresh([JobRootReference(generation="3", purpose="candidate", path=jobs)])
 
     link = federation.trial_links[("3", "candidate", "task-a", 0)]
     assert link.url.startswith("/jobs/job-a-")
-    assert link.url.endswith(
-        "/tasks/local%2Fsource/mini%20agent/openai/model%20name/task-a/trials/trial%20one"
-    )
+    assert link.url.endswith("/tasks/local%2Fsource/mini%20agent/openai/model%20name/task-a/trials/trial%20one")
 
 
 def test_bridge_jobs_pass_harbor_containment_checks(tmp_path: Path) -> None:
@@ -92,14 +86,10 @@ def test_bridge_jobs_pass_harbor_containment_checks(tmp_path: Path) -> None:
     trajectory.write_text(json.dumps({"steps": []}))
 
     with HarborBridge(tmp_path / "experiment") as bridge:
-        federation = bridge.refresh(
-            [JobRootReference(generation="3", purpose="candidate", path=jobs)]
-        )
+        federation = bridge.refresh([JobRootReference(generation="3", purpose="candidate", path=jobs)])
         job_name = federation.job_names[(jobs.resolve(), "job-a")]
         with TestClient(create_harbor_app(federation.root)) as client:
-            response = client.get(
-                f"/api/jobs/{job_name}/trials/trial-0/trajectory"
-            )
+            response = client.get(f"/api/jobs/{job_name}/trials/trial-0/trajectory")
 
     assert response.status_code == 200
     assert response.json() == {"steps": []}
@@ -110,9 +100,7 @@ def test_bridge_maps_only_unique_canonical_suffix(tmp_path: Path) -> None:
     reference = JobRootReference(generation="4", purpose="candidate", path=jobs)
 
     with HarborBridge(tmp_path / "workspace") as bridge:
-        unique = bridge.refresh(
-            [reference], canonical_tasks={("4", "candidate"): ("suite__short",)}
-        )
+        unique = bridge.refresh([reference], canonical_tasks={("4", "candidate"): ("suite__short",)})
         assert ("4", "candidate", "suite__short", 0) in unique.trial_links
 
         ambiguous = bridge.refresh(
@@ -160,9 +148,7 @@ def test_bridge_counts_repetitions_per_task_not_per_job(tmp_path: Path) -> None:
     _harbor_jobs(jobs, "job-a", task="task-b", trial="task-b-trial")
 
     with HarborBridge(tmp_path / "workspace") as bridge:
-        federation = bridge.refresh(
-            [JobRootReference(generation="6", purpose="candidate", path=jobs)]
-        )
+        federation = bridge.refresh([JobRootReference(generation="6", purpose="candidate", path=jobs)])
 
     assert ("6", "candidate", "task-a", 0) in federation.trial_links
     assert ("6", "candidate", "task-b", 0) in federation.trial_links

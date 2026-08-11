@@ -40,9 +40,7 @@ class HarborBridge:
     def __enter__(self) -> HarborBridge:
         if self._tempdir is None:
             try:
-                self._tempdir = tempfile.TemporaryDirectory(
-                    prefix=".evolve-view-harbor-", dir=self.workspace.parent
-                )
+                self._tempdir = tempfile.TemporaryDirectory(prefix=".evolve-view-harbor-", dir=self.workspace.parent)
             except OSError:
                 self._tempdir = tempfile.TemporaryDirectory(prefix="evolve-view-harbor-")
             self.root = Path(self._tempdir.name)
@@ -120,8 +118,7 @@ def _job_children(root: Path) -> tuple[Path, ...]:
             (
                 child
                 for child in root.iterdir()
-                if child.is_dir()
-                and ((child / "config.json").is_file() or (child / "result.json").is_file())
+                if child.is_dir() and ((child / "config.json").is_file() or (child / "result.json").is_file())
             ),
             key=lambda child: child.name,
         )
@@ -168,7 +165,10 @@ def _trial_links(
                     continue
                 repetition = repetitions[canonical]
                 repetitions[canonical] += 1
-                parts = [quote(part or "unknown", safe="") for part in (job_name, source, agent, provider, model, task_name, trial_name)]
+                parts = [
+                    quote(part or "unknown", safe="")
+                    for part in (job_name, source, agent, provider, model, task_name, trial_name)
+                ]
                 url = f"/jobs/{parts[0]}/tasks/{'/'.join(parts[1:6])}/trials/{parts[6]}"
                 links[(reference.generation, reference.purpose, canonical, repetition)] = HarborTrialLink(
                     url=url,
@@ -285,7 +285,9 @@ def _raw_config_evidence(
     source = task_config.get("source")
     agent = agent_config.get("name") or agent_config.get("import_path") if isinstance(agent_config, dict) else None
     model_name = agent_config.get("model_name") if isinstance(agent_config, dict) else None
-    provider, model = (model_name.split("/", 1) if isinstance(model_name, str) and "/" in model_name else (None, model_name))
+    provider, model = (
+        model_name.split("/", 1) if isinstance(model_name, str) and "/" in model_name else (None, model_name)
+    )
     return (
         task,
         source if isinstance(source, str) else None,

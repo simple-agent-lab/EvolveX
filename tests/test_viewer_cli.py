@@ -25,9 +25,7 @@ def test_view_forwards_explicit_host_and_port(monkeypatch, tmp_path: Path) -> No
     called = {}
     monkeypatch.setattr(
         "evolve.viewer.run_viewer",
-        lambda workspace, host, port_spec: called.update(
-            workspace=workspace, host=host, port_spec=port_spec
-        ),
+        lambda workspace, host, port_spec: called.update(workspace=workspace, host=host, port_spec=port_spec),
     )
 
     result = CliRunner().invoke(
