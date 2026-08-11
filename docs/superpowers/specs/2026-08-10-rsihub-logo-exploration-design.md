@@ -43,7 +43,7 @@ Every concept must satisfy these rules:
   default system font as the final typographic expression.
 - Avoid generic AI and developer-tool imagery: neural-network dots, circuit
   traces, brains, atoms, glowing orbs, chat bubbles, generic trees, and random
-  gradient X marks.
+  gradient letter marks.
 - Avoid literal diagrams of the framework architecture. The logo should become
   meaningful through recognition rather than attempting to explain the system.
 - Do not copy or closely imitate the reference projects. Their logos calibrate
