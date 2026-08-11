@@ -9,8 +9,8 @@
 </p>
 
 <p align="center">
-  A file-based framework for evaluator-driven evolution, reproducible candidate
-  lineage, and controlled self-modification.
+  A file-based framework for evaluator-driven learning, reproducible candidate
+  lineage, and controllable modification.
 </p>
 
 <p align="center">
