@@ -43,8 +43,10 @@ Do not infer authority from source approval or from a request to deploy. Before
 an install, download, image build, credential access, or model probe, present a
 separate remediation packet containing the exact command, affected location,
 network access, credential identity and permitted account/scope, expected cost,
-and reversibility. Obtain explicit authority for that action before performing
-it, then retain the resulting preflight evidence.
+security consequences, and reversibility. Confirm that the approving user has
+authority for the affected account, credential scope, resource, and spend, then
+obtain their explicit authority for that action before performing it. Retain the
+resulting preflight evidence.
 
 Credential authority is not deployment approval: it names which identity may
 be used, for what service and scope, and whether a model probe is allowed. Do
@@ -82,9 +84,9 @@ budget, resource limits, evaluation scope, expected cost, and stop condition.
 
 ## Hand off to workspace operation
 
-When initialization verification is complete and any separately authorized
-baseline is recorded, continue with
+When initialization verification is complete, continue with
 [the workspace contract](workspace-contract.md). It owns orientation, the
-baseline and control paths, recovery, and reporting. Do not rewrite a frozen
-experiment to absorb a later evaluator, recipe, or source change; start a new
-authoring and deployment flow for the new workspace.
+separately authorized baseline certification and control paths, recovery, and
+reporting. Do not rewrite a frozen experiment to absorb a later evaluator,
+recipe, or source change; start a new authoring and deployment flow for the new
+workspace.
