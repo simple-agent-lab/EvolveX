@@ -66,40 +66,17 @@ do not match the retained evidence. Execute every child freshly.
 
 ## 3. Author reusable operators in a source checkout
 
-Use the library when creating a reusable policy, not an edit to one already
-initialized workspace. Discover available entries, then scaffold and verify one
-operator before selecting it from a recipe:
+Use the catalog only after architecture approval identifies a capability gap;
+an initialized workspace is not a source-authoring target. Follow the
+[catalog-first operator-authoring playbook](references/operator-authoring.md)
+for discovery, declarative configuration, behavior testing, recipe composition,
+and the separate source-approval packet. A new workspace freezes the selected
+source, while existing workspaces retain their historical active operators.
 
-```bash
-uv run --frozen evolve operator list [stage]
-uv run --frozen evolve operator new mutate <name>
-uv run --frozen evolve operator describe mutate/<name>
-uv run --frozen evolve operator check mutate/<name> --config '{"attempts": 3}'
-uv run --frozen evolve recipe check <recipe-path>
-```
-
-`new` writes exactly one entry at `library/mutate/<name>.py`. Implement the
-generated `MutateOperator`, keep `validate_config`, and use
-`sdk.main(..., validate_config=validate_config)`. A recipe selects it with an
-`operator:` value and nested `config:` mapping:
-
-```yaml
-operators:
-  mutate:
-    operator: critic_editor
-    timeout_s: 3600
-    config:
-      attempts: 3
-```
-
-Do not put a reusable implementation beside a recipe or alter a library entry
-to change a running workspace. Run recipe check before initialization; a new
-workspace freezes the selected source. Existing workspaces retain their own
-frozen active operators.
-
-**Completion check:** The operator is in the central library, its configuration
-passes `operator check`, the recipe passes `recipe check`, and the source change
-is separated from any initialized workspace it does not retroactively alter.
+**Completion check:** The approved capability gap is resolved by a central
+catalog entry or an explicit deferral; the named entry has focused behavior and
+normalized-configuration evidence; the recipe is valid; and source approval is
+separate from deployment approval.
 
 ## 4. Prefer capabilities over source
 

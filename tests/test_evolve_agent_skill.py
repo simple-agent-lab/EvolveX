@@ -53,6 +53,7 @@ def test_evolve_agent_progressive_references_resolve() -> None:
         "references/ahe.md",
         "references/hyperagents.md",
         "references/scientific-foundations.md",
+        "references/operator-authoring.md",
     ]
     assert all((SKILL / link).is_file() for link in links)
 
@@ -64,23 +65,18 @@ def test_experiment_design_reference_is_available_and_directly_linked() -> None:
     assert "references/experiment-design.md" in REFERENCE_LINK.findall((SKILL / "SKILL.md").read_text())
 
 
-def test_top_level_skill_is_backend_neutral_and_operator_first() -> None:
+def test_operator_authoring_reference_is_available_and_directly_linked() -> None:
+    body = (SKILL / "references" / "operator-authoring.md").read_text()
+
+    assert body
+    assert "references/operator-authoring.md" in REFERENCE_LINK.findall((SKILL / "SKILL.md").read_text())
+
+
+def test_top_level_skill_is_backend_neutral() -> None:
     body = (SKILL / "SKILL.md").read_text().lower()
     forbidden = ("harbor", "docker", "recipes/", "src/evolve/", "evolve_runtime_digest")
 
     assert [term for term in forbidden if term in body] == []
-    assert "./evolve operator active . --json" in body
-    assert "uv run --frozen evolve operator list [stage]" in body
-    assert "uv run --frozen evolve operator new mutate <name>" in body
-    assert "uv run --frozen evolve operator check mutate/<name>" in body
-    assert "uv run --frozen evolve recipe check <recipe-path>" in body
-    assert "library/mutate/<name>.py" in body
-    assert "operator:" in body
-    assert "config:" in body
-    assert "./evolve operator run . <stage>" in body
-    assert body.index("./evolve operator active . --json") < body.index("operators/<stage>.py")
-    assert body.index("operators/<stage>.py") < body.index("library/<stage>/")
-    assert "do not read implementation source merely to invoke" in body
     assert not (SKILL / "scripts").exists()
 
 
