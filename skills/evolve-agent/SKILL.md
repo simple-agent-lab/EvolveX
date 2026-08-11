@@ -132,6 +132,7 @@ lineage, and every generalization claim names its partition and evidence.
 - Keep one evaluator and runtime identity within an experiment.
 - Keep optimization, gate, and sealed task identities disjoint.
 - Change only the declared mutable surface.
+- Match the execution boundary to candidate trust.
 - Preserve linked worktrees outside `runs/worktrees/` unless their owner
   explicitly authorizes a change.
 - Keep credentials out of prompts, artifacts, recipes, and reports.
