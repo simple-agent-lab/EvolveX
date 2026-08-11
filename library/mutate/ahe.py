@@ -9,49 +9,24 @@ from typing import Any
 
 from evolve.agent import AgentCommandError
 from evolve.frozen import sdk
+from evolve.frozen.config import string
 from evolve.frozen.interfaces import MutateOperator, MutateResult, OperatorContext
 from evolve.patching import create_candidate_patch, load_surface_policy, patch_parent_ref
 from library._shared.artifacts import render_artifact_guidance
-from library._shared.config import (
-    boolean,
-    config_object,
-    nonnegative_int,
-    reject_unknown,
-    string,
-    string_list,
-)
 from library._shared.runners import run_agent, runner_name
-from library.mutate._config import RUNNER_KEYS, normalize_runner_config
+from library.mutate._config import WORKSPACE_CONFIG
 from library.mutate._support.workspace import workspace_contract
 
 MANIFEST_START = "<AHE_CHANGE_MANIFEST>"
 MANIFEST_END = "</AHE_CHANGE_MANIFEST>"
 MANIFEST_FILE = Path("target/.ahe-change-manifest.json")
-_CONFIG_KEYS = RUNNER_KEYS | {
-    "expose_gate_data",
-    "editable_roots",
-    "prompt_path",
-    "skills_dir",
-    "memory_dir",
-    "max_retries",
-}
-
-
-def validate_config(raw: dict[str, object]) -> dict[str, object]:
-    config = config_object(raw)
-    reject_unknown(config, _CONFIG_KEYS)
-    normalized = normalize_runner_config(config)
-    normalized.update(
-        {
-            "expose_gate_data": boolean(config, "expose_gate_data", False),
-            "editable_roots": string_list(config, "editable_roots", ["target"]),
-            "max_retries": nonnegative_int(config, "max_retries", 0),
-        }
-    )
-    for key in ("prompt_path", "skills_dir", "memory_dir"):
-        if key in config:
-            normalized[key] = string(config, key, "")
-    return normalized
+CONFIG = WORKSPACE_CONFIG.extend(
+    {
+        "prompt_path": string(),
+        "skills_dir": string(),
+        "memory_dir": string(),
+    }
+)
 
 
 AHE_PROMPT = """# Agentic Harness Engineering
@@ -328,4 +303,4 @@ class AheMutate(MutateOperator):
 
 
 if __name__ == "__main__":
-    sdk.main(AheMutate, validate_config=validate_config)
+    sdk.main(AheMutate, config_schema=CONFIG)

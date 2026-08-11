@@ -11,19 +11,22 @@ from pathlib import Path
 from typing import Any
 
 from evolve.frozen import sdk
+from evolve.frozen.config import Config, custom, integer
 from evolve.frozen.interfaces import AnalyzeOperator, AnalyzeResult, OperatorContext
-from library._shared.config import config_object, positive_int, reject_unknown
-from library._shared.gepa import component_paths, read_json
+from library._shared.gepa import component_paths, normalize_components, read_json
 
-
-def validate_config(raw: dict[str, object]) -> dict[str, object]:
-    config = config_object(raw)
-    reject_unknown(config, {"components", "max_cases", "field_limit"})
-    return {
-        "components": component_paths(config),
-        "max_cases": positive_int(config, "max_cases", 32),
-        "field_limit": positive_int(config, "field_limit", 4000),
+CONFIG = Config(
+    {
+        "components": custom(
+            normalize_components,
+            exported_type="object",
+            required=True,
+            description="Named candidate components and their relative paths.",
+        ),
+        "max_cases": integer(default=32, minimum=1),
+        "field_limit": integer(default=4000, minimum=1),
     }
+)
 
 
 def _write_json(path: Path, payload: object) -> None:
@@ -171,4 +174,4 @@ class GepaAnalyze(AnalyzeOperator):
 
 
 if __name__ == "__main__":
-    sdk.main(GepaAnalyze, validate_config=validate_config)
+    sdk.main(GepaAnalyze, config_schema=CONFIG)

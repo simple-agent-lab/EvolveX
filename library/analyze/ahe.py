@@ -16,63 +16,36 @@ from evolve.agent import AgentCommandError
 from evolve.archive import archive_path, merged_rows
 from evolve.config import operator_blocks, operator_runtime_config
 from evolve.frozen import sdk
+from evolve.frozen.config import Config, integer, number, string
+from evolve.frozen.config import object as object_field
 from evolve.frozen.interfaces import AnalyzeOperator, AnalyzeResult, OperatorContext
 from evolve.integrations.harbor._agent_roles import uses_miniswe_submission
-from library._shared.config import (
-    config_object,
-    mapping,
-    nonnegative_int,
-    positive_float,
-    positive_int,
-    reject_unknown,
-    string,
-)
 from library._shared.runners import run_readonly_agent
 
-_CONFIG_KEYS = {
-    "max_tasks",
-    "max_concurrent",
-    "timeout_per_task",
-    "retry_attempts",
-    "debugger",
-    "debugger_max_retries",
-    "debugger_agent_kwargs",
-    "field_limit",
-    "pass_threshold",
-    "agent",
-    "agent_kwargs",
-    "model",
-}
+
+def _positive_timeout(config: dict[str, object]) -> None:
+    timeout = config.get("timeout_per_task")
+    if timeout is not None and float(timeout) <= 0:
+        raise ValueError("timeout_per_task must be positive")
 
 
-def validate_config(raw: dict[str, object]) -> dict[str, object]:
-    config = config_object(raw)
-    reject_unknown(config, _CONFIG_KEYS)
-    normalized: dict[str, object] = {
-        "max_tasks": positive_int(config, "max_tasks", 90),
-        "max_concurrent": positive_int(config, "max_concurrent", 16),
-        "retry_attempts": positive_int(config, "retry_attempts", 1),
-        "field_limit": positive_int(config, "field_limit", 2000),
-        "pass_threshold": _finite_number(config, "pass_threshold", 1.0),
-    }
-    if "timeout_per_task" in config:
-        normalized["timeout_per_task"] = positive_float(config, "timeout_per_task", 600.0)
-    if "debugger_max_retries" in config:
-        normalized["debugger_max_retries"] = nonnegative_int(config, "debugger_max_retries", 0)
-    for key in ("debugger", "debugger_agent_kwargs", "agent_kwargs"):
-        if key in config:
-            normalized[key] = mapping(config, key, {})
-    for key in ("agent", "model"):
-        if key in config:
-            normalized[key] = string(config, key, "")
-    return normalized
-
-
-def _finite_number(config: dict[str, object], key: str, default: float) -> float:
-    value = config.get(key, default)
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)):
-        raise ValueError(f"{key} must be a finite number")
-    return float(value)
+CONFIG = Config(
+    {
+        "max_tasks": integer(default=90, minimum=1),
+        "max_concurrent": integer(default=16, minimum=1),
+        "timeout_per_task": number(),
+        "retry_attempts": integer(default=1, minimum=1),
+        "debugger": object_field(additional_properties=True),
+        "debugger_max_retries": integer(minimum=0),
+        "debugger_agent_kwargs": object_field(additional_properties=True),
+        "field_limit": integer(default=2000, minimum=1),
+        "pass_threshold": number(default=1.0),
+        "agent": string(),
+        "agent_kwargs": object_field(additional_properties=True),
+        "model": string(),
+    },
+    refine=_positive_timeout,
+)
 
 
 Case = dict[str, Any]
@@ -903,4 +876,4 @@ class AheAnalyze(AnalyzeOperator):
 
 
 if __name__ == "__main__":
-    sdk.main(AheAnalyze, validate_config=validate_config)
+    sdk.main(AheAnalyze, config_schema=CONFIG)

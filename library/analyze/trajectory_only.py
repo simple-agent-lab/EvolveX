@@ -15,6 +15,8 @@ from typing import Any
 from evolve.agent import AgentCommandError
 from evolve.config import operator_blocks, operator_runtime_config
 from evolve.frozen import sdk
+from evolve.frozen.config import Config, boolean, integer, number, string
+from evolve.frozen.config import object as object_field
 from evolve.frozen.interfaces import AnalyzeOperator, AnalyzeResult, OperatorContext
 from evolve.integrations.harbor._agent_roles import uses_miniswe_submission
 from evolve.trace_analysis import (
@@ -24,59 +26,32 @@ from evolve.trace_analysis import (
     trajectory_signal_records,
     write_evidence_bundle,
 )
-from library._shared.config import (
-    boolean,
-    config_object,
-    mapping,
-    positive_float,
-    positive_int,
-    reject_unknown,
-    string,
-)
 from library._shared.runners import run_readonly_agent
-
-_CONFIG_KEYS = {
-    "history_cycles",
-    "max_observations",
-    "max_chars",
-    "judge_max_concurrent",
-    "judge_retry_attempts",
-    "judge_timeout_s",
-    "judge_agent",
-    "judge_agent_kwargs",
-    "judge_agent_env",
-    "judge_model",
-    "judge_inherit_openai_credentials",
-    "agent",
-    "agent_kwargs",
-    "model",
-    "pass_threshold",
-}
+from library.analyze._config import TRACE_CONFIG
 
 
-def validate_config(raw: dict[str, object]) -> dict[str, object]:
-    config = config_object(raw)
-    reject_unknown(config, _CONFIG_KEYS)
-    normalized: dict[str, object] = {
-        "history_cycles": positive_int(config, "history_cycles", 2),
-        "max_observations": positive_int(config, "max_observations", 30),
-        "max_chars": positive_int(config, "max_chars", 30_000),
-        "judge_max_concurrent": positive_int(config, "judge_max_concurrent", 4),
-        "judge_retry_attempts": positive_int(config, "judge_retry_attempts", 3),
-        "judge_timeout_s": positive_float(config, "judge_timeout_s", 600.0),
-        "judge_inherit_openai_credentials": boolean(config, "judge_inherit_openai_credentials", False),
-    }
-    threshold = config.get("pass_threshold", 1.0)
-    if isinstance(threshold, bool) or not isinstance(threshold, (int, float)) or not math.isfinite(float(threshold)):
-        raise ValueError("pass_threshold must be a finite number")
-    normalized["pass_threshold"] = float(threshold)
-    for key in ("judge_agent", "judge_model", "agent", "model"):
-        if key in config:
-            normalized[key] = string(config, key, "")
-    for key in ("judge_agent_kwargs", "judge_agent_env", "agent_kwargs"):
-        if key in config:
-            normalized[key] = mapping(config, key, {})
-    return normalized
+def _positive_timeout(config: dict[str, object]) -> None:
+    if float(config["judge_timeout_s"]) <= 0:
+        raise ValueError("judge_timeout_s must be positive")
+
+
+CONFIG: Config = TRACE_CONFIG.extend(
+    {
+        "judge_max_concurrent": integer(default=4, minimum=1),
+        "judge_retry_attempts": integer(default=3, minimum=1),
+        "judge_timeout_s": number(default=600.0),
+        "judge_inherit_openai_credentials": boolean(default=False),
+        "pass_threshold": number(default=1.0),
+        "judge_agent": string(),
+        "judge_model": string(),
+        "agent": string(),
+        "model": string(),
+        "judge_agent_kwargs": object_field(additional_properties=True),
+        "judge_agent_env": object_field(additional_properties=True),
+        "agent_kwargs": object_field(additional_properties=True),
+    },
+    refine=_positive_timeout,
+)
 
 
 Case = dict[str, Any]
@@ -276,4 +251,4 @@ class TrajectoryOnly(AnalyzeOperator):
 
 
 if __name__ == "__main__":
-    sdk.main(TrajectoryOnly, validate_config=validate_config)
+    sdk.main(TrajectoryOnly, config_schema=CONFIG)

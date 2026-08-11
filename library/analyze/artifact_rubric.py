@@ -5,27 +5,26 @@
 from __future__ import annotations
 
 import json
-import math
 from collections import Counter
 from pathlib import Path
 from typing import Any
 
 from evolve.frozen import sdk
+from evolve.frozen.config import Config, custom, number
 from evolve.frozen.interfaces import AnalyzeOperator, AnalyzeResult, OperatorContext
-from library._shared.config import config_object, reject_unknown
-from library._shared.gepa import component_paths, read_json
+from library._shared.gepa import component_paths, normalize_components, read_json
 
-
-def validate_config(raw: dict[str, object]) -> dict[str, object]:
-    config = config_object(raw)
-    reject_unknown(config, {"components", "weak_score"})
-    weak_score = config.get("weak_score", 2.0)
-    if isinstance(weak_score, bool) or not isinstance(weak_score, (int, float)):
-        raise ValueError("weak_score must be a finite number")
-    normalized_score = float(weak_score)
-    if not math.isfinite(normalized_score):
-        raise ValueError("weak_score must be a finite number")
-    return {"components": component_paths(config), "weak_score": normalized_score}
+CONFIG = Config(
+    {
+        "components": custom(
+            normalize_components,
+            exported_type="object",
+            required=True,
+            description="Named candidate components and their relative paths.",
+        ),
+        "weak_score": number(default=2.0),
+    }
+)
 
 
 def _write_json(path: Path, payload: object) -> None:
@@ -194,4 +193,4 @@ class ArtifactRubricAnalyzer(AnalyzeOperator):
 
 
 if __name__ == "__main__":
-    sdk.main(ArtifactRubricAnalyzer, validate_config=validate_config)
+    sdk.main(ArtifactRubricAnalyzer, config_schema=CONFIG)

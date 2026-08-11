@@ -16,17 +16,24 @@ def read_json(path: Path) -> object:
 
 
 def component_paths(config: dict[str, Any]) -> dict[str, list[str]]:
-    raw = config.get("components")
+    return normalize_components(config.get("components"))
+
+
+def normalize_components(raw: object) -> dict[str, list[str]]:
+    """Normalize one public component mapping for config validation and runtime use."""
+
     if not isinstance(raw, dict) or not raw:
         raise ValueError("GEPA requires a non-empty components mapping")
     normalized: dict[str, list[str]] = {}
     for raw_name, raw_paths in raw.items():
         name = str(raw_name).strip()
         values = raw_paths if isinstance(raw_paths, list) else [raw_paths]
-        if not name or not values or not all(isinstance(value, str) and value.strip() for value in values):
+        if not name or not values:
             raise ValueError("each GEPA component must map to one or more relative paths")
         paths: list[str] = []
         for value in values:
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError("each GEPA component must map to one or more relative paths")
             relative = Path(value.strip())
             if relative.is_absolute() or ".." in relative.parts or relative.as_posix() in {"", "."}:
                 raise ValueError(f"GEPA component path must be checkout-relative: {value}")
