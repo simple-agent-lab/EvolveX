@@ -18,6 +18,9 @@ class FakeBaseInstalledAgent:
         self.logs_dir = Path(kwargs.get("logs_dir") or ".")
         self.model_name = kwargs.get("model_name")
         self._extra_env = dict(kwargs.get("extra_env") or {})
+        # Shared with FakeEnvironment so ordering between exec and transfer is
+        # observable; two separate lists cannot prove one preceded the other.
+        self.events: list[tuple[str, str]] = []
         self.agent_commands: list[str] = []
         self.root_commands: list[str] = []
         self.agent_envs: list[dict[str, str]] = []
@@ -32,6 +35,7 @@ class FakeBaseInstalledAgent:
         del environment
         self.agent_commands.append(command)
         self.agent_envs.append(dict(env or {}))
+        self.events.append(("exec", command))
 
     async def exec_as_root(self, environment, command: str, env: dict[str, str] | None = None) -> None:
         del environment, env
@@ -44,15 +48,18 @@ class FakeCliFlag:
 
 
 class FakeEnvironment:
-    def __init__(self) -> None:
+    def __init__(self, events: list[tuple[str, str]] | None = None) -> None:
         self.uploads: list[tuple[Path, str]] = []
         self.downloads: list[tuple[str, Path]] = []
+        self.events = events if events is not None else []
 
     async def upload_file(self, source, target: str) -> None:
         self.uploads.append((Path(source), target))
+        self.events.append(("upload", target))
 
     async def download_dir(self, source: str, target) -> None:
         self.downloads.append((source, Path(target)))
+        self.events.append(("download", source))
 
 
 def _load(monkeypatch):
@@ -270,24 +277,24 @@ def test_agent_failure_is_not_masked_by_tee(monkeypatch) -> None:
 
 
 def test_credentials_are_removed_before_the_export(monkeypatch, tmp_path) -> None:
-    """The export becomes a retained Harbor artifact, so auth.json must not
-    survive into it."""
+    """The export becomes a retained Harbor artifact, so auth.json must be gone
+    from the agent directory *before* the directory is downloaded."""
     module = _load(monkeypatch)
     auth = tmp_path / "auth.json"
     auth.write_text(json.dumps({"openai-codex": {"access": "secret"}}))
     agent = module.PrimeAgent(model_name="openai/gpt", auth_json_path=auth, logs_dir=tmp_path / "logs")
-    environment = FakeEnvironment()
+    environment = FakeEnvironment(events=agent.events)
 
     import asyncio
 
     asyncio.run(_run(agent, environment))
 
-    assert (auth, "/tmp/prime-agent-dir/auth.json") in environment.uploads
-    removal = "rm -f /tmp/prime-agent-dir/auth.json"
-    assert any(removal in command for command in agent.agent_commands)
-    # …and it must happen before the directory leaves the container.
-    assert (
-        agent.agent_commands.index(next(c for c in agent.agent_commands if removal in c))
-        == len(agent.agent_commands) - 1
+    kinds = [kind for kind, _ in agent.events]
+    removal = next(
+        index
+        for index, (kind, detail) in enumerate(agent.events)
+        if kind == "exec" and "rm -f /tmp/prime-agent-dir/auth.json" in detail
     )
+    export = kinds.index("download")
+    assert removal < export, agent.events
     assert environment.downloads == [("/tmp/prime-agent-dir", tmp_path / "logs" / "prime-agent-dir")]
