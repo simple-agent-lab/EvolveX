@@ -21,9 +21,20 @@ requirements → contract → baseline → evidence → hypothesis
 - **EvolveX source checkout:** read
   [the decision protocol](references/decision-protocol.md) and
   [experiment design](references/experiment-design.md) before source work.
-- **External target project:** treat it as the candidate, then use the same
-  decision and experiment-design playbooks to locate a writable EvolveX source
-  checkout. Do not clone or edit an installed package without approval.
+- **External target project:** treat it as the candidate. Before the user
+  decides, present both entry choices and their consequences:
+  - **Repository-local entry:** use a thin target-repository platform adapter
+    that routes to this canonical skill. It is portable and pinned with the
+    target, but adds adapter metadata to maintain.
+  - **Global-skill bootstrap:** use the user's global skill to locate or, with
+    explicit approval, acquire a writable authoritative EvolveX source
+    checkout. It requires no target-repository adapter, but depends on global
+    installation and discovery plus trustworthy checkout provenance.
+  Both entries converge on the same decision and experiment-design workflow.
+  Neither entry choice authorizes cloning, editing, or credential access;
+  obtain separate explicit approval for each required action. Actual
+  `.codex`/`.claude` adapter implementation belongs to the separately planned
+  distribution-adapters project; do not claim it is implemented here.
 - **Insufficient context:** ask one focused location question and do not guess.
 
 State the evidence for the classification.
