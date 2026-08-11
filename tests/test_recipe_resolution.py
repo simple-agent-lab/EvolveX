@@ -133,7 +133,7 @@ def test_recipe_aggregates_non_json_yaml_config_problem(tmp_path: Path, yaml_val
         ("invalid_stage_timeout", "operators.select.timeout_s", "must be a positive number"),
         ("invalid_operator_name", "operators.select.operator", "invalid operator name"),
         ("missing_operator", "operators.select.operator", "operator not found: select/absent"),
-        ("rejected_config", "operators.gate.config", "strict must be a boolean"),
+        ("rejected_config", "operators.gate.config", "strict: expected boolean"),
         ("config_not_mapping", "operators.select.config", "must be a mapping"),
     ],
 )

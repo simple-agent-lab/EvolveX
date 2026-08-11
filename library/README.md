@@ -40,23 +40,28 @@ evolve operator check mutate/my_operator --config '{}'
 evolve operator list mutate
 ```
 
-Every named entry must call `sdk.main` with a configuration validator. Use the
-shared helpers to require a JSON object, normalize defaults, and reject unknown
-keys:
+Every named entry declares its accepted configuration once. The SDK uses that
+declaration to describe the operator, reject invalid values and unknown keys,
+and pass a normalized dictionary to `ctx.config`:
 
 ```python
-from library._shared.config import config_object, reject_unknown
+from evolve.frozen.config import Config, integer, string
 
 
-def validate_config(raw):
-    config = config_object(raw)
-    reject_unknown(config, {"mode"})
-    return {"mode": config.get("mode", "safe")}
+CONFIG = Config({
+    "mode": string(default="safe", choices=("safe", "fast")),
+    "attempts": integer(default=1, minimum=1),
+})
 
 
 if __name__ == "__main__":
-    sdk.main(MyOperator, validate_config=validate_config)
+    sdk.main(MyOperator, config_schema=CONFIG)
 ```
+
+Fields may be required, defaulted, or optional. Compose genuinely shared fields
+with `Config.extend`. Open JSON objects cover provider-specific arguments;
+`custom` normalizes one unusual field and `refine` checks a cross-field rule.
+These two escape hatches should stay narrow and keep the returned config JSON-compatible.
 
 Discovery reads only paths. Description and validation execute the entry in a
 subprocess, so framework code never imports operator modules in-process.

@@ -40,7 +40,8 @@ def test_every_library_operator_describes_and_validates(operator: LibraryOperato
     description = describe_operator(operator)
     assert description["stage"] == operator.stage
     assert isinstance(description["description"], str) and description["description"].strip()
-    assert description["config_validation"] is True
+    assert description["config"]["type"] == "object"
+    assert description["config"]["additionalProperties"] is False
 
 
 @pytest.mark.parametrize("name", ["aevolve", "ahe", "gepa", "hyperagents"])
@@ -54,7 +55,7 @@ def test_mutate_validators_normalize_command_as_a_strict_string(name: str) -> No
     )
 
     assert normalized["command"] == "printf accepted"
-    with pytest.raises(OperatorLibraryError, match="command must be a non-empty string"):
+    with pytest.raises(OperatorLibraryError, match="command: expected non-empty string"):
         validate_operator_config(
             operator,
             {**base, "runner": "local", "command": ["printf", "rejected"]},
@@ -282,25 +283,25 @@ def test_operator_config_is_strictly_normalized(
 
 @pytest.mark.parametrize("operator", discover_operators().values(), ids=lambda item: item.identity)
 def test_every_library_operator_rejects_unknown_settings(operator: LibraryOperator) -> None:
-    with pytest.raises(OperatorLibraryError, match="unknown settings: unexpected"):
+    with pytest.raises(OperatorLibraryError, match="unexpected: unknown field"):
         validate_operator_config(operator, {"unexpected": True})
 
 
 @pytest.mark.parametrize(
     ("stage", "name", "config", "message"),
     [
-        ("select", "random", {"seed": True}, "seed must be an integer"),
-        ("rollout", "harbor", {"budget_tasks": True}, "budget_tasks must be a positive integer"),
-        ("rollout", "harbor", {"agent_setup_timeout_multiplier": 0}, "positive finite number"),
-        ("rollout", "harbor", {"environment_kwargs": []}, "environment_kwargs must be a mapping"),
-        ("analyze", "trajectory_only", {"judge_timeout_s": True}, "positive finite number"),
-        ("analyze", "ahe", {"pass_threshold": True}, "pass_threshold must be a finite number"),
-        ("mutate", "aevolve", {"editable_roots": "target"}, "editable_roots must be a list"),
-        ("mutate", "hyperagents", {"expose_gate_data": 1}, "expose_gate_data must be a boolean"),
-        ("mutate", "ahe", {"max_retries": True}, "max_retries must be a nonnegative integer"),
-        ("validate", "minibatch_improvement", {"criterion": "loose"}, "criterion must be"),
-        ("novelty", "diff_similarity", {"threshold": "0.9"}, "threshold must be a finite number"),
-        ("novelty", "diff_similarity", {"threshold": 1.01}, "between 0 and 1"),
+        ("select", "random", {"seed": True}, "seed: expected integer"),
+        ("rollout", "harbor", {"budget_tasks": True}, "budget_tasks: expected integer"),
+        ("rollout", "harbor", {"agent_setup_timeout_multiplier": 0}, "must be positive"),
+        ("rollout", "harbor", {"environment_kwargs": []}, "environment_kwargs: expected object"),
+        ("analyze", "trajectory_only", {"judge_timeout_s": True}, "judge_timeout_s: expected finite number"),
+        ("analyze", "ahe", {"pass_threshold": True}, "pass_threshold: expected finite number"),
+        ("mutate", "aevolve", {"editable_roots": "target"}, "editable_roots: expected array"),
+        ("mutate", "hyperagents", {"expose_gate_data": 1}, "expose_gate_data: expected boolean"),
+        ("mutate", "ahe", {"max_retries": True}, "max_retries: expected integer"),
+        ("validate", "minibatch_improvement", {"criterion": "loose"}, "criterion: expected one of"),
+        ("novelty", "diff_similarity", {"threshold": "0.9"}, "threshold: expected finite number"),
+        ("novelty", "diff_similarity", {"threshold": 1.01}, "threshold: must be at most 1"),
     ],
 )
 def test_operator_config_rejects_malformed_values(

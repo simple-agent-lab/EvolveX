@@ -11,7 +11,7 @@ The mechanism invokes required operator files for select, rollout, mutate,
 gate, and record, plus recipe-selected optional operators such as
 analyze, validate, novelty, and reflect. A copied file may be a library
 operator or a user-provided `script:`. Named Python operators end with
-`sdk.main(OperatorClass, validate_config=validate_config)` so discovery-time
+`sdk.main(OperatorClass, config_schema=CONFIG)` so discovery-time
 inspection can describe the entry and validate configuration. Any explicit
 script that honors the same files is valid, but script bindings are
 non-portable filesystem dependencies.
@@ -224,9 +224,8 @@ genid)`, and reports render coverage and certification independently from score.
 
 1. Run `evolve operator new <stage> <name>` in a source checkout.
 2. Implement the stage method and return its result dataclass.
-3. Implement mandatory config validation with
-   `library._shared.config.config_object`, normalizers, and `reject_unknown`;
-   pass it to `sdk.main(..., validate_config=validate_config)`.
+3. Declare accepted fields with `evolve.frozen.config.Config` and pass the
+   declaration to `sdk.main(..., config_schema=CONFIG)`.
 4. Run `evolve operator describe <stage>/<name>` and
    `evolve operator check <stage>/<name> --config '<json>'`.
 5. Select it under `operator:` with all settings under `config`, then run
@@ -236,6 +235,11 @@ Underscore-prefixed modules such as `library/_shared/` and
 `library/mutate/_support/` are shared helpers. Discovery excludes them, so
 helper refactors do not create accidental public operators. Shared local and
 Harbor runners live under `library/_shared/runners/`.
+
+`Config` supports strings, integers, finite numbers, booleans, arrays, objects,
+arbitrary JSON values, required/default/optional fields, choices, bounds, and
+descriptions. Use `Config.extend` for shared fragments. Use `custom` only to
+normalize one field and `refine` only to validate a relationship between fields.
 
 ## Shipped Operators
 

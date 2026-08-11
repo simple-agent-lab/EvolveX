@@ -46,13 +46,10 @@ def invoke_cli(*args: str):
 
 TEST_MUTATE_OPERATOR = """
 from evolve.frozen import sdk
+from evolve.frozen.config import Config
 from evolve.frozen.interfaces import MutateOperator, MutateResult
-from library._shared.config import config_object, reject_unknown
 
-def validate_config(raw):
-    config = config_object(raw)
-    reject_unknown(config, set())
-    return config
+CONFIG = Config({})
 
 class TestEditor(MutateOperator):
     def mutate(self, checkout, observation, ctx):
@@ -61,7 +58,7 @@ class TestEditor(MutateOperator):
         return MutateResult(changed=["target/agent.py"], notes=["deterministic test edit"], usage={"usd": 0})
 
 if __name__ == "__main__":
-    sdk.main(TestEditor, validate_config=validate_config)
+    sdk.main(TestEditor, config_schema=CONFIG)
 """.lstrip()
 
 

@@ -22,7 +22,8 @@ def test_materialization_contains_selected_operators_and_runtime_helpers_only() 
     assert "operators/analyze.py" in materialized.files
     assert "operators/mutate.py" in materialized.files
     assert "library/__init__.py" in materialized.files
-    assert "library/_shared/config.py" in materialized.files
+    assert "library/select/_config.py" in materialized.files
+    assert "library/analyze/_config.py" in materialized.files
     assert "library/mutate/_config.py" in materialized.files
     assert "library/_shared/runners/local.py" in materialized.files
     assert "library/mutate/_support/workspace.py" in materialized.files
@@ -65,17 +66,14 @@ def test_named_analyze_with_script_mutate_imports_from_root_shared_helpers(tmp_p
     script.write_text(
         '"""Standalone custom mutate operator."""\n\n'
         "from evolve.frozen import sdk\n"
+        "from evolve.frozen.config import Config\n"
         "from evolve.frozen.interfaces import MutateOperator, MutateResult\n"
-        "from library._shared.config import config_object, reject_unknown\n\n"
-        "def validate_config(raw):\n"
-        "    config = config_object(raw)\n"
-        "    reject_unknown(config, set())\n"
-        "    return config\n\n"
+        "\nCONFIG = Config({})\n\n"
         "class CustomMutate(MutateOperator):\n"
         "    def mutate(self, checkout, observation, ctx):\n"
         "        return MutateResult(changed=[], notes=[], usage={'usd': 0})\n\n"
         "if __name__ == '__main__':\n"
-        "    sdk.main(CustomMutate, validate_config=validate_config)\n"
+        "    sdk.main(CustomMutate, config_schema=CONFIG)\n"
     )
     recipe = tmp_path / "recipe"
     recipe.mkdir()

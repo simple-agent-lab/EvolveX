@@ -11,7 +11,6 @@ import json
 import os
 import random
 import sys
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any, cast
 
@@ -58,7 +57,6 @@ RECORD_STRIPPED_FIELDS = STAMPED_FIELDS | {
     "pending_gate_record",
     MECHANISM_EVAL_FIELD,
 }
-ConfigValidator = Callable[[dict[str, object]], dict[str, object]]
 
 
 def rows(workspace: Path | str = ".") -> list[dict[str, Any]]:
@@ -103,17 +101,10 @@ def surface_check(workspace: Path | str = ".", parent: str | None = None) -> dic
     return {"ok": not violations, "mutated": mutated, "violations": violations}
 
 
-def main(
-    operator_cls: type[object],
-    *,
-    config_schema: Config | None = None,
-    validate_config: ConfigValidator | None = None,
-) -> None:
-    if config_schema is not None and validate_config is not None:
-        raise TypeError("pass config_schema, not validate_config")
+def main(operator_cls: type[object], *, config_schema: Config) -> None:
     args = _parse_args()
     config = _config_object(args.config)
-    if _run_inspection_mode(args, operator_cls, config, config_schema, validate_config):
+    if _run_inspection_mode(args, operator_cls, config, config_schema):
         return
     _run_runtime_mode(operator_cls, config)
 
@@ -196,20 +187,15 @@ def _run_inspection_mode(
     args: argparse.Namespace,
     operator_cls: type[object],
     config: dict[str, object],
-    config_schema: Config | None,
-    validate_config: ConfigValidator | None,
+    config_schema: Config,
 ) -> bool:
     if args.describe:
-        if config_schema is not None:
-            config_contract = {"config": config_schema.describe()}
-        else:
-            config_contract = {"config_validation": validate_config is not None}
         print(
             json.dumps(
                 {
                     "stage": _operator_stage(operator_cls),
                     "description": _operator_description(operator_cls),
-                    **config_contract,
+                    "config": config_schema.describe(),
                 },
                 sort_keys=True,
                 allow_nan=False,
@@ -217,15 +203,8 @@ def _run_inspection_mode(
         )
         return True
     if args.validate_config:
-        if config_schema is None and validate_config is None:
-            _inspection_error("operator does not support config validation")
-            return True
         try:
-            if config_schema is not None:
-                normalized = config_schema.normalize(config)
-            else:
-                assert validate_config is not None
-                normalized = validate_config(config)
+            normalized = config_schema.normalize(config)
         except Exception as error:
             _inspection_error(str(error))
         if not isinstance(normalized, dict):

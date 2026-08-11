@@ -52,10 +52,9 @@ evolve operator new mutate my_operator
 ```
 
 Every named library entry must expose `--describe` and `--validate-config` via
-`sdk.main(..., validate_config=validate_config)`. Validation must reject
-unknown or invalid settings; `library/_shared/config.py` provides common
-helpers. Underscore-prefixed files and directories are helper modules, not
-discoverable operators.
+`sdk.main(..., config_schema=CONFIG)`. The declarative schema rejects unknown
+or invalid settings and reports defaults during inspection. Underscore-prefixed
+files and directories are helper modules, not discoverable operators.
 
 ## Compose a recipe
 

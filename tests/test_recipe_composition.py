@@ -176,8 +176,8 @@ def test_init_copies_frozen_library_helpers_and_active_provenance(tmp_path: Path
         mutate_config={"runner": "local"},
     )
 
-    assert (workspace / "library/_shared/config.py").read_bytes() == (
-        Path(library_root()) / "_shared/config.py"
+    assert (workspace / "library/_shared/artifacts.py").read_bytes() == (
+        Path(library_root()) / "_shared/artifacts.py"
     ).read_bytes()
     assert (workspace / "library/_shared/runners/harbor.py").read_bytes() == (
         Path(library_root()) / "_shared/runners/harbor.py"

@@ -175,14 +175,6 @@ def test_subprocess_inspection_rejects_malformed_stdout(tmp_path: Path) -> None:
         describe_operator(operator)
 
 
-def test_subprocess_validation_reports_missing_validator(tmp_path: Path) -> None:
-    root = _library_with_operator(tmp_path, _sdk_operator_script(include_validator=False))
-    operator = resolve_operator("mutate", "critic_editor", root)
-
-    with pytest.raises(OperatorLibraryError, match=r"mutate/critic_editor.*does not support config validation"):
-        validate_operator_config(operator, {})
-
-
 def test_subprocess_validation_wraps_non_json_config(tmp_path: Path) -> None:
     root = _library_with_operator(tmp_path, _sdk_operator_script())
     operator = resolve_operator("mutate", "critic_editor", root)
@@ -229,9 +221,7 @@ def _library_with_operator(tmp_path: Path, script: str) -> Path:
     return root
 
 
-def _sdk_operator_script(*, include_validator: bool = True) -> str:
-    schema = "\nSCHEMA = Config({'attempts': integer(default=3)})\n" if include_validator else ""
-    call = "sdk.main(CriticEditor, config_schema=SCHEMA)" if include_validator else "sdk.main(CriticEditor)"
+def _sdk_operator_script() -> str:
     return (
         "from evolve.frozen import sdk\n"
         "from evolve.frozen.config import Config, integer\n"
@@ -240,8 +230,8 @@ def _sdk_operator_script(*, include_validator: bool = True) -> str:
         '    """Edits a candidate after reviewing evidence."""\n\n'
         "    def mutate(self, checkout, observation, ctx):\n"
         "        raise AssertionError('runtime must not execute')\n"
-        f"{schema}\n"
-        f"{call}\n"
+        "\nSCHEMA = Config({'attempts': integer(default=3)})\n\n"
+        "sdk.main(CriticEditor, config_schema=SCHEMA)\n"
     )
 
 

@@ -148,8 +148,8 @@ To add one:
 
 1. Run `evolve operator new <stage> <name>` in a source checkout.
 2. Implement the corresponding interface from `evolve.frozen.interfaces`.
-3. Validate configuration in the entry file and pass the validator to
-   `sdk.main(..., validate_config=validate_config)`.
+3. Declare configuration with `evolve.frozen.config.Config` and pass it to
+   `sdk.main(..., config_schema=CONFIG)`.
 4. Run `evolve operator describe <stage>/<name>` and
    `evolve operator check <stage>/<name> --config '<json>'`.
 5. Select it in `evolve.yaml`, then run `evolve recipe check`.
@@ -164,7 +164,7 @@ operators:
 See the [operator reference](../reference/operators.md) for stage contracts and
 the built-in operator catalog. Helpers whose file or directory name begins
 with `_` are importable by entry files but are not discovered as operators;
-shared validators live in `library/_shared/config.py`.
+shared schema fragments may live in an underscore-prefixed stage helper.
 
 An explicit `script:` remains executable for an escape hatch:
 

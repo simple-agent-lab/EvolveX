@@ -186,6 +186,25 @@ def test_recipe_operator_blocks_never_use_variant_keys() -> None:
     assert failures == {}
 
 
+def test_operator_authoring_uses_only_declarative_config_schemas() -> None:
+    forbidden = (
+        "_CONFIG_KEYS",
+        "validate_config=",
+        "from library._shared.config import",
+    )
+    paths = list((ROOT / "library").rglob("*.py"))
+    paths += list((ROOT / "library").rglob("*.md"))
+    paths += [ROOT / "docs/guides/custom-recipes.md", ROOT / "docs/reference/operators.md"]
+
+    failures = {
+        path.relative_to(ROOT).as_posix(): [token for token in forbidden if token in path.read_text()]
+        for path in paths
+        if any(token in path.read_text() for token in forbidden)
+    }
+
+    assert failures == {}
+
+
 def test_analyze_pipeline_uses_operator_vocabulary() -> None:
     files = [ROOT / "src" / "evolve" / "trace_analysis.py", ROOT / "src" / "evolve" / "feedback.py"]
     files.extend((ROOT / "library" / "analyze").rglob("*.py"))
@@ -220,7 +239,7 @@ def test_required_public_repository_files_exist() -> None:
         ".github/ISSUE_TEMPLATE/bug_report.yml",
         ".github/ISSUE_TEMPLATE/feature_request.yml",
         ".github/ISSUE_TEMPLATE/config.yml",
-        "library/_shared/config.py",
+        "src/evolve/frozen/config.py",
         "library/__init__.py",
     )
     assert [path for path in required if not (ROOT / path).is_file()] == []
