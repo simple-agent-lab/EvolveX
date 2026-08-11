@@ -141,7 +141,11 @@ def test_subprocess_inspection_describes_and_validates_operator_config(tmp_path:
 
     assert validate_operator_config(operator, {"attempts": 2}) == {"attempts": 2}
     assert describe_operator(operator) == {
-        "config_validation": True,
+        "config": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {"attempts": {"type": "integer", "default": 3}},
+        },
         "description": "Edits a candidate after reviewing evidence.",
         "stage": "mutate",
     }
@@ -226,18 +230,17 @@ def _library_with_operator(tmp_path: Path, script: str) -> Path:
 
 
 def _sdk_operator_script(*, include_validator: bool = True) -> str:
-    validator = (
-        "\n\ndef validate(raw):\n    return {'attempts': int(raw.get('attempts', 3))}\n" if include_validator else ""
-    )
-    call = "sdk.main(CriticEditor, validate_config=validate)" if include_validator else "sdk.main(CriticEditor)"
+    schema = "\nSCHEMA = Config({'attempts': integer(default=3)})\n" if include_validator else ""
+    call = "sdk.main(CriticEditor, config_schema=SCHEMA)" if include_validator else "sdk.main(CriticEditor)"
     return (
         "from evolve.frozen import sdk\n"
+        "from evolve.frozen.config import Config, integer\n"
         "from evolve.frozen.interfaces import MutateOperator\n\n"
         "class CriticEditor(MutateOperator):\n"
         '    """Edits a candidate after reviewing evidence."""\n\n'
         "    def mutate(self, checkout, observation, ctx):\n"
         "        raise AssertionError('runtime must not execute')\n"
-        f"{validator}\n"
+        f"{schema}\n"
         f"{call}\n"
     )
 

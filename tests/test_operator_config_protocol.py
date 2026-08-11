@@ -1,42 +1,61 @@
+from __future__ import annotations
+
 import json
 import sys
 
 import pytest
 
 from evolve.frozen import sdk
+from evolve.frozen.config import Config, integer
 from evolve.frozen.interfaces import MutateOperator
+
+
+class TinyMutate(MutateOperator):
+    """Concise operator description."""
+
+    def mutate(self, checkout, observation, ctx):
+        raise AssertionError("runtime must not execute")
+
+
+SCHEMA = Config(
+    {
+        "attempts": integer(
+            default=3,
+            minimum=1,
+            description="Attempt count.",
+        )
+    }
+)
 
 
 def test_validate_config_mode_returns_normalized_json(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    class TinyMutate(MutateOperator):
-        def mutate(self, checkout, observation, ctx):
-            raise AssertionError("runtime must not execute")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["operator.py", "--validate-config", "--config", '{"attempts": 4}'],
+    )
 
-    def validate(raw: dict[str, object]) -> dict[str, object]:
-        return {"attempts": int(raw.get("attempts", 3))}
-
-    monkeypatch.setattr(sys, "argv", ["operator.py", "--validate-config", "--config", '{"attempts": 4}'])
-    sdk.main(TinyMutate, validate_config=validate)
+    sdk.main(TinyMutate, config_schema=SCHEMA)
 
     assert json.loads(capsys.readouterr().out) == {"attempts": 4}
 
 
-def test_validate_config_mode_rejects_missing_validator(
+def test_validate_config_mode_reports_schema_error(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    class TinyMutate(MutateOperator):
-        def mutate(self, checkout, observation, ctx):
-            raise AssertionError("runtime must not execute")
-
-    monkeypatch.setattr(sys, "argv", ["operator.py", "--validate-config"])
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["operator.py", "--validate-config", "--config", '{"attempts": 0}'],
+    )
 
     with pytest.raises(SystemExit) as exit_info:
-        sdk.main(TinyMutate)
+        sdk.main(TinyMutate, config_schema=SCHEMA)
 
     assert exit_info.value.code == 2
-    assert "does not support config validation" in capsys.readouterr().err
+    assert "attempts: must be at least 1" in capsys.readouterr().err
 
 
 def test_validate_config_mode_rejects_non_object_input(
@@ -45,7 +64,7 @@ def test_validate_config_mode_rejects_non_object_input(
     monkeypatch.setattr(sys, "argv", ["operator.py", "--validate-config", "--config", "[]"])
 
     with pytest.raises(SystemExit) as exit_info:
-        sdk.main(object, validate_config=lambda raw: raw)
+        sdk.main(TinyMutate, config_schema=SCHEMA)
 
     assert exit_info.value.code == 2
     assert "config must be a JSON object" in capsys.readouterr().err
@@ -54,68 +73,43 @@ def test_validate_config_mode_rejects_non_object_input(
 def test_validate_config_mode_rejects_nonfinite_input(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(sys, "argv", ["operator.py", "--validate-config", "--config", '{"value": NaN}'])
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["operator.py", "--validate-config", "--config", '{"value": NaN}'],
+    )
 
     with pytest.raises(SystemExit) as exit_info:
-        sdk.main(object, validate_config=lambda raw: raw)
+        sdk.main(TinyMutate, config_schema=SCHEMA)
 
     assert exit_info.value.code == 2
     assert "config must be valid JSON" in capsys.readouterr().err
 
 
-def test_validate_config_mode_rejects_non_object_normalized_output(
+def test_describe_mode_reports_stage_description_and_schema(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(sys, "argv", ["operator.py", "--validate-config"])
+    monkeypatch.setattr(sys, "argv", ["operator.py", "--describe"])
 
-    with pytest.raises(SystemExit) as exit_info:
-        sdk.main(object, validate_config=lambda raw: [])
+    sdk.main(TinyMutate, config_schema=SCHEMA)
 
-    assert exit_info.value.code == 2
-    assert "config validator must return a JSON object" in capsys.readouterr().err
+    assert json.loads(capsys.readouterr().out) == {
+        "config": SCHEMA.describe(),
+        "description": "Concise operator description.",
+        "stage": "mutate",
+    }
 
 
-def test_validate_config_mode_rejects_nonfinite_normalized_output(
+def test_description_falls_back_to_module_docstring(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(sys, "argv", ["operator.py", "--validate-config"])
-
-    with pytest.raises(SystemExit) as exit_info:
-        sdk.main(object, validate_config=lambda raw: {"opaque": {"temperature": float("inf")}})
-
-    assert exit_info.value.code == 2
-    assert "config validator returned invalid JSON" in capsys.readouterr().err
-
-
-def test_validate_config_mode_reports_validator_exception(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    def validate(raw: dict[str, object]) -> dict[str, object]:
-        raise ValueError("attempts must be positive")
-
-    monkeypatch.setattr(sys, "argv", ["operator.py", "--validate-config"])
-
-    with pytest.raises(SystemExit) as exit_info:
-        sdk.main(object, validate_config=validate)
-
-    assert exit_info.value.code == 2
-    assert "attempts must be positive" in capsys.readouterr().err
-
-
-def test_describe_mode_reports_stage_description_and_validation(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    class TinyMutate(MutateOperator):
-        """Concise operator description."""
-
+    class UndocumentedMutate(MutateOperator):
         def mutate(self, checkout, observation, ctx):
             raise AssertionError("runtime must not execute")
 
     monkeypatch.setattr(sys, "argv", ["operator.py", "--describe"])
-    sdk.main(TinyMutate, validate_config=lambda raw: raw)
+    monkeypatch.setattr(sys.modules[__name__], "__doc__", "Module summary.")
 
-    assert json.loads(capsys.readouterr().out) == {
-        "config_validation": True,
-        "description": "Concise operator description.",
-        "stage": "mutate",
-    }
+    sdk.main(UndocumentedMutate, config_schema=Config({}))
+
+    assert json.loads(capsys.readouterr().out)["description"] == "Module summary."

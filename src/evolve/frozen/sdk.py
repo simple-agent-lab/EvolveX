@@ -19,6 +19,7 @@ from ..archive import MECHANISM_EVAL_FIELD, RECEIPT_CERTIFIED_FIELD, STAMPED_FIE
 from ..evaluation.diagnostics import validate_evaluation_diagnostics_payload
 from ..git import head_tag, working_tree_changed_paths
 from ..surface import check_paths, surface_patterns
+from .config import Config
 from .interfaces import (
     OPERATORS,
     PROTOCOL_VERSION,
@@ -102,10 +103,17 @@ def surface_check(workspace: Path | str = ".", parent: str | None = None) -> dic
     return {"ok": not violations, "mutated": mutated, "violations": violations}
 
 
-def main(operator_cls: type[object], *, validate_config: ConfigValidator | None = None) -> None:
+def main(
+    operator_cls: type[object],
+    *,
+    config_schema: Config | None = None,
+    validate_config: ConfigValidator | None = None,
+) -> None:
+    if config_schema is not None and validate_config is not None:
+        raise TypeError("pass config_schema, not validate_config")
     args = _parse_args()
     config = _config_object(args.config)
-    if _run_inspection_mode(args, operator_cls, config, validate_config):
+    if _run_inspection_mode(args, operator_cls, config, config_schema, validate_config):
         return
     _run_runtime_mode(operator_cls, config)
 
@@ -188,15 +196,20 @@ def _run_inspection_mode(
     args: argparse.Namespace,
     operator_cls: type[object],
     config: dict[str, object],
+    config_schema: Config | None,
     validate_config: ConfigValidator | None,
 ) -> bool:
     if args.describe:
+        if config_schema is not None:
+            config_contract = {"config": config_schema.describe()}
+        else:
+            config_contract = {"config_validation": validate_config is not None}
         print(
             json.dumps(
                 {
                     "stage": _operator_stage(operator_cls),
-                    "description": (operator_cls.__doc__ or "").strip(),
-                    "config_validation": validate_config is not None,
+                    "description": _operator_description(operator_cls),
+                    **config_contract,
                 },
                 sort_keys=True,
                 allow_nan=False,
@@ -204,11 +217,15 @@ def _run_inspection_mode(
         )
         return True
     if args.validate_config:
-        if validate_config is None:
+        if config_schema is None and validate_config is None:
             _inspection_error("operator does not support config validation")
             return True
         try:
-            normalized = validate_config(config)
+            if config_schema is not None:
+                normalized = config_schema.normalize(config)
+            else:
+                assert validate_config is not None
+                normalized = validate_config(config)
         except Exception as error:
             _inspection_error(str(error))
         if not isinstance(normalized, dict):
@@ -220,6 +237,11 @@ def _run_inspection_mode(
         print(serialized)
         return True
     return False
+
+
+def _operator_description(operator_cls: type[object]) -> str:
+    module = sys.modules.get(operator_cls.__module__)
+    return (operator_cls.__doc__ or getattr(module, "__doc__", None) or "").strip()
 
 
 def _operator_stage(operator_cls: type[object]) -> str:

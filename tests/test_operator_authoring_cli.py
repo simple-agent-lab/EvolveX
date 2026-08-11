@@ -21,9 +21,6 @@ def _source_checkout_library(tmp_path: Path) -> Path:
     library = checkout / "library"
     library.mkdir()
     (library / "__init__.py").write_text('"""Fixture operator library."""\n')
-    shared = library / "_shared/config.py"
-    shared.parent.mkdir()
-    shared.write_bytes((Path(__file__).resolve().parents[1] / "library/_shared/config.py").read_bytes())
     return library
 
 
@@ -73,7 +70,8 @@ def test_operator_new_creates_one_valid_entry_file(tmp_path: Path, monkeypatch: 
     created = library / "mutate" / "critic_editor.py"
     assert created.is_file()
     assert "class CriticEditor(MutateOperator)" in created.read_text()
-    assert "validate_config=validate_config" in created.read_text()
+    assert "CONFIG = Config({})" in created.read_text()
+    assert "config_schema=CONFIG" in created.read_text()
 
 
 @pytest.mark.parametrize(
@@ -117,7 +115,11 @@ def test_operator_new_scaffold_executes_describe_and_check_modes(
 
     assert created.exit_code == 0, created.output
     description = describe_operator(operator)
-    assert description["config_validation"] is True
+    assert description["config"] == {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {},
+    }
     assert description["description"] == f"Describe the sample {stage} operator."
     assert description["stage"] == stage
     assert validate_operator_config(operator, {}) == {}

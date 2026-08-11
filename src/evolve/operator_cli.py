@@ -84,14 +84,11 @@ def _new_operator_source(stage: str, name: str) -> str:
     return f'''"""Describe the {name} {stage} operator."""
 
 from evolve.frozen import sdk
+from evolve.frozen.config import Config
 from evolve.frozen.interfaces import {spec.abc.__name__}, {spec.result.__name__}
-from library._shared.config import config_object, reject_unknown
 
 
-def validate_config(raw: dict[str, object]) -> dict[str, object]:
-    config = config_object(raw)
-    reject_unknown(config, set())
-    return config
+CONFIG = Config({{}})
 
 
 class {_class_name(name)}({spec.abc.__name__}):
@@ -100,7 +97,7 @@ class {_class_name(name)}({spec.abc.__name__}):
 
 
 if __name__ == "__main__":
-    sdk.main({_class_name(name)}, validate_config=validate_config)
+    sdk.main({_class_name(name)}, config_schema=CONFIG)
 '''
 
 
