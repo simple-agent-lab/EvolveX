@@ -758,7 +758,7 @@ def test_file_task_mutate_configures_per_attempt_timeout_and_timeout_retry(
     ctx.config.update(
         {
             "agent": INSTALLED_AGENT,
-            "image": "evolve-meta-agent:test",
+            "image": "evolve-mutate:test",
             "max_retries": 1,
         }
     )
@@ -777,7 +777,7 @@ def test_file_task_mutate_configures_per_attempt_timeout_and_timeout_retry(
     harbor_root = run_dir / "mutate" / "harbor"
     config = ExecConfig.model_validate_json((harbor_root / "exec-config.json").read_text())
     job = config.map.job
-    assert config.map.compile.environments[0].docker_image == "evolve-meta-agent:test"
+    assert config.map.compile.environments[0].docker_image == "evolve-mutate:test"
     assert job.agents[0].override_timeout_sec == 3600
     assert "EVOLVE_CANDIDATE_SOURCE" not in job.agents[0].env
     assert job.environment.mounts is None

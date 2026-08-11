@@ -61,8 +61,8 @@ def test_release_wheel_has_one_resource_owner_and_complete_metadata() -> None:
             "evolve/composition/recipe.py",
             "evolve/skills/evolve-agent/SKILL.md",
             "evolve/skills/evolve-agent/references/workspace-contract.md",
-            "evolve/containers/meta-agent/Dockerfile",
-            "evolve/containers/meta-agent/required-tools.txt",
+            "evolve/containers/mutate/Dockerfile",
+            "evolve/containers/mutate/required-tools.txt",
             "evolve/licenses/LICENSE",
             "evolve/licenses/NOTICE",
         } <= names

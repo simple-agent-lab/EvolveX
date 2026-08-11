@@ -20,15 +20,15 @@ trap cleanup EXIT
 
 case "$RECIPE" in
   ahe|hyperagents)
-    IMAGE=evolve-meta-agent-app:20260724-tools-mswe245
-    IMAGE_CONTEXT=$ROOT/containers/meta-agent
+    IMAGE=evolve-mutate-app:20260724-tools-mswe245
+    IMAGE_CONTEXT=$ROOT/containers/mutate
     IMAGE_LABEL=io.evolve.miniswe.version
     IMAGE_VERSION=2.4.5
     BUILD_ARGS=(--build-arg MINISWE_VERSION=2.4.5)
     ;;
   aevolve|ahe_codex|gepa|hill_climb|hill_climb_codex|hyperagents_codex)
-    IMAGE=evolve-meta-agent-codex:20260805-codex0145
-    IMAGE_CONTEXT=$ROOT/containers/meta-agent-codex
+    IMAGE=evolve-mutate-codex:20260805-codex0145
+    IMAGE_CONTEXT=$ROOT/containers/mutate-codex
     IMAGE_LABEL=io.evolve.codex.version
     IMAGE_VERSION=0.145.0
     BUILD_ARGS=(--build-arg CODEX_VERSION=0.145.0)

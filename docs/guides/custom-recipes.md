@@ -220,7 +220,7 @@ recipe names. For a custom recipe, you are responsible for making every image
 named in `evolve.yaml` available to Docker:
 
 ```bash
-docker build -t my-mutate-runner:latest containers/meta-agent-codex
+docker build -t my-mutate-runner:latest containers/mutate-codex
 docker image inspect my-mutate-runner:latest
 ```
 

@@ -19,8 +19,8 @@ SUPPORTED_RECIPES = {
 UV_SOURCE_RECIPES = {"ahe", "hill_climb", "hyperagents"}
 MAIN_RECIPES = SUPPORTED_RECIPES - {"gepa_local"}
 TERMINAL_BENCH_DATASET = "terminal-bench-2-30-v1"
-CODEX_IMAGE = "evolve-meta-agent-codex:20260805-codex0145"
-MINISWE_IMAGE = "evolve-meta-agent-app:20260724-tools-mswe245"
+CODEX_IMAGE = "evolve-mutate-codex:20260805-codex0145"
+MINISWE_IMAGE = "evolve-mutate-app:20260724-tools-mswe245"
 
 
 def _config(name: str) -> str:
@@ -183,13 +183,13 @@ def test_supported_recipes_use_harbor_and_method_mutate() -> None:
 
 
 def test_ahe_and_hyperagents_share_the_pinned_mutate_image() -> None:
-    expected = "evolve-meta-agent-app:20260724-tools-mswe245"
+    expected = "evolve-mutate-app:20260724-tools-mswe245"
     for name in ("ahe", "hyperagents"):
         assert _operator_config(name, "mutate")["image"] == expected
 
 
 def test_codex_mutates_use_the_preinstalled_codex_image() -> None:
-    expected = "evolve-meta-agent-codex:20260805-codex0145"
+    expected = "evolve-mutate-codex:20260805-codex0145"
     for name in ("aevolve", "ahe_codex", "gepa", "hill_climb", "hill_climb_codex", "hyperagents_codex"):
         assert _operator_config(name, "mutate")["image"] == expected
 
@@ -271,7 +271,7 @@ def test_miniswe_method_agents_use_the_rollout_model_version() -> None:
 
 
 def test_mutate_image_provides_harbor_workspace_parent() -> None:
-    dockerfile = ROOT / "containers" / "meta-agent" / "Dockerfile"
+    dockerfile = ROOT / "containers" / "mutate" / "Dockerfile"
     contents = dockerfile.read_text()
     assert contents.startswith(
         "FROM ubuntu:24.04@sha256:4fbb8e6a8395de5a7550b33509421a2bafbc0aab6c06ba2cef9ebffbc7092d90"
@@ -298,7 +298,7 @@ def test_mutate_image_provides_harbor_workspace_parent() -> None:
 
 
 def test_mutate_required_tools_match_tier_zero_contract() -> None:
-    tools = (ROOT / "containers" / "meta-agent" / "required-tools.txt").read_text().splitlines()
+    tools = (ROOT / "containers" / "mutate" / "required-tools.txt").read_text().splitlines()
     assert tools == [
         "bash",
         "git",
@@ -319,7 +319,7 @@ def test_mutate_required_tools_match_tier_zero_contract() -> None:
 
 
 def test_codex_mutate_image_pins_the_seed_cli_version() -> None:
-    dockerfile = (ROOT / "containers" / "meta-agent-codex" / "Dockerfile").read_text()
+    dockerfile = (ROOT / "containers" / "mutate-codex" / "Dockerfile").read_text()
     assert dockerfile.startswith(
         "FROM node:22-bookworm-slim@sha256:f32b81066cde10a75dbac96646099533316d94bac4150c55da1636e1f0ffdc46"
     )

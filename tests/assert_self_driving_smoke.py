@@ -46,7 +46,7 @@ def assert_self_driving_smoke(workspace: Path, through: int) -> None:
             if row.get("mutated") != ["target/agent.py"]:
                 raise AssertionError(f"gen/{genid}: expected deterministic target mutation, got {row.get('mutated')!r}")
             candidate = git(workspace, "show", f"gen/{genid}:target/agent.py").stdout
-            marker = f"# smoke-meta-agent gen {genid}"
+            marker = f"# smoke-mutate gen {genid}"
             if marker not in candidate.splitlines():
                 raise AssertionError(f"gen/{genid}: candidate code is missing deterministic marker")
 

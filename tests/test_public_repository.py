@@ -159,9 +159,6 @@ def test_maintained_public_material_uses_canonical_stage_identifiers() -> None:
             for legacy_mapping in ('"trace_analyzer": "analyze"', '"meta_agent": "mutate"'):
                 assert text.count(legacy_mapping) == 1
                 text = text.replace(legacy_mapping, "")
-        text = re.sub(r"evolve-meta-agent-[A-Za-z0-9_.:-]+", "", text)
-        text = text.replace("containers/meta-agent-codex", "").replace("containers/meta-agent", "")
-        text = text.replace('resource_root("containers") / "meta-agent"', "")
         assert not [pattern.pattern for pattern in forbidden if pattern.search(text)], path
 
 
