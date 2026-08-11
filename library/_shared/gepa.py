@@ -36,7 +36,7 @@ def normalize_components(raw: object) -> dict[str, list[str]]:
                 raise ValueError("each GEPA component must map to one or more relative paths")
             relative = Path(value.strip())
             if relative.is_absolute() or ".." in relative.parts or relative.as_posix() in {"", "."}:
-                raise ValueError(f"GEPA component path must be checkout-relative: {value}")
+                raise ValueError("GEPA component path must be checkout-relative")
             paths.append(relative.as_posix().rstrip("/"))
         normalized[name] = paths
     return normalized

@@ -50,3 +50,13 @@ def test_runner_config_accepts_arbitrary_json_mappings() -> None:
 
 def test_component_normalizer_converts_scalar_paths_to_lists() -> None:
     assert normalize_components({"prompt": "target/prompt.md"}) == {"prompt": ["target/prompt.md"]}
+
+
+def test_component_normalizer_rejects_unsafe_paths_without_echoing_values() -> None:
+    rejected = "../PRIVATE_TOKEN"
+
+    with pytest.raises(ValueError) as caught:
+        normalize_components({"prompt": rejected})
+
+    assert "checkout-relative" in str(caught.value)
+    assert rejected not in str(caught.value)

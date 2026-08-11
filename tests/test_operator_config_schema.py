@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 
 import pytest
 
@@ -41,7 +42,28 @@ def test_config_normalizes_defaults_and_omits_absent_optional_fields() -> None:
         "labels": [],
     }
     assert "note" not in first
+    assert isinstance(first["ratio"], float)
     assert first["labels"] is not second["labels"]
+
+
+def test_defaults_use_the_same_normalization_as_explicit_values() -> None:
+    paths = custom(
+        lambda value: [value] if isinstance(value, str) else value,
+        exported_type="array",
+        default="target/prompt.md",
+        description="Paths to edit.",
+    )
+    schema = Config(
+        {
+            "paths": paths,
+            "nested": object({"ratio": number(default=1)}, default={}),
+        }
+    )
+
+    expected = {"paths": ["target/prompt.md"], "nested": {"ratio": 1.0}}
+    assert schema.normalize({}) == expected
+    assert schema.normalize({"paths": "target/prompt.md", "nested": {}}) == expected
+    assert schema.describe()["properties"]["paths"]["default"] == ["target/prompt.md"]
 
 
 @pytest.mark.parametrize("value", [True, 1.0, "1"])
@@ -61,6 +83,35 @@ def test_declarations_reject_required_defaults_and_invalid_defaults() -> None:
         string(required=True, default="x")
     with pytest.raises(ValueError, match="default is invalid"):
         integer(default=0, minimum=1)
+
+
+@pytest.mark.parametrize(
+    "declare",
+    [
+        lambda: number(minimum=math.nan),
+        lambda: number(maximum=math.inf),
+        lambda: number(choices=(math.nan,)),
+        lambda: integer(minimum=True),
+        lambda: integer(choices=(1.0,)),
+        lambda: string(choices=(1,)),
+    ],
+)
+def test_declarations_reject_invalid_bounds_and_choices(declare: Callable[[], object]) -> None:
+    with pytest.raises(ValueError):
+        declare()
+
+
+def test_number_choices_are_normalized_in_descriptions() -> None:
+    schema = Config({"ratio": number(default=1, choices=(1, 2))})
+
+    description = schema.describe()["properties"]["ratio"]
+    assert description == {
+        "type": "number",
+        "default": 1.0,
+        "enum": [1.0, 2.0],
+    }
+    assert isinstance(description["default"], float)
+    assert all(isinstance(choice, float) for choice in description["enum"])
 
 
 def test_nested_arrays_objects_and_open_json_are_copied() -> None:

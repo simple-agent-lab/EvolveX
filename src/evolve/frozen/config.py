@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import math
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 PathPart = str | int
@@ -71,24 +71,10 @@ class Config:
 
     def normalize(self, raw: dict[str, Any]) -> dict[str, Any]:
         """Validate and return a detached, JSON-compatible config dictionary."""
-
-        if not isinstance(raw, dict):
-            raise ConfigError((Violation((), "expected object"),))
-        declarations = dict(self._fields)
-        violations = [Violation((name,), "unknown field") for name in raw if name not in declarations]
-        normalized: dict[str, Any] = {}
-        for name, field in self._fields:
-            if name in raw:
-                value, field_violations = _normalize_field(field, raw[name], (name,))
-                violations.extend(field_violations)
-                if not field_violations:
-                    normalized[name] = value
-            elif field.default is not _MISSING:
-                normalized[name] = _copy_json(field.default)
-            elif field.required:
-                violations.append(Violation((name,), "required field is missing"))
+        normalized, violations = _normalize_field(_Field("object", fields=self._fields), raw, ())
         if violations:
             raise ConfigError(violations)
+        assert isinstance(normalized, dict)
         for refinement in self._refinements:
             try:
                 refinement(_copy_json(normalized))
@@ -98,15 +84,8 @@ class Config:
 
     def describe(self) -> dict[str, Any]:
         """Export the supported, JSON-compatible inspection schema."""
-
-        description: dict[str, Any] = {
-            "type": "object",
-            "additionalProperties": False,
-            "properties": {name: _describe_field(field) for name, field in self._fields},
-        }
-        required = [name for name, field in self._fields if field.required]
-        if required:
-            description["required"] = required
+        description = _describe_field(_Field("object", fields=self._fields))
+        description.setdefault("properties", {})
         return description
 
     def extend(
@@ -262,13 +241,27 @@ def _make_field(kind: str, **values: Any) -> _Field:
     field = _Field(kind=kind, **values)
     if field.required and field.default is not _MISSING:
         raise ValueError("required field cannot have a default")
+    unconstrained = replace(field, minimum=None, maximum=None, choices=None, default=_MISSING)
+    for name, value in (("minimum", field.minimum), ("maximum", field.maximum)):
+        if value is not None and _normalize_field(unconstrained, value, ())[1]:
+            raise ValueError(f"{name} is invalid for {field.kind}")
     if field.minimum is not None and field.maximum is not None and field.minimum > field.maximum:
         raise ValueError("minimum cannot exceed maximum")
+    if field.choices is not None:
+        choice_field = replace(field, choices=None, default=_MISSING)
+        normalized_choices = []
+        for choice in field.choices:
+            normalized_choice, violations = _normalize_field(choice_field, choice, ())
+            if violations:
+                raise ValueError(f"choice is invalid: {violations[0].message}")
+            normalized_choices.append(normalized_choice)
+        field = replace(field, choices=tuple(normalized_choices))
     if field.default is not _MISSING:
         _copy_json(field.default)
-        _, violations = _normalize_field(field, field.default, ())
+        normalized_default, violations = _normalize_field(field, field.default, ())
         if violations:
             raise ValueError(f"default is invalid: {violations[0].message}")
+        field = replace(field, default=normalized_default)
     return field
 
 
