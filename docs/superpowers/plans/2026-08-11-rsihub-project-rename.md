@@ -130,7 +130,7 @@ git commit -m "refactor: rename generated workspaces to RSIHub"
 - Modify: `NOTICE`
 - Modify: `README.md`
 - Modify: `mkdocs.yml`
-- Move: `docs/evolve-mark.svg` to `docs/rsihub-mark.svg`
+- Move: the pre-rename branded-mark asset to `docs/rsihub-mark.svg`
 
 **Interfaces:**
 - Consumes: Hatchling metadata from `pyproject.toml`, README long description, MkDocs theme assets, and the existing release-artifact test harness.
@@ -248,7 +248,7 @@ filename contains `rsihub`, while archived Python resources remain under
 
 ```bash
 git add tests/test_public_repository.py tests/test_release_artifact.py pyproject.toml \
-  uv.lock NOTICE README.md mkdocs.yml docs/evolve-mark.svg docs/rsihub-mark.svg
+  uv.lock NOTICE README.md mkdocs.yml docs/rsihub-mark.svg
 git commit -m "refactor: rename project identity to RSIHub"
 ```
 
@@ -267,10 +267,10 @@ git commit -m "refactor: rename project identity to RSIHub"
 - Modify: `docs/development/{coding-style.md,documentation.md}`
 - Modify: `docs/getting-started.md`, `docs/guides/operations.md`, `docs/index.md`
 - Modify: `docs/reference/{environment-variables.md,operators.md,terminology.md}`
-- Move: `docs/superpowers/plans/2026-08-10-rsihub-arxiv-report.md` to `docs/superpowers/plans/2026-08-10-rsihub-arxiv-report.md`
-- Move: `docs/superpowers/plans/2026-08-10-rsihub-logo-exploration.md` to `docs/superpowers/plans/2026-08-10-rsihub-logo-exploration.md`
-- Move: `docs/superpowers/specs/2026-08-10-rsihub-arxiv-report-design.md` to `docs/superpowers/specs/2026-08-10-rsihub-arxiv-report-design.md`
-- Move: `docs/superpowers/specs/2026-08-10-rsihub-logo-exploration-design.md` to `docs/superpowers/specs/2026-08-10-rsihub-logo-exploration-design.md`
+- Move: the pre-rename historical arXiv-report plan filename to `docs/superpowers/plans/2026-08-10-rsihub-arxiv-report.md`
+- Move: the pre-rename historical logo-exploration plan filename to `docs/superpowers/plans/2026-08-10-rsihub-logo-exploration.md`
+- Move: the pre-rename historical arXiv-report design filename to `docs/superpowers/specs/2026-08-10-rsihub-arxiv-report-design.md`
+- Move: the pre-rename historical logo-exploration design filename to `docs/superpowers/specs/2026-08-10-rsihub-logo-exploration-design.md`
 - Modify: all tracked `docs/superpowers/{plans,specs}/*.md` files reported by the guard
 - Modify: `evals/README.md`
 - Modify: `evals/skills/make-paper-poster/{prepare_dataset.py,recipe/evaluator/prepare_poster_runtime.py}`

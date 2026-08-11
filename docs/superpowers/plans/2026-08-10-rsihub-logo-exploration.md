@@ -17,9 +17,9 @@
 - Work in one-color black and white before relying on color.
 - Use no more than two main brand colors in the primary version.
 - Include an intentional RSIHub wordmark treatment; do not use an unmodified default system font as the final typographic expression.
-- Avoid neural-network dots, circuit traces, brains, atoms, glowing orbs, chat bubbles, generic trees, and random gradient X marks.
+- Avoid neural-network dots, circuit traces, brains, atoms, glowing orbs, chat bubbles, generic trees, and random gradient letter marks.
 - Do not copy or closely imitate reference-project marks.
-- Keep `README.md`, `docs/evolve-mark.svg`, `docs/evolve-lineage.svg`, and `tools/generate_readme_assets.py` unchanged until the user explicitly approves a winner.
+- Keep `README.md`, `docs/rsihub-mark.svg`, `docs/evolve-lineage.svg`, and `tools/generate_readme_assets.py` unchanged until the user explicitly approves a winner.
 - Store no remote fonts, remote images, JavaScript packages, or runtime CDN dependencies.
 
 ## File Structure
@@ -122,7 +122,7 @@ REQUIRED_IDS = {"mark", "wordmark", "primary-proof", "dark-proof", "mono-proof",
 FORBIDDEN_TAGS = {"text", "image", "script", "foreignObject", "animate", "animateTransform", "filter", "mask"}
 FORBIDDEN_MOTIFS = {
     "neural-network", "circuit", "brain", "atom", "glowing-orb",
-    "chat-bubble", "generic-tree", "gradient-x",
+    "chat-bubble", "generic-tree", "gradient-letter-mark",
 }
 ```
 
@@ -189,7 +189,7 @@ git commit -m "design: add RSIHub logo exploration pipeline"
 - Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/M01-tessellated-tern.svg`
 - Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/M02-split-tail-finch.svg`
 - Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/M03-nautilus-runner.svg`
-- Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/M04-axolotl-x.svg`
+- Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/M04-axolotl-link.svg`
 - Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/M05-orbit-moth.svg`
 - Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/M06-compass-beetle.svg`
 - Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/M07-paper-crane.svg`
@@ -199,7 +199,7 @@ git commit -m "design: add RSIHub logo exploration pipeline"
 - Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/M11-salamander-curve.svg`
 - Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/M12-pangolin-spiral.svg`
 - Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/M13-heron-step.svg`
-- Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/M14-evo-mote.svg`
+- Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/M14-iteration-mote.svg`
 - Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/M15-mosaic-turtle.svg`
 - Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/M16-swift-arrow.svg`
 - Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/M17-quiet-fox.svg`
@@ -272,7 +272,7 @@ git commit -m "design: explore RSIHub mascot identities"
 ### Task 3: Author 16 playful open-source concepts
 
 **Files:**
-- Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/P01-confetti-x.svg` through `P16-joyful-slash.svg`, with every intermediate path specified in the inventory below
+- Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/P01-confetti-hub.svg` through `P16-joyful-slash.svg`, with every intermediate path specified in the inventory below
 - Modify: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/manifest.json`
 
 **Interfaces:**
@@ -285,13 +285,13 @@ Use these IDs, names, filenames, and distinct visual ideas:
 
 | ID | Name | File | Visual idea |
 | --- | --- | --- | --- |
-| P01 | Confetti X | `P01-confetti-x.svg` | Four irregular paper pieces imply an X without touching. |
+| P01 | Confetti Hub | `P01-confetti-hub.svg` | Four irregular paper pieces orbit a shared center without touching. |
 | P02 | Sticker Fold | `P02-sticker-fold.svg` | One folded corner becomes the evolutionary accent. |
 | P03 | Wobble Mark | `P03-wobble-mark.svg` | Hand-tensioned asymmetric loop with a crisp wordmark. |
 | P04 | Friendly Asterisk | `P04-friendly-asterisk.svg` | Five unequal arms with one bright advancing arm. |
 | P05 | Soft Domino | `P05-soft-domino.svg` | Two offset rounded tiles create motion through balance. |
-| P06 | Patchwork E | `P06-patchwork-e.svg` | Three materially different bands assemble an E. |
-| P07 | Chunky Ribbon | `P07-chunky-ribbon.svg` | Broad ribbon folds once into an X-like gesture. |
+| P06 | Patchwork R | `P06-patchwork-r.svg` | Three materially different bands assemble an R. |
+| P07 | Chunky Ribbon | `P07-chunky-ribbon.svg` | Broad ribbon folds once into a braided hub gesture. |
 | P08 | Paper Comet | `P08-paper-comet.svg` | Cut-paper body with a single high-energy tail. |
 | P09 | Curious Bracket | `P09-curious-bracket.svg` | Two brackets lean toward a small center spark. |
 | P10 | Tilted Badge | `P10-tilted-badge.svg` | Imperfect badge with editorially precise lettering. |
@@ -341,7 +341,7 @@ git commit -m "design: explore playful RSIHub identities"
 ### Task 4: Author 16 technical editorial concepts
 
 **Files:**
-- Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/T01-cut-e-wordmark.svg` through `T16-horizon-wordmark.svg`
+- Create: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/concepts/T01-cut-r-wordmark.svg` through `T16-horizon-wordmark.svg`
 - Modify: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/manifest.json`
 
 **Interfaces:**
@@ -352,22 +352,22 @@ git commit -m "design: explore playful RSIHub identities"
 
 | ID | Name | File | Visual idea |
 | --- | --- | --- | --- |
-| T01 | Cut-E Wordmark | `T01-cut-e-wordmark.svg` | Custom E with one diagonal cut repeated subtly in X. |
-| T02 | Extended X | `T02-extended-x.svg` | Restrained wordmark with one long X terminal. |
-| T03 | Counterform | `T03-counterform.svg` | Negative E appears inside a solid editorial block. |
-| T04 | Baseline Shift | `T04-baseline-shift.svg` | The X rises one measured unit above a stable baseline. |
-| T05 | Ligature EX | `T05-ligature-ex.svg` | E and X share one structural stroke. |
-| T06 | Split Weight | `T06-split-weight.svg` | Light Evolve contrasts with a heavy custom X. |
+| T01 | Cut-R Wordmark | `T01-cut-r-wordmark.svg` | Custom R with one diagonal cut repeated subtly in H. |
+| T02 | Extended H | `T02-extended-h.svg` | Restrained wordmark with one long H terminal. |
+| T03 | Counterform | `T03-counterform.svg` | Negative R appears inside a solid editorial block. |
+| T04 | Baseline Shift | `T04-baseline-shift.svg` | The H rises one measured unit above a stable baseline. |
+| T05 | Ligature RS | `T05-ligature-rs.svg` | R and S share one structural stroke. |
+| T06 | Split Weight | `T06-split-weight.svg` | Light RSI contrasts with a heavy custom H. |
 | T07 | Narrow Signal | `T07-narrow-signal.svg` | Condensed wordmark with one precise color signal. |
 | T08 | Wide Research | `T08-wide-research.svg` | Broad low-contrast lettering for papers and banners. |
-| T09 | Editorial Seal | `T09-editorial-seal.svg` | Compact seal derived from custom E/X counters. |
-| T10 | Index Mark | `T10-index-mark.svg` | Superscript-like X treated as an experimental index. |
-| T11 | Proof Line | `T11-proof-line.svg` | One horizontal rule intersects only the X. |
+| T09 | Editorial Seal | `T09-editorial-seal.svg` | Compact seal derived from custom R/S counters. |
+| T10 | Index Mark | `T10-index-mark.svg` | Superscript-like H treated as an experimental index. |
+| T11 | Proof Line | `T11-proof-line.svg` | One horizontal rule intersects only the H. |
 | T12 | Modular Type | `T12-modular-type.svg` | Letters share a consistent cut-and-join grammar. |
-| T13 | Serif Contrast | `T13-serif-contrast.svg` | Custom wedge-serif Evolve paired with sans X. |
+| T13 | Serif Contrast | `T13-serif-contrast.svg` | Custom wedge-serif RSI paired with sans H. |
 | T14 | Mono Stamp | `T14-mono-stamp.svg` | Single-color stamped wordmark with deliberate ink traps. |
-| T15 | Open Counter X | `T15-open-counter-x.svg` | X is built from two open counters rather than strokes. |
-| T16 | Horizon Wordmark | `T16-horizon-wordmark.svg` | A quiet horizon aligns the entire name and lifts the X. |
+| T15 | Open Counter R | `T15-open-counter-r.svg` | R is built from two open counters rather than strokes. |
+| T16 | Horizon Wordmark | `T16-horizon-wordmark.svg` | A quiet horizon aligns the entire name and lifts the H. |
 
 Use black and white as the base. Assign exactly one accent to T01, T04, T07, T10, T13, and T16, cycling through `#E4572E`, `#2563EB`, and `#17A673`; all other editorial concepts are monochrome.
 
@@ -505,7 +505,7 @@ git commit -m "design: audit RSIHub logo exploration"
 
 **Files:**
 - Verify only: `docs/superpowers/artifacts/2026-08-10-rsihub-logo-exploration/`
-- Do not modify: `README.md`, `docs/evolve-mark.svg`, `docs/evolve-lineage.svg`, `tools/generate_readme_assets.py`
+- Do not modify: `README.md`, `docs/rsihub-mark.svg`, `docs/evolve-lineage.svg`, `tools/generate_readme_assets.py`
 
 **Interfaces:**
 - Consumes: audited 50-concept gallery from Task 6.
@@ -524,7 +524,7 @@ Expected: all tests pass, all 50 concepts validate, and the gallery is current.
 - [ ] **Step 2: Prove public assets were not changed**
 
 ```bash
-git diff 0907f2c -- README.md docs/evolve-mark.svg docs/evolve-lineage.svg tools/generate_readme_assets.py
+git diff 0907f2c -- README.md docs/rsihub-mark.svg docs/evolve-lineage.svg tools/generate_readme_assets.py
 ```
 
 Expected: no diff for these four paths.
