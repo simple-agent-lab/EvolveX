@@ -231,9 +231,12 @@ genid)`, and reports render coverage and certification independently from score.
 5. Select it under `operator:` with all settings under `config`, then run
    `evolve recipe check` before initialization.
 
-Underscore-prefixed modules such as `library/_shared/` and
-`library/mutate/_support/` are shared helpers. Discovery excludes them, so
-helper refactors do not create accidental public operators. Shared local and
+Underscore-prefixed modules are helpers that discovery excludes, so helper
+refactors do not create accidental public operators. Put generic helpers in
+`library/_shared/`, cross-stage helpers private to one method in
+`library/_methods_shared/<method>/`, and stage-private helpers in paths such as
+`library/mutate/_support/`. Generic helpers are always materialized; a method
+bundle is materialized only when selected code imports it. Shared local and
 Harbor runners live under `library/_shared/runners/`.
 
 `Config` supports strings, integers, finite numbers, booleans, arrays, objects,

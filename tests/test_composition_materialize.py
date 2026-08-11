@@ -26,6 +26,7 @@ def test_materialization_contains_selected_operators_and_runtime_helpers_only() 
     assert "library/analyze/_config.py" in materialized.files
     assert "library/mutate/_config.py" in materialized.files
     assert "library/_shared/runners/local.py" in materialized.files
+    assert not any(path.startswith("library/_methods_shared/") for path in materialized.files)
     assert "library/mutate/_support/workspace.py" in materialized.files
     assert "library/mutate/_skeleton.py" not in materialized.files
     assert all(
@@ -116,11 +117,14 @@ def test_named_analyze_with_script_mutate_imports_from_root_shared_helpers(tmp_p
 
 def test_materialization_supports_packaged_traversables(tmp_path) -> None:
     archive = tmp_path / "library.zip"
-    source = b'"""Packaged selection."""\n'
+    source = b'"""Packaged selection."""\nfrom library._methods_shared.gepa import MARKER\n'
     helper = b"\x89PNG\r\n\x1a\n\x00\xff"
     with zipfile.ZipFile(archive, "w") as package:
         package.writestr("library/__init__.py", '"""Closed library."""\n')
         package.writestr("library/_shared/helper.py", "SHARED = True\n")
+        package.writestr("library/_methods_shared/__init__.py", "")
+        package.writestr("library/_methods_shared/gepa/__init__.py", "MARKER = True\n")
+        package.writestr("library/_methods_shared/unselected/__init__.py", "UNSELECTED = True\n")
         package.writestr("library/select/greedy.py", source)
         package.writestr("library/select/_support/payload.bin", helper)
     library = zipfile.Path(archive) / "library"
@@ -139,6 +143,8 @@ def test_materialization_supports_packaged_traversables(tmp_path) -> None:
 
     assert materialized.files["library/__init__.py"] == b'"""Closed library."""\n'
     assert materialized.files["library/_shared/helper.py"] == "SHARED = True\n"
+    assert materialized.files["library/_methods_shared/gepa/__init__.py"] == "MARKER = True\n"
+    assert "library/_methods_shared/unselected/__init__.py" not in materialized.files
     assert materialized.files["library/select/_support/payload.bin"] == helper
 
 
@@ -193,6 +199,8 @@ def test_script_materialization_rejects_symlinked_library_root(tmp_path: Path) -
 def test_materialized_gepa_validate_imports_only_shared_harbor_runtime(tmp_path) -> None:
     materialized = materialize_operators(resolve_builtin_recipe("gepa").operators)
     assert "library/rollout/harbor.py" not in materialized.files
+    assert "library/_methods_shared/gepa/__init__.py" in materialized.files
+    assert "library/_shared/gepa.py" not in materialized.files
     for relative, content in materialized.files.items():
         destination = tmp_path / relative
         destination.parent.mkdir(parents=True, exist_ok=True)

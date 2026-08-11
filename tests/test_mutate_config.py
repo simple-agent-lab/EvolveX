@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from evolve.frozen.config import ConfigError
-from library._shared.gepa import normalize_components
+from library._methods_shared.gepa import normalize_components
 from library.mutate._config import RUNNER_CONFIG
 
 

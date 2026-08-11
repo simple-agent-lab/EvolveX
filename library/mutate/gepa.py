@@ -13,14 +13,14 @@ from evolve.frozen import sdk
 from evolve.frozen.config import array, custom, integer, string
 from evolve.frozen.interfaces import MutateOperator, MutateResult, OperatorContext
 from evolve.patching import create_candidate_patch, load_surface_policy, patch_parent_ref
-from library._shared.artifacts import render_artifact_guidance
-from library._shared.gepa import (
+from library._methods_shared.gepa import (
     component_paths,
     normalize_components,
     path_in_scopes,
     read_json,
     selected_component_names,
 )
+from library._shared.artifacts import render_artifact_guidance
 from library._shared.runners import run_agent, runner_name
 from library.mutate._config import WORKSPACE_CONFIG
 from library.mutate._support.workspace import workspace_contract

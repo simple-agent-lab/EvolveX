@@ -14,7 +14,7 @@ from evolve.frozen import sdk
 from evolve.frozen.config import Config, integer, number, string
 from evolve.frozen.config import object as object_field
 from evolve.frozen.interfaces import OperatorContext, ValidateOperator, ValidateResult
-from library._shared.gepa import read_json
+from library._methods_shared.gepa import read_json
 from library._shared.harbor import HarborRollout
 
 

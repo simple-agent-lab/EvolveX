@@ -11,7 +11,7 @@ from typing import Any
 from evolve.frozen import sdk
 from evolve.frozen.config import Config
 from evolve.frozen.interfaces import OperatorContext, RecordOperator, RecordResult
-from library._shared.gepa import read_json
+from library._methods_shared.gepa import read_json
 
 CONFIG = Config({})
 
