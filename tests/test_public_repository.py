@@ -116,15 +116,13 @@ def test_branding_assets_match_approved_ring_and_wordmark() -> None:
     assert glyph_r is not None
     assert glyph_r.attrib["d"].startswith("M58.594 0V-704.59")
     assert wordmark.find(".//svg:clipPath", SVG_NS) is None
-    hub_mask = wordmark.find(".//svg:mask[@id='hub-mask']", SVG_NS)
-    assert hub_mask is not None
-    assert hub_mask.attrib["maskUnits"] == "userSpaceOnUse"
-    assert len(hub_mask.findall("svg:use", SVG_NS)) == 3
-    hub_ramp = wordmark.find(
-        ".//svg:rect[@mask='url(#hub-mask)']", SVG_NS
-    )
-    assert hub_ramp is not None
-    assert hub_ramp.attrib["fill"] == "url(#hub-ramp)"
+    assert wordmark.find(".//svg:mask", SVG_NS) is None
+    hub_word = wordmark.find(".//svg:path[@id='hub-word']", SVG_NS)
+    assert hub_word is not None
+    assert hub_word.attrib["fill"] == "url(#hub-ramp)"
+    assert hub_word.attrib["fill-rule"] == "nonzero"
+    assert hub_word.attrib["d"].count("M") == 3
+    assert "m -47.61 -118.164" in hub_word.attrib["d"]
     for color in ("#1f2328", "#e6edf3", "#00a3b0", "#2fa844", "#00cbd4", "#78e85c"):
         assert color in wordmark_text
     assert "@media (prefers-color-scheme: dark)" in wordmark_text
