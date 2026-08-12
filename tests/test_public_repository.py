@@ -103,9 +103,19 @@ def test_branding_assets_match_approved_ring_and_wordmark() -> None:
 
     wordmark_path = ROOT / "docs" / "rsihub-wordmark.svg"
     wordmark_text = wordmark_path.read_text()
-    ET.parse(wordmark_path)
-    assert "<text" not in wordmark_text
-    assert "font-family" not in wordmark_text
+    wordmark = ET.parse(wordmark_path).getroot()
+    text = wordmark.find("svg:text", SVG_NS)
+    assert text is not None
+    assert "".join(text.itertext()) == "RSIHub"
+    hub = text.find("svg:tspan", SVG_NS)
+    assert hub is not None
+    assert hub.text == "Hub"
+    assert hub.attrib["class"] == "hub"
+    assert "-apple-system" in wordmark_text
+    assert '"Segoe UI"' in wordmark_text
+    assert "font-size: 27px" in wordmark_text
+    assert "font-weight: 700" in wordmark_text
+    assert "letter-spacing: -0.54px" in wordmark_text
     for color in ("#1f2328", "#e6edf3", "#00a3b0", "#2fa844", "#00cbd4", "#78e85c"):
         assert color in wordmark_text
     assert "@media (prefers-color-scheme: dark)" in wordmark_text
