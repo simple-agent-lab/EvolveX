@@ -90,6 +90,8 @@ def test_branding_assets_match_approved_ring_and_wordmark() -> None:
     mark = ET.parse(mark_path).getroot()
     mark_text = mark_path.read_text()
     paths = mark.findall("svg:path", SVG_NS)
+    assert mark.attrib["width"] == "128"
+    assert mark.attrib["height"] == "128"
     assert mark.attrib["viewBox"] == "0 0 40 40"
     assert [path.attrib["stroke"] for path in paths] == [
         "#3c8cff",
