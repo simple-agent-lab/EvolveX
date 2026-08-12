@@ -75,7 +75,7 @@ def test_architecture_visual_uses_identity_palette() -> None:
 
 
 def test_readme_visual_assets_have_accessible_svg_metadata() -> None:
-    for relative in ("docs/rsihub-mark.svg", "docs/evolve-lineage.svg"):
+    for relative in ("docs/rsihub-mark.svg", "docs/rsihub-wordmark.svg", "docs/evolve-lineage.svg"):
         root = ET.parse(ROOT / relative).getroot()
         assert root.attrib["role"] == "img"
         assert root.attrib["viewBox"]
@@ -85,9 +85,66 @@ def test_readme_visual_assets_have_accessible_svg_metadata() -> None:
         assert root.find("svg:desc", SVG_NS).attrib["id"] == labelled_by[1]
 
 
+def test_branding_assets_match_approved_ring_and_wordmark() -> None:
+    mark_path = ROOT / "docs" / "rsihub-mark.svg"
+    mark = ET.parse(mark_path).getroot()
+    mark_text = mark_path.read_text()
+    paths = mark.findall("svg:path", SVG_NS)
+    assert mark.attrib["width"] == "128"
+    assert mark.attrib["height"] == "128"
+    assert mark.attrib["viewBox"] == "0 0 40 40"
+    assert [path.attrib["stroke"] for path in paths] == [
+        "#3c8cff",
+        "#0095fd",
+        "#00cbd4",
+        "#78e85c",
+    ]
+    assert all(path.attrib["stroke-width"] == "6" for path in paths)
+    assert all(path.attrib["stroke-linecap"] == "round" for path in paths)
+    assert [path.attrib["d"] for path in paths] == [
+        "M23.95 7.09 A13.5 13.5 0 0 1 32.91 16.05",
+        "M32.91 23.95 A13.5 13.5 0 0 1 23.95 32.91",
+        "M16.05 32.91 A13.5 13.5 0 0 1 7.09 23.95",
+        "M7.09 16.05 A13.5 13.5 0 0 1 16.05 7.09",
+    ]
+    assert "selected lineage" not in mark_text.casefold()
+
+    wordmark_path = ROOT / "docs" / "rsihub-wordmark.svg"
+    wordmark_text = wordmark_path.read_text()
+    wordmark = ET.parse(wordmark_path).getroot()
+    assert "<text" not in wordmark_text
+    assert "font-family" not in wordmark_text
+    glyph_r = wordmark.find(".//svg:path[@id='glyph-r']", SVG_NS)
+    assert glyph_r is not None
+    assert glyph_r.attrib["d"].startswith("M58.594 0V-704.59")
+    assert wordmark.find(".//svg:clipPath", SVG_NS) is None
+    assert wordmark.find(".//svg:mask", SVG_NS) is None
+    hub_word = wordmark.find(".//svg:path[@id='hub-word']", SVG_NS)
+    assert hub_word is not None
+    assert hub_word.attrib["fill"] == "url(#hub-ramp)"
+    assert hub_word.attrib["fill-rule"] == "nonzero"
+    assert hub_word.attrib["d"].count("M") == 3
+    assert "m -47.61 -118.164" in hub_word.attrib["d"]
+    for color in ("#1f2328", "#e6edf3", "#00a3b0", "#2fa844", "#00cbd4", "#78e85c"):
+        assert color in wordmark_text
+    assert "@media (prefers-color-scheme: dark)" in wordmark_text
+
+    readme = (ROOT / "README.md").read_text()
+    assert 'src="docs/rsihub-mark.svg"' in readme
+    assert 'src="docs/rsihub-wordmark.svg"' in readme
+    assert '<h1 align="center">RSIHub</h1>' not in readme
+
+    mkdocs = (ROOT / "mkdocs.yml").read_text()
+    assert "logo: rsihub-mark.svg" in mkdocs
+    assert "favicon: rsihub-mark.svg" in mkdocs
+
+    inventory = (ROOT / "docs" / "development" / "documentation.md").read_text()
+    assert "RSIHub Ring identity mark" in inventory
+    assert "RSIHub gradient wordmark" in inventory
+
+
 def test_selected_and_explored_graphics_have_three_to_one_contrast() -> None:
     expected_state_counts = {
-        "docs/rsihub-mark.svg": {"selected": 5, "explored": 1},
         "docs/evolve-lineage.svg": {"selected": 5, "explored": 4},
     }
     for relative, expected_counts in expected_state_counts.items():
