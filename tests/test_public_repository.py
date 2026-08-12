@@ -115,6 +115,14 @@ def test_branding_assets_match_approved_ring_and_wordmark() -> None:
     glyph_r = wordmark.find(".//svg:path[@id='glyph-r']", SVG_NS)
     assert glyph_r is not None
     assert glyph_r.attrib["d"].startswith("M58.594 0V-704.59")
+    hub_clip = wordmark.find(".//svg:clipPath[@id='hub-clip']", SVG_NS)
+    assert hub_clip is not None
+    assert len(hub_clip.findall("svg:use", SVG_NS)) == 3
+    hub_ramp = wordmark.find(
+        ".//svg:rect[@clip-path='url(#hub-clip)']", SVG_NS
+    )
+    assert hub_ramp is not None
+    assert hub_ramp.attrib["fill"] == "url(#hub-ramp)"
     for color in ("#1f2328", "#e6edf3", "#00a3b0", "#2fa844", "#00cbd4", "#78e85c"):
         assert color in wordmark_text
     assert "@media (prefers-color-scheme: dark)" in wordmark_text
