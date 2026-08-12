@@ -99,23 +99,22 @@ def test_branding_assets_match_approved_ring_and_wordmark() -> None:
     ]
     assert all(path.attrib["stroke-width"] == "6" for path in paths)
     assert all(path.attrib["stroke-linecap"] == "round" for path in paths)
+    assert [path.attrib["d"] for path in paths] == [
+        "M23.95 7.09 A13.5 13.5 0 0 1 32.91 16.05",
+        "M32.91 23.95 A13.5 13.5 0 0 1 23.95 32.91",
+        "M16.05 32.91 A13.5 13.5 0 0 1 7.09 23.95",
+        "M7.09 16.05 A13.5 13.5 0 0 1 16.05 7.09",
+    ]
     assert "selected lineage" not in mark_text.casefold()
 
     wordmark_path = ROOT / "docs" / "rsihub-wordmark.svg"
     wordmark_text = wordmark_path.read_text()
     wordmark = ET.parse(wordmark_path).getroot()
-    text = wordmark.find("svg:text", SVG_NS)
-    assert text is not None
-    assert "".join(text.itertext()) == "RSIHub"
-    hub = text.find("svg:tspan", SVG_NS)
-    assert hub is not None
-    assert hub.text == "Hub"
-    assert hub.attrib["class"] == "hub"
-    assert "-apple-system" in wordmark_text
-    assert '"Segoe UI"' in wordmark_text
-    assert "font-size: 27px" in wordmark_text
-    assert "font-weight: 700" in wordmark_text
-    assert "letter-spacing: -0.54px" in wordmark_text
+    assert "<text" not in wordmark_text
+    assert "font-family" not in wordmark_text
+    glyph_r = wordmark.find(".//svg:path[@id='glyph-r']", SVG_NS)
+    assert glyph_r is not None
+    assert glyph_r.attrib["d"].startswith("M58.594 0V-704.59")
     for color in ("#1f2328", "#e6edf3", "#00a3b0", "#2fa844", "#00cbd4", "#78e85c"):
         assert color in wordmark_text
     assert "@media (prefers-color-scheme: dark)" in wordmark_text
