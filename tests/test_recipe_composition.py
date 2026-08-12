@@ -12,7 +12,10 @@ from evolve.config import RECIPE_NAMES, default_config, load_config, recipe_root
 from evolve.workspace import InitOptions, _write_target, init_workspace
 
 CANDIDATE = "evolve.integrations.harbor.miniswe_candidate:CandidateMiniSweAgent"
-OPTIONAL_INTEGRATIONS = {"evolve.integrations.harbor.codex_candidate"}
+OPTIONAL_INTEGRATIONS = {
+    "evolve.integrations.harbor.codex_candidate",
+    "evolve.integrations.harbor.prime_agent",
+}
 FILE_TASK = "evolve.integrations.harbor.miniswe_task_file:InstalledMiniSweAgent"
 ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 CASES = {
