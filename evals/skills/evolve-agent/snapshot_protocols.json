@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "snapshots": {
+    "baseline_results.json": {
+      "snapshot_sha256": "aee6e63c7af8fb2ac6ba783d12691e158b9633c49c23f9dd5c0db5b78d7e51fb",
+      "behavior_case_ids": [
+        "outer-aevolve-behavior",
+        "outer-ahe-agent",
+        "outer-bounded-report",
+        "outer-budget-secrets",
+        "outer-driver-bounded",
+        "outer-evaluator-drift",
+        "outer-gepa-components",
+        "outer-hill-control",
+        "outer-hyper-process",
+        "outer-lineage-conflict",
+        "workspace-dirty-recovery",
+        "workspace-lineage-mismatch",
+        "workspace-manual-generation",
+        "workspace-process-boundary",
+        "workspace-stage-discovery",
+        "workspace-stale-admission"
+      ],
+      "result_case_ids": [
+        "outer-ahe-agent",
+        "workspace-stage-discovery"
+      ],
+      "scoring": {
+        "pass_score": 8,
+        "hard_failure_overrides_score": true
+      }
+    }
+  }
+}

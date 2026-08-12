@@ -77,18 +77,25 @@ through the vendored `./evolve` console inside the generated workspace:
 ```bash
 export EVOLVE_RUNTIME_DIGEST="sha256:<immutable evaluator runtime digest>"
 evolve preflight <workspace-dir> --recipe <recipe> \
-  --seed <local seed directory or git URL> \
+  --seed <reviewed content-addressed read-only local snapshot> \
   --dataset <local task directory>
 evolve init <workspace-dir> --recipe <recipe> \
-  --seed <local seed directory or git URL> \
+  --seed <the same reviewed immutable local snapshot> \
   --dataset <local task directory>
 cd <workspace-dir>
 ./evolve doctor . --profile experiment
 ```
 
-`preflight` takes the same arguments as `init`, writes nothing, and reports
-every unmet precondition as one checklist. The preconditions it checks and
-`init` enforces:
+For a remote Git target, omit `--seed`: the source-approved recipe must contain
+the credential-free URL and full immutable revision, because a remote override
+drops that revision. A built-in target also stays in the recipe and gets no
+override. Guided creation follows the containment, sanitizer, snapshot, and
+approval gates in `deployment.md`; the commands above are shapes, not authority
+to run them.
+
+`preflight` takes the same represented inputs as `init`, writes no workspace
+receipt, and reports unmet preconditions as one checklist. The preconditions it
+checks and `init` enforces:
 
 - `EVOLVE_RUNTIME_DIGEST` must name the immutable evaluator runtime before
   `init` runs; there is no default.
@@ -97,8 +104,8 @@ every unmet precondition as one checklist. The preconditions it checks and
   no external clone. `gepa_local` runs real trials as local processes with no
   container runtime or model key and is the fastest way to exercise the full
   loop. Smoke recipes are test fixtures, not experiment choices.
-- `--seed` needs a real local directory or git URL; built-in test seeds are
-  rejected outside the test suite.
+- A guided `--seed` is reserved for the reviewed immutable local snapshot;
+  remote and built-in identities remain source-approved recipe fields.
 - A recipe with `evaluator/doctor.json` opts into a frozen evaluator readiness
   contract. `doctor` verifies task assets, runtime preparation, backend
   binding, and a model-free smoke; `run`, `eval`, and `retry` enforce the same
@@ -156,6 +163,14 @@ Discover capabilities first, then use mechanism-owned state transitions:
 generation_id=1
 ./evolve operator run . select --genid "$generation_id"
 ```
+
+Parent evidence may be replayed only when the selected parent's candidate
+commit, generation id, and immutable resolution of any tag; task-set identity;
+evaluator `contract_id`; runtime identity; artifact manifest/digest; evaluation
+purpose and partition; and matching certified result all agree with the current
+request. A mismatch in any identity requires fresh parent execution; never
+borrow an artifact merely because its method, parent id, or tag looks familiar.
+Every child candidate executes freshly, even when parent replay is valid.
 
 Read `runs/gen-1/parents.json` and copy one returned numeric parent exactly:
 

@@ -23,7 +23,9 @@ into the experiment methodology.
 Define before mutation:
 
 - target and mutable surface;
-- optimization objective and frozen evaluator;
+- optimization objective and frozen evaluator, including score direction,
+  domain and units, aggregation and weighting, missing/failure handling,
+  thresholds, tie behavior, and acceptance semantics;
 - task identities and optimization, gate, and sealed semantics;
 - candidate budget, concurrency, timeouts, and cost boundary;
 - parent and champion selection rules;

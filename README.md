@@ -96,16 +96,28 @@ Add an operator to a source checkout, validate it, and compose it without a
 registry edit:
 
 ```bash
-uv run --frozen evolve operator new mutate my_operator
-uv run --frozen evolve operator describe mutate/my_operator
-uv run --frozen evolve operator check mutate/my_operator --config '{}'
-uv run --frozen evolve operator list mutate
-uv run --frozen evolve recipe check /path/to/my-recipe/evolve.yaml
+evolve operator new mutate my_operator
+evolve operator describe mutate/my_operator
+evolve operator check mutate/my_operator --config '{}'
+evolve operator list mutate
+evolve recipe check /path/to/my-recipe/evolve.yaml
 ```
+
+Use a verified direct `evolve` executable from an already-existing
+pre-provisioned environment. Guided inspection executes reviewed source only
+from its read-only isolation copy; it never provisions an environment or runs
+authored imports from a writable checkout.
 
 After `evolve init`, use `./evolve operator active .` to inspect the frozen
 bindings and `./evolve operator run ...` for direct stage orchestration. See
 [the operator guide](docs/reference/operators.md) for the complete workflow.
+
+Repository-local guided authoring is available to both platforms from one
+canonical skill. Codex discovers `.agents/skills/evolve-agent`, and Claude
+discovers `.claude/skills/evolve-agent`. These identical thin wrappers direct
+each host to `skills/evolve-agent/SKILL.md` and its canonical reference base.
+The workflow is maintained once, and no `.codex/skills` compatibility copy is
+used.
 
 ## What Can Evolve
 

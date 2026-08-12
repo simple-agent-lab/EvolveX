@@ -60,6 +60,11 @@ def test_release_wheel_has_one_resource_owner_and_complete_metadata() -> None:
             "evolve/composition/cli.py",
             "evolve/composition/recipe.py",
             "evolve/skills/evolve-agent/SKILL.md",
+            "evolve/skills/evolve-agent/references/decision-protocol.md",
+            "evolve/skills/evolve-agent/references/deployment.md",
+            "evolve/skills/evolve-agent/references/experiment-design.md",
+            "evolve/skills/evolve-agent/references/recipe-authoring.md",
+            "evolve/skills/evolve-agent/references/operator-authoring.md",
             "evolve/skills/evolve-agent/references/workspace-contract.md",
             "evolve/containers/mutate/Dockerfile",
             "evolve/containers/mutate/required-tools.txt",
@@ -92,4 +97,7 @@ def test_release_sdist_contains_legal_and_build_files() -> None:
         f"{root}/NOTICE",
         f"{root}/README.md",
         f"{root}/pyproject.toml",
+        f"{root}/skills/evolve-agent/SKILL.md",
     } <= names
+    assert not [name for name in names if name.startswith(f"{root}/.agents/skills/evolve-agent/")]
+    assert not [name for name in names if name.startswith(f"{root}/.claude/skills/evolve-agent/")]

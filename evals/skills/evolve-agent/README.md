@@ -7,7 +7,9 @@ the Agent repeats skill prose.
 ## What this suite proves
 
 - **Behavior:** with the same task, does the skill improve method selection,
-  evidence handling, control-path safety, lineage reasoning, and reporting?
+  evidence handling, control-path safety, lineage reasoning, reporting,
+  context routing, authoring decisions, operator authoring, approval safety,
+  and artifact-based authoring recovery?
 - **Invocation:** does a skill-aware runner load `evolve-agent` for evolution
   tasks and leave it unloaded for unrelated tasks?
 
@@ -30,8 +32,10 @@ Run every behavior case as a paired comparison:
    score. Do not treat stylistic similarity as improvement.
 
 Each criterion scores `0` (missing or wrong), `1` (partial), or `2` (complete).
-A response passes at `8/10` with no hard failure. Report aggregate pass rate,
-mean paired delta, and per-dimension failures.
+A response normally passes at `8/10` with no hard failure. A case may set a
+higher `pass_score` and machine-readable required fields; omission of a field
+marked required is a hard failure. Report aggregate pass rate, mean paired
+delta, and per-dimension failures.
 
 Invocation cases require a runner that exposes the real installed skill catalog
 and records whether the model loads a skill before answering. Do not prepend an
@@ -47,27 +51,45 @@ with the prompt rather than autonomous routing.
 | `rubric.json` | Hidden behavioral criteria and hard failures. |
 | `render_prompt.py` | Emits one leak-free control or treatment prompt. |
 | `baseline_results.json` | A small, historical paired smoke baseline. |
-| `current_results.json` | The latest recorded full behavior-evaluation snapshot. |
+| `current_results.json` | The latest recorded full run for the skill revision and case set named inside that file; new cases may exist afterward. |
+| `snapshot_protocols.json` | Frozen protocol and inventory metadata keyed to historical snapshots that do not embed complete scoring semantics. |
 
 The JSON result files are evidence snapshots, not live status. Read their
 revision and protocol metadata before comparing them with the current skill;
 the historical baseline predates the full suite and is not a current-revision
-claim. The repository test checks case coverage and arithmetic consistency; it
+claim. The repository test asserts the snapshots' exact historical inventories
+and denominators, verifies the exact unreported authoring-ID partition, and
+recomputes every recorded summary field; it never fabricates missing scores. It
 does not start Agents or a grader.
+
+No formal paired behavior run covers the rewritten guided-authoring head:
+current-revision coverage is **0/29 behavior cases**. The historical
+`current_results.json` covers the 16 pre-authoring behavior IDs on its older
+subject revision; 13 newer IDs have no result row: 12 `authoring-*` cases and
+the method-independent replay case. The two-case baseline was drawn from that
+exact 16-case historical inventory and uses the frozen protocol metadata keyed
+to its snapshot rather than today's mutable rubric. The
+qualitative pressure reports produced while authoring the skill are separate
+development feedback: they are not a complete paired campaign, were not blind
+graded under this protocol, and are not score snapshots. No invocation case in
+this inventory, whether original or newly added, has a recorded runner result;
+invocation coverage is **0/8**. The historical snapshot's
+`cases_available: 6` records the exact pre-authoring invocation inventory and
+`cases_run: 0`; it is not the current denominator.
 
 ## Local checks and prompt rendering
 
 Run the deterministic asset checks:
 
 ```bash
-uv run pytest tests/test_evolve_agent_evals.py
+pytest tests/test_evolve_agent_evals.py
 ```
 
 Render a prompt for an external Agent runner with:
 
 ```bash
-uv run python evals/skills/evolve-agent/render_prompt.py outer-ahe-agent --arm treatment
-uv run python evals/skills/evolve-agent/render_prompt.py outer-ahe-agent --arm control
+python evals/skills/evolve-agent/render_prompt.py outer-ahe-agent --arm treatment
+python evals/skills/evolve-agent/render_prompt.py outer-ahe-agent --arm control
 ```
 
 The control prompt must not contain the skill instruction or rubric. The

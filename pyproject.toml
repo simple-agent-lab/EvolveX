@@ -86,6 +86,11 @@ packages = ["src/evolve"]
 "LICENSE" = "evolve/licenses/LICENSE"
 "NOTICE" = "evolve/licenses/NOTICE"
 
+[tool.hatch.build.targets.sdist]
+# Repository discovery wrappers are source-tree entry points, not package
+# resources. Keep `skills/` as the sole canonical skill path in distributions.
+exclude = ["/.agents", "/.claude"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
