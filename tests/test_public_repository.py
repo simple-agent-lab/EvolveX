@@ -93,19 +93,24 @@ def test_branding_assets_match_approved_ring_and_wordmark() -> None:
     assert mark.attrib["width"] == "128"
     assert mark.attrib["height"] == "128"
     assert mark.attrib["viewBox"] == "0 0 40 40"
+    # The ramp is ordered so the two near-identical blues sit opposite each other
+    # rather than adjacent; on a ring, #3c8cff beside #0095fd reads as one lump.
     assert [path.attrib["stroke"] for path in paths] == [
         "#3c8cff",
-        "#0095fd",
         "#00cbd4",
+        "#0095fd",
         "#78e85c",
     ]
     assert all(path.attrib["stroke-width"] == "6" for path in paths)
     assert all(path.attrib["stroke-linecap"] == "round" for path in paths)
+    # Each arc spans 42.6°, leaving a 47.4° geometric gap. A round cap extends
+    # stroke-width/2 along the tangent past the endpoint — 12.7° at this radius —
+    # so the gap measures 22° on screen, which is the number the design specifies.
     assert [path.attrib["d"] for path in paths] == [
-        "M23.95 7.09 A13.5 13.5 0 0 1 32.91 16.05",
-        "M32.91 23.95 A13.5 13.5 0 0 1 23.95 32.91",
-        "M16.05 32.91 A13.5 13.5 0 0 1 7.09 23.95",
-        "M7.09 16.05 A13.5 13.5 0 0 1 16.05 7.09",
+        "M25.43 7.64 A13.5 13.5 0 0 1 32.36 14.57",
+        "M32.36 25.43 A13.5 13.5 0 0 1 25.43 32.36",
+        "M14.57 32.36 A13.5 13.5 0 0 1 7.64 25.43",
+        "M7.64 14.57 A13.5 13.5 0 0 1 14.57 7.64",
     ]
     assert "selected lineage" not in mark_text.casefold()
 
