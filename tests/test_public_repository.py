@@ -75,7 +75,12 @@ def test_architecture_visual_uses_identity_palette() -> None:
 
 
 def test_readme_visual_assets_have_accessible_svg_metadata() -> None:
-    for relative in ("docs/rsihub-mark.svg", "docs/rsihub-wordmark.svg", "docs/evolve-lineage.svg"):
+    for relative in (
+        "docs/rsihub-mark.svg",
+        "docs/rsihub-wordmark.svg",
+        "docs/rsihub-lockup.svg",
+        "docs/evolve-lineage.svg",
+    ):
         root = ET.parse(ROOT / relative).getroot()
         assert root.attrib["role"] == "img"
         assert root.attrib["viewBox"]
@@ -134,9 +139,25 @@ def test_branding_assets_match_approved_ring_and_wordmark() -> None:
         assert color in wordmark_text
     assert "@media (prefers-color-scheme: dark)" in wordmark_text
 
+    # The masthead is one lockup, not a mark stacked over a wordmark: two <img>
+    # tags align on the text baseline rather than on each other, and GitHub strips
+    # the attributes that would correct it. Both parts stay on disk — mkdocs takes
+    # the mark for its logo and favicon.
     readme = (ROOT / "README.md").read_text()
-    assert 'src="docs/rsihub-mark.svg"' in readme
-    assert 'src="docs/rsihub-wordmark.svg"' in readme
+    assert 'src="docs/rsihub-lockup.svg"' in readme
+    assert (ROOT / "docs" / "rsihub-mark.svg").is_file()
+    assert (ROOT / "docs" / "rsihub-wordmark.svg").is_file()
+
+    lockup = ET.parse(ROOT / "docs" / "rsihub-lockup.svg").getroot()
+    lockup_text = (ROOT / "docs" / "rsihub-lockup.svg").read_text()
+    assert [path.attrib["stroke"] for path in lockup.findall("svg:path", SVG_NS)] == [
+        "#3c8cff",
+        "#00cbd4",
+        "#0095fd",
+        "#78e85c",
+    ]
+    assert lockup.find(".//svg:path[@id='hub-word']", SVG_NS) is not None
+    assert "@media (prefers-color-scheme: dark)" in lockup_text
     assert '<h1 align="center">RSIHub</h1>' not in readme
 
     mkdocs = (ROOT / "mkdocs.yml").read_text()

@@ -1,9 +1,5 @@
 <p align="center">
-  <img src="docs/rsihub-mark.svg" width="112" alt="RSIHub ring mark: four separated blue-to-green arcs surround an open center.">
-</p>
-
-<p align="center">
-  <img src="docs/rsihub-wordmark.svg" width="184" alt="RSIHub">
+  <img src="docs/rsihub-lockup.svg" width="340" alt="RSIHub: the ring mark beside the RSIHub wordmark.">
 </p>
 
 <p align="center">
@@ -35,12 +31,6 @@
   <a href="#skill-evolution-showcase">Showcase</a> ·
   <a href="#quick-start">Quick Start</a> ·
   <a href="#documentation">Documentation</a>
-</p>
-
-<p align="center">
-  <a href="docs/evolve-lineage.svg">
-    <img src="docs/evolve-lineage.svg" alt="A baseline branches into evaluated candidates. The selected lineage rises through successive generations to a verified improvement, while unselected candidates remain visible as evidence.">
-  </a>
 </p>
 
 <p align="center">
