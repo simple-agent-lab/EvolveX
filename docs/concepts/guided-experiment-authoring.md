@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Make EvolveX usable through one conversational skill. A user should be able to
+Make RSIHub usable through one conversational skill. A user should be able to
 ask Codex, Claude, or another compatible coding agent to improve a target; the
 agent should learn the user's requirements, explain the meaningful choices,
 author the recipe, operators, and evaluation assets that are needed, validate
@@ -24,7 +24,7 @@ contracts, not a second composition framework.
    guidance, workspace contract, skill evaluations, and PR #47 commands.
 4. Compose existing recipes and operators before creating new ones.
 5. Let the user's agent co-design, implement, and test reusable custom
-   operators in a writable EvolveX source checkout.
+   operators in a writable RSIHub source checkout.
 6. Support both configuring existing evaluations and authoring new
    evaluations.
 7. Present Harbor-compatible evaluation and new evaluator-engine development
@@ -135,10 +135,10 @@ contexts from filesystem evidence:
 
 | Context | Evidence | Next playbook |
 | --- | --- | --- |
-| External target project | candidate source but no EvolveX source or workspace markers | bootstrap and experiment design |
-| EvolveX source checkout | `.git`, `pyproject.toml`, `src/evolve/`, `library/`, and `recipes/` | source authoring |
+| External target project | candidate source but no RSIHub source or workspace markers | bootstrap and experiment design |
+| RSIHub source checkout | `.git`, `pyproject.toml`, `src/evolve/`, `library/`, and `recipes/` | source authoring |
 | Initialized workspace | `evolve.yaml`, `.evolve-components.json`, archive and workspace launcher | experiment operation |
-| Partial or insufficient context | no complete set, including cases where only `evolve.yaml` or another EvolveX-specific marker exists | ask one focused location question |
+| Partial or insufficient context | no complete set, including cases where only `evolve.yaml` or another RSIHub-specific marker exists | ask one focused location question |
 
 The nearest complete candidate wins when it unambiguously owns the requested
 work. Distinct competing candidates or an unclear target-to-root relationship
@@ -158,8 +158,8 @@ displace their target content. `.codex/skills` is not a repository
 skill-discovery path and no compatibility adapter is created there.
 
 A globally installed skill is another entry point, not another implementation.
-When invoked outside EvolveX, it identifies the candidate target and locates or,
-with approval, acquires a writable EvolveX checkout. PR #47 requires named
+When invoked outside RSIHub, it identifies the candidate target and locates or,
+with approval, acquires a writable RSIHub checkout. PR #47 requires named
 custom operators to live in such a checkout; the global path must not edit an
 installed package or conceal reusable code beside a recipe.
 
@@ -247,7 +247,7 @@ runtime and preflight integration, deterministic contract tests, maintained
 documentation, and recipe integration.
 
 The skill must explain that a new engine is a framework feature: users need the
-EvolveX version containing it, and its failures can affect score trust rather
+RSIHub version containing it, and its failures can affect score trust rather
 than only benchmark quality.
 
 Selecting this option branches into the evaluator-engine authoring project. An

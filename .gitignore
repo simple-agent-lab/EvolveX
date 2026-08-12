@@ -34,7 +34,7 @@ junit.xml
 !.env.example
 *.local
 
-# EvolveX runtime artifacts
+# RSIHub runtime artifacts
 runs/
 archive.jsonl
 .evolve-eval-receipts.jsonl

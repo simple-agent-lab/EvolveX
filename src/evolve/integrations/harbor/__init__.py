@@ -1,1 +1,1 @@
-"""Harbor agent integrations shipped with EvolveX."""
+"""Harbor agent integrations shipped with RSIHub."""

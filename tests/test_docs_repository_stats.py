@@ -22,12 +22,12 @@ def test_repository_stats_fallback_files_are_wired_into_mkdocs() -> None:
     assert "javascripts/repository-stats.js" in config["extra_javascript"]
 
     source = (ROOT / "docs" / "overrides" / "partials" / "source.html").read_text()
-    assert "data-evolvex-repository-stats" in source
+    assert "data-rsihub-repository-stats" in source
     assert 'data-md-component="source"' not in source
 
     javascript = (ROOT / "docs" / "javascripts" / "repository-stats.js").read_text()
     assert "https://api.github.com/repos/" in javascript
-    assert "evolvexRepositoryStats" in javascript
+    assert "rsihubRepositoryStats" in javascript
     assert "md-source__fact--${kind}" in javascript
 
 
@@ -50,7 +50,7 @@ def test_docs_workflow_refreshes_repository_stats_twice_daily() -> None:
 def test_repository_stats_json_has_valid_counts() -> None:
     payload = json.loads((ROOT / "docs" / "assets" / "repository-stats.json").read_text())
     assert payload["schema_version"] == 1
-    assert payload["repository"] == "simple-agent-lab/EvolveX"
+    assert payload["repository"] == "simple-agent-lab/RSIHub"
     assert isinstance(payload["stars"], int) and payload["stars"] >= 0
     assert isinstance(payload["forks"], int) and payload["forks"] >= 0
 

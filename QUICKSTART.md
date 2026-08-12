@@ -5,8 +5,8 @@ Terminal-Bench 2.0 subset. The launcher requires Bash, Python 3.12+,
 [`uv`](https://docs.astral.sh/uv/), Git 2.25+, and a running Docker daemon.
 
 ```bash
-git clone https://github.com/simple-agent-lab/EvolveX.git
-cd EvolveX
+git clone https://github.com/simple-agent-lab/RSIHub.git
+cd RSIHub
 
 # API authentication is the default. Keep credentials out of recipe YAML.
 cat > .env <<'EOF'

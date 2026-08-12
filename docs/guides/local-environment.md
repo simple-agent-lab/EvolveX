@@ -75,7 +75,7 @@ CODEX_FORCE_AUTH_JSON=1 uv run harbor run \
 
 Harbor reuses the Codex executable and login already available on the host. A
 successful Codex run still produces `agent/trajectory.json`, so it can be
-inspected with `harbor view <jobs-dir>`. Evolve's corresponding EvidenceCase
+inspected with `harbor view <jobs-dir>`. RSIHub's corresponding EvidenceCase
 keeps a workspace-relative path and SHA-256 digest for that ATIF rather than
 embedding another complete copy.
 

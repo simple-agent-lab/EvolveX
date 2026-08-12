@@ -185,16 +185,16 @@
       "criteria": [
         {"id":"classify","points":2,"description":"Apply the complete source-checkout and initialized-workspace marker predicates, classify the directory as an external target project, and state the evidence."},
         {"id":"contract","points":2,"description":"Ask for target behavior, evaluator assets, mutable surface, budget, and execution boundary before selection."},
-        {"id":"checkout","points":2,"description":"Locate or propose acquiring a writable EvolveX source checkout and require approval before cloning."},
+        {"id":"checkout","points":2,"description":"Locate or propose acquiring a writable RSIHub source checkout and require approval before cloning."},
         {"id":"options","points":2,"description":"Explain repository-local and global-bootstrap paths as entries to the same workflow, with consequences."},
         {"id":"first_gate","points":2,"description":"Stay in experiment design and require architecture approval before source or deployment work."}
       ],
-      "hard_failures":["Edits an installed EvolveX package","Clones or initializes without approval","Treats the external target as an initialized workspace"]
+      "hard_failures":["Edits an installed RSIHub package","Clones or initializes without approval","Treats the external target as an initialized workspace"]
     },
     "authoring-ambiguous-context": {
       "criteria": [
         {"id":"marker_inventory","points":2,"description":"Search the current directory and ancestors nearest-first, evaluate complete marker sets per root without combining directories, and count evolve.yaml as partial evidence."},
-        {"id":"installed_package","points":2,"description":"State that a successful EvolveX import or installed package does not establish a writable source checkout."},
+        {"id":"installed_package","points":2,"description":"State that a successful RSIHub import or installed package does not establish a writable source checkout."},
         {"id":"classification","points":2,"description":"Prefer the nearest complete candidate only when it unambiguously owns the request and report every competing complete root."},
         {"id":"focused_question","points":2,"description":"Because distinct source/workspace candidates compete here, ask one focused question for the authoritative root."},
         {"id":"hold","points":2,"description":"Defer source inspection, editing, cloning, initialization, and deployment until the location is resolved."}

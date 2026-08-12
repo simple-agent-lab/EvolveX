@@ -43,7 +43,7 @@ Candidate execution uses Harbor's native task timeouts
 (`agent_timeout_multiplier: 1`).
 
 ```bash
-cd /path/to/EvolveX
+cd /path/to/RSIHub
 evolve init /path/to/ahe-run --recipe ahe --tasks 3
 cd /path/to/ahe-run
 ./evolve preflight .

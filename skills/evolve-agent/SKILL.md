@@ -1,6 +1,6 @@
 ---
 name: evolve-agent
-description: "Design, initialize, or operate an evolution workspace for agents, prompts, skills, and agent harnesses. Use when asked to turn requirements into an EvolveX recipe, choose or author reusable operators, deploy a frozen workspace, run generations, inspect lineage, recover state, or report an evidence-backed champion."
+description: "Design, initialize, or operate an evolution workspace for agents, prompts, skills, and agent harnesses. Use when asked to turn requirements into an RSIHub recipe, choose or author reusable operators, deploy a frozen workspace, run generations, inspect lineage, recover state, or report an evidence-backed champion."
 ---
 
 # Design and operate an evidence chain
@@ -23,21 +23,21 @@ directories to manufacture a match. Collect the two complete marker sets:
   `AGENTS.md`, `evolve.yaml`, and `program.md`; run `./evolve status .`,
   `./evolve verify .`, and `./evolve operator active . --json`; then read
   [the workspace contract](references/workspace-contract.md).
-- **EvolveX source checkout:** `.git`, `pyproject.toml`, `src/evolve/`,
+- **RSIHub source checkout:** `.git`, `pyproject.toml`, `src/evolve/`,
   `library/`, and `recipes/` all exist. Read
   [the decision protocol](references/decision-protocol.md) and
   [experiment design](references/experiment-design.md) before source work.
-- **Partial or ambiguous EvolveX markers:** neither set is complete, but at
-  least one EvolveX-specific marker exists: `evolve.yaml`, `src/evolve/`,
+- **Partial or ambiguous RSIHub markers:** neither set is complete, but at
+  least one RSIHub-specific marker exists: `evolve.yaml`, `src/evolve/`,
   `library/`, `recipes/`, `.evolve-components.json`, `archive.jsonl`, or
   `./evolve`.
   Report the markers that are present and missing, then ask one focused
-  question for the authoritative target, EvolveX checkout, or initialized-
-  workspace root. An importable or installed EvolveX package is not evidence
+  question for the authoritative target, RSIHub checkout, or initialized-
+  workspace root. An importable or installed RSIHub package is not evidence
   of a writable source checkout. Do not guess a context or begin source or
   workspace actions until the location is clear.
 - **External target project:** candidate source exists, neither complete set
-  matches, and no EvolveX-specific marker exists. Generic `.git` and
+  matches, and no RSIHub-specific marker exists. Generic `.git` and
   `pyproject.toml` files are ordinary target-project evidence and do not make
   the context ambiguous. Treat it as the candidate. Before the user
   decides, present both entry choices and their consequences:
@@ -45,7 +45,7 @@ directories to manufacture a match. Collect the two complete marker sets:
     that routes to this canonical skill. It is portable and pinned with the
     target, but adds adapter metadata to maintain.
   - **Global-skill bootstrap:** use the user's global skill to locate or, with
-    explicit approval, acquire a writable authoritative EvolveX source
+    explicit approval, acquire a writable authoritative RSIHub source
     checkout. It requires no target-repository adapter, but depends on global
     installation and discovery plus trustworthy checkout provenance.
   Both entries converge on the same decision and experiment-design workflow.
@@ -57,7 +57,7 @@ directories to manufacture a match. Collect the two complete marker sets:
   canonical directory. Do not invent a `.codex/skills` adapter or copy these
   instructions.
 - **Insufficient context:** no recognizable candidate source and no complete or
-  partial EvolveX marker set exists. Ask one focused question for the target,
+  partial RSIHub marker set exists. Ask one focused question for the target,
   source-checkout, or initialized-workspace location and do not guess.
 
 Choose the nearest complete candidate when it unambiguously owns the requested

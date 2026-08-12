@@ -1,6 +1,6 @@
 # Author a reusable operator
 
-Use the catalog-inspection and import-safety sections in a writable EvolveX
+Use the catalog-inspection and import-safety sections in a writable RSIHub
 source checkout while designing the architecture. Inspection gathers evidence;
 it does not authorize source changes. Use the scaffolding, implementation, and
 composition sections only after architecture approval identifies a capability

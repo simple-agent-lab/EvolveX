@@ -149,7 +149,7 @@ def test_init_defaults_to_home_workspace(monkeypatch, tmp_path: Path) -> None:
     assert result.exit_code == 0, result.output
     assert len(captured) == 1
     assert captured[0].workspace == tmp_path / ".evolve-workspace"
-    assert f"Initialized EvolveX workspace at {tmp_path / '.evolve-workspace'}" in result.output
+    assert f"Initialized RSIHub workspace at {tmp_path / '.evolve-workspace'}" in result.output
 
 
 def test_init_explicit_workspace_still_wins(monkeypatch, tmp_path: Path) -> None:
@@ -522,8 +522,8 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
         ".evolve/evolve/harbor_local.py",
         "AGENTS.md",
         "program.md",
-        "LICENSE.evolvex",
-        "NOTICE.evolvex",
+        "LICENSE.rsihub",
+        "NOTICE.rsihub",
         "operators/select.py",
         "operators/rollout.py",
         "operators/mutate.py",
@@ -588,8 +588,8 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
     assert (workspace / ".python-version").read_text() == "3.12\n"
     assert "harbor==0.18.0" in (workspace / "pyproject.toml").read_text()
     assert 'packages = [".evolve/evolve", "library"]' in (workspace / "pyproject.toml").read_text()
-    assert "Apache License" in (workspace / "LICENSE.evolvex").read_text()
-    assert "GEPA" in (workspace / "NOTICE.evolvex").read_text()
+    assert "Apache License" in (workspace / "LICENSE.rsihub").read_text()
+    assert "GEPA" in (workspace / "NOTICE.rsihub").read_text()
 
     config = (workspace / "evolve.yaml").read_text()
     assert "children_per_gen: 1" in config

@@ -1,4 +1,4 @@
-# EvolveX
+# RSIHub
 
 Evidence-driven evolution of agents, prompts, and agent harnesses. Each
 experiment is one Git repository (a workspace) in which a frozen evaluator

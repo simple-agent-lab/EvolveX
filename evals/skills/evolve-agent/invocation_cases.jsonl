@@ -4,5 +4,5 @@
 {"id":"skip-one-off-bugfix","expected_skill":null,"prompt":"Fix the off-by-one error in this parser and run its unit test."}
 {"id":"skip-general-theory","expected_skill":null,"prompt":"Explain the difference between genetic algorithms and gradient descent."}
 {"id":"skip-read-only-code-review","expected_skill":null,"prompt":"Review this pull request for correctness and list concrete defects. Do not modify it."}
-{"id":"invoke-design-experiment","expected_skill":"evolve-agent","prompt":"Interview me, design an EvolveX recipe for this Agent, explain the important choices, and set up the experiment after I approve it."}
-{"id":"invoke-author-operator","expected_skill":"evolve-agent","prompt":"Inspect EvolveX's operator catalog and help me implement a reusable custom operator for a recipe when nothing existing fits."}
+{"id":"invoke-design-experiment","expected_skill":"evolve-agent","prompt":"Interview me, design an RSIHub recipe for this Agent, explain the important choices, and set up the experiment after I approve it."}
+{"id":"invoke-author-operator","expected_skill":"evolve-agent","prompt":"Inspect RSIHub's operator catalog and help me implement a reusable custom operator for a recipe when nothing existing fits."}

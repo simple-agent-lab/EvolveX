@@ -243,7 +243,7 @@ content identities into `evaluator/splits.json`.
 - **sealed** data is an evaluation anchor and must not be exposed as mutation
   feedback.
 
-At the first `evolve run`, EvolveX evaluates `gen/0` on the configured primary
+At the first `evolve run`, RSIHub evaluates `gen/0` on the configured primary
 split and then evaluates it once on every sealed task. The sealed result is
 non-selectable and is not included in the mutation feedback bundle. Keep
 `operators.mutate.config.expose_gate_data: false` whenever a sealed split is

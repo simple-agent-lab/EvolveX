@@ -26,7 +26,7 @@ def test_evolve_skill_has_valid_discovery_metadata() -> None:
         "name": "evolve-agent",
         "description": (
             "Design, initialize, or operate an evolution workspace for agents, prompts, skills, and agent "
-            "harnesses. Use when asked to turn requirements into an EvolveX recipe, choose or author reusable "
+            "harnesses. Use when asked to turn requirements into an RSIHub recipe, choose or author reusable "
             "operators, deploy a frozen workspace, run generations, inspect lineage, recover state, or report an "
             "evidence-backed champion."
         ),
@@ -34,7 +34,7 @@ def test_evolve_skill_has_valid_discovery_metadata() -> None:
 
     interface = yaml.safe_load((SKILL / "agents" / "openai.yaml").read_text())["interface"]
     assert interface == {
-        "display_name": "EvolveX Agent",
+        "display_name": "RSIHub Agent",
         "short_description": "Design and run evidence-backed agent evolution",
         "default_prompt": (
             "Use $evolve-agent to design or operate this evolution experiment through informed, evidence-backed "

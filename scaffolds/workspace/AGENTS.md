@@ -1,4 +1,4 @@
-# EvolveX Workspace
+# RSIHub Workspace
 
 This repository is a self-driving evolvable workspace. The operating manual
 is **`skills/evolve-agent/SKILL.md`** — read it first. It works for any

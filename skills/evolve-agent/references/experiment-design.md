@@ -5,8 +5,8 @@ Use this playbook before writing a recipe, operator, evaluator asset, or workspa
 ## Classify the starting context
 
 - In an initialized workspace, stop source authoring and use `workspace-contract.md`.
-- In an EvolveX source checkout, keep authoring on an isolated branch or worktree and preserve unrelated changes.
-- In an external target project, treat it as the candidate and locate a writable EvolveX source checkout. Do not clone or modify an installed package without approval.
+- In an RSIHub source checkout, keep authoring on an isolated branch or worktree and preserve unrelated changes.
+- In an external target project, treat it as the candidate and locate a writable RSIHub source checkout. Do not clone or modify an installed package without approval.
 - If evidence is insufficient, ask for the target or checkout location rather than guessing.
 
 State the evidence for the classification.

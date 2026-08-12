@@ -1,14 +1,14 @@
-# EvolveX design
+# RSIHub design
 
 This document describes the framework model and rationale. The executable
 module inventory lives in
-[ARCHITECTURE.md on GitHub](https://github.com/simple-agent-lab/EvolveX/blob/main/ARCHITECTURE.md);
+[ARCHITECTURE.md on GitHub](https://github.com/simple-agent-lab/RSIHub/blob/main/ARCHITECTURE.md);
 the operator contract in `src/evolve/frozen/interfaces.py` is authoritative for
 interfaces.
 
 ## The model
 
-EvolveX evolves a candidate under a frozen evaluator while retaining a Git
+RSIHub evolves a candidate under a frozen evaluator while retaining a Git
 lineage. A workspace is a separate Git repository: generation tags identify
 candidates, `archive.jsonl` records stamped outcomes, and the evaluator stays
 outside the candidate's mutable surface.
@@ -64,7 +64,7 @@ The design has two governing principles:
 1. The framework guarantees every required input and normalized output shape,
    while operators retain an explicit escape hatch for genuinely custom JSON
    fields and cross-field constraints.
-2. The declaration and implementation stay small and readable. EvolveX does
+2. The declaration and implementation stay small and readable. RSIHub does
    not implement the full JSON Schema standard or add a second configuration
    framework.
 
@@ -147,7 +147,7 @@ operator inspection as authoring errors.
 
 `--describe` exports the same declaration as a JSON-compatible description for
 CLI and tooling use. The export resembles the useful subset of JSON Schema but
-is an EvolveX contract. Operator identity still comes from
+is an RSIHub contract. Operator identity still comes from
 `library/<stage>/<name>.py`, prose metadata comes from its docstring, and stage
 output remains governed by the frozen result validators. Configuration does
 not absorb metadata, execution, lifecycle, or output validation.
