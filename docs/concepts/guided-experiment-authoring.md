@@ -148,10 +148,14 @@ merely because an installed Python package is available.
 
 ### Platform and installation adapters
 
-`.codex` and `.claude` contain thin discovery adapters that direct each
-platform to the canonical skill. They do not copy its workflow, safety rules,
-method guidance, or framework contracts. Exact adapter formats follow the
-supported conventions of each platform at implementation time.
+The implemented `.agents/skills/evolve-agent` Codex adapter and
+`.claude/skills/evolve-agent` Claude adapter are identical thin wrapper skills.
+Each wrapper directs its host to read canonical `skills/evolve-agent/SKILL.md`
+and resolve relative references from that canonical directory. They copy no
+workflow, safety rules, method guidance, or framework contracts. Directory
+symlinks are not used because source-distribution traversal can duplicate or
+displace their target content. `.codex/skills` is not a repository
+skill-discovery path and no compatibility adapter is created there.
 
 A globally installed skill is another entry point, not another implementation.
 When invoked outside EvolveX, it identifies the candidate target and locates or,
@@ -467,10 +471,11 @@ services.
 
 ### Platform parity
 
-Codex and Claude adapters must discover the same canonical skill, avoid copied
-workflow instructions, point to maintained project files, and preserve the
-same approval and safety rules. A lightweight repository test should detect
-substantial duplicated canonical instructions.
+The Codex and Claude wrappers delegate to the same canonical skill, avoid
+copied workflow instructions, point to maintained project files, and preserve
+the same approval and safety rules. A lightweight repository test enforces
+identical wrapper metadata and content, strict size limits, the canonical
+delegation path, and absence of copied canonical sections.
 
 ### Repository verification
 
@@ -494,9 +499,11 @@ umbrella architecture:
 3. **Evaluator-engine authoring:** a separate framework design for engine
    extensibility and one model-free reference path; this project receives its
    own spec before implementation because it changes trusted mechanics.
-4. **Distribution adapters:** verified `.codex` and `.claude` discovery,
-   globally installed bootstrap behavior, and parity tests based on the
-   platform conventions current at implementation time.
+4. **Platform distribution:** repository-local Codex and Claude discovery is
+   implemented through `.agents/skills/evolve-agent` and
+   `.claude/skills/evolve-agent`, with thin-wrapper parity tests. Any future
+   globally installed bootstrap packaging remains a separately reviewed
+   distribution concern.
 
 Each project receives its own spec, implementation plan, focused tests, and
 review. The first implementation project should be guided recipe and operator
@@ -506,7 +513,9 @@ authoring because PR #47 already supplies its stable machine-facing substrate.
 
 The umbrella design is realized when:
 
-1. A user can invoke one public skill from Codex or Claude.
+1. A user can invoke the same canonical public skill from Codex through
+   `.agents/skills/evolve-agent` or Claude through
+   `.claude/skills/evolve-agent`.
 2. The agent can guide a target from requirements to an initialized workspace.
 3. Current method cards, scientific guidance, workspace contract, skill
    evaluations, and PR #47 primitives are reused.

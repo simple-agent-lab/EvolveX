@@ -50,9 +50,12 @@ directories to manufacture a match. Collect the two complete marker sets:
     installation and discovery plus trustworthy checkout provenance.
   Both entries converge on the same decision and experiment-design workflow.
   Neither entry choice authorizes cloning, editing, or credential access;
-  obtain separate explicit approval for each required action. Actual
-  `.codex`/`.claude` adapter implementation belongs to the separately planned
-  distribution-adapters project; do not claim it is implemented here.
+  obtain separate explicit approval for each required action. This repository
+  exposes the same canonical skill through the implemented thin wrappers at
+  `.agents/skills/evolve-agent` for Codex and `.claude/skills/evolve-agent` for
+  Claude. Each wrapper delegates here and resolves references from this
+  canonical directory. Do not invent a `.codex/skills` adapter or copy these
+  instructions.
 - **Insufficient context:** no recognizable candidate source and no complete or
   partial EvolveX marker set exists. Ask one focused question for the target,
   source-checkout, or initialized-workspace location and do not guess.

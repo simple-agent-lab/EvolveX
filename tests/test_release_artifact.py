@@ -97,4 +97,7 @@ def test_release_sdist_contains_legal_and_build_files() -> None:
         f"{root}/NOTICE",
         f"{root}/README.md",
         f"{root}/pyproject.toml",
+        f"{root}/skills/evolve-agent/SKILL.md",
     } <= names
+    assert not [name for name in names if name.startswith(f"{root}/.agents/skills/evolve-agent/")]
+    assert not [name for name in names if name.startswith(f"{root}/.claude/skills/evolve-agent/")]

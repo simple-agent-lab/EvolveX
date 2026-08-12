@@ -52,6 +52,47 @@ def test_manifest_exposes_one_unified_skill() -> None:
     assert not (ROOT / "skills" / "evolve-workspace" / "SKILL.md").exists()
 
 
+def test_repository_platform_adapters_delegate_to_one_canonical_skill() -> None:
+    adapters = (
+        ROOT / ".agents" / "skills" / "evolve-agent",
+        ROOT / ".claude" / "skills" / "evolve-agent",
+    )
+    wrapper_texts: list[str] = []
+    wrapper_metadata: list[dict[str, object]] = []
+
+    for adapter in adapters:
+        assert adapter.is_dir() and not adapter.is_symlink(), adapter
+        assert [path.name for path in adapter.iterdir()] == ["SKILL.md"]
+        wrapper = adapter / "SKILL.md"
+        assert wrapper.is_file() and not wrapper.is_symlink()
+
+        text = wrapper.read_text()
+        wrapper_texts.append(text)
+        wrapper_metadata.append(_metadata(wrapper))
+        assert len(text.encode()) < 600
+        assert "../../../skills/evolve-agent/SKILL.md" in text
+        assert "../../../skills/evolve-agent/" in text
+        assert (adapter / "../../../skills/evolve-agent/SKILL.md").resolve(strict=True) == (SKILL / "SKILL.md").resolve(
+            strict=True
+        )
+        assert (adapter / "../../../skills/evolve-agent").resolve(strict=True) == SKILL.resolve(strict=True)
+        assert len(text) < len((SKILL / "SKILL.md").read_text()) // 10
+        for canonical_heading in ("## 1. Route from filesystem evidence", "## 2. Design before implementation"):
+            assert canonical_heading not in text
+
+    assert wrapper_texts[0] == wrapper_texts[1]
+    assert (
+        wrapper_metadata[0]
+        == wrapper_metadata[1]
+        == {
+            "name": "evolve-agent",
+            "description": "Use when designing, initializing, or operating an EvolveX evolution experiment.",
+        }
+    )
+
+    assert not (ROOT / ".codex" / "skills" / "evolve-agent").exists()
+
+
 def test_evolve_agent_progressive_references_resolve() -> None:
     body = (SKILL / "SKILL.md").read_text()
     links = REFERENCE_LINK.findall(body)

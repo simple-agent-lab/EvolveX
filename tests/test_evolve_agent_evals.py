@@ -320,7 +320,7 @@ def test_prompt_renderer_keeps_rubric_hidden_and_separates_arms() -> None:
 def test_smoke_baseline_is_traceable_to_behavior_cases() -> None:
     case_ids = {str(case["id"]) for case in _jsonl("behavior_cases.jsonl")}
     baseline = _json("baseline_results.json")
-    history = _json("historical_protocols.json")
+    history = _json("snapshot_protocols.json")
     metadata = history["snapshots"]["baseline_results.json"]
     cases = baseline["cases"]
     scoring = metadata["scoring"]
@@ -348,6 +348,8 @@ def test_smoke_baseline_is_traceable_to_behavior_cases() -> None:
         "mean_paired_delta": sum(paired_deltas) / len(cases),
         "hard_failures": sum(case[arm]["hard_failure"] for case in cases for arm in ("control", "treatment")),
     }
+
+    assert not (EVAL_DIR / "historical_protocols.json").exists()
 
 
 def test_current_results_are_traceable_and_recompute_the_recorded_snapshot() -> None:

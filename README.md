@@ -112,6 +112,13 @@ After `evolve init`, use `./evolve operator active .` to inspect the frozen
 bindings and `./evolve operator run ...` for direct stage orchestration. See
 [the operator guide](docs/reference/operators.md) for the complete workflow.
 
+Repository-local guided authoring is available to both platforms from one
+canonical skill. Codex discovers `.agents/skills/evolve-agent`, and Claude
+discovers `.claude/skills/evolve-agent`. These identical thin wrappers direct
+each host to `skills/evolve-agent/SKILL.md` and its canonical reference base.
+The workflow is maintained once, and no `.codex/skills` compatibility copy is
+used.
+
 ## What Can Evolve
 
 | Surface | Examples | Best fit |

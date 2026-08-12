@@ -52,7 +52,7 @@ with the prompt rather than autonomous routing.
 | `render_prompt.py` | Emits one leak-free control or treatment prompt. |
 | `baseline_results.json` | A small, historical paired smoke baseline. |
 | `current_results.json` | The latest recorded full run for the skill revision and case set named inside that file; new cases may exist afterward. |
-| `historical_protocols.json` | Frozen protocol and inventory metadata for historical snapshots that do not embed complete scoring semantics. |
+| `snapshot_protocols.json` | Frozen protocol and inventory metadata keyed to historical snapshots that do not embed complete scoring semantics. |
 
 The JSON result files are evidence snapshots, not live status. Read their
 revision and protocol metadata before comparing them with the current skill;

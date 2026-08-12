@@ -9,6 +9,12 @@ This page is a configuration reference, not authority to start source or
 deployment work. For guided authoring, follow the repository playbooks in
 `skills/evolve-agent/references/experiment-design.md`,
 `recipe-authoring.md`, `operator-authoring.md`, and `deployment.md`.
+Repository-local Codex discovers that canonical skill through
+`.agents/skills/evolve-agent`; Claude discovers it through
+`.claude/skills/evolve-agent`. Both are identical thin wrappers that delegate
+to `skills/evolve-agent/SKILL.md` and its canonical reference base, so neither
+adapter copies or forks the playbooks. There is no `.codex/skills` repository
+adapter.
 
 Before copying a recipe, qualify the evaluator's coverage, determinism,
 leakage boundary, runtime compatibility, positive and negative calibration,
