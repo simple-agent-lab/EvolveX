@@ -84,7 +84,7 @@ def test_generation_diff_adds_bounded_parent_context(viewer_workspace: Path) -> 
     assert " line 14" not in response.text
     assert response.headers["cache-control"] == "no-store"
     assert cumulative.status_code == 200
-    assert cumulative.headers["x-rsihub-diff-base"] == "0"
+    assert cumulative.headers["x-evolve-diff-base"] == "0"
     assert invalid.status_code == 400
 
 
@@ -138,7 +138,7 @@ def test_artifact_metadata_and_bounded_headers(viewer_workspace: Path) -> None:
     assert metadata.json()["content_url"] == f"/api/evolve/artifacts/{rationale['id']}"
     assert metadata.json()["truncated"] is False
     assert patch_metadata.json()["truncated"] is True
-    assert content.headers["x-rsihub-artifact-truncated"] == "true"
+    assert content.headers["x-evolve-artifact-truncated"] == "true"
     assert len(content.content) == 1024 * 1024
 
 

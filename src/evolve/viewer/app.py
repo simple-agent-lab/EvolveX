@@ -147,8 +147,8 @@ def create_viewer_app(workspace: Path, *, bridge: HarborBridge | None = None) ->
             media_type="text/x-diff",
             headers={
                 "Cache-Control": "no-store",
-                "X-RSIHub-Artifact-Truncated": str(len(encoded) > MAX_ARTIFACT_PREVIEW_BYTES).lower(),
-                "X-RSIHub-Diff-Base": comparison_base,
+                "X-Evolve-Artifact-Truncated": str(len(encoded) > MAX_ARTIFACT_PREVIEW_BYTES).lower(),
+                "X-Evolve-Diff-Base": comparison_base,
             },
         )
 
@@ -192,7 +192,7 @@ def create_viewer_app(workspace: Path, *, bridge: HarborBridge | None = None) ->
         return Response(
             content=content,
             media_type=target.media_type,
-            headers={"X-RSIHub-Artifact-Truncated": str(target.size > MAX_ARTIFACT_PREVIEW_BYTES).lower()},
+            headers={"X-Evolve-Artifact-Truncated": str(target.size > MAX_ARTIFACT_PREVIEW_BYTES).lower()},
         )
 
     @app.get("/api/evolve/artifacts/{artifact_id}/metadata", response_model=ArtifactPreviewMetadata)
