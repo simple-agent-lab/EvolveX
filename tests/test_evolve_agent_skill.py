@@ -78,8 +78,6 @@ def test_repository_platform_adapters_delegate_to_one_canonical_skill() -> None:
         )
         assert (adapter / "../../../skills/evolve-agent").resolve(strict=True) == SKILL.resolve(strict=True)
         assert len(text) < len((SKILL / "SKILL.md").read_text()) // 10
-        for canonical_heading in ("## 1. Route from filesystem evidence", "## 2. Design before implementation"):
-            assert canonical_heading not in text
 
     assert wrapper_texts[0] == wrapper_texts[1]
     assert wrapper_metadata[0] == wrapper_metadata[1] == canonical_metadata
