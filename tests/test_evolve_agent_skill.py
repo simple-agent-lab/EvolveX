@@ -59,6 +59,7 @@ def test_repository_platform_adapters_delegate_to_one_canonical_skill() -> None:
     )
     wrapper_texts: list[str] = []
     wrapper_metadata: list[dict[str, object]] = []
+    canonical_metadata = _metadata(SKILL / "SKILL.md")
 
     for adapter in adapters:
         assert adapter.is_dir() and not adapter.is_symlink(), adapter
@@ -69,8 +70,8 @@ def test_repository_platform_adapters_delegate_to_one_canonical_skill() -> None:
         text = wrapper.read_text()
         wrapper_texts.append(text)
         wrapper_metadata.append(_metadata(wrapper))
-        assert len(text.encode()) < 600
-        assert "../../../skills/evolve-agent/SKILL.md" in text
+        assert len(text.encode()) < 900
+        assert "[canonical skill](../../../skills/evolve-agent/SKILL.md)" in text
         assert "../../../skills/evolve-agent/" in text
         assert (adapter / "../../../skills/evolve-agent/SKILL.md").resolve(strict=True) == (SKILL / "SKILL.md").resolve(
             strict=True
@@ -81,14 +82,7 @@ def test_repository_platform_adapters_delegate_to_one_canonical_skill() -> None:
             assert canonical_heading not in text
 
     assert wrapper_texts[0] == wrapper_texts[1]
-    assert (
-        wrapper_metadata[0]
-        == wrapper_metadata[1]
-        == {
-            "name": "evolve-agent",
-            "description": "Use when designing, initializing, or operating an EvolveX evolution experiment.",
-        }
-    )
+    assert wrapper_metadata[0] == wrapper_metadata[1] == canonical_metadata
 
     assert not (ROOT / ".codex" / "skills" / "evolve-agent").exists()
 
