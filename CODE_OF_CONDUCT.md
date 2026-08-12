@@ -59,7 +59,7 @@ appointed representative at an online or offline event.
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported privately through the [GitHub private reporting channel](https://github.com/simple-agent-lab/EvolveX/security/advisories/new)
+reported privately through the [GitHub private reporting channel](https://github.com/simple-agent-lab/RSIHub/security/advisories/new)
 described in [the security policy](SECURITY.md). All complaints will be
 reviewed and investigated promptly and fairly.
 

@@ -1,7 +1,7 @@
 {
   "name": "evolve-target",
   "interface": {
-    "displayName": "Evolve Target"
+    "displayName": "RSIHub Target"
   },
   "plugins": [
     {

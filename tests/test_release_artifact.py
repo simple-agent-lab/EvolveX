@@ -72,12 +72,12 @@ def test_release_wheel_has_one_resource_owner_and_complete_metadata() -> None:
         metadata_path = next(name for name in names if name.endswith(".dist-info/METADATA"))
         metadata = Parser().parsestr(archive.read(metadata_path).decode())
 
-    assert metadata["Name"] == "evolvex"
+    assert metadata["Name"] == "rsihub"
     assert metadata["Description-Content-Type"] == "text/markdown"
-    assert "EvolveX" in metadata.get_payload()
+    assert "RSIHub" in metadata.get_payload()
     project_urls = metadata.get_all("Project-URL") or []
-    assert any(value.startswith("Repository, https://github.com/") for value in project_urls)
-    assert any(value.startswith("Issues, https://github.com/") for value in project_urls)
+    assert "Repository, https://github.com/simple-agent-lab/RSIHub" in project_urls
+    assert "Issues, https://github.com/simple-agent-lab/RSIHub/issues" in project_urls
 
 
 def test_release_sdist_contains_legal_and_build_files() -> None:

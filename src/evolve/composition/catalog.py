@@ -200,7 +200,7 @@ def _operator_source(operator: LibraryOperator) -> Iterator[tuple[Path, Path]]:
         yield source, source.parent.parent.parent
         return
     root = source.root if isinstance(source, _RootedResource) else _default_library_root(operator)
-    with tempfile.TemporaryDirectory(prefix="evolvex-operator-library-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="rsihub-operator-library-") as temporary:
         destination = Path(temporary) / "library"
         _copy_tree(root, destination)
         yield destination / operator.stage / f"{operator.name}.py", destination.parent

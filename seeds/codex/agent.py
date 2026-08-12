@@ -129,7 +129,7 @@ class HarborAgent(Codex):
             configs = [
                 'model_provider="evolve_http"',
                 'forced_login_method="api"',
-                'model_providers.evolve_http.name="Evolve HTTP Responses"',
+                'model_providers.evolve_http.name="RSIHub HTTP Responses"',
                 f'model_providers.evolve_http.base_url="{base_url}"',
                 'model_providers.evolve_http.env_key="OPENAI_API_KEY"',
                 'model_providers.evolve_http.wire_api="responses"',

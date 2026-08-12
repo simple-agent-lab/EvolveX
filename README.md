@@ -1,21 +1,21 @@
 <p align="center">
-  <img src="docs/evolve-mark.svg" width="112" alt="EvolveX selected lineage mark: a selected lineage rises past explored side branches to a verified generation.">
+  <img src="docs/rsihub-mark.svg" width="112" alt="RSIHub selected lineage mark: a selected lineage rises past explored side branches to a verified generation.">
 </p>
 
-<h1 align="center">EvolveX</h1>
+<h1 align="center">RSIHub</h1>
 
 <p align="center">
   <strong>Build agents that improve — and keep the evidence.</strong>
 </p>
 
 <p align="center">
-  A file-based framework for evaluator-driven evolution, reproducible candidate
-  lineage, and controlled self-modification.
+  A file-based evolution framework for evaluator-driven learning, reproducible candidate
+  lineage, and controllable modification.
 </p>
 
 <p align="center">
-  <a href="https://github.com/simple-agent-lab/EvolveX/actions/workflows/test.yml">
-    <img alt="Tests" src="https://github.com/simple-agent-lab/EvolveX/actions/workflows/test.yml/badge.svg">
+  <a href="https://github.com/simple-agent-lab/RSIHub/actions/workflows/test.yml">
+    <img alt="RSIHub tests" src="https://github.com/simple-agent-lab/RSIHub/actions/workflows/test.yml/badge.svg">
   </a>
   <a href="https://www.python.org/">
     <img alt="Python 3.12+" src="https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&amp;logoColor=white">
@@ -23,14 +23,14 @@
   <a href="LICENSE">
     <img alt="Apache-2.0 License" src="https://img.shields.io/badge/License-Apache--2.0-blue.svg">
   </a>
-  <a href="https://simple-agent-lab.github.io/EvolveX/">
-    <img alt="Documentation" src="https://img.shields.io/badge/Documentation-EvolveX-0F766E?logo=materialformkdocs&amp;logoColor=white">
+  <a href="https://simple-agent-lab.github.io/RSIHub/">
+    <img alt="RSIHub documentation" src="https://img.shields.io/badge/Documentation-RSIHub-0F766E?logo=materialformkdocs&amp;logoColor=white">
   </a>
 </p>
 
 <p align="center">
-  <a href="#what-evolvex-does">What EvolveX Does</a> ·
-  <a href="#how-evolvex-works">How It Works</a> ·
+  <a href="#what-rsihub-does">What RSIHub Does</a> ·
+  <a href="#how-rsihub-works">How It Works</a> ·
   <a href="#what-can-evolve">What Can Evolve</a> ·
   <a href="#recipes">Recipes</a> ·
   <a href="#skill-evolution-showcase">Showcase</a> ·
@@ -50,9 +50,9 @@
   </a>
 </p>
 
-## What EvolveX Does
+## What RSIHub Does
 
-EvolveX gives an agent a controlled way to improve itself. It runs candidates
+RSIHub gives an agent a controlled way to improve itself. It runs candidates
 against a fixed evaluator, keeps the evidence for every generation, and carries
 verified improvements forward without letting candidate code rewrite the rules
 that score it.
@@ -64,7 +64,7 @@ that score it.
 - **Evidence built in:** Connect every candidate to scores, artifacts, archive
   records, and Git lineage.
 
-## How EvolveX Works
+## How RSIHub Works
 
 Every recipe composes the same loop:
 
@@ -74,7 +74,7 @@ Every recipe composes the same loop:
 
 <p align="center">
   <a href="docs/assets/architecture.svg">
-    <img src="docs/assets/architecture.svg" alt="EvolveX architecture: five built-in strategies and custom recipes compose a loop of select, rollout and evaluation, analyze, mutate, gate, and record. The target and selected operators occupy a declared mutable surface. The evaluator, runtime, surface check, and stamped evidence remain protected from candidate changes.">
+    <img src="docs/assets/architecture.svg" alt="RSIHub architecture: five built-in strategies and custom recipes compose a loop of select, rollout and evaluation, analyze, mutate, gate, and record. The target and selected operators occupy a declared mutable surface. The evaluator, runtime, surface check, and stamped evidence remain protected from candidate changes.">
   </a>
 </p>
 
@@ -132,7 +132,7 @@ See [the recipe guide](recipes/README.md) for each strategy’s workflow and con
 
 ## Skill Evolution Showcase
 
-EvolveX can improve a Skill as a complete package: instructions, references,
+RSIHub can improve a Skill as a complete package: instructions, references,
 and validation scripts evolve together while a frozen evaluator keeps the
 comparison honest. In this local Paper2Poster run, the same Codex model and
 paper prompt produced both LoRA posters below.
@@ -312,7 +312,7 @@ Split: **50 train / 20 gate / 27 sealed**.
 
 ## Trustworthy by Construction
 
-EvolveX separates evolvable policy from the mechanism that judges it:
+RSIHub separates evolvable policy from the mechanism that judges it:
 
 1. **The evaluator is frozen.** Candidates cannot change the scoring contract.
 2. **Mutation is bounded.** Each recipe declares which target and operator paths may change.
@@ -324,7 +324,7 @@ process. See [the design guide](docs/concepts/design.md) for the complete owners
 
 ## Project Status
 
-EvolveX is an active prototype for research and controlled experimentation. The
+RSIHub is an active prototype for research and controlled experimentation. The
 current focus is reliable experiment mechanics, local-first workflows, and
 composable strategies for different agent-evolution scenarios.
 
@@ -341,7 +341,7 @@ composable strategies for different agent-evolution scenarios.
 
 | Document | Purpose |
 | --- | --- |
-| [Documentation site](https://simple-agent-lab.github.io/EvolveX/) | Installation, operation, concepts, guides, and reference. |
+| [Documentation site](https://simple-agent-lab.github.io/RSIHub/) | Installation, operation, concepts, guides, and reference. |
 | [Quick start](QUICKSTART.md) | Recipe launcher setup and configuration. |
 | [Design](docs/concepts/design.md) | System model, ownership boundaries, and invariants. |
 | [Architecture](ARCHITECTURE.md) | Enforced source-module map and line budgets. |
@@ -356,5 +356,5 @@ composable strategies for different agent-evolution scenarios.
 
 ## License
 
-EvolveX is licensed under [Apache-2.0](LICENSE). See
+RSIHub is licensed under [Apache-2.0](LICENSE). See
 [NOTICE](NOTICE) for required attributions.
