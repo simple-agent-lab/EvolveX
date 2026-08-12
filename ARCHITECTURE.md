@@ -86,7 +86,7 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `viewer/reader.py` | 450 | validated cached reads of archive, stage, evaluation, and Harbor-root evidence |
 | `viewer/snapshot.py` | 700 | derive health, stages, changes, performance, trials, and artifact references from source evidence |
 | `viewer/harbor_bridge.py` | 350 | ephemeral federation and current/retained-schema trial links for Harbor inspection |
-| `viewer/app.py` | 450 | read-only Evolve API, Harbor composition, snapshot retention, and server launch |
+| `viewer/app.py` | 450 | read-only RSIHub API, Harbor composition, snapshot retention, and server launch |
 
 ### The frozen ring (`src/evolve/frozen/`)
 

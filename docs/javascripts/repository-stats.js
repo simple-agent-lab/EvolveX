@@ -1,5 +1,5 @@
 (() => {
-  const selector = "[data-evolvex-repository-stats]"
+  const selector = "[data-rsihub-repository-stats]"
   const cacheLifetimeMs = 10 * 60 * 1000
   let currentStats
   let pendingStats
@@ -35,7 +35,7 @@
   }
 
   function cacheKey(source) {
-    return `evolvex-repository-stats:v1:${source.href}`
+    return `rsihub-repository-stats:v1:${source.href}`
   }
 
   function readCache(source) {
@@ -73,7 +73,7 @@
   }
 
   async function fetchFallbackStats(source) {
-    const response = await fetch(source.dataset.evolvexRepositoryStats, { cache: "no-cache" })
+    const response = await fetch(source.dataset.rsihubRepositoryStats, { cache: "no-cache" })
     if (!response.ok) throw new Error(`Repository statistics fallback returned ${response.status}`)
     return normalize(await response.json())
   }

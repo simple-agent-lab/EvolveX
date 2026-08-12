@@ -60,7 +60,7 @@ def create_viewer_app(workspace: Path, *, bridge: HarborBridge | None = None) ->
         finally:
             active_bridge.__exit__(None, None, None)
 
-    app = FastAPI(title="Evolve Experiment Viewer", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="RSIHub Experiment Viewer", version="0.1.0", lifespan=lifespan)
     app.state.snapshot_store = store
 
     @app.middleware("http")
@@ -147,8 +147,8 @@ def create_viewer_app(workspace: Path, *, bridge: HarborBridge | None = None) ->
             media_type="text/x-diff",
             headers={
                 "Cache-Control": "no-store",
-                "X-Evolve-Artifact-Truncated": str(len(encoded) > MAX_ARTIFACT_PREVIEW_BYTES).lower(),
-                "X-Evolve-Diff-Base": comparison_base,
+                "X-RSIHub-Artifact-Truncated": str(len(encoded) > MAX_ARTIFACT_PREVIEW_BYTES).lower(),
+                "X-RSIHub-Diff-Base": comparison_base,
             },
         )
 
@@ -192,7 +192,7 @@ def create_viewer_app(workspace: Path, *, bridge: HarborBridge | None = None) ->
         return Response(
             content=content,
             media_type=target.media_type,
-            headers={"X-Evolve-Artifact-Truncated": str(target.size > MAX_ARTIFACT_PREVIEW_BYTES).lower()},
+            headers={"X-RSIHub-Artifact-Truncated": str(target.size > MAX_ARTIFACT_PREVIEW_BYTES).lower()},
         )
 
     @app.get("/api/evolve/artifacts/{artifact_id}/metadata", response_model=ArtifactPreviewMetadata)
@@ -227,7 +227,7 @@ def create_viewer_app(workspace: Path, *, bridge: HarborBridge | None = None) ->
 
 def run_viewer(workspace: Path, host: str, port_spec: str) -> None:
     port = _select_bindable_port(host, _ports(port_spec))
-    print(f"Evolve viewer: http://127.0.0.1:{port}")
+    print(f"RSIHub viewer: http://127.0.0.1:{port}")
     print(f"DevBox tunnel: ssh -N -L {port}:127.0.0.1:{port} DevBox")
     uvicorn.run(create_viewer_app(workspace), host=host, port=port)
 

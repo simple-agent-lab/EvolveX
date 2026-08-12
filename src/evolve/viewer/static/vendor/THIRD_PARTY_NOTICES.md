@@ -1,6 +1,6 @@
 # Third-party browser assets
 
-The Evolve experiment viewer redistributes the following pinned browser builds
+The RSIHub experiment viewer redistributes the following pinned browser builds
 so artifact previews work without a network connection.
 
 ## Diff2Html 3.4.56

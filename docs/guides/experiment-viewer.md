@@ -90,7 +90,7 @@ filesystem paths.
 
 ## Refresh and safety
 
-Evolve pages refresh filesystem summaries every three seconds. Shell and asset
+RSIHub pages refresh filesystem summaries every three seconds. Shell and asset
 responses disable browser caching so a restarted deployment does not reuse stale
 viewer code.
 
@@ -112,7 +112,7 @@ or ascending port range.
 
 **A trial has no Harbor link.** The experiment must retain a readable Harbor
 job directory, and the Harbor task must map uniquely to the canonical task and
-repetition recorded by Evolve.
+repetition recorded by RSIHub.
 
 **An artifact is truncated.** Use the relative path shown in the preview to
 inspect the original file on the experiment host when more than 1 MiB is

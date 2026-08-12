@@ -137,7 +137,7 @@ function updateChrome() {
   experimentName.title = experiment.workspace;
   healthPill.className = `status-pill ${experiment.health}`;
   healthPill.textContent = label(experiment.health);
-  document.title = `${experiment.id} · Evolve`;
+  document.title = `${experiment.id} · RSIHub`;
 }
 
 function activateNavigation(name) {

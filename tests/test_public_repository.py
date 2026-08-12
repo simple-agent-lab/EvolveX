@@ -1,5 +1,6 @@
 import re
 import shlex
+import subprocess
 import tomllib
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -11,6 +12,46 @@ from evolve import __version__
 ROOT = Path(__file__).resolve().parents[1]
 RELATIVE_LINK = re.compile(r"\[[^\]]+\]\((?!https?://|mailto:|#)([^)#]+)")
 SVG_NS = {"svg": "http://www.w3.org/2000/svg"}
+
+
+def test_tracked_files_use_only_current_project_identity() -> None:
+    retired = ("evolve" + "x", "simple-" + "evolve-agent")
+    standalone = "Evo" + "lve"
+    allowed_standalone_uses = {
+        "README.md": (f"What Can {standalone}",),
+        "evals/skills/make-paper-poster/recipe/evaluator/doctor_smoke.py": (f">{standalone}<",),
+        "library/PROTOCOL.md": (f"{standalone} freely",),
+        "skills/evolve-agent/agents/openai.yaml": (f"{standalone} agents",),
+    }
+    result = subprocess.run(
+        ["git", "ls-files", "-z"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+    )
+    paths = [Path(raw.decode()) for raw in result.stdout.split(b"\0") if raw]
+    stale: list[str] = []
+    for relative in paths:
+        folded_path = relative.as_posix().casefold()
+        for identity in retired:
+            if identity in folded_path:
+                stale.append(f"path:{relative}")
+        try:
+            text = (ROOT / relative).read_text()
+        except UnicodeDecodeError:
+            continue
+        folded_text = text.casefold()
+        for identity in retired:
+            if identity in folded_text:
+                stale.append(f"text:{relative}")
+        for line_number, line in enumerate(text.splitlines(), start=1):
+            without_method_name = line.replace(f"A-{standalone}", "")
+            if not re.search(rf"\b{standalone}\b", without_method_name):
+                continue
+            allowed = allowed_standalone_uses.get(relative.as_posix(), ())
+            if not any(phrase in line for phrase in allowed):
+                stale.append(f"semantic:{relative}:{line_number}")
+    assert sorted(set(stale)) == []
 
 
 def _relative_luminance(color: str) -> float:
@@ -34,7 +75,7 @@ def test_architecture_visual_uses_identity_palette() -> None:
 
 
 def test_readme_visual_assets_have_accessible_svg_metadata() -> None:
-    for relative in ("docs/evolve-mark.svg", "docs/evolve-lineage.svg"):
+    for relative in ("docs/rsihub-mark.svg", "docs/rsihub-wordmark.svg", "docs/evolve-lineage.svg"):
         root = ET.parse(ROOT / relative).getroot()
         assert root.attrib["role"] == "img"
         assert root.attrib["viewBox"]
@@ -44,9 +85,66 @@ def test_readme_visual_assets_have_accessible_svg_metadata() -> None:
         assert root.find("svg:desc", SVG_NS).attrib["id"] == labelled_by[1]
 
 
+def test_branding_assets_match_approved_ring_and_wordmark() -> None:
+    mark_path = ROOT / "docs" / "rsihub-mark.svg"
+    mark = ET.parse(mark_path).getroot()
+    mark_text = mark_path.read_text()
+    paths = mark.findall("svg:path", SVG_NS)
+    assert mark.attrib["width"] == "128"
+    assert mark.attrib["height"] == "128"
+    assert mark.attrib["viewBox"] == "0 0 40 40"
+    assert [path.attrib["stroke"] for path in paths] == [
+        "#3c8cff",
+        "#0095fd",
+        "#00cbd4",
+        "#78e85c",
+    ]
+    assert all(path.attrib["stroke-width"] == "6" for path in paths)
+    assert all(path.attrib["stroke-linecap"] == "round" for path in paths)
+    assert [path.attrib["d"] for path in paths] == [
+        "M23.95 7.09 A13.5 13.5 0 0 1 32.91 16.05",
+        "M32.91 23.95 A13.5 13.5 0 0 1 23.95 32.91",
+        "M16.05 32.91 A13.5 13.5 0 0 1 7.09 23.95",
+        "M7.09 16.05 A13.5 13.5 0 0 1 16.05 7.09",
+    ]
+    assert "selected lineage" not in mark_text.casefold()
+
+    wordmark_path = ROOT / "docs" / "rsihub-wordmark.svg"
+    wordmark_text = wordmark_path.read_text()
+    wordmark = ET.parse(wordmark_path).getroot()
+    assert "<text" not in wordmark_text
+    assert "font-family" not in wordmark_text
+    glyph_r = wordmark.find(".//svg:path[@id='glyph-r']", SVG_NS)
+    assert glyph_r is not None
+    assert glyph_r.attrib["d"].startswith("M58.594 0V-704.59")
+    assert wordmark.find(".//svg:clipPath", SVG_NS) is None
+    assert wordmark.find(".//svg:mask", SVG_NS) is None
+    hub_word = wordmark.find(".//svg:path[@id='hub-word']", SVG_NS)
+    assert hub_word is not None
+    assert hub_word.attrib["fill"] == "url(#hub-ramp)"
+    assert hub_word.attrib["fill-rule"] == "nonzero"
+    assert hub_word.attrib["d"].count("M") == 3
+    assert "m -47.61 -118.164" in hub_word.attrib["d"]
+    for color in ("#1f2328", "#e6edf3", "#00a3b0", "#2fa844", "#00cbd4", "#78e85c"):
+        assert color in wordmark_text
+    assert "@media (prefers-color-scheme: dark)" in wordmark_text
+
+    readme = (ROOT / "README.md").read_text()
+    assert 'src="docs/rsihub-mark.svg"' in readme
+    assert 'src="docs/rsihub-wordmark.svg"' in readme
+    assert '<h1 align="center">RSIHub</h1>' not in readme
+
+    mkdocs = (ROOT / "mkdocs.yml").read_text()
+    assert "logo: rsihub-mark.svg" in mkdocs
+    assert "favicon: rsihub-mark.svg" in mkdocs
+
+    inventory = (ROOT / "docs" / "development" / "documentation.md").read_text()
+    assert "RSIHub Ring identity mark" in inventory
+    assert "RSIHub gradient wordmark" in inventory
+
+
 def test_selected_and_explored_graphics_have_three_to_one_contrast() -> None:
     expected_state_counts = {
-        "docs/evolve-mark.svg": {"selected": 5, "explored": 1},
         "docs/evolve-lineage.svg": {"selected": 5, "explored": 4},
     }
     for relative, expected_counts in expected_state_counts.items():
@@ -125,10 +223,17 @@ def test_mkdocs_covers_custom_recipe_operator_and_experiment_workflows() -> None
 
 def test_license_metadata_and_notice_are_consistent() -> None:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]
+    assert project["name"] == "rsihub"
+    assert project["urls"] == {
+        "Homepage": "https://github.com/simple-agent-lab/RSIHub",
+        "Documentation": "https://simple-agent-lab.github.io/RSIHub/",
+        "Repository": "https://github.com/simple-agent-lab/RSIHub",
+        "Issues": "https://github.com/simple-agent-lab/RSIHub/issues",
+    }
     assert project["version"] == __version__
     assert project["license"] == "Apache-2.0"
     assert "Apache License" in (ROOT / "LICENSE").read_text()
-    assert (ROOT / "NOTICE").read_text().startswith("EvolveX\n")
+    assert (ROOT / "NOTICE").read_text().startswith("RSIHub\n")
 
 
 def test_required_public_repository_files_exist() -> None:

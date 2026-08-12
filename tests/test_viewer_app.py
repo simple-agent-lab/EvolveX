@@ -50,6 +50,7 @@ evaluator: {}
 
 def test_snapshot_and_generation_routes(viewer_workspace: Path) -> None:
     with TestClient(create_viewer_app(viewer_workspace)) as client:
+        assert client.app.title == "RSIHub Experiment Viewer"
         assert client.get("/api/evolve/snapshot").status_code == 200
         assert client.get("/api/evolve/generations/1").json()["summary"]["genid"] == "1"
         assert client.get("/api/evolve/generations/missing").status_code == 404
@@ -83,7 +84,7 @@ def test_generation_diff_adds_bounded_parent_context(viewer_workspace: Path) -> 
     assert " line 14" not in response.text
     assert response.headers["cache-control"] == "no-store"
     assert cumulative.status_code == 200
-    assert cumulative.headers["x-evolve-diff-base"] == "0"
+    assert cumulative.headers["x-rsihub-diff-base"] == "0"
     assert invalid.status_code == 400
 
 
@@ -137,7 +138,7 @@ def test_artifact_metadata_and_bounded_headers(viewer_workspace: Path) -> None:
     assert metadata.json()["content_url"] == f"/api/evolve/artifacts/{rationale['id']}"
     assert metadata.json()["truncated"] is False
     assert patch_metadata.json()["truncated"] is True
-    assert content.headers["x-evolve-artifact-truncated"] == "true"
+    assert content.headers["x-rsihub-artifact-truncated"] == "true"
     assert len(content.content) == 1024 * 1024
 
 
@@ -192,11 +193,14 @@ def test_frontend_has_required_navigation_and_refresh_contract() -> None:
     styles = (static / "styles.css").read_text()
 
     assert all(label in html for label in ("Overview", "Generations", "Trials"))
-    assert "<strong>EvolveX</strong>" in html
-    assert 'src="/evolve-assets/evolve-mark.svg"' in html
-    assert (static / "evolve-mark.svg").read_bytes() == (repository / "docs/evolve-mark.svg").read_bytes()
+    assert "<title>RSIHub experiment viewer</title>" in html
+    assert "<strong>RSIHub</strong>" in html
+    assert 'src="/evolve-assets/rsihub-mark.svg"' in html
+    assert "Evol" + "veX" not in html
+    assert (static / "rsihub-mark.svg").read_bytes() == (repository / "docs/rsihub-mark.svg").read_bytes()
     assert "3000" in javascript
     assert "/api/evolve/snapshot" in javascript
+    assert "`${experiment.id} · RSIHub`" in javascript
     assert "Full Harbor inspection" in javascript
     assert all(label in javascript for label in ("← Overview", "← Generations", "← Generation"))
     assert all(

@@ -1,14 +1,14 @@
-# EvolveX design
+# RSIHub design
 
 This document describes the framework model and rationale. The executable
 module inventory lives in
-[ARCHITECTURE.md on GitHub](https://github.com/simple-agent-lab/EvolveX/blob/main/ARCHITECTURE.md);
+[ARCHITECTURE.md on GitHub](https://github.com/simple-agent-lab/RSIHub/blob/main/ARCHITECTURE.md);
 the operator contract in `src/evolve/frozen/interfaces.py` is authoritative for
 interfaces.
 
 ## The model
 
-EvolveX evolves a candidate under a frozen evaluator while retaining a Git
+RSIHub evolves a candidate under a frozen evaluator while retaining a Git
 lineage. A workspace is a separate Git repository: generation tags identify
 candidates, `archive.jsonl` records stamped outcomes, and the evaluator stays
 outside the candidate's mutable surface.

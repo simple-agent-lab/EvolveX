@@ -1,4 +1,4 @@
-# This is an EvolveX workspace
+# This is an RSIHub workspace
 
 This directory is an independent Git repository. Each candidate generation is
 a commit tagged `gen/<id>`; `archive.jsonl` records the append-only lineage.
@@ -22,8 +22,8 @@ archive.jsonl                 append-only lineage record
 evolve                        workspace console
 evolve.yaml                   rendered recipe configuration
 library/                      recipe-relevant operator variants
-LICENSE.evolvex               license for the vendored framework and operator library
-NOTICE.evolvex                framework and third-party attribution notices
+LICENSE.rsihub                license for the vendored framework and operator library
+NOTICE.rsihub                 framework and third-party attribution notices
 operators/                    active operator scripts, supporting Markdown, and index
 program.md                    loop orchestration guidance
 pyproject.toml, uv.lock       locked workspace runtime
@@ -59,7 +59,7 @@ directly: workspace evaluation first prepares its certified private runtime
 inputs.
 
 The vendored framework runtime and operator library are provided under
-Apache-2.0; see `LICENSE.evolvex` and `NOTICE.evolvex`.
+Apache-2.0; see `LICENSE.rsihub` and `NOTICE.rsihub`.
 The target under `target/` retains its own upstream licensing terms.
 
 ## Rules

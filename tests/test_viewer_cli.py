@@ -5,6 +5,7 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from evolve.cli import app
+from evolve.viewer.app import run_viewer
 
 
 def test_view_defaults(monkeypatch, tmp_path: Path) -> None:
@@ -36,3 +37,13 @@ def test_view_forwards_explicit_host_and_port(monkeypatch, tmp_path: Path) -> No
     assert result.exit_code == 0
     assert called["host"] == "0.0.0.0"
     assert called["port_spec"] == "9001"
+
+
+def test_run_viewer_prints_rsihub_identity(monkeypatch, tmp_path: Path, capsys) -> None:
+    monkeypatch.setattr("evolve.viewer.app._select_bindable_port", lambda _host, _ports: 8765)
+    monkeypatch.setattr("evolve.viewer.app.create_viewer_app", lambda _workspace: object())
+    monkeypatch.setattr("evolve.viewer.app.uvicorn.run", lambda *_args, **_kwargs: None)
+
+    run_viewer(tmp_path, "127.0.0.1", "8765")
+
+    assert capsys.readouterr().out.startswith("RSIHub viewer: http://127.0.0.1:8765\n")

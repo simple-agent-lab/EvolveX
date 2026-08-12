@@ -1,5 +1,5 @@
 [project]
-name = "evolvex"
+name = "rsihub"
 version = "0.1.0"
 description = "File-based framework for evolving coding agents."
 readme = "README.md"
@@ -28,10 +28,10 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/simple-agent-lab/EvolveX"
-Documentation = "https://simple-agent-lab.github.io/EvolveX/"
-Repository = "https://github.com/simple-agent-lab/EvolveX"
-Issues = "https://github.com/simple-agent-lab/EvolveX/issues"
+Homepage = "https://github.com/simple-agent-lab/RSIHub"
+Documentation = "https://simple-agent-lab.github.io/RSIHub/"
+Repository = "https://github.com/simple-agent-lab/RSIHub"
+Issues = "https://github.com/simple-agent-lab/RSIHub/issues"
 
 [project.scripts]
 evolve = "evolve.cli:main"

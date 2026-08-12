@@ -72,9 +72,9 @@ class WorkspaceReader:
 
     def _validate_workspace(self) -> None:
         if not (self.workspace / "evolve.yaml").is_file():
-            raise ValueError(f"not an Evolve workspace: missing evolve.yaml in {self.workspace}")
+            raise ValueError(f"not an RSIHub workspace: missing evolve.yaml in {self.workspace}")
         if not (self.workspace / "archive.jsonl").is_file():
-            raise ValueError(f"not an Evolve workspace: missing archive.jsonl in {self.workspace}")
+            raise ValueError(f"not an RSIHub workspace: missing archive.jsonl in {self.workspace}")
 
     def _read_archive(self) -> tuple[list[dict[str, Any]], list[ViewerWarning]]:
         path = self.workspace / "archive.jsonl"

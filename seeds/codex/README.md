@@ -1,7 +1,7 @@
 # Built-in Codex Target
 
 This target wraps Harbor's installed Codex agent while keeping the behavior
-surface under `target/**` so EvolveX can mutate it.
+surface under `target/**` so RSIHub can mutate it.
 
 - `agent.py` injects the candidate-owned prompt, skills, and Codex flags.
 - `prompt.md` is the task prompt template and must retain `{{ instruction }}`.

@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for improving EvolveX. Read [the design guide](docs/concepts/design.md),
+Thank you for improving RSIHub. Read [the design guide](docs/concepts/design.md),
 [ARCHITECTURE.md](ARCHITECTURE.md), and [the coding style](docs/development/coding-style.md)
 before making a non-trivial change.
 
