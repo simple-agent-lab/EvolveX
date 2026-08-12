@@ -11,7 +11,8 @@ The maintained public documentation has distinct roles:
 | [Source architecture map](https://github.com/simple-agent-lab/RSIHub/blob/main/ARCHITECTURE.md) | enforced `src/evolve/` module map and budgets |
 | [`../reference/terminology.md`](../reference/terminology.md) | canonical framework language |
 | [`coding-style.md`](coding-style.md) | coding conventions |
-| [`../rsihub-mark.svg`](../rsihub-mark.svg) | generated Selected Lineage identity mark |
+| [`../rsihub-mark.svg`](../rsihub-mark.svg) | generated RSIHub Ring identity mark |
+| [`../rsihub-wordmark.svg`](../rsihub-wordmark.svg) | generated RSIHub gradient wordmark |
 | [`../evolve-lineage.svg`](../evolve-lineage.svg) | generated README identity figure |
 | [`../assets/architecture.svg`](../assets/architecture.svg) | generated architecture diagram |
 | [Operator interfaces](https://github.com/simple-agent-lab/RSIHub/blob/main/src/evolve/frozen/interfaces.py) | machine-readable operator contract |

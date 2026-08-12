@@ -1,8 +1,10 @@
 <p align="center">
-  <img src="docs/rsihub-mark.svg" width="112" alt="RSIHub selected lineage mark: a selected lineage rises past explored side branches to a verified generation.">
+  <img src="docs/rsihub-mark.svg" width="112" alt="RSIHub ring mark: four separated blue-to-green arcs surround an open center.">
 </p>
 
-<h1 align="center">RSIHub</h1>
+<p align="center">
+  <img src="docs/rsihub-wordmark.svg" width="184" alt="RSIHub">
+</p>
 
 <p align="center">
   <strong>Build agents that improve — and keep the evidence.</strong>

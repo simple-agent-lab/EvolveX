@@ -75,7 +75,7 @@ def test_architecture_visual_uses_identity_palette() -> None:
 
 
 def test_readme_visual_assets_have_accessible_svg_metadata() -> None:
-    for relative in ("docs/rsihub-mark.svg", "docs/evolve-lineage.svg"):
+    for relative in ("docs/rsihub-mark.svg", "docs/rsihub-wordmark.svg", "docs/evolve-lineage.svg"):
         root = ET.parse(ROOT / relative).getroot()
         assert root.attrib["role"] == "img"
         assert root.attrib["viewBox"]
@@ -85,9 +85,47 @@ def test_readme_visual_assets_have_accessible_svg_metadata() -> None:
         assert root.find("svg:desc", SVG_NS).attrib["id"] == labelled_by[1]
 
 
+def test_branding_assets_match_approved_ring_and_wordmark() -> None:
+    mark_path = ROOT / "docs" / "rsihub-mark.svg"
+    mark = ET.parse(mark_path).getroot()
+    mark_text = mark_path.read_text()
+    paths = mark.findall("svg:path", SVG_NS)
+    assert mark.attrib["viewBox"] == "0 0 40 40"
+    assert [path.attrib["stroke"] for path in paths] == [
+        "#3c8cff",
+        "#0095fd",
+        "#00cbd4",
+        "#78e85c",
+    ]
+    assert all(path.attrib["stroke-width"] == "6" for path in paths)
+    assert all(path.attrib["stroke-linecap"] == "round" for path in paths)
+    assert "selected lineage" not in mark_text.casefold()
+
+    wordmark_path = ROOT / "docs" / "rsihub-wordmark.svg"
+    wordmark_text = wordmark_path.read_text()
+    ET.parse(wordmark_path)
+    assert "<text" not in wordmark_text
+    assert "font-family" not in wordmark_text
+    for color in ("#1f2328", "#e6edf3", "#00a3b0", "#2fa844", "#00cbd4", "#78e85c"):
+        assert color in wordmark_text
+    assert "@media (prefers-color-scheme: dark)" in wordmark_text
+
+    readme = (ROOT / "README.md").read_text()
+    assert 'src="docs/rsihub-mark.svg"' in readme
+    assert 'src="docs/rsihub-wordmark.svg"' in readme
+    assert '<h1 align="center">RSIHub</h1>' not in readme
+
+    mkdocs = (ROOT / "mkdocs.yml").read_text()
+    assert "logo: rsihub-mark.svg" in mkdocs
+    assert "favicon: rsihub-mark.svg" in mkdocs
+
+    inventory = (ROOT / "docs" / "development" / "documentation.md").read_text()
+    assert "RSIHub Ring identity mark" in inventory
+    assert "RSIHub gradient wordmark" in inventory
+
+
 def test_selected_and_explored_graphics_have_three_to_one_contrast() -> None:
     expected_state_counts = {
-        "docs/rsihub-mark.svg": {"selected": 5, "explored": 1},
         "docs/evolve-lineage.svg": {"selected": 5, "explored": 4},
     }
     for relative, expected_counts in expected_state_counts.items():

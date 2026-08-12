@@ -1,13 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-labelledby="mark-title mark-description">
-  <title id="mark-title">RSIHub selected lineage mark</title>
-  <desc id="mark-description">A selected candidate path rises past explored side branches to a verified generation.</desc>
-  <rect x="4" y="4" width="120" height="120" rx="28" fill="#10372e"/>
-  <path d="M 48 82 L 68 103 M 66 61 L 45 38 M 86 42 L 105 62" fill="none" stroke="#b5d3c7" stroke-width="4" stroke-linecap="round" data-state="explored"/>
-  <path d="M 25 101 C 43 93 44 72 62 65 S 86 40 105 23" fill="none" stroke="#338e6b" stroke-width="7" stroke-linecap="round" data-state="selected"/>
-  <circle cx="25" cy="101" r="7" fill="#10372e" stroke="#65ce9f" stroke-width="4" data-state="selected"/>
-  <circle cx="48" cy="82" r="7" fill="#10372e" stroke="#65ce9f" stroke-width="4" data-state="selected"/>
-  <circle cx="66" cy="61" r="7" fill="#10372e" stroke="#65ce9f" stroke-width="4" data-state="selected"/>
-  <circle cx="86" cy="42" r="7" fill="#10372e" stroke="#65ce9f" stroke-width="4" data-state="selected"/>
-  <circle cx="105" cy="23" r="10" fill="#65ce9f" stroke="#ffffff" stroke-width="3"/>
-  <path d="M 100 23 L 104 27 L 111 18" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40" role="img" aria-labelledby="mark-title mark-description">
+  <title id="mark-title">RSIHub ring mark</title>
+  <desc id="mark-description">Four separated arc segments, one in each blue-to-green ramp color, surround an open center.</desc>
+  <path d="M25.06 7.48 A13.5 13.5 0 0 1 32.52 14.94" fill="none" stroke="#3c8cff" stroke-width="6" stroke-linecap="round"/>
+  <path d="M32.52 25.06 A13.5 13.5 0 0 1 25.06 32.52" fill="none" stroke="#0095fd" stroke-width="6" stroke-linecap="round"/>
+  <path d="M14.94 32.52 A13.5 13.5 0 0 1 7.48 25.06" fill="none" stroke="#00cbd4" stroke-width="6" stroke-linecap="round"/>
+  <path d="M7.48 14.94 A13.5 13.5 0 0 1 14.94 7.48" fill="none" stroke="#78e85c" stroke-width="6" stroke-linecap="round"/>
 </svg>
