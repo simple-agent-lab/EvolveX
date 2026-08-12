@@ -1,4 +1,4 @@
-"""Tiny seed target used by a fresh EvolveX workspace."""
+"""Tiny seed target used by a fresh RSIHub workspace."""
 
 
 def answer(prompt: str) -> str:

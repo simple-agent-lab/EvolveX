@@ -18,7 +18,7 @@ first installed CLI in this order: Codex, Claude Code, Gemini CLI, OpenCode.
 Set `EVOLVE_LOCAL_AGENT=claude-code` (or another supported name) to override the
 choice. Each CLI is executed through Harbor's own installed-agent adapter, so
 the trial retains a validated ATIF `agent/trajectory.json` instead of an
-Evolve-specific trace format. Codex reuses `~/.codex/auth.json` when present;
+RSIHub-specific trace format. Codex reuses `~/.codex/auth.json` when present;
 credentials are copied into the per-trial local root rather than written into
 the workspace or run artifacts.
 

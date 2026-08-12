@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-DEFAULT_REPOSITORY = "simple-agent-lab/EvolveX"
+DEFAULT_REPOSITORY = "simple-agent-lab/RSIHub"
 DEFAULT_OUTPUT = Path("docs/assets/repository-stats.json")
 
 
@@ -28,7 +28,7 @@ def fetch_repository_stats(repository: str, token: str | None) -> dict[str, Any]
         f"https://api.github.com/repos/{repository}",
         headers={
             "Accept": "application/vnd.github+json",
-            "User-Agent": "EvolveX-docs-build",
+            "User-Agent": "RSIHub-docs-build",
             "X-GitHub-Api-Version": "2022-11-28",
             **({"Authorization": f"Bearer {token}"} if token else {}),
         },
@@ -69,7 +69,7 @@ def has_usable_fallback(output: Path) -> bool:
 
 def main() -> int:
     repository = os.environ.get("GITHUB_REPOSITORY", DEFAULT_REPOSITORY)
-    output = Path(os.environ.get("EVOLVEX_REPOSITORY_STATS_PATH", DEFAULT_OUTPUT))
+    output = Path(os.environ.get("RSIHUB_REPOSITORY_STATS_PATH", DEFAULT_OUTPUT))
     try:
         stats = fetch_repository_stats(repository, os.environ.get("GITHUB_TOKEN"))
         write_repository_stats(output, stats)

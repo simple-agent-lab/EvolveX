@@ -1,6 +1,6 @@
 # Operator overview
 
-Operators are the composable stages of an EvolveX generation. Their names in
+Operators are the composable stages of an RSIHub generation. Their names in
 this reference are identical to the keys used under `operators:` in
 `evolve.yaml`.
 

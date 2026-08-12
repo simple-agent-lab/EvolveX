@@ -254,7 +254,7 @@ def write_locked_miniswe_seed(path: Path) -> Path:
         text=True,
         capture_output=True,
         check=False,
-        env={**os.environ, "UV_CACHE_DIR": os.environ.get("UV_CACHE_DIR", "/tmp/evolvex-test-uv")},
+        env={**os.environ, "UV_CACHE_DIR": os.environ.get("UV_CACHE_DIR", "/tmp/rsihub-test-uv")},
     )
     assert result.returncode == 0, result.stderr
     return path

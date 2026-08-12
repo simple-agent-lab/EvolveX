@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-labelledby="mark-title mark-description">
-  <title id="mark-title">Evolve selected lineage mark</title>
+  <title id="mark-title">RSIHub selected lineage mark</title>
   <desc id="mark-description">A selected candidate path rises past explored side branches to a verified generation.</desc>
   <rect x="4" y="4" width="120" height="120" rx="28" fill="#10372e"/>
   <path d="M 48 82 L 68 103 M 66 61 L 45 38 M 86 42 L 105 62" fill="none" stroke="#b5d3c7" stroke-width="4" stroke-linecap="round" data-state="explored"/>

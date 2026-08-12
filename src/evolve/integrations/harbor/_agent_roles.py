@@ -1,4 +1,4 @@
-"""Exact identities for Evolve-owned MiniSWE Harbor adapter roles."""
+"""Exact identities for RSIHub-owned MiniSWE Harbor adapter roles."""
 
 from __future__ import annotations
 

@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a reproducible defect in EvolveX.
+description: Report a reproducible defect in RSIHub.
 title: "[Bug]: "
 labels: [bug]
 body:
