@@ -1,21 +1,15 @@
 <p align="center">
-  <img src="docs/rsihub-lockup.svg" width="520" alt="RSIHub: the ring mark beside the RSIHub wordmark.">
+  <img src="docs/rsihub-lockup.svg" width="460" alt="RSIHub: the ring mark beside the RSIHub wordmark.">
 </p>
-
-<br>
 
 <p align="center">
   <strong>Build agents that improve — and keep the evidence.</strong>
 </p>
 
-<br>
-
 <p align="center">
   A file-based evolution framework for evaluator-driven learning, reproducible candidate
   lineage, and controllable modification.
 </p>
-
-<br>
 
 <p align="center">
   <a href="LICENSE">
@@ -28,8 +22,6 @@
     <img alt="Python 3.12+" src="https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&amp;logoColor=white">
   </a>
 </p>
-
-<br>
 
 <p align="center">
   <a href="#what-rsihub-does">What RSIHub Does</a> ·
