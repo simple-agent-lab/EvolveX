@@ -157,11 +157,11 @@ GPT-5.4-high target model and a GPT-5.4-xhigh Codex meta-agent.
 <table width="100%">
   <thead>
     <tr>
-      <th align="center" width="20%">Benchmark<br><img src="docs/assets/benchmark-column-spacer.svg" alt="" width="180" height="1"></th>
-      <th align="center" width="13%">Target agent<br><img src="docs/assets/benchmark-column-spacer.svg" alt="" width="130" height="1"></th>
-      <th align="center" width="17%">Method<br><img src="docs/assets/benchmark-column-spacer.svg" alt="" width="150" height="1"></th>
-      <th align="center" width="25%">Train Score<br><img src="docs/assets/benchmark-column-spacer.svg" alt="" width="240" height="1"></th>
-      <th align="center" width="25%">Full Benchmark Score<br><img src="docs/assets/benchmark-column-spacer.svg" alt="" width="240" height="1"></th>
+      <th align="center" width="18%">Benchmark<br><img src="docs/assets/benchmark-column-spacer.svg" alt="" width="150" height="1"></th>
+      <th align="center" width="11%">Target agent<br><img src="docs/assets/benchmark-column-spacer.svg" alt="" width="110" height="1"></th>
+      <th align="center" width="13%">Method<br><img src="docs/assets/benchmark-column-spacer.svg" alt="" width="125" height="1"></th>
+      <th align="center" width="29%">Train Score<br><img src="docs/assets/benchmark-column-spacer.svg" alt="" width="280" height="1"></th>
+      <th align="center" width="29%">Full Benchmark Score<br><img src="docs/assets/benchmark-column-spacer.svg" alt="" width="280" height="1"></th>
     </tr>
   </thead>
   <tbody>
