@@ -14,12 +14,12 @@
     "outer-ahe-agent": {
       "criteria": [
         {"id": "method", "points": 2, "description": "Select AHE because retained execution evidence supports harness-level mutation."},
-        {"id": "control", "points": 2, "description": "Choose Agent orchestration as the sole path for this generation; keep meta_agent optional."},
+        {"id": "control", "points": 2, "description": "Choose Agent orchestration as the sole path for this generation; keep the mutate operator optional."},
         {"id": "contract", "points": 2, "description": "Require the mutable harness surface, frozen evaluator/runtime, partitions, baseline, parent, and budget before execution."},
         {"id": "chain", "points": 2, "description": "Link traces to a hypothesis and predicted effect, edit the child, then run final-tree admission, evaluation, finalize, and verify."},
         {"id": "completion", "points": 2, "description": "Require linked artifacts, stamped lineage, passing verification, retained regressions, and no unaccounted child worktree."}
       ],
-      "hard_failures": ["Runs the unattended driver for the same generation", "Lets meta_agent replace the required outer-Agent edit", "Changes the evaluator to accommodate the candidate"]
+      "hard_failures": ["Runs the unattended driver for the same generation", "Lets the mutate operator replace the required outer-Agent edit", "Changes the evaluator to accommodate the candidate"]
     },
     "outer-aevolve-behavior": {
       "criteria": [
@@ -155,7 +155,7 @@
       "criteria": [
         {"id": "refuse_now", "points": 2, "description": "Refuse to edit operators while the declared surface contains only target."},
         {"id": "contract_change", "points": 2, "description": "Require an explicit experiment/surface decision before process evolution."},
-        {"id": "references", "points": 2, "description": "Once allowed, read PROTOCOL.md, the adjacent strategy, and matching library trace-analyzer references."},
+        {"id": "references", "points": 2, "description": "Once allowed, read PROTOCOL.md, the adjacent strategy, and matching library analyze references."},
         {"id": "active_code", "points": 2, "description": "Adapt a reference into the active operator rather than editing library and expecting runtime behavior to change."},
         {"id": "admission", "points": 2, "description": "Run surface checks and every configured process-admission check after the final edit."}
       ],

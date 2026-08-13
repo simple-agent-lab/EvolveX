@@ -32,7 +32,9 @@ EVAL_STUB=1 /tmp/evolve-demo/evolve run /tmp/evolve-demo --max-generations 0
 /tmp/evolve-demo/evolve verify /tmp/evolve-demo
 ```
 
-This verifies workspace generation, baseline evaluation, and archive integrity.
+This verifies workspace generation, the generation-zero primary evaluation,
+the generation-zero sealed anchor when the sealed split is non-empty, and
+archive integrity. Both evaluations must complete before generation one starts.
 It does not run a mutation round or measure agent quality. The first run may
 download the workspace's locked Python dependencies.
 
@@ -51,7 +53,7 @@ The output path can then be passed to `evolve preflight` and `evolve init` with
 `--dataset`. For the repository's reproducible Terminal-Bench subset, prefer
 the setup script below: it downloads Terminal-Bench 2.0, verifies and
 materializes the pinned task subset, and builds the selected recipe's
-meta-agent image.
+mutate-runner image.
 
 ```bash
 ./scripts/setup_terminal_bench.sh ahe
@@ -86,8 +88,8 @@ reports unmet preconditions as one checklist.
 - [Create a custom recipe](guides/custom-recipes.md)
 - [Initialize a workspace and launch an experiment](guides/recipe-to-experiment.md)
 - [Configure credentials and runtime environment](reference/environment-variables.md)
-- [Choose operators and variants](reference/operators.md)
+- [Choose and validate operators](reference/operators.md)
 - [Run preflight, smoke tests, and recovery commands](guides/operations.md)
-- [Configure meta-agent execution](guides/meta-agents.md)
+- [Configure mutate operator execution](guides/mutate-operators.md)
 - [Use the trusted local Harbor backend](guides/local-environment.md)
 - [Understand recipes in the source repository](https://github.com/simple-agent-lab/RSIHub/tree/main/recipes)

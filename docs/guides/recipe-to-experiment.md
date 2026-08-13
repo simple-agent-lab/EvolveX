@@ -20,7 +20,7 @@ uv run --frozen harbor download terminal-bench@2.0 \
 ```
 
 For a supported repository recipe, the helper also materializes the pinned
-Terminal-Bench subset and builds the selected meta-agent image:
+Terminal-Bench subset and builds the selected mutation-agent image:
 
 ```bash
 ./scripts/setup_terminal_bench.sh gepa
@@ -28,7 +28,13 @@ Terminal-Bench subset and builds the selected meta-agent image:
 
 For a custom recipe, prepare the Docker image named by the recipe yourself.
 
-## 2. Run prospective preflight
+## 2. Check the recipe and run prospective preflight
+
+Resolve every binding and validate every named operator config first:
+
+```bash
+uv run --frozen evolve recipe check /absolute/path/to/my-recipe/evolve.yaml
+```
 
 For a supported recipe:
 
@@ -79,7 +85,9 @@ Initialization creates a separate Git repository and freezes:
 - the resolved `evolve.yaml`;
 - the target seed under `target/`;
 - active operators under `operators/`;
-- available alternatives under `library/`;
+- runtime helpers imported by selected library operators under `library/`;
+- operator source names, normalized config, and SHA-256 provenance in
+  `.evolve-components.json`;
 - the evaluator and task membership under `evaluator/`;
 - the framework mechanism under `.evolve/`;
 - the initial `gen/0` tag and archive row.
@@ -94,14 +102,16 @@ Use the workspace's vendored console from this point onward:
 ```bash
 cd /absolute/path/to/my-experiment
 
-./evolve operator list .
+./evolve operator active .
 git show gen/0:evolve.yaml
 git show gen/0:evaluator/splits.json
 git status --short
 ```
 
-`operators/README.md` lists the active operator implementation and the
-alternatives copied into each `library/<stage>/` directory.
+`operators/README.md` lists the recipe-selected implementations. Generic root
+helpers, method-private bundles imported by selected code, and each selected
+named stage's helper bundle are copied under `library/`. Unselected catalog
+operators and method-private bundles remain in the source installation.
 
 ## 5. Run doctor and an isolated smoke
 
@@ -170,8 +180,8 @@ Useful evidence locations include:
 ```text
 runs/gen-N/select/
 runs/gen-N/rollout/
-runs/gen-N/trace_analyzer/
-runs/gen-N/meta_agent/
+runs/gen-N/analyze/
+runs/gen-N/mutate/
 runs/gen-N/validate/
 runs/gen-N/gate/
 runs/gen-N/record/

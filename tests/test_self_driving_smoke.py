@@ -21,7 +21,7 @@ def test_smoke_agent_creates_missing_target_deterministically(tmp_path: Path, mo
     first = (tmp_path / "target" / "agent.py").read_text()
     runpy.run_path(str(SMOKE_AGENT), run_name="__main__")
 
-    assert first == "# smoke-meta-agent gen 7\n"
+    assert first == "# smoke-mutate gen 7\n"
     assert (tmp_path / "target" / "agent.py").read_text() == first
 
 
@@ -40,7 +40,7 @@ def _smoke_workspace(tmp_path: Path) -> Path:
     commits = [git(workspace, "rev-parse", "HEAD")]
     git(workspace, "tag", "gen/0")
 
-    target.write_text("VALUE = 0\n# smoke-meta-agent gen 1\n")
+    target.write_text("VALUE = 0\n# smoke-mutate gen 1\n")
     git(workspace, "add", "target/agent.py")
     git(workspace, "commit", "-qm", "generation 1")
     commits.append(git(workspace, "rev-parse", "HEAD"))

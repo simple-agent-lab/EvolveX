@@ -49,7 +49,7 @@ class RuntimeEnvironmentResolutionError(ValueError):
 class RuntimeRole(StrEnum):
     AGENT = "agent"
     VERIFIER = "verifier"
-    META_AGENT = "meta_agent"
+    MUTATE = "mutate"
 
 
 @dataclass(frozen=True)
@@ -57,7 +57,7 @@ class RuntimeEnvironmentPlan:
     process_environment: tuple[tuple[str, str], ...]
     agent_environment: tuple[tuple[str, str], ...]
     verifier_environment: tuple[tuple[str, str], ...]
-    meta_agent_environment: tuple[tuple[str, str], ...]
+    mutate_environment: tuple[tuple[str, str], ...]
     evidence: tuple[tuple[str, object], ...]
 
     def process_env(self) -> dict[str, str]:
@@ -69,14 +69,14 @@ class RuntimeEnvironmentPlan:
     def verifier_env(self) -> dict[str, str]:
         return dict(self.verifier_environment)
 
-    def meta_agent_env(self) -> dict[str, str]:
-        return dict(self.meta_agent_environment)
+    def mutate_env(self) -> dict[str, str]:
+        return dict(self.mutate_environment)
 
     def persisted_payload(self) -> dict[str, object]:
         return {
             "agent_environment": self.agent_env(),
             "verifier_environment": self.verifier_env(),
-            "meta_agent_environment": self.meta_agent_env(),
+            "mutate_environment": self.mutate_env(),
             "evidence": dict(self.evidence),
         }
 
@@ -96,7 +96,7 @@ def resolve_runtime_environment(
     environment: Mapping[str, str],
     *,
     agent_kind: str = "codex",
-    meta_agent_kind: str | None = None,
+    mutate_kind: str | None = None,
     agent_overrides: Mapping[str, object] | None = None,
     verifier_overrides: Mapping[str, object] | None = None,
 ) -> RuntimeEnvironmentPlan:
@@ -112,22 +112,22 @@ def resolve_runtime_environment(
 
     agent_auth = _authentication(agent_kind, source)
     _add_environment(process, role_values[RuntimeRole.AGENT], RuntimeRole.AGENT, agent_auth)
-    if meta_agent_kind is not None:
-        meta_auth = _authentication(meta_agent_kind, source)
+    if mutate_kind is not None:
+        meta_auth = _authentication(mutate_kind, source)
         _add_environment(
             process,
-            role_values[RuntimeRole.META_AGENT],
-            RuntimeRole.META_AGENT,
+            role_values[RuntimeRole.MUTATE],
+            RuntimeRole.MUTATE,
             meta_auth,
         )
 
     proxy_active, proxy_mode = _add_configured_proxies(process, role_values, source, runtime)
     _apply_overrides(process, role_values[RuntimeRole.AGENT], RuntimeRole.AGENT, agent_overrides)
-    if meta_agent_kind is not None:
+    if mutate_kind is not None:
         _apply_overrides(
             process,
-            role_values[RuntimeRole.META_AGENT],
-            RuntimeRole.META_AGENT,
+            role_values[RuntimeRole.MUTATE],
+            RuntimeRole.MUTATE,
             agent_overrides,
         )
     _apply_overrides(
@@ -325,7 +325,7 @@ def _plan(
         process_environment=tuple(sorted(process.items())),
         agent_environment=tuple(sorted(role_values[RuntimeRole.AGENT].items())),
         verifier_environment=tuple(sorted(role_values[RuntimeRole.VERIFIER].items())),
-        meta_agent_environment=tuple(sorted(role_values[RuntimeRole.META_AGENT].items())),
+        mutate_environment=tuple(sorted(role_values[RuntimeRole.MUTATE].items())),
         evidence=tuple(sorted(evidence.items())),
     )
 

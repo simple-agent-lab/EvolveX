@@ -15,7 +15,23 @@ import subprocess
 from pathlib import Path
 
 from evolve.frozen import sdk
+from evolve.frozen.config import Config, integer, number
 from evolve.frozen.interfaces import NoveltyOperator, NoveltyResult, OperatorContext
+
+
+def _threshold_default() -> float:
+    try:
+        return float(os.environ.get("EVOLVE_NOVELTY_THRESHOLD", "0.98"))
+    except ValueError as error:
+        raise ValueError("EVOLVE_NOVELTY_THRESHOLD must be a finite number between 0 and 1") from error
+
+
+CONFIG = Config(
+    {
+        "threshold": number(default=_threshold_default(), minimum=0, maximum=1),
+        "history_k": integer(default=8, minimum=1),
+    }
+)
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -54,4 +70,4 @@ class DiffSimilarityNovelty(NoveltyOperator):
 
 
 if __name__ == "__main__":
-    sdk.main(DiffSimilarityNovelty)
+    sdk.main(DiffSimilarityNovelty, config_schema=CONFIG)

@@ -13,11 +13,11 @@ class RecordOperator:
 The result contains archive fields and artifact paths. The framework stamps the
 durable archive row; the operator does not write outcome truth directly.
 
-## Variants
+## Library operators
 
-| Variant | Recorded data |
+| Operator | Recorded data |
 | --- | --- |
-| `jsonl` | generic meta-agent, gate, task-vector, usage, and artifact pointers |
+| `jsonl` | generic mutate, gate, task-vector, usage, and artifact pointers |
 | `gepa` | GEPA proposal, comparison, component paths, and reflective-dataset pointers |
 | `hyperagents` | compact HyperAgents experience |
 
@@ -38,13 +38,12 @@ runs/gen-N/record/experience.json
 `jsonl` reads standard contract artifacts such as:
 
 ```text
-runs/gen-N/meta_agent/predicted_fixes.json
-runs/gen-N/meta_agent/rationale.md
-runs/gen-N/meta_agent/usage.json
+runs/gen-N/mutate/predicted_fixes.json
+runs/gen-N/mutate/rationale.md
+runs/gen-N/mutate/usage.json
 runs/gen-N/gate.json
 ```
 
-Use the record variant paired with the recipe's method. Record artifacts are
+Use the record operator paired with the recipe's method. Record artifacts are
 evidence and archive annotations; they must not disguise a failed stage or
 create a generation tag for an invalid child.
-

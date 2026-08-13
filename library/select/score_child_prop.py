@@ -4,6 +4,7 @@ import math
 
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import SelectOperator, SelectResult
+from library.select._config import SELECT_CONFIG as CONFIG
 
 
 def selection_weights(parents, rows):
@@ -40,4 +41,4 @@ class ScoreChildProportionalSelect(SelectOperator):
 
 
 if __name__ == "__main__":
-    sdk.main(ScoreChildProportionalSelect)
+    sdk.main(ScoreChildProportionalSelect, config_schema=CONFIG)

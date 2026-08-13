@@ -1,10 +1,10 @@
 from pathlib import Path
 
 import pytest
-from conftest import init_fixture_workspace
+from conftest import fixture_recipe_config, init_fixture_workspace, init_workspace_from_config
 
 from evolve import workspace as workspace_module
-from evolve.workspace import InitOptions, _eval_env, init_workspace
+from evolve.workspace import InitOptions, _eval_env
 
 
 def test_eval_env_uses_configured_harbor_agent() -> None:
@@ -160,29 +160,12 @@ def test_environment_kwargs_rejects_invalid_input() -> None:
         workspace_module._environment_kwargs({"bad-name": True})
 
 
-def test_init_real_harbor_recipe_requires_evaluator_agent(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from evolve import workspace as workspace_module
-
-    config = {
-        "experiment": {"id": "broken"},
-        "target": {"seed": "builtin-dummy"},
-        "surface": {"include": ["target/**"], "exclude": []},
-        "operators": {
-            "select": {"variant": "greedy"},
-            "rollout": {"variant": "noop"},
-            "meta_agent": {"variant": "hyperagents"},
-            "gate": {"variant": "parent_eligible"},
-            "record": {"variant": "jsonl"},
-        },
-        "evaluator": {"engine": "harbor", "dataset": "swe-bench-lite"},
-    }
-    monkeypatch.setattr(workspace_module, "default_config", lambda recipe, experiment_id: config)
+def test_init_real_harbor_recipe_requires_evaluator_agent(tmp_path: Path) -> None:
+    config = fixture_recipe_config("hill_climb-smoke", "broken")
+    config["evaluator"].pop("agent")
 
     with pytest.raises(ValueError, match="evaluator.agent is required"):
-        init_workspace(InitOptions(workspace=tmp_path / "w", recipe="broken"))
+        init_workspace_from_config(InitOptions(workspace=tmp_path / "w"), config)
 
 
 def test_init_writes_recipe_harbor_agent_to_eval_env(tmp_path: Path) -> None:

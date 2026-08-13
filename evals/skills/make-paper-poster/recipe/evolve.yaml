@@ -13,36 +13,37 @@ surface:
     - target/skills/make-paper-poster/**
   exclude: []
 operators:
-  select: {variant: greedy, timeout_s: 120}
-  rollout: {variant: evaluation_replay, field_limit: 6000, timeout_s: 120}
-  trace_analyzer:
-    variant: artifact_rubric
-    components:
-      paper_poster_skill: target/skills/make-paper-poster
-    weak_score: 2
+  select: {operator: greedy, timeout_s: 120, config: {}}
+  rollout: {operator: parent_evaluation, timeout_s: 120, config: {field_limit: 6000}}
+  analyze:
+    operator: artifact_rubric
     timeout_s: 120
-  meta_agent:
+    config:
+      components:
+        paper_poster_skill: target/skills/make-paper-poster
+      weak_score: 2
+  mutate:
     # Optional backend only. The evolve-agent Skill's outer agent owns mutation
     # and does not invoke this stage in the normal poster evolution loop.
-    variant: aevolve
-    expose_gate_data: false
-    runner: harbor
-    agent: evolve.integrations.harbor.local_auto_agent:LocalAutoAgent
-    environment: "evolve.harbor_local:LocalEnvironment"
-    editable_roots: [target]
-    evolve_prompts: false
-    evolve_skills: true
-    evolve_memory: false
-    evolve_tools: false
-    prompt_path: target/prompt.md
-    skills_dir: target/skills
-    history_cycles: 2
-    max_observations: 8
-    feedback_chars: 600
-    max_retries: 0
+    operator: aevolve
     timeout_s: 600
-  gate: {variant: hillclimb, strict: true, timeout_s: 120}
-  record: {variant: jsonl, timeout_s: 120}
+    config:
+      expose_gate_data: false
+      runner: harbor
+      agent: evolve.integrations.harbor.local_auto_agent:LocalAutoAgent
+      environment: "evolve.harbor_local:LocalEnvironment"
+      editable_roots: [target]
+      evolve_prompts: false
+      evolve_skills: true
+      evolve_memory: false
+      prompt_path: target/prompt.md
+      skills_dir: target/skills
+      history_cycles: 2
+      max_observations: 8
+      feedback_chars: 600
+      max_retries: 0
+  gate: {operator: hillclimb, timeout_s: 120, config: {strict: true}}
+  record: {operator: jsonl, timeout_s: 120, config: {}}
   timeout_s: 120
 execution_runtime:
   backend: local

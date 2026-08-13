@@ -18,6 +18,13 @@ Keep `evolve.yaml` at the root of the copied directory. A custom recipe can be
 passed either as a directory or as its YAML file:
 
 ```bash
+uv run --frozen evolve recipe check "$PWD/my-recipes/my-gepa/evolve.yaml"
+```
+
+Resolve and validate the complete operator composition before running the
+environment-specific preflight:
+
+```bash
 uv run --frozen evolve preflight /tmp/my-experiment \
   --recipe-path "$PWD/my-recipes/my-gepa" \
   --dataset /absolute/path/to/harbor/tasks
@@ -35,14 +42,12 @@ A small recipe directory usually looks like this:
 my-gepa/
 ├── evolve.yaml
 ├── README.md
-├── operators/             # optional recipe-specific variants
-│   └── select/
-│       └── my_selector.py
 └── evaluator/             # optional additional evaluator assets
 ```
 
-Recipe-specific operator variants are resolved before the framework-wide
-`library/` variants. Generated evaluator files are framework-owned; a custom
+Recipe-local operator directories are rejected. Put reusable implementations
+in the source checkout's `library/<stage>/<name>.py`; a recipe only selects and
+configures them. Generated evaluator files are framework-owned, and a custom
 `evaluator/` asset may not replace files such as `eval.sh`, `eval.env`,
 `splits.json`, or `runtime.json`.
 
@@ -107,50 +112,73 @@ Most recipes should mutate only `target/**`. A method that intentionally
 co-evolves operator policy, such as HyperAgents, may include selected
 `operators/**` paths as well.
 
-`operators.meta_agent.editable_roots` controls what the meta-agent receives
+`operators.mutate.config.editable_roots` controls what the mutation agent receives
 permission to edit, but it does not expand the recipe surface. Keep it equal to
 or narrower than the surface:
 
 ```yaml
 operators:
-  meta_agent:
-    variant: gepa
-    editable_roots: [target]
+  mutate:
+    operator: gepa
+    timeout_s: 3600
+    config:
+      editable_roots: [target]
 ```
 
 The evaluator, `.evolve/`, archive records, split manifest, and other
 measurement infrastructure must remain outside the mutable surface.
 
-## Select operator variants
+## Select and configure operators
 
-Each configured operator block selects either a `variant` or a `script`, never
-both:
+Each enabled stage selects exactly one named `operator` or one explicit
+`script`. `timeout_s` belongs to the stage binding; all operator-specific
+settings live under `config`:
 
 ```yaml
 operators:
   select:
-    variant: pareto
-    seed: 0
+    operator: pareto
     timeout_s: 600
+    config:
+      seed: 0
 ```
 
-To add a recipe-local variant:
+Named operators are portable because the source catalog owns their identity.
+To add one:
 
-1. Copy the closest implementation or `_skeleton.py` from
-   `library/<operator>/`.
-2. Save it as `my-recipe/operators/<operator>/my_variant.py`.
-3. Implement the corresponding interface from
-   `evolve.frozen.interfaces`.
-4. Select it in `evolve.yaml`.
+1. Run `evolve operator new <stage> <name>` in a source checkout.
+2. Implement the corresponding interface from `evolve.frozen.interfaces`.
+3. Declare configuration with `evolve.frozen.config.Config` and pass it to
+   `sdk.main(..., config_schema=CONFIG)`.
+4. Run `evolve operator describe <stage>/<name>` and
+   `evolve operator check <stage>/<name> --config '<json>'`.
+5. Select it in `evolve.yaml`, then run `evolve recipe check`.
 
 ```yaml
 operators:
   select:
-    variant: my_variant
+    operator: my_selector
+    config: {}
 ```
 
 See the [operator reference](../reference/operators.md) for stage contracts and
-the built-in variant catalog.
+the built-in operator catalog. Helpers whose file or directory name begins
+with `_` are importable by entry files but are not discovered as operators;
+shared schema fragments may live in an underscore-prefixed stage helper.
+
+An explicit `script:` remains executable for an escape hatch:
+
+```yaml
+operators:
+  select:
+    script: ./custom/select.py
+    timeout_s: 600
+    config: {}
+```
+
+Relative paths resolve from the recipe directory, but script bindings are
+reported as non-portable: the recipe depends on that external filesystem path.
+Use a named library operator for a recipe intended to travel between checkouts.
 
 ## Configure the evaluator and split
 
@@ -182,8 +210,12 @@ content identities into `evaluator/splits.json`.
 - **sealed** data is an evaluation anchor and must not be exposed as mutation
   feedback.
 
-Keep `operators.meta_agent.expose_gate_data: false` unless the experiment
-explicitly intends to expose protected evaluation history.
+At the first `evolve run`, RSIHub evaluates `gen/0` on the configured primary
+split and then evaluates it once on every sealed task. The sealed result is
+non-selectable and is not included in the mutation feedback bundle. Keep
+`operators.mutate.config.expose_gate_data: false` whenever a sealed split is
+present; every supported recipe does so, and the Harbor mutate runner rejects
+`true` for a non-empty sealed split.
 
 ## Prepare images and authentication
 
@@ -192,18 +224,21 @@ recipe names. For a custom recipe, you are responsible for making every image
 named in `evolve.yaml` available to Docker:
 
 ```bash
-docker build -t my-meta-agent:latest containers/meta-agent-codex
-docker image inspect my-meta-agent:latest
+docker build -t my-mutate-runner:latest containers/mutate-codex
+docker image inspect my-mutate-runner:latest
 ```
 
 Then reference that exact image:
 
 ```yaml
 operators:
-  meta_agent:
-    runner: harbor
-    environment: docker
-    image: my-meta-agent:latest
+  mutate:
+    operator: hyperagents
+    timeout_s: 3600
+    config:
+      runner: harbor
+      environment: docker
+      image: my-mutate-runner:latest
 ```
 
 Keep API keys and auth files outside recipe YAML. Supply them through the

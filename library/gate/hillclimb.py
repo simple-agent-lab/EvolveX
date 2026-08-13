@@ -5,7 +5,10 @@ actual improvement.
 """
 
 from evolve.frozen import sdk
+from evolve.frozen.config import Config, boolean
 from evolve.frozen.interfaces import GateOperator, GateResult, OperatorContext, Row
+
+CONFIG = Config({"strict": boolean(default=False, description="Require a strict score improvement.")})
 
 
 def _hillclimb_gate(child: Row, parent: Row | None, *, strict: bool = False) -> tuple[bool, str]:
@@ -33,4 +36,4 @@ class HillclimbGate(GateOperator):
 
 
 if __name__ == "__main__":
-    sdk.main(HillclimbGate)
+    sdk.main(HillclimbGate, config_schema=CONFIG)

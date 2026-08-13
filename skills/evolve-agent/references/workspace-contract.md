@@ -37,7 +37,7 @@ workspace/
 
 | Area | Owner | Rule |
 | --- | --- | --- |
-| `target/` | meta agent or outer agent | Change only inside the mutable surface. |
+| `target/` | mutate operator or outer agent | Change only inside the mutable surface. |
 | `evaluator/` | frozen evaluation side | Never let candidate or mutation code edit it. |
 | `operators/` | active method | Change only when process evolution is declared. |
 | `library/` | framework or researcher | Consult or adapt; these files do not run directly. |
@@ -54,7 +54,7 @@ mutation, snapshotting, rollout, validation, and lineage as one unit.
 Use the same stage vocabulary across methods:
 
 ```text
-select → rollout → analyze → meta_agent
+select → rollout → analyze → mutate
        → validate → novelty → gate → record
 ```
 
@@ -123,12 +123,12 @@ Run:
 ```bash
 ./evolve status .
 ./evolve verify .
-./evolve operator list . --json
+./evolve operator active . --json
 ```
 
 Read `evolve.yaml` for the mutable surface, `program.md` for loop semantics, and
 the matching `archive.jsonl` row when resuming a generation. File presence does
-not prove that an operator is active: `operator list --json` is authoritative.
+not prove that an operator is active: `operator active --json` is authoritative.
 
 Identify the champion, next generation id, configured operators, their access
 mode, pending transitions, and child worktrees before acting. Certify
@@ -152,7 +152,7 @@ child worktree is open.
 Discover capabilities first, then use mechanism-owned state transitions:
 
 ```bash
-./evolve operator list . --json
+./evolve operator active . --json
 generation_id=1
 ./evolve operator run . select --genid "$generation_id"
 ```
@@ -166,14 +166,14 @@ child_checkout="runs/worktrees/gen-$generation_id"
 ./evolve fork . "$parent_id" "$child_checkout"
 ./evolve operator run . rollout --genid "$generation_id" \
   --parent "$parent_id" --checkout "$child_checkout"
-# Run only if operator list marks it configured with direct access:
+# Run only if operator active marks it configured with direct access:
 ./evolve operator run . analyze --genid "$generation_id" \
   --parent "$parent_id" --checkout "$child_checkout"
 ```
 
 Read retained rollout and analysis artifacts. Before editing, name the source
 artifacts, observed failure pattern, proposed change, and predicted effect. A
-configured `meta_agent` is optional when the outer agent owns the mutation.
+configured `mutate` is optional when the outer agent owns the mutation.
 
 Edit only the mutable surface. To sanity-check the child against the
 evaluator's smoke before spending evaluation budget, run
@@ -204,7 +204,7 @@ commit snapshots the candidate and removes its child worktree.
 
 Use the least context needed for the current decision:
 
-1. Run `operator list --json` to discover active stages, access mode, variant,
+1. Run `operator active . --json` to discover active stages, access mode, operator,
    and active script path.
 2. Run configured direct operators and inspect `runs/gen-<id>/<stage>/`.
 3. Override one invocation with a recursively merged JSON object when only its
@@ -220,7 +220,7 @@ Use the least context needed for the current decision:
    inputs, outputs, or access rules are unclear.
 5. Read `operators/<stage>.py` only to diagnose the running implementation or
    make an explicitly allowed process change.
-6. Read `library/<stage>/<variant>.py` to compare or adapt a reference variant;
+6. Read `library/<stage>/<name>.py` to compare or adapt a reference operator;
    copy or implement the change in the active operator when it must take effect.
 
 Reruns retain prior output under

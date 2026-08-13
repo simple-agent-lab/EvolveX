@@ -18,11 +18,14 @@ from ..archive import MECHANISM_EVAL_FIELD, RECEIPT_CERTIFIED_FIELD, STAMPED_FIE
 from ..evaluation.diagnostics import validate_evaluation_diagnostics_payload
 from ..git import head_tag, working_tree_changed_paths
 from ..surface import check_paths, surface_patterns
+from .config import Config
 from .interfaces import (
+    OPERATORS,
     PROTOCOL_VERSION,
+    AnalyzeOperator,
     ArchiveView,
     GateOperator,
-    MetaAgentOperator,
+    MutateOperator,
     NoveltyOperator,
     OperatorContext,
     RecordOperator,
@@ -30,16 +33,15 @@ from .interfaces import (
     RolloutOperator,
     Row,
     SelectOperator,
-    TraceAnalyzerOperator,
     ValidateOperator,
+    validate_analyze_payload,
     validate_gate_payload,
-    validate_meta_agent_payload,
+    validate_mutate_payload,
     validate_novelty_payload,
     validate_record_payload,
     validate_reflect_payload,
     validate_rollout_payload,
     validate_select_payload,
-    validate_trace_analyzer_payload,
     validate_validate_payload,
 )
 
@@ -99,9 +101,15 @@ def surface_check(workspace: Path | str = ".", parent: str | None = None) -> dic
     return {"ok": not violations, "mutated": mutated, "violations": violations}
 
 
-def main(operator_cls: type[object]) -> None:
+def main(operator_cls: type[object], *, config_schema: Config) -> None:
     args = _parse_args()
-    config = json.loads(args.config)
+    config = _config_object(args.config)
+    if _run_inspection_mode(args, operator_cls, config, config_schema):
+        return
+    _run_runtime_mode(operator_cls, config)
+
+
+def _run_runtime_mode(operator_cls: type[object], config: dict[str, object]) -> None:
     ctx = _context(config)
     _assert_protocol_version(ctx)
     archive = ArchiveView(ctx.workspace)
@@ -114,19 +122,19 @@ def main(operator_cls: type[object]) -> None:
         payload = validate_rollout_payload(operator.rollout(ctx.checkout, ctx))
         _write_json(ctx.run_dir / "rollout" / "summary.json", payload["summary"])
         _write_json(ctx.run_dir / "rollout" / "artifacts.json", payload["artifacts"])
-    elif issubclass(operator_cls, TraceAnalyzerOperator):
-        payload = validate_trace_analyzer_payload(operator.analyze(ctx.checkout, ctx))
-        root = ctx.run_dir / "trace_analyzer"
+    elif issubclass(operator_cls, AnalyzeOperator):
+        payload = validate_analyze_payload(operator.analyze(ctx.checkout, ctx))
+        root = ctx.run_dir / "analyze"
         _write_json(root / "summary.json", payload["summary"])
         _write_json(root / "artifacts.json", payload["artifacts"])
-    elif issubclass(operator_cls, MetaAgentOperator):
-        payload = validate_meta_agent_payload(operator.run(ctx.checkout, _observation(ctx.run_dir), ctx))
-        meta_agent_dir = ctx.run_dir / "meta_agent"
-        _write_json(meta_agent_dir / "changed.json", payload["changed"])
-        if payload["notes"] and not (meta_agent_dir / "rationale.md").exists():
-            (meta_agent_dir / "rationale.md").write_text("\n".join(payload["notes"]) + "\n")
-        if not (meta_agent_dir / "usage.json").exists():
-            _write_json(meta_agent_dir / "usage.json", payload["usage"])
+    elif issubclass(operator_cls, MutateOperator):
+        payload = validate_mutate_payload(operator.mutate(ctx.checkout, _observation(ctx.run_dir), ctx))
+        mutate_dir = ctx.run_dir / "mutate"
+        _write_json(mutate_dir / "changed.json", payload["changed"])
+        if payload["notes"] and not (mutate_dir / "rationale.md").exists():
+            (mutate_dir / "rationale.md").write_text("\n".join(payload["notes"]) + "\n")
+        if not (mutate_dir / "usage.json").exists():
+            _write_json(mutate_dir / "usage.json", payload["usage"])
     elif issubclass(operator_cls, ValidateOperator):
         payload = validate_validate_payload(operator.validate(ctx.checkout, ctx))
         _write_json(ctx.run_dir / "validate" / "result.json", payload)
@@ -149,7 +157,7 @@ def main(operator_cls: type[object]) -> None:
         playbook.parent.mkdir(parents=True, exist_ok=True)
         with open(playbook, "a") as handle:
             for op in payload["ops"]:
-                handle.write(json.dumps(op, ensure_ascii=False) + "\n")
+                handle.write(json.dumps(op, ensure_ascii=False, allow_nan=False) + "\n")
     else:
         raise TypeError("operator_cls must subclass an evolve interface operator")
 
@@ -157,8 +165,74 @@ def main(operator_cls: type[object]) -> None:
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="{}")
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--describe", action="store_true")
+    modes.add_argument("--validate-config", action="store_true")
     args, _unknown = parser.parse_known_args()
     return args
+
+
+def _config_object(raw: str) -> dict[str, object]:
+    try:
+        config = json.loads(raw, parse_constant=_reject_json_constant)
+    except (json.JSONDecodeError, ValueError) as error:
+        detail = error.msg if isinstance(error, json.JSONDecodeError) else str(error)
+        _inspection_error(f"config must be valid JSON: {detail}")
+    if not isinstance(config, dict):
+        _inspection_error("config must be a JSON object")
+    return cast("dict[str, object]", config)
+
+
+def _run_inspection_mode(
+    args: argparse.Namespace,
+    operator_cls: type[object],
+    config: dict[str, object],
+    config_schema: Config,
+) -> bool:
+    if args.describe:
+        print(
+            json.dumps(
+                {
+                    "stage": _operator_stage(operator_cls),
+                    "description": _operator_description(operator_cls),
+                    "config": config_schema.describe(),
+                },
+                sort_keys=True,
+                allow_nan=False,
+            )
+        )
+        return True
+    if args.validate_config:
+        try:
+            normalized = config_schema.normalize(config)
+        except Exception as error:
+            _inspection_error(str(error))
+        if not isinstance(normalized, dict):
+            _inspection_error("config validator must return a JSON object")
+        try:
+            serialized = json.dumps(normalized, sort_keys=True, allow_nan=False)
+        except (TypeError, ValueError) as error:
+            _inspection_error(f"config validator returned invalid JSON: {error}")
+        print(serialized)
+        return True
+    return False
+
+
+def _operator_description(operator_cls: type[object]) -> str:
+    module = sys.modules.get(operator_cls.__module__)
+    return (operator_cls.__doc__ or getattr(module, "__doc__", None) or "").strip()
+
+
+def _operator_stage(operator_cls: type[object]) -> str:
+    for spec in OPERATORS:
+        if issubclass(operator_cls, spec.abc):
+            return spec.kind
+    raise TypeError("operator_cls must subclass an evolve interface operator")
+
+
+def _inspection_error(message: str) -> None:
+    print(message, file=sys.stderr)
+    raise SystemExit(2)
 
 
 def _rng_seed(seed: int | str, genid: str, parent: str | None) -> int:
@@ -166,6 +240,7 @@ def _rng_seed(seed: int | str, genid: str, parent: str | None) -> int:
         [int(seed), str(genid), str(parent or "")],
         separators=(",", ":"),
         ensure_ascii=True,
+        allow_nan=False,
     ).encode()
     return int.from_bytes(hashlib.sha256(identity).digest()[:8], "big")
 
@@ -174,7 +249,6 @@ def _context(config: dict[str, Any]) -> OperatorContext:
     seed = config.get("seed", 0)
     genid = os.environ["EVOLVE_GENID"]
     parent = os.environ.get("EVOLVE_PARENT") or None
-    fan_out = config.get("fan_out", 1)
     return OperatorContext(
         workspace=Path(os.environ["EVOLVE_WORKSPACE"]),
         checkout=Path(os.environ["EVOLVE_CHECKOUT"]),
@@ -182,9 +256,10 @@ def _context(config: dict[str, Any]) -> OperatorContext:
         genid=genid,
         parent=parent,
         round=None,
-        fan_out=int(fan_out),
+        fan_out=1,
         config=config,
         rng=random.Random(_rng_seed(seed, genid, parent)),
+        timeout_s=float(os.environ["EVOLVE_STAGE_TIMEOUT_S"]),
     )
 
 
@@ -260,11 +335,15 @@ def _read_json_if_exists(path: Path) -> object | None:
     if not path.exists():
         return None
     try:
-        return json.loads(path.read_text())
-    except json.JSONDecodeError:
+        return json.loads(path.read_text(), parse_constant=_reject_json_constant)
+    except (json.JSONDecodeError, ValueError):
         return None
 
 
 def _write_json(path: Path, payload: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n")
+
+
+def _reject_json_constant(value: str) -> object:
+    raise ValueError(f"non-standard JSON constant: {value}")

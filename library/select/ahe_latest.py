@@ -2,6 +2,7 @@
 
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import ArchiveView, OperatorContext, SelectOperator, SelectResult
+from library.select._config import SELECT_CONFIG as CONFIG
 
 
 def _generation_key(row: dict[str, object]) -> tuple[int, str]:
@@ -19,4 +20,4 @@ class AheLatestSelect(SelectOperator):
 
 
 if __name__ == "__main__":
-    sdk.main(AheLatestSelect)
+    sdk.main(AheLatestSelect, config_schema=CONFIG)

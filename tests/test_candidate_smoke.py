@@ -6,12 +6,18 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from conftest import fixture_recipe_config, git, init_fixture_workspace, run_evolve
+from conftest import (
+    fixture_recipe_config,
+    git,
+    init_fixture_workspace,
+    init_workspace_from_config,
+    run_evolve,
+)
 
 from evolve.candidate import smoke as candidate_smoke_module
 from evolve.candidate.smoke import SmokeMode, run_candidate_smoke
 from evolve.runtime.uv import CandidateRuntimeResult, RuntimeMount
-from evolve.workspace import InitOptions, init_workspace
+from evolve.workspace import InitOptions
 
 ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 
@@ -281,15 +287,12 @@ def test_init_generates_executable_smoke_only_for_harbor(tmp_path: Path, monkeyp
     )
     assert smoke.stat().st_mode & stat.S_IXUSR
 
-    from evolve import workspace as workspace_module
-
     local_config = fixture_recipe_config("hill_climb-smoke", "local")
     assert isinstance(local_config["evaluator"], dict)
     local_config["evaluator"]["engine"] = "local"
     local_config["evaluator"].pop("agent", None)
-    monkeypatch.setattr(workspace_module, "default_config", lambda recipe, experiment_id: local_config)
     local = tmp_path / "local"
     with pytest.raises(ValueError, match="unsupported evaluator.engine: local"):
-        init_workspace(InitOptions(workspace=local, recipe="local"))
+        init_workspace_from_config(InitOptions(workspace=local), local_config)
 
     assert not (local / "evaluator" / "smoke.sh").exists()

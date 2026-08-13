@@ -6,7 +6,7 @@ Harbor evaluator:
 1. sample a parent according to its per-task Pareto-front coverage;
 2. run the parent on a generation-shuffled train minibatch with Harbor;
 3. write each component's reflective examples to a structured evidence file;
-4. give the GEPA meta-agent a short proposal brief pointing to those evidence
+4. give the GEPA mutate operator a short proposal brief pointing to those evidence
    files and let it edit the live target;
 5. run the child with Harbor on the exact same minibatch and require a strict
    total-score improvement;
@@ -20,7 +20,7 @@ of the same evolvable component. The
 component strategy is round-robin, so one component's evidence and paths guide
 each generation. Set `component_strategy: all` to expose all configured
 components to one proposal. Components are proposal focus areas, not narrower
-mutation permissions: the meta-agent may edit any path allowed by the mutable
+mutation permissions: the mutation agent may edit any path allowed by the mutable
 surface.
 
 This implements GEPA's Pareto selection, execution-aware reflection, component
@@ -38,8 +38,8 @@ Prepare and run it on the shared pinned Terminal-Bench 2.0 dataset:
 The most useful artifacts are:
 
 - `runs/gen-*/select/pareto.json`
-- `runs/gen-*/trace_analyzer/evidence/reflective_dataset.json`
-- `runs/gen-*/trace_analyzer/evidence/reflection/*.json`
-- `runs/gen-*/meta_agent/proposal.json`
+- `runs/gen-*/analyze/evidence/reflective_dataset.json`
+- `runs/gen-*/analyze/evidence/reflection/*.json`
+- `runs/gen-*/mutate/proposal.json`
 - `runs/gen-*/validate/comparison.json`
 - `runs/gen-*/record/gepa-experience.json`

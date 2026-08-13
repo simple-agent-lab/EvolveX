@@ -1,7 +1,10 @@
 """Accept canonically evaluated, parent-eligible AHE children."""
 
 from evolve.frozen import sdk
+from evolve.frozen.config import Config
 from evolve.frozen.interfaces import GateOperator, GateResult, OperatorContext, Row
+
+CONFIG = Config({})
 
 
 class AheArtifactValidGate(GateOperator):
@@ -15,4 +18,4 @@ class AheArtifactValidGate(GateOperator):
 
 
 if __name__ == "__main__":
-    sdk.main(AheArtifactValidGate)
+    sdk.main(AheArtifactValidGate, config_schema=CONFIG)

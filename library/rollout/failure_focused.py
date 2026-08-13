@@ -7,7 +7,10 @@ import json
 from pathlib import Path
 
 from evolve.frozen import sdk
+from evolve.frozen.config import Config, integer
 from evolve.frozen.interfaces import OperatorContext, RolloutOperator, RolloutResult
+
+CONFIG = Config({"budget_tasks": integer(default=32, minimum=1)})
 
 
 class FailureFocusedRollout(RolloutOperator):
@@ -24,4 +27,4 @@ class FailureFocusedRollout(RolloutOperator):
 
 
 if __name__ == "__main__":
-    sdk.main(FailureFocusedRollout)
+    sdk.main(FailureFocusedRollout, config_schema=CONFIG)

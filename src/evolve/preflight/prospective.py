@@ -13,9 +13,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ..config import DEFAULT_RECIPE, RECIPE_NAMES, default_config
+from ..composition import RecipeResolutionError, render_recipe_problems, resolve_builtin_recipe, resolve_recipe
+from ..config import DEFAULT_RECIPE
 from ..splits import build_manifest
-from ..workspace import _path_recipe
 
 _TEST_ONLY_SEEDS = frozenset({"builtin-dummy"})
 _BUILTIN_SEEDS = frozenset({"builtin-codex", "builtin-local-smoke"})
@@ -40,14 +40,13 @@ def _load_config(recipe: str | None, recipe_path: Path | None) -> tuple[dict[str
         return None, Check("recipe", "fail", "cannot combine --recipe with --recipe-path")
     try:
         if recipe_path is not None:
-            name, _directory, config = _path_recipe(recipe_path, "preflight")
+            resolved = resolve_recipe(recipe_path)
         else:
             name = recipe or DEFAULT_RECIPE
-            config = default_config(name, "preflight")
-    except ValueError as error:
-        hint = f"; public recipes: {', '.join(RECIPE_NAMES)}" if recipe_path is None else ""
-        return None, Check("recipe", "fail", f"{error}{hint}")
-    return config, Check("recipe", "ok", name)
+            resolved = resolve_builtin_recipe(name)
+    except RecipeResolutionError as error:
+        return None, Check("recipe", "fail", render_recipe_problems(error.problems))
+    return resolved.config, Check("recipe", "ok", resolved.name)
 
 
 def _check_digest(engine: str) -> Check:
@@ -182,7 +181,7 @@ def run_preflight(
         checks.append(_check_seed(seed or str(target.get("seed") or "")))
         operators = dict(config.get("operators") or {})
         rollout = operators.get("rollout")
-        rollout_needs_dataset = isinstance(rollout, dict) and rollout.get("variant") == "harbor"
+        rollout_needs_dataset = isinstance(rollout, dict) and rollout.get("operator") == "harbor"
         checks.append(_check_dataset(evaluator, rollout_needs_dataset=rollout_needs_dataset))
     checks.append(_check_workspace(workspace))
     return checks

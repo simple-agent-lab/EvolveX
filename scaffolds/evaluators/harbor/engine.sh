@@ -416,6 +416,6 @@ else
   "$UV" run --project "$EVOLVE_WORKSPACE" --frozen \
     --python "$EVOLVE_FRAMEWORK_PYTHON" harbor "$@" > "$EVOLVE_RUN_DIR/harbor.log" 2>&1 || harbor_rc=$?
 fi
-python3 evaluator/parse_score.py "$jobs_dir" "$EVOLVE_RUN_DIR" "$harbor_rc"
+"$EVOLVE_FRAMEWORK_PYTHON" evaluator/parse_score.py "$jobs_dir" "$EVOLVE_RUN_DIR" "$harbor_rc"
 parser_rc=$?
 exit "$parser_rc"

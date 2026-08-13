@@ -18,7 +18,7 @@ def test_operator_blocks_parse_nested_operator_config(tmp_path: Path) -> None:
         "experiment:\n"
         "  id: test\n"
         "operators:\n"
-        "  meta_agent:\n"
+        "  mutate:\n"
         "    timeout_s: 1800\n"
         "    command: uv run --project /opt/miniswe python /opt/meta.py\n"
         "  timeout_s: 900\n"
@@ -26,7 +26,7 @@ def test_operator_blocks_parse_nested_operator_config(tmp_path: Path) -> None:
 
     operators = operator_blocks(workspace)
 
-    assert operators["meta_agent"] == {
+    assert operators["mutate"] == {
         "timeout_s": 1800,
         "command": "uv run --project /opt/miniswe python /opt/meta.py",
     }

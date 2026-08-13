@@ -5,6 +5,7 @@ It is the exploration baseline recipe for population search.
 
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import ArchiveView, OperatorContext, SelectOperator, SelectResult
+from library.select._config import SELECT_CONFIG as CONFIG
 
 
 class RandomSelect(SelectOperator):
@@ -17,4 +18,4 @@ class RandomSelect(SelectOperator):
 
 
 if __name__ == "__main__":
-    sdk.main(RandomSelect)
+    sdk.main(RandomSelect, config_schema=CONFIG)

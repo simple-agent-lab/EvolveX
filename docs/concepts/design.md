@@ -17,12 +17,24 @@ The governing boundary is simple: framework code owns the mechanics that make
 scores trustworthy; a recipe selects the evolvable policy. Operators run as
 subprocesses, so the mechanism never imports workspace operator code in-process.
 
+A **stage** is a fixed lifecycle slot. An **operator** is a reusable
+implementation at `library/<stage>/<name>.py`. A **recipe** is code-free
+selection and configuration of operators. **Evaluate** is the framework-owned
+trusted mechanism and is never resolved from the operator library.
+
+At the start of `evolve run`, the mechanism evaluates the untouched `gen/0`
+seed on the configured primary split (normally `gate`) and then evaluates the
+same snapshot on the complete non-empty `sealed` split. The sealed result is a
+non-selectable `anchor`, is stored as auxiliary evidence, and is excluded from
+the mutation feedback projection. Generation one cannot begin until both
+required evaluations complete.
+
 ## Recipe-driven initialization
 
-`evolve init` reads one supported recipe YAML and validates its selected
-`target.seed`, `evaluator.engine`, `evaluator.agent`, and
-`operators.meta_agent.agent`. The recipe is the selection authority; there is
-no second runtime component registry.
+`evolve init` resolves one supported recipe YAML, validates every named
+operator in a subprocess, and freezes its normalized configuration. The recipe
+is the selection authority; adding `library/<stage>/<name>.py` makes an
+operator discoverable without editing a registry.
 
 ```text
 recipe YAML
@@ -34,9 +46,125 @@ recipe YAML
   -> generation-zero Git snapshot
 ```
 
-The framework has five supported recipes: `aevolve`, `ahe`, `gepa`,
-`hill_climb`, and `hyperagents`. Development smoke recipes live under
-`tests/fixtures/recipes/` and are not part of the public recipe inventory.
+The framework ships `aevolve`, `ahe`, `ahe_codex`, `gepa`, `gepa_local`,
+`hill_climb`, `hill_climb_codex`, `hyperagents`, and `hyperagents_codex`.
+Development smoke recipes live under `tests/fixtures/recipes/` and are not part
+of the public recipe inventory.
+
+## Declarative operator configuration
+
+An operator owns one declarative `Config` schema. The schema is the single
+source of truth for accepted fields, required inputs, defaults, constraints,
+descriptions, normalization, and inspection. Operators receive the normalized
+result as the existing JSON-compatible `ctx.config` dictionary; configuration
+classes never enter the runtime operator interface.
+
+The design has two governing principles:
+
+1. The framework guarantees every required input and normalized output shape,
+   while operators retain an explicit escape hatch for genuinely custom JSON
+   fields and cross-field constraints.
+2. The declaration and implementation stay small and readable. RSIHub does
+   not implement the full JSON Schema standard or add a second configuration
+   framework.
+
+The framework-owned, dependency-free vocabulary lives in
+`evolve.frozen.config` because it is part of the frozen operator authoring
+contract. A typical operator declares:
+
+```python
+from evolve.frozen.config import Config, array, integer, string
+
+CONFIG = Config(
+    {
+        "strategy": string(
+            default="round_robin",
+            choices=("round_robin", "all"),
+            description="How components are selected.",
+        ),
+        "max_examples": integer(
+            default=10,
+            minimum=1,
+            description="Maximum examples to include.",
+        ),
+        "required_placeholders": array(
+            string(),
+            default=[],
+            description="Placeholders that edits must preserve.",
+        ),
+    }
+)
+```
+
+The operator exposes it through one SDK entrypoint:
+
+```python
+sdk.main(MyOperator, config_schema=CONFIG)
+```
+
+Field presence is explicit: `required=True` requires an input, `default=...`
+emits a value when absent, and a field with neither is optional and remains
+absent. Top-level unknown fields reject by default. Nested objects choose their
+own `additional_properties` policy. Shared declarations compose through
+`Config.extend(...)`; duplicate names reject instead of silently overriding a
+shared field. Defaults are validated when the schema is built and copied when
+used, so mutable JSON defaults are never shared between normalizations.
+
+The initial vocabulary is deliberately closed:
+
+- `string`, `integer`, `number`, and `boolean`;
+- `array`, `object`, and unrestricted JSON values;
+- required fields and JSON-compatible defaults;
+- choices, numeric bounds, and descriptions;
+- schema composition and nested additional-property policy;
+- one validation-only `refine` callback for cross-field constraints; and
+- one explicitly described custom field normalizer for legacy or otherwise
+  irreducible value shapes.
+
+There are no metaclasses, configuration inheritance hierarchy, automatic
+dependency injection, or promise of complete JSON Schema compatibility.
+Exceptional callbacks stay local: `refine` may report violations but may not
+rewrite the normalized mapping, while a custom field normalizer may transform
+only its own value. The engine still verifies that every custom result is valid
+JSON and requires the field to publish an input description for inspection.
+
+Configuration flows through the existing subprocess boundary:
+
+```text
+recipe YAML config
+  -> operator subprocess --validate-config
+  -> Config.normalize(raw)
+  -> normalized JSON object
+  -> resolved recipe and workspace evolve.yaml
+  -> ctx.config dictionary
+```
+
+Independent field violations are collected and rendered in deterministic path
+order. Messages identify the field and expected contract without echoing raw
+values, which may contain credentials. Invalid schema declarations, including
+contradictory required/default settings and non-JSON defaults, fail during
+operator inspection as authoring errors.
+
+`--describe` exports the same declaration as a JSON-compatible description for
+CLI and tooling use. The export resembles the useful subset of JSON Schema but
+is an RSIHub contract. Operator identity still comes from
+`library/<stage>/<name>.py`, prose metadata comes from its docstring, and stage
+output remains governed by the frozen result validators. Configuration does
+not absorb metadata, execution, lifecycle, or output validation.
+
+This refactor does not change the shape or meaning of any valid recipe YAML.
+Existing field names, defaults, and normalized values remain exact. All shipped
+operators migrate to `config_schema`; the procedural `validate_config` SDK path,
+per-operator allowed-key sets, and unused parsing helpers are removed rather
+than retained as a parallel system. Operators with no settings declare
+`Config({})`.
+
+Tests enforce the boundary at four levels: schema primitives and error paths;
+real subprocess inspection; a catalog requirement that every shipped operator
+has a valid schema; and exact before/after normalized configuration equality
+for every supported recipe. Initialization and runtime acceptance tests confirm
+that workspaces freeze the same dictionaries and operator behavior remains
+unchanged.
 
 ## Source ownership
 
@@ -47,7 +175,7 @@ The framework has five supported recipes: `aevolve`, `ahe`, `gepa`,
 | `scaffolds/evaluators/harbor/` | Harbor-specific evaluator files |
 | `seeds/` | built-in evolvable target content |
 | `src/evolve/integrations/harbor/` | Harbor adapters owned by the framework |
-| `library/` | reference operator variants available in a workspace |
+| `library/` | discoverable, reusable operator implementations |
 | `tests/fixtures/` | deterministic test-only resources |
 
 Harbor integrations are framework modules. A generated workspace vendors them
@@ -59,8 +187,8 @@ adapter packages.
 ```text
 <workspace>/
 ├─ target/          candidate selected by the recipe's seed
-├─ operators/       active recipe-selected operator scripts
-├─ library/         operator variants copied for the workspace
+├─ operators/       frozen active recipe-selected operator scripts
+├─ library/         frozen runtime helpers imported by selected library operators
 ├─ evaluator/       frozen evaluator and selected engine files
 ├─ skills/          workspace operating manual
 ├─ .evolve/         vendored framework runtime and launcher
@@ -70,9 +198,12 @@ adapter packages.
 └─ runs/, artifacts/  generated run state and durable context
 ```
 
-The mutable surface in `evolve.yaml` controls what a candidate may edit. The
-target and, for recipes that select it, operator scripts are evolvable. The
-evaluator, archive stamps, and vendored mechanism are not.
+Initialization records normalized operator config in `evolve.yaml`, freezes
+selected bytes in `operators/`, and records source identity and SHA-256
+provenance in `.evolve-components.json`. Existing initialized workspaces are
+never rewritten when the source catalog changes. The mutable surface in
+`evolve.yaml` controls what a candidate may edit; the evaluator, archive stamps,
+and vendored mechanism remain outside it.
 
 ## Invariants
 

@@ -25,8 +25,8 @@ Hill Climb, and HyperAgents.
 | Goal | Guide |
 | --- | --- |
 | Compose a custom experiment configuration | [Creating a custom recipe](guides/custom-recipes.md) |
-| Choose stages and built-in variants | [Operator overview](reference/operators.md) |
-| Configure the editing agent and isolation model | [Meta-agent execution](guides/meta-agents.md) |
+| Choose stages and built-in operators | [Operator overview](reference/operators.md) |
+| Configure the editing agent and isolation model | [Mutate operator execution](guides/mutate-operators.md) |
 | Run trusted local tasks without Docker isolation | [Local Harbor environment](guides/local-environment.md) |
 
 For the framework model and vocabulary, see

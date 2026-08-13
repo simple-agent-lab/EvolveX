@@ -21,10 +21,10 @@ README.md                     this workspace guide
 archive.jsonl                 append-only lineage record
 evolve                        workspace console
 evolve.yaml                   rendered recipe configuration
-library/                      recipe-relevant operator variants
+library/                      closed root and selected-stage underscore helper bundles
 LICENSE.rsihub                license for the vendored framework and operator library
 NOTICE.rsihub                 framework and third-party attribution notices
-operators/                    active operator scripts, supporting Markdown, and index
+operators/                    recipe-selected active scripts, supporting Markdown, and index
 program.md                    loop orchestration guidance
 pyproject.toml, uv.lock       locked workspace runtime
 runs/                         generated per-generation state

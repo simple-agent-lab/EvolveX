@@ -28,8 +28,8 @@ def test_force_retry_reaches_evaluator_after_terminal_failure(tmp_path: Path, mo
         {
             "genid": "1",
             "status": "operator_failed",
-            "failure_stage": "meta_agent",
-            "reason": "operator meta_agent failed",
+            "failure_stage": "mutate",
+            "reason": "operator mutate failed",
         },
     )
     calls: list[str] = []

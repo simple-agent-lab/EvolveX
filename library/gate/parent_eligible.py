@@ -1,7 +1,10 @@
 """Parent-eligible gate may only reject canonical eligible evaluations."""
 
 from evolve.frozen import sdk
+from evolve.frozen.config import Config
 from evolve.frozen.interfaces import GateOperator, GateResult, OperatorContext, Row
+
+CONFIG = Config({})
 
 
 def _parent_eligible(child: Row) -> tuple[bool, str]:
@@ -19,4 +22,4 @@ class ParentEligibleGate(GateOperator):
 
 
 if __name__ == "__main__":
-    sdk.main(ParentEligibleGate)
+    sdk.main(ParentEligibleGate, config_schema=CONFIG)

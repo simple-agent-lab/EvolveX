@@ -34,14 +34,19 @@ The frozen scoring contract at `evaluator/`. Fixed from generation zero; the
 only source of scores.
 _Avoid_: ruler, scoring contract, canonical evaluator, frozen side
 
+**Evaluate**:
+The framework-owned trusted mechanism that scores an exact candidate snapshot.
+It is a fixed lifecycle action, not a recipe-selected operator.
+
 **Mutable surface**:
 The set of paths a candidate change may touch, declared under `surface` in
 `evolve.yaml`.
 _Avoid_: declared surface, mutation surface, mutation scope, write scope
 
 **Recipe**:
-An init-time template that scaffolds a workspace for one method
-(`aevolve`, `ahe`, `gepa`, `hill_climb`, `hyperagents`).
+A code-free init-time selection and configuration of operators, target,
+surface, and evaluator for one method (`aevolve`, `ahe`, `gepa`,
+`hill_climb`, `hyperagents`).
 
 **Supported recipe**:
 A public configuration under `recipes/`. Development-only configurations under
@@ -67,8 +72,10 @@ _Avoid_: version, variant
 A candidate's position in the lineage, numbered and tagged `gen/<id>`.
 
 **Baseline**:
-The certified generation-zero evaluation of the untouched seed. Recorded in
-the archive with purpose `genesis`.
+The certified generation-zero primary evaluation of the untouched seed.
+Recorded in the archive with purpose `genesis`. A separate non-selectable
+generation-zero `anchor` evaluates the same seed on the sealed split and is not
+mutation feedback.
 _Avoid_: genesis (in prose)
 
 **Parent**:
@@ -112,36 +119,37 @@ _Avoid_: CLI (for the workspace entry point)
 **Outer agent**:
 The coding agent operating a workspace from outside during an agent-led
 generation.
-_Avoid_: mutation agent, meta-agent (for the outer agent)
+_Avoid_: mutate operator (for the outer agent)
 
-**Meta agent** (`meta_agent`):
+**Mutate operator** (`mutate`):
 The configured stage that edits the child from inside the loop during a
 driver-led generation. The outer agent plays this same mutating role from
-outside during an agent-led generation; the name `meta_agent` stays with the
+outside during an agent-led generation; the name `mutate` stays with the
 stage and its files.
-_Avoid_: meta-agent (for the outer agent)
+_Avoid_: outer agent (for the configured mutate operator)
 
 **Driver**:
 The unattended loop started by `evolve run`.
 _Avoid_: built-in loop, unattended loop (as a name)
 
 **Control path**:
-Who owns producing a generation: driver-led (the configured `meta_agent`
+Who owns producing a generation: driver-led (the configured `mutate`
 stage) or agent-led (the outer agent). Both are the same role — an agent
 mutating the target — which is why exactly one may own a generation.
 
 ## Stages and decisions
 
 **Stage**:
-One step of a generation, named exactly as registered: `select`, `rollout`,
-`trace_analyzer`, `meta_agent`, `validate`, `novelty`, `gate`, `record`,
+One fixed lifecycle slot, named exactly as registered: `select`, `rollout`,
+`analyze`, `mutate`, `validate`, `novelty`, `gate`, `record`,
 `reflect`.
 _Avoid_: feedback, mutation, trace analysis, validation (as stage names)
 
 **Operator**:
-The active implementation of a stage, at `operators/<stage>.py`. Reference
-variants under `library/` are not active.
-_Avoid_: treating library variants as operators
+A reusable stage implementation at `library/<stage>/<name>.py`. A recipe
+selects one implementation; initialization freezes it at
+`operators/<stage>.py` with normalized config and provenance.
+_Avoid_: stage (for an implementation), plugin, component
 
 **Admission**:
 The pre-evaluation checks bound to an exact candidate tree: `surface-check`

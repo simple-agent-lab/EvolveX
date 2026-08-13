@@ -7,12 +7,14 @@ path, but the file contract is the protocol.
 
 ## Subprocess Contract
 
-The mechanism invokes required operator files for select, rollout, meta_agent,
+The mechanism invokes required operator files for select, rollout, mutate,
 gate, and record, plus recipe-selected optional operators such as
-trace_analyzer, validate, novelty, and reflect. A copied file may be a library
-variant, a recipe-local operator, or a user-provided `script:`. Python variants
-normally end with `sdk.main(VariantClass)`, but any executable file that honors
-the same files is valid.
+analyze, validate, novelty, and reflect. A copied file may be a library
+operator or a user-provided `script:`. Named Python operators end with
+`sdk.main(OperatorClass, config_schema=CONFIG)` so discovery-time
+inspection can describe the entry and validate configuration. Any explicit
+script that honors the same files is valid, but script bindings are
+non-portable filesystem dependencies.
 
 Runtime state arrives through environment variables:
 
@@ -24,7 +26,11 @@ Runtime state arrives through environment variables:
 - `EVOLVE_PARENT`: selected parent id, when there is one.
 - `EVOLVE_ROUND`: numeric round when the runner is executing a per-round
   operator. The variable is absent when no round applies.
-- `EVOLVE_OPERATOR_TIMEOUT_S`: inherited timeout cap for adapters.
+- `EVOLVE_STAGE_TIMEOUT_S`: the recipe-selected stage timeout. The SDK exposes
+  the same value as `OperatorContext.timeout_s`.
+- `EVOLVE_OPERATOR_TIMEOUT_S`: the outer subprocess deadline. It normally
+  matches the stage timeout; adapters with bounded per-attempt retries may
+  receive a larger framework-calculated deadline.
 
 Operator-specific YAML settings are passed as `--config` JSON. The framework
 enforces the configured timeout around the subprocess. A nonzero exit code, a
@@ -39,9 +45,10 @@ another value exits nonzero with `protocol_version` in stderr.
 ## Per-Kind Contract
 
 All Python operators receive an `OperatorContext` with these fields: `workspace`,
-`checkout`, `run_dir`, `genid`, `parent`, `round`, `fan_out`, `config`, and
-`rng`. `workspace`, `checkout`, and `run_dir` are `Path` values. `config` is the
-operator config dict, and `rng` is seeded from that config.
+`checkout`, `run_dir`, `genid`, `parent`, `round`, `fan_out`, `config`, `rng`,
+and `timeout_s`. `workspace`, `checkout`, and `run_dir` are `Path`
+values. `config` is only the opaque nested recipe `config` dict, `rng` is
+seeded from that config, and `timeout_s` is the selected stage budget.
 
 ### Select
 
@@ -73,40 +80,40 @@ Implement `rollout`. Return `RolloutResult` with fields `summary` and
 `rollout/artifacts.json`. `summary` is a JSON object; `artifacts` is a list of
 artifact paths or labels.
 
-### Trace Analyzer
+### Analyze
 
 ABC signature:
 
 ```python
-def analyze(self, checkout: Path, ctx) -> TraceAnalyzerResult:
+def analyze(self, checkout: Path, ctx) -> AnalyzeResult:
 ```
 
 Implement `analyze`. Read method-neutral rollout artifacts such as
 `rollout/cases.json`, then write the selected and raw trace views under
-`trace_analyzer/`. Return `TraceAnalyzerResult` with `summary` and `artifacts`;
-the subprocess writes `trace_analyzer/summary.json` and
-`trace_analyzer/artifacts.json`.
+`analyze/`. Return `AnalyzeResult` with `summary` and `artifacts`;
+the subprocess writes `analyze/summary.json` and
+`analyze/artifacts.json`.
 
-After trace analysis, the mechanism writes the normalized feedback bundle under
-`runs/gen-<id>/feedback/` for the meta-agent to read. If the analyzer writes
-`trace_analyzer/feedback.md` and `trace_analyzer/evidence/selected.md`, the
+After analysis, the mechanism writes the normalized feedback bundle under
+`runs/gen-<id>/feedback/` for the mutation operator to read. If the analyzer writes
+`analyze/feedback.md` and `analyze/evidence/selected.md`, the
 mechanism copies the bounded selection into the feedback bundle.
 
-### Meta-Agent
+### Mutate
 
 ABC signature:
 
 ```python
-def run(self, checkout: Path, observation: str, ctx) -> MetaAgentResult:
+def mutate(self, checkout: Path, observation: str, ctx) -> MutateResult:
 ```
 
-Implement `run`. Return `MetaAgentResult` with fields `changed`, `notes`, and
-`usage`. The subprocess writes `meta_agent/changed.json`, may write
-`meta_agent/rationale.md`, and writes `meta_agent/usage.json`. `usage` is a JSON
+Implement `mutate`. Return `MutateResult` with fields `changed`, `notes`, and
+`usage`. The subprocess writes `mutate/changed.json`, may write
+`mutate/rationale.md`, and writes `mutate/usage.json`. `usage` is a JSON
 object, commonly including `usd`.
 
 The workspace also exposes gitignored durable storage under `artifacts/`.
-`artifacts/user/` is user-managed, while a meta-agent may persist arbitrary
+`artifacts/user/` is user-managed, while the mutation operator may persist arbitrary
 files only under `artifacts/generations/<EVOLVE_GENID>/`. An optional free-form
 `handoff.md` in that directory is the handoff convention. Shipped prompts point
 to the selected parent's handoff when it exists; absence is non-fatal. Harbor
@@ -213,30 +220,46 @@ anchor and sealed evidence remains non-actionable. The frozen SDK exposes the
 receipt-validated projection through `evaluation_diagnostics(workspace,
 genid)`, and reports render coverage and certification independently from score.
 
-## Write Your Own Variant in Three Steps
+## Write Your Own Named Operator
 
-1. Copy `library/<kind>/_skeleton.py` into your own operator file, for example
-   `my_select.py`.
-2. Fill in the one method for that kind, returning the result dataclass with
-   valid field values.
-3. Point `evolve.yaml` at it with `script: ./my_select.py`, then run the file
-   as the mechanism will run it: set `EVOLVE_WORKSPACE`,
-   `EVOLVE_CHECKOUT`, `EVOLVE_RUN_DIR`, `EVOLVE_GENID`, and optionally
-   `EVOLVE_PARENT`, then execute it with `--config '{}'` and inspect the
-   expected files.
+1. Run `evolve operator new <stage> <name>` in a source checkout.
+2. Implement the stage method and return its result dataclass.
+3. Declare accepted fields with `evolve.frozen.config.Config` and pass the
+   declaration to `sdk.main(..., config_schema=CONFIG)`.
+4. Run `evolve operator describe <stage>/<name>` and
+   `evolve operator check <stage>/<name> --config '<json>'`.
+5. Select it under `operator:` with all settings under `config`, then run
+   `evolve recipe check` before initialization.
 
-## Shipped Variants
+Underscore-prefixed modules are helpers that discovery excludes, so helper
+refactors do not create accidental public operators. Put generic helpers in
+`library/_shared/`, cross-stage helpers private to one method in
+`library/_methods_shared/<method>/`, and stage-private helpers in paths such as
+`library/mutate/_support/`. Generic helpers are always materialized; a method
+bundle is materialized only when selected code imports it. Shared local and
+Harbor runners live under `library/_shared/runners/`.
 
-The shipped library uses canonical algorithm names only. Recipe research names
-may appear in recipe prose, but `variant:` values point to these files:
+`Config` supports strings, integers, finite numbers, booleans, arrays, objects,
+arbitrary JSON values, required/default/optional fields, choices, bounds, and
+descriptions. Use `Config.extend` for shared fragments. Use `custom` only to
+normalize one field and `refine` only to validate a relationship between fields.
 
-- select: `greedy`, `random`, `score_weighted`, `newest`, `pareto`
-- rollout: `failure_focused`, `harbor`, `noop`
-- trace_analyzer: `failure_patterns`, `failed_traces`, `trace_browser`, `trajectory_only`, `execution_records`, `gepa`, `utility_metrics`
-- meta_agent: `aevolve`, `ahe`, `gepa`, `hyperagents` (`runner`: `local` or `harbor`)
+## Shipped Operators
+
+The shipped library uses canonical algorithm names only. Named recipe bindings
+point to these entry files:
+
+- select: `ahe_latest`, `greedy`, `newest`, `pareto`, `random`,
+  `score_child_prop`, `score_weighted`
+- rollout: `failure_focused`, `harbor`, `noop`, `parent_evaluation`
+- analyze: `ahe`, `artifact_rubric`, `failure_patterns`, `gepa`,
+  `trace_browser`, `trajectory_only`
+- mutate: `aevolve`, `ahe`, `gepa`, `hyperagents` (`runner`: `local` or `harbor`)
 - validate: `hyperagents`, `minibatch_improvement`
-- gate: `hillclimb`, `parent_eligible`
-- record: `gepa`, `jsonl`
+- novelty: `accept_all`, `diff_similarity`
+- gate: `ahe_artifact_valid`, `hillclimb`, `parent_eligible`
+- record: `gepa`, `hyperagents`, `jsonl`
+- reflect: `credit`
 
 ## Stability Tiers
 
@@ -244,13 +267,14 @@ may appear in recipe prose, but `variant:` values point to these files:
 | --- | --- | --- |
 | Verbs and file contract | Major-version protected | CLI verbs, subprocess execution, required files, JSON fields |
 | Interfaces and SDK | Additive-only paved road | ABC names, result dataclasses, `OperatorContext`, `sdk.main(...)` |
-| Library variants | Evolve freely | Algorithms under `library/<kind>/` may change as practice improves |
+| Library operators | Evolve freely | Algorithms under `library/<kind>/` may change as practice improves |
 | Recipes | Examples, no promise | Presets encode experiment policy and can change as evidence changes |
 
 ## Escape-Hatch Ladder
 
-1. YAML: choose a shipped `variant:` and tune its config.
-2. `script:` variant: point one operator kind at your own executable file.
+1. YAML: choose a shipped `operator:` and tune its nested `config`.
+2. `script:` escape hatch: point one stage at your own executable file; this
+   remains runnable but is non-portable.
 3. Agent orchestration: discover capabilities with `evolve operator list`, run
    configured stages with `evolve operator run`, edit a child worktree, then
    use `commit`, `eval`, and `finalize`.
@@ -268,8 +292,8 @@ Agent-facing commit refuses missing, rejected, or stale admission results.
 
 Files, not classes, are normative. The mechanism runs subprocess files and
 consumes `parents.json`, `rollout/summary.json`, `rollout/artifacts.json`,
-`trace_analyzer/summary.json`, `trace_analyzer/artifacts.json`,
-`meta_agent/usage.json`, `gate.json`,
+`analyze/summary.json`, `analyze/artifacts.json`,
+`mutate/usage.json`, `gate.json`,
 `record/fields.json`, and the other artifacts listed above. Non-Python
 operators are valid when they honor those files, environment variables, exit
 behavior, and protocol version expectations.

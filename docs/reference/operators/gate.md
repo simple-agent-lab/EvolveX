@@ -13,9 +13,9 @@ class GateOperator:
 
 The result is `accept` or `reject` with a reason.
 
-## Variants
+## Library operators
 
-| Variant | Decision rule |
+| Operator | Decision rule |
 | --- | --- |
 | `hillclimb` | compare the child's score with the matched parent's score |
 | `parent_eligible` | accept a canonical benchmark-complete child that is marked selection-eligible |
@@ -26,9 +26,10 @@ The result is `accept` or `reject` with a reason.
 ```yaml
 operators:
   gate:
-    variant: hillclimb
-    strict: true
+    operator: hillclimb
     timeout_s: 600
+    config:
+      strict: true
 ```
 
 For `hillclimb`:
@@ -42,4 +43,3 @@ evaluation by manufacturing a score.
 
 The mechanism retains the gate decision with the generation run and durable
 archive event.
-

@@ -11,7 +11,9 @@ import types
 from pathlib import Path
 
 import pytest
-from conftest import git, write_locked_miniswe_seed
+from conftest import git, init_workspace_from_config, write_locked_miniswe_seed
+
+from evolve.config import default_config
 
 ROOT = Path(__file__).resolve().parents[1]
 ADAPTER = ROOT / "src" / "evolve" / "integrations" / "harbor" / "miniswe_candidate.py"
@@ -774,19 +776,17 @@ def test_miniswe_install_rejects_missing_lock_before_upload(tmp_path: Path, monk
     assert Environment.uploads == []
 
 
-def test_init_with_local_miniswe_seed_writes_protected_harbor_adapter(tmp_path: Path, monkeypatch) -> None:
-    from evolve import workspace as workspace_module
-    from evolve.workspace import InitOptions, init_workspace
+def test_init_with_local_miniswe_seed_writes_protected_harbor_adapter(tmp_path: Path) -> None:
+    from evolve.workspace import InitOptions
 
     seed = write_locked_miniswe_seed(tmp_path / "miniswe")
     (seed / ".gitignore").write_text("uv.lock\n")
     expected_lock = (seed / "uv.lock").read_bytes()
     workspace = tmp_path / "workspace"
-    config = workspace_module.default_config("hill_climb", workspace.name)
+    config = default_config("hill_climb", workspace.name)
     config["evaluator"]["agent"] = CANDIDATE_AGENT
-    monkeypatch.setattr(workspace_module, "default_config", lambda recipe, experiment_id: config)
 
-    init_workspace(InitOptions(workspace=workspace, recipe="hill_climb", seed=str(seed)))
+    init_workspace_from_config(InitOptions(workspace=workspace, seed=str(seed)), config)
 
     wrapper = workspace / ".evolve" / "evolve" / "integrations" / "harbor" / "miniswe_candidate.py"
     assert wrapper.exists()
@@ -797,18 +797,16 @@ def test_init_with_local_miniswe_seed_writes_protected_harbor_adapter(tmp_path: 
     assert git(workspace, "ls-files", "target/uv.lock") == "target/uv.lock"
 
 
-def test_init_tracks_seed_lockfile_even_when_seed_gitignore_excludes_it(tmp_path: Path, monkeypatch) -> None:
-    from evolve import workspace as workspace_module
-    from evolve.workspace import InitOptions, init_workspace
+def test_init_tracks_seed_lockfile_even_when_seed_gitignore_excludes_it(tmp_path: Path) -> None:
+    from evolve.workspace import InitOptions
 
     seed = write_locked_miniswe_seed(tmp_path / "miniswe")
     (seed / ".gitignore").write_text("uv.lock\n")
     workspace = tmp_path / "workspace"
-    config = workspace_module.default_config("hill_climb", workspace.name)
+    config = default_config("hill_climb", workspace.name)
     config["evaluator"]["agent"] = CANDIDATE_AGENT
-    monkeypatch.setattr(workspace_module, "default_config", lambda recipe, experiment_id: config)
 
-    init_workspace(InitOptions(workspace=workspace, recipe="hill_climb", seed=str(seed)))
+    init_workspace_from_config(InitOptions(workspace=workspace, seed=str(seed)), config)
 
     git(workspace, "cat-file", "-e", "gen/0:target/uv.lock")
 
@@ -831,9 +829,8 @@ def test_init_rejects_unlocked_local_miniswe_seed_before_workspace_creation(
     assert not workspace.exists()
 
 
-def test_init_with_local_miniswe_seed_excludes_virtualenv_cache(tmp_path: Path, monkeypatch) -> None:
-    from evolve import workspace as workspace_module
-    from evolve.workspace import InitOptions, init_workspace
+def test_init_with_local_miniswe_seed_excludes_virtualenv_cache(tmp_path: Path) -> None:
+    from evolve.workspace import InitOptions
 
     seed = write_locked_miniswe_seed(tmp_path / "miniswe")
     (seed / ".venv" / "bin").mkdir(parents=True)
@@ -843,11 +840,10 @@ def test_init_with_local_miniswe_seed_excludes_virtualenv_cache(tmp_path: Path, 
     (seed / ".env.local").write_text("HTTPS_PROXY=http://user:pass@proxy.example\n")
     (seed / "src" / "minisweagent" / ".env.test").write_text("TOKEN=must-not-copy\n")
     workspace = tmp_path / "workspace"
-    config = workspace_module.default_config("hill_climb", workspace.name)
+    config = default_config("hill_climb", workspace.name)
     config["evaluator"]["agent"] = CANDIDATE_AGENT
-    monkeypatch.setattr(workspace_module, "default_config", lambda recipe, experiment_id: config)
 
-    init_workspace(InitOptions(workspace=workspace, recipe="hill_climb", seed=str(seed)))
+    init_workspace_from_config(InitOptions(workspace=workspace, seed=str(seed)), config)
 
     assert (workspace / "target" / "src" / "minisweagent" / "__init__.py").exists()
     assert not (workspace / "target" / ".venv").exists()

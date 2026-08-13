@@ -1,9 +1,5 @@
 <p align="center">
-  <img src="docs/rsihub-mark.svg" width="112" alt="RSIHub ring mark: four separated blue-to-green arcs surround an open center.">
-</p>
-
-<p align="center">
-  <img src="docs/rsihub-wordmark.svg" width="184" alt="RSIHub">
+  <img src="docs/rsihub-lockup.svg" width="460" alt="RSIHub: the ring mark beside the RSIHub wordmark.">
 </p>
 
 <p align="center">
@@ -16,17 +12,14 @@
 </p>
 
 <p align="center">
+  <a href="LICENSE">
+    <img alt="Apache-2.0 License" src="https://img.shields.io/badge/License-Apache--2.0-0095fd?logo=opensourceinitiative&amp;logoColor=white">
+  </a>
   <a href="https://github.com/simple-agent-lab/RSIHub/actions/workflows/test.yml">
     <img alt="RSIHub tests" src="https://github.com/simple-agent-lab/RSIHub/actions/workflows/test.yml/badge.svg">
   </a>
   <a href="https://www.python.org/">
     <img alt="Python 3.12+" src="https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&amp;logoColor=white">
-  </a>
-  <a href="LICENSE">
-    <img alt="Apache-2.0 License" src="https://img.shields.io/badge/License-Apache--2.0-blue.svg">
-  </a>
-  <a href="https://simple-agent-lab.github.io/RSIHub/">
-    <img alt="RSIHub documentation" src="https://img.shields.io/badge/Documentation-RSIHub-0F766E?logo=materialformkdocs&amp;logoColor=white">
   </a>
 </p>
 
@@ -40,11 +33,7 @@
   <a href="#documentation">Documentation</a>
 </p>
 
-<p align="center">
-  <a href="docs/evolve-lineage.svg">
-    <img src="docs/evolve-lineage.svg" alt="A baseline branches into evaluated candidates. The selected lineage rises through successive generations to a verified improvement, while unselected candidates remain visible as evidence.">
-  </a>
-</p>
+<br>
 
 <p align="center">
   <a href="docs/assets/benchmark-results-rsihub.svg">
@@ -84,6 +73,30 @@ A recipe decides how parents are selected, how traces are analyzed, what may be
 edited, and which evaluations admit a new generation. The framework owns the
 mechanism that makes those decisions inspectable: clean candidate snapshots,
 protected scoring, surface enforcement, Git tags, and stamped archive records.
+
+The public composition model has four parts:
+
+- a **stage** is a fixed lifecycle slot such as `select`, `analyze`, or `mutate`;
+- an **operator** is a reusable implementation at
+  `library/<stage>/<name>.py`;
+- a **recipe** is code-free selection and configuration of those operators;
+- **evaluate** is the framework-owned trusted mechanism, never a selectable
+  operator.
+
+Add an operator to a source checkout, validate it, and compose it without a
+registry edit:
+
+```bash
+uv run --frozen evolve operator new mutate my_operator
+uv run --frozen evolve operator describe mutate/my_operator
+uv run --frozen evolve operator check mutate/my_operator --config '{}'
+uv run --frozen evolve operator list mutate
+uv run --frozen evolve recipe check /path/to/my-recipe/evolve.yaml
+```
+
+After `evolve init`, use `./evolve operator active .` to inspect the frozen
+bindings and `./evolve operator run ...` for direct stage orchestration. See
+[the operator guide](docs/reference/operators.md) for the complete workflow.
 
 ## What Can Evolve
 
@@ -152,7 +165,7 @@ Scores are percentages shown as **seed → evolved agent**. The train score is m
 the recipe's training split; the full benchmark score is measured across the
 complete benchmark. Parenthesized changes are purple for improvement, amber for
 no change, and red for regression. All runs use a GPT-5.4-high target model and
-a GPT-5.4-xhigh Codex meta-agent.
+a GPT-5.4-xhigh Codex mutate operator.
 
 <table width="100%">
   <thead>
@@ -293,8 +306,8 @@ composable strategies for different agent-evolution scenarios.
 | [Architecture](ARCHITECTURE.md) | Enforced source-module map and line budgets. |
 | [Recipes](recipes/README.md) | Supported evolution strategies. |
 | [Evaluation assets](evals/README.md) | Skill behavior/routing evaluation cases and result snapshots. |
-| [Meta-agents](docs/guides/meta-agents.md) | Trusted-host and isolated meta-agent runners. |
-| [Trace Analyzer](docs/reference/operators/trace_analyzer.md) | Trace retention and analyzer variants. |
+| [Mutate operators](docs/guides/mutate-operators.md) | Trusted-host and isolated mutation runners. |
+| [Analyze](docs/reference/operators/analyze.md) | Trace retention and analysis operators. |
 | [Local environment](docs/guides/local-environment.md) | Docker-free trusted local execution. |
 | [Operations](docs/guides/operations.md) | Doctor profiles, runtime setup, full-loop smoke, and recovery. |
 | [Contributing](CONTRIBUTING.md) | Development setup and repository conventions. |

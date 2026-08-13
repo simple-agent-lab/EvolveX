@@ -43,7 +43,7 @@ nav:
       - Creating a custom recipe: guides/custom-recipes.md
       - From recipe to experiment: guides/recipe-to-experiment.md
       - Running RSIHub reliably: guides/operations.md
-      - Meta-agent execution: guides/meta-agents.md
+      - Mutate operator execution: guides/mutate-operators.md
       - Local Harbor environment: guides/local-environment.md
   - Reference:
       - Environment Variables: reference/environment-variables.md
@@ -51,8 +51,8 @@ nav:
       - Operators:
           - Select: reference/operators/select.md
           - Rollout: reference/operators/rollout.md
-          - Trace Analyzer: reference/operators/trace_analyzer.md
-          - Meta Agent: reference/operators/meta_agent.md
+          - Analyze: reference/operators/analyze.md
+          - Mutate: reference/operators/mutate.md
           - Validate: reference/operators/validate.md
           - Novelty: reference/operators/novelty.md
           - Gate: reference/operators/gate.md

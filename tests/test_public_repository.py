@@ -14,6 +14,20 @@ RELATIVE_LINK = re.compile(r"\[[^\]]+\]\((?!https?://|mailto:|#)([^)#]+)")
 SVG_NS = {"svg": "http://www.w3.org/2000/svg"}
 
 
+def maintained_current_files() -> list[Path]:
+    files = [ROOT / "README.md", ROOT / "ARCHITECTURE.md", ROOT / "CONTRIBUTING.md", ROOT / "QUICKSTART.md"]
+    files.extend(path for path in (ROOT / "docs").rglob("*.md") if "superpowers" not in path.parts)
+    files.extend((ROOT / "library").rglob("*.md"))
+    files.extend((ROOT / "library").rglob("*.py"))
+    files.extend((ROOT / "recipes").rglob("README.md"))
+    for root in (ROOT / "scaffolds", ROOT / "skills"):
+        files.extend(
+            path for path in root.rglob("*") if path.is_file() and path.suffix in {".md", ".py", ".sh", ".yaml"}
+        )
+    files.extend((ROOT / "src" / "evolve").rglob("*.py"))
+    return sorted(set(files))
+
+
 def test_tracked_files_use_only_current_project_identity() -> None:
     retired = ("evolve" + "x", "simple-" + "evolve-agent")
     standalone = "Evo" + "lve"
@@ -75,7 +89,12 @@ def test_architecture_visual_uses_identity_palette() -> None:
 
 
 def test_readme_visual_assets_have_accessible_svg_metadata() -> None:
-    for relative in ("docs/rsihub-mark.svg", "docs/rsihub-wordmark.svg", "docs/evolve-lineage.svg"):
+    for relative in (
+        "docs/rsihub-mark.svg",
+        "docs/rsihub-wordmark.svg",
+        "docs/rsihub-lockup.svg",
+        "docs/evolve-lineage.svg",
+    ):
         root = ET.parse(ROOT / relative).getroot()
         assert root.attrib["role"] == "img"
         assert root.attrib["viewBox"]
@@ -93,19 +112,24 @@ def test_branding_assets_match_approved_ring_and_wordmark() -> None:
     assert mark.attrib["width"] == "128"
     assert mark.attrib["height"] == "128"
     assert mark.attrib["viewBox"] == "0 0 40 40"
+    # The ramp is ordered so the two near-identical blues sit opposite each other
+    # rather than adjacent; on a ring, #3c8cff beside #0095fd reads as one lump.
     assert [path.attrib["stroke"] for path in paths] == [
         "#3c8cff",
-        "#0095fd",
         "#00cbd4",
+        "#0095fd",
         "#78e85c",
     ]
     assert all(path.attrib["stroke-width"] == "6" for path in paths)
     assert all(path.attrib["stroke-linecap"] == "round" for path in paths)
+    # Each arc spans 42.6°, leaving a 47.4° geometric gap. A round cap extends
+    # stroke-width/2 along the tangent past the endpoint — 12.7° at this radius —
+    # so the gap measures 22° on screen, which is the number the design specifies.
     assert [path.attrib["d"] for path in paths] == [
-        "M23.95 7.09 A13.5 13.5 0 0 1 32.91 16.05",
-        "M32.91 23.95 A13.5 13.5 0 0 1 23.95 32.91",
-        "M16.05 32.91 A13.5 13.5 0 0 1 7.09 23.95",
-        "M7.09 16.05 A13.5 13.5 0 0 1 16.05 7.09",
+        "M25.43 7.64 A13.5 13.5 0 0 1 32.36 14.57",
+        "M32.36 25.43 A13.5 13.5 0 0 1 25.43 32.36",
+        "M14.57 32.36 A13.5 13.5 0 0 1 7.64 25.43",
+        "M7.64 14.57 A13.5 13.5 0 0 1 14.57 7.64",
     ]
     assert "selected lineage" not in mark_text.casefold()
 
@@ -129,9 +153,25 @@ def test_branding_assets_match_approved_ring_and_wordmark() -> None:
         assert color in wordmark_text
     assert "@media (prefers-color-scheme: dark)" in wordmark_text
 
+    # The masthead is one lockup, not a mark stacked over a wordmark: two <img>
+    # tags align on the text baseline rather than on each other, and GitHub strips
+    # the attributes that would correct it. Both parts stay on disk — mkdocs takes
+    # the mark for its logo and favicon.
     readme = (ROOT / "README.md").read_text()
-    assert 'src="docs/rsihub-mark.svg"' in readme
-    assert 'src="docs/rsihub-wordmark.svg"' in readme
+    assert 'src="docs/rsihub-lockup.svg"' in readme
+    assert (ROOT / "docs" / "rsihub-mark.svg").is_file()
+    assert (ROOT / "docs" / "rsihub-wordmark.svg").is_file()
+
+    lockup = ET.parse(ROOT / "docs" / "rsihub-lockup.svg").getroot()
+    lockup_text = (ROOT / "docs" / "rsihub-lockup.svg").read_text()
+    assert [path.attrib["stroke"] for path in lockup.findall("svg:path", SVG_NS)] == [
+        "#3c8cff",
+        "#00cbd4",
+        "#0095fd",
+        "#78e85c",
+    ]
+    assert lockup.find(".//svg:path[@id='hub-word']", SVG_NS) is not None
+    assert "@media (prefers-color-scheme: dark)" in lockup_text
     assert '<h1 align="center">RSIHub</h1>' not in readme
 
     mkdocs = (ROOT / "mkdocs.yml").read_text()
@@ -174,6 +214,11 @@ def test_mkdocs_covers_custom_recipe_operator_and_experiment_workflows() -> None
         assert (ROOT / page).is_file()
         assert page.removeprefix("docs/") in mkdocs
 
+    mutate_guide = ROOT / "docs/guides/mutate-operators.md"
+    assert mutate_guide.is_file()
+    assert "guides/mutate-operators.md" in mkdocs
+    assert not (ROOT / "docs/guides/meta-agents.md").exists()
+
     custom_recipe = (ROOT / expected_pages[0]).read_text()
     assert "--recipe-path" in custom_recipe
     assert "surface:" in custom_recipe
@@ -203,8 +248,8 @@ def test_mkdocs_covers_custom_recipe_operator_and_experiment_workflows() -> None
     stages = {
         "select": "Select",
         "rollout": "Rollout",
-        "trace_analyzer": "Trace Analyzer",
-        "meta_agent": "Meta Agent",
+        "analyze": "Analyze",
+        "mutate": "Mutate",
         "validate": "Validate",
         "novelty": "Novelty",
         "gate": "Gate",
@@ -219,6 +264,80 @@ def test_mkdocs_covers_custom_recipe_operator_and_experiment_workflows() -> None
         assert f"- {title}: reference/operators/{stage}.md" in mkdocs
 
     assert not (ROOT / "docs/reference/trace-analyzers.md").exists()
+
+
+def test_maintained_public_material_uses_canonical_stage_identifiers() -> None:
+    forbidden = (
+        re.compile(r"\bmeta[-_ ]agent\b", re.IGNORECASE),
+        re.compile(r"\btrace[-_ ]analyzer\b", re.IGNORECASE),
+        re.compile(r"\bMetaAgentOperator\b"),
+        re.compile(r"\bTraceAnalyzerOperator\b"),
+    )
+    # recipe.py names retired stages only so rejected legacy recipes receive a
+    # precise migration diagnostic; tests/test_recipe_resolution.py exercises
+    # that negative compatibility boundary.
+    rejection_diagnostic = ROOT / "src" / "evolve" / "composition" / "recipe.py"
+    for path in maintained_current_files():
+        text = path.read_text()
+        if path == rejection_diagnostic:
+            for legacy_mapping in ('"trace_analyzer": "analyze"', '"meta_agent": "mutate"'):
+                assert text.count(legacy_mapping) == 1
+                text = text.replace(legacy_mapping, "")
+        assert not [pattern.pattern for pattern in forbidden if pattern.search(text)], path
+
+
+def test_recipe_operator_blocks_never_use_variant_keys() -> None:
+    def variant_paths(value: object, prefix: str = "operators") -> list[str]:
+        if isinstance(value, dict):
+            found = [f"{prefix}.variant"] if "variant" in value else []
+            for key, item in value.items():
+                found.extend(variant_paths(item, f"{prefix}.{key}"))
+            return found
+        if isinstance(value, list):
+            return [path for index, item in enumerate(value) for path in variant_paths(item, f"{prefix}[{index}]")]
+        return []
+
+    failures: dict[str, list[str]] = {}
+    for path in sorted((ROOT / "recipes").glob("*/evolve.yaml")):
+        config = yaml.safe_load(path.read_text())
+        assert isinstance(config, dict)
+        paths = variant_paths(config.get("operators", {}))
+        if paths:
+            failures[path.relative_to(ROOT).as_posix()] = paths
+    assert failures == {}
+
+
+def test_operator_authoring_uses_only_declarative_config_schemas() -> None:
+    forbidden = (
+        "_CONFIG_KEYS",
+        "validate_config=",
+        "from library._shared.config import",
+    )
+    paths = list((ROOT / "library").rglob("*.py"))
+    paths += list((ROOT / "library").rglob("*.md"))
+    paths += [ROOT / "docs/guides/custom-recipes.md", ROOT / "docs/reference/operators.md"]
+
+    failures = {
+        path.relative_to(ROOT).as_posix(): [token for token in forbidden if token in path.read_text()]
+        for path in paths
+        if any(token in path.read_text() for token in forbidden)
+    }
+
+    assert failures == {}
+
+
+def test_analyze_pipeline_uses_operator_vocabulary() -> None:
+    files = [ROOT / "src" / "evolve" / "trace_analysis.py", ROOT / "src" / "evolve" / "feedback.py"]
+    files.extend((ROOT / "library" / "analyze").rglob("*.py"))
+    files.append(ROOT / "library" / "mutate" / "aevolve.py")
+
+    forbidden = re.compile(r"\bvariants?\b|selected_variant|Trace Analyzer", re.IGNORECASE)
+    failures = {
+        path.relative_to(ROOT).as_posix(): sorted(set(forbidden.findall(path.read_text())))
+        for path in files
+        if forbidden.search(path.read_text())
+    }
+    assert failures == {}
 
 
 def test_license_metadata_and_notice_are_consistent() -> None:
@@ -248,8 +367,12 @@ def test_required_public_repository_files_exist() -> None:
         ".github/ISSUE_TEMPLATE/bug_report.yml",
         ".github/ISSUE_TEMPLATE/feature_request.yml",
         ".github/ISSUE_TEMPLATE/config.yml",
+        "src/evolve/frozen/config.py",
+        "library/__init__.py",
     )
     assert [path for path in required if not (ROOT / path).is_file()] == []
+    stages = ("select", "rollout", "analyze", "mutate", "validate", "novelty", "gate", "record", "reflect")
+    assert [stage for stage in stages if (ROOT / "library" / stage / "_skeleton.py").exists()] == []
 
 
 def test_public_markdown_relative_links_resolve() -> None:

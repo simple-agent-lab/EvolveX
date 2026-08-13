@@ -13,9 +13,9 @@ class RolloutOperator:
 
 The result contains a summary and artifact paths.
 
-## Variants
+## Library operators
 
-| Variant | Behavior |
+| Operator | Behavior |
 | --- | --- |
 | `harbor` | run a bounded train batch through Harbor and normalize trajectories, verifier output, usage, and failures |
 | `parent_evaluation` | expose sanitized, certified evaluation evidence already attached to the selected parent |
@@ -27,14 +27,15 @@ The result contains a summary and artifact paths.
 ```yaml
 operators:
   rollout:
-    variant: harbor
-    budget_tasks: 10
-    task_sampling: generation_shuffle
-    n_concurrent: 4
-    agent_setup_timeout_multiplier: 1
-    verifier_timeout_multiplier: 1
-    max_retries: 1
+    operator: harbor
     timeout_s: 3600
+    config:
+      budget_tasks: 10
+      task_sampling: generation_shuffle
+      n_concurrent: 4
+      agent_setup_timeout_multiplier: 1
+      verifier_timeout_multiplier: 1
+      max_retries: 1
 ```
 
 Important keys:
@@ -51,12 +52,12 @@ Important keys:
   adapter;
 - `max_retries` and `timeout_s`: infrastructure retry and operator limits.
 
-`operators.rollout.path` is incompatible with a resolved frozen split because
+`operators.rollout.config.path` is incompatible with a resolved frozen split because
 it would bypass frozen dataset membership.
 
 ## Artifacts
 
-The Harbor variant writes normalized evidence such as:
+The Harbor operator writes normalized evidence such as:
 
 ```text
 runs/gen-N/rollout/summary.json
@@ -64,6 +65,6 @@ runs/gen-N/rollout/cases.json
 runs/harbor-rollouts/gen-N/
 ```
 
-`cases.json` is the method-neutral input to `trace_analyzer`. It includes task
+`cases.json` is the method-neutral input to `analyze`. It includes task
 identity, ordered model/tool events, verifier evidence, outcome, exception,
 usage, timing, and artifact inventory.

@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+import pytest
 import yaml
 from conftest import git, init_fixture_workspace, init_workspace, rows_by_genid, run_evolve
 
@@ -35,10 +36,10 @@ def _set_operator_config(workspace: Path, name: str, block: dict | None) -> None
     path.write_text(yaml.safe_dump(config, sort_keys=False))
 
 
-def test_operator_list_exposes_configured_capabilities(tmp_path: Path) -> None:
+def test_operator_active_exposes_configured_capabilities(tmp_path: Path) -> None:
     workspace, _evolve_home = init_workspace(tmp_path)
 
-    result = run_evolve("operator", "list", str(workspace), "--json")
+    result = run_evolve("operator", "active", str(workspace), "--json")
 
     assert result.returncode == 0, result.stderr
     entries = {entry["name"]: entry for entry in json.loads(result.stdout)}
@@ -48,10 +49,10 @@ def test_operator_list_exposes_configured_capabilities(tmp_path: Path) -> None:
         "name": "select",
         "required": True,
         "script": str((workspace / "operators/select.py").resolve()),
-        "variant": "greedy",
+        "operator": "greedy",
     }
     assert entries["analyze"]["required"] is False
-    assert entries["analyze"]["implementation"] == "trace_analyzer"
+    assert entries["analyze"]["implementation"] == "analyze"
     assert entries["gate"]["access"] == "finalize"
     assert entries["reflect"]["access"] == "driver"
 
@@ -77,6 +78,25 @@ def test_operator_run_invokes_select_and_retains_artifacts(tmp_path: Path) -> No
     assert summary["operator"] == "select"
     assert summary["status"] == "complete"
     assert json.loads((workspace / "runs/gen-1/parents.json").read_text()) == {"parents": ["0"]}
+
+
+@pytest.mark.parametrize("reserved", ["operator", "script", "timeout_s", "config"])
+def test_operator_run_rejects_framework_owned_config_overrides(tmp_path: Path, reserved: str) -> None:
+    workspace, _evolve_home = init_workspace(tmp_path)
+
+    result = run_evolve(
+        "operator",
+        "run",
+        str(workspace),
+        "select",
+        "--genid",
+        "1",
+        "--config",
+        json.dumps({reserved: "replacement"}),
+    )
+
+    assert result.returncode == 1
+    assert f"cannot replace implementation keys: {reserved}" in result.stderr
 
 
 def test_verify_detects_tampered_best_ever_cache(tmp_path: Path) -> None:
@@ -151,25 +171,26 @@ def test_operator_run_binds_candidate_checkout_to_parent(tmp_path: Path) -> None
     assert "git" in result.stderr.lower() or "workspace repository" in result.stderr
 
 
-def test_trace_analyzer_run_materializes_driver_equivalent_feedback(tmp_path: Path) -> None:
+def test_analyze_run_materializes_driver_equivalent_feedback(tmp_path: Path) -> None:
     workspace, evolve_home = init_workspace(tmp_path)
     _certify_baseline(workspace, evolve_home)
-    _set_operator_config(workspace, "trace_analyzer", {})
-    (workspace / "operators/trace_analyzer.py").write_text(
+    _set_operator_config(workspace, "analyze", {})
+    (workspace / "operators/analyze.py").write_text(
         """
 from evolve.frozen import sdk
-from evolve.frozen.interfaces import TraceAnalyzerOperator, TraceAnalyzerResult
+from evolve.frozen.config import Config
+from evolve.frozen.interfaces import AnalyzeOperator, AnalyzeResult
 
-class TestAnalyzer(TraceAnalyzerOperator):
+class TestAnalyzer(AnalyzeOperator):
     def analyze(self, checkout, ctx):
-        root = ctx.run_dir / "trace_analyzer"
+        root = ctx.run_dir / "analyze"
         (root / "evidence").mkdir(parents=True, exist_ok=True)
         (root / "feedback.md").write_text("failure-focused advice\\n")
         (root / "evidence" / "selected.md").write_text("selected trace\\n")
-        return TraceAnalyzerResult({"cases": 1}, ["trace_analyzer/evidence/selected.md"])
+        return AnalyzeResult({"cases": 1}, ["analyze/evidence/selected.md"])
 
 if __name__ == "__main__":
-    sdk.main(TestAnalyzer)
+    sdk.main(TestAnalyzer, config_schema=Config({}))
 """.lstrip()
     )
     rollout = run_evolve(
@@ -296,6 +317,7 @@ def test_select_runs_the_champion_operator_version(tmp_path: Path) -> None:
     (child / "operators/select.py").write_text(
         """
 from evolve.frozen import sdk
+from evolve.frozen.config import Config
 from evolve.frozen.interfaces import SelectOperator, SelectResult
 
 class ChampionSelect(SelectOperator):
@@ -304,7 +326,7 @@ class ChampionSelect(SelectOperator):
         return SelectResult(["0"])
 
 if __name__ == "__main__":
-    sdk.main(ChampionSelect)
+    sdk.main(ChampionSelect, config_schema=Config({}))
 """.lstrip()
     )
     validated = run_evolve(
@@ -534,7 +556,7 @@ def test_rerunning_a_stage_archives_downstream_outputs(tmp_path: Path) -> None:
     )
     assert first.returncode == 0, first.stderr
 
-    stale_analysis = workspace / "runs/gen-1/trace_analyzer"
+    stale_analysis = workspace / "runs/gen-1/analyze"
     stale_analysis.mkdir()
     (stale_analysis / "summary.json").write_text("{}\n")
     stale_feedback = workspace / "runs/gen-1/feedback"
@@ -558,6 +580,6 @@ def test_rerunning_a_stage_archives_downstream_outputs(tmp_path: Path) -> None:
     assert not stale_feedback.exists()
     attempts = workspace / "runs/gen-1/operator-attempts"
     assert (attempts / "rollout/attempt-1/rollout/summary.json").is_file()
-    assert (attempts / "trace_analyzer/attempt-1/trace_analyzer/summary.json").is_file()
-    assert (attempts / "trace_analyzer/attempt-1/feedback/index.md").is_file()
+    assert (attempts / "analyze/attempt-1/analyze/summary.json").is_file()
+    assert (attempts / "analyze/attempt-1/feedback/index.md").is_file()
     assert (workspace / "runs/gen-1/rollout/summary.json").is_file()

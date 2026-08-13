@@ -50,6 +50,71 @@ def test_harbor_evaluator_uses_locked_workspace_runtime() -> None:
     assert '"$PWD/.evolve/launch_splits.py"' in text
 
 
+def test_harbor_score_parser_uses_framework_python(tmp_path: Path) -> None:
+    evaluator = tmp_path / "evaluator"
+    evaluator.mkdir()
+    _write_executable(evaluator / "eval.sh", _eval_sh("harbor", "fixture"))
+    (evaluator / "eval.env").write_text(
+        _eval_env(
+            "experiment",
+            "fixture",
+            n_concurrent=1,
+            tasks_per_round=1,
+            trials=1,
+            partial_floor=0.8,
+            agent="custom:Agent",
+        )
+    )
+    (evaluator / "splits.json").write_text(json.dumps({"resolved": False}))
+    _write_evaluator_helpers(evaluator)
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    _write_fake_uv(fake_bin)
+    _write_executable(
+        fake_bin / "python3",
+        "#!/bin/sh\n"
+        'if [ "${1:-}" = evaluator/parse_score.py ]; then\n'
+        "  printf 'system python is incompatible\\n' >&2\n"
+        "  exit 97\n"
+        "fi\n"
+        'exec "$EVOLVE_FRAMEWORK_PYTHON" "$@"\n',
+    )
+    _write_executable(
+        fake_bin / "harbor",
+        "#!/bin/sh\n"
+        "jobs_dir=\n"
+        'while [ "$#" -gt 0 ]; do\n'
+        '  if [ "$1" = --jobs-dir ]; then shift; jobs_dir=$1; fi\n'
+        "  shift || true\n"
+        "done\n"
+        'mkdir -p "$jobs_dir/trial"\n'
+        'printf \'%s\\n\' \'{"task_name":"task-a","trial_name":"trial","verifier_result":{"rewards":{"reward":1}}}\' > "$jobs_dir/trial/result.json"\n',
+    )
+    run_dir = tmp_path / "run"
+    env = {
+        **os.environ,
+        "HOME": str(tmp_path / "home"),
+        "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
+        "EVOLVE_RUN_DIR": str(run_dir),
+        "EVOLVE_ATTEMPT_ID": "parser-runtime-test",
+        "EVOLVE_FRAMEWORK_PYTHON": sys.executable,
+        "EVOLVE_CANDIDATE_RUNTIME_ENV_JSON": "{}",
+        "EVOLVE_CANDIDATE_RUNTIME_MOUNTS_JSON": "[]",
+    }
+
+    result = subprocess.run(
+        [str(evaluator / "eval.sh")],
+        cwd=tmp_path,
+        env=env,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert (run_dir / "status").read_text() == "complete\n"
+
+
 def test_local_execution_runtime_refuses_implicit_docker_fallback(tmp_path: Path) -> None:
     evaluator = tmp_path / "evaluator"
     run_dir = tmp_path / "run"
