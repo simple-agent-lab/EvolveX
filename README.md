@@ -1,15 +1,21 @@
 <p align="center">
-  <img src="docs/rsihub-lockup.svg" width="340" alt="RSIHub: the ring mark beside the RSIHub wordmark.">
+  <img src="docs/rsihub-lockup.svg" width="520" alt="RSIHub: the ring mark beside the RSIHub wordmark.">
 </p>
+
+<br>
 
 <p align="center">
   <strong>Build agents that improve — and keep the evidence.</strong>
 </p>
 
+<br>
+
 <p align="center">
   A file-based evolution framework for evaluator-driven learning, reproducible candidate
   lineage, and controllable modification.
 </p>
+
+<br>
 
 <p align="center">
   <a href="LICENSE">
@@ -23,6 +29,8 @@
   </a>
 </p>
 
+<br>
+
 <p align="center">
   <a href="#what-rsihub-does">What RSIHub Does</a> ·
   <a href="#how-rsihub-works">How It Works</a> ·
@@ -32,6 +40,8 @@
   <a href="#quick-start">Quick Start</a> ·
   <a href="#documentation">Documentation</a>
 </p>
+
+<br>
 
 <p align="center">
   <a href="docs/assets/benchmark-results.svg?v=17c2721">
