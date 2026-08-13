@@ -47,8 +47,8 @@
 </p>
 
 <p align="center">
-  <a href="docs/assets/benchmark-results.svg?v=green-palette-2">
-    <img src="docs/assets/benchmark-results.svg?v=green-palette-2" alt="Terminal Bench 2 and Tau cubed Banking results for AHE, Hyperagents, A-Evolve, and GEPA with MiniSWE and Codex target agents. Each stacked bar labels the seed score inside the dark section and the best score plus improvement above the light section.">
+  <a href="docs/assets/benchmark-results.svg?v=green-palette-3">
+    <img src="docs/assets/benchmark-results.svg?v=green-palette-3" alt="Terminal Bench 2 and Tau cubed Banking results for AHE, Hyperagents, A-Evolve, and GEPA with MiniSWE and Codex target agents. Each stacked bar labels the seed score inside the dark section and the best score plus improvement above the light section.">
   </a>
 </p>
 
