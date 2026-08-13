@@ -150,9 +150,9 @@ supported recipe values, and launcher overrides.
 
 Scores are percentages shown as **seed → evolved agent**. The train score is measured on
 the recipe's training split; the full benchmark score is measured across the
-complete benchmark. Parenthesized changes use the chart's trend colors: purple
-for improvement, amber for no change, and red for regression. All runs use a
-GPT-5.4-high target model and a GPT-5.4-xhigh Codex meta-agent.
+complete benchmark. Parenthesized changes are purple for improvement, amber for
+no change, and red for regression. All runs use a GPT-5.4-high target model and
+a GPT-5.4-xhigh Codex meta-agent.
 
 <table width="100%">
   <thead>
