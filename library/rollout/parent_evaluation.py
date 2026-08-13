@@ -13,7 +13,16 @@ from pathlib import Path, PurePosixPath
 from typing import Any, cast
 
 from evolve.frozen import sdk
+from evolve.frozen.config import Config, integer, number
 from evolve.frozen.interfaces import ArchiveView, OperatorContext, RolloutOperator, RolloutResult
+
+CONFIG = Config(
+    {
+        "field_limit": integer(default=2000, minimum=1),
+        "pass_threshold": number(default=1.0),
+    }
+)
+
 
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 _CERTIFIED_REPLAY_ARTIFACTS = (
@@ -47,17 +56,17 @@ class _ArtifactSnapshot:
 
 
 def _load_collect_cases(checkout: Path) -> Callable[..., list[dict[str, Any]]]:
-    path = checkout / "library" / "rollout" / "harbor.py"
+    path = checkout / "library" / "_shared" / "harbor" / "evidence.py"
     if not path.is_file():
-        raise SystemExit(f"vendored Harbor rollout is missing: {path}")
+        raise SystemExit(f"vendored Harbor runtime is missing: {path}")
     spec = importlib.util.spec_from_file_location("evolve_parent_evaluation_harbor", path)
     if spec is None or spec.loader is None:
-        raise SystemExit(f"cannot load vendored Harbor rollout: {path}")
+        raise SystemExit(f"cannot load vendored Harbor runtime: {path}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     collector = getattr(module, "collect_cases", None)
     if not callable(collector):
-        raise SystemExit("vendored Harbor rollout has no collect_cases helper")
+        raise SystemExit("vendored Harbor runtime has no collect_cases helper")
     return collector
 
 
@@ -395,4 +404,4 @@ EvaluationReplayRollout = ParentEvaluationRollout
 
 
 if __name__ == "__main__":
-    sdk.main(ParentEvaluationRollout)
+    sdk.main(ParentEvaluationRollout, config_schema=CONFIG)

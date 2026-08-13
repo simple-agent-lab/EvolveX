@@ -35,13 +35,13 @@ def _checkout(tmp_path: Path) -> tuple[Path, Path]:
     run_dir = checkout / "runs" / "gen-1"
     (checkout / "operators").mkdir(parents=True)
     (checkout / "target" / "pkg").mkdir(parents=True)
-    (checkout / "operators" / "meta_agent.py").write_text("VALUE = 1\n")
+    (checkout / "operators" / "mutate.py").write_text("VALUE = 1\n")
     (checkout / "target" / "agent.py").write_text("def run():\n    return 'ok'\n")
     (checkout / "target" / "pkg" / "helper.py").write_text("HELPER = True\n")
     return checkout, run_dir
 
 
-def test_hyperagents_validator_accepts_meta_agent_and_target_python(tmp_path: Path) -> None:
+def test_hyperagents_validator_accepts_mutate_and_target_python(tmp_path: Path) -> None:
     module = _load_module(
         "hyperagents_validate_under_test",
         ROOT / "library" / "validate" / "hyperagents.py",
@@ -51,9 +51,9 @@ def test_hyperagents_validator_accepts_meta_agent_and_target_python(tmp_path: Pa
     result = module.HyperAgentsValidate().validate(checkout, _ctx(checkout, run_dir))
 
     assert result.accept is True
-    assert result.reason == "meta-agent and task-agent Python compile"
+    assert result.reason == "mutate and task-agent Python compile"
     assert result.artifacts == ["validate/compile.log"]
-    assert "PASS operators/meta_agent.py" in (run_dir / "validate" / "compile.log").read_text()
+    assert "PASS operators/mutate.py" in (run_dir / "validate" / "compile.log").read_text()
     assert "PASS target/agent.py" in (run_dir / "validate" / "compile.log").read_text()
 
 

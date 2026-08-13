@@ -13,35 +13,37 @@ surface:
     - target/**
   exclude: []
 operators:
-  select: {variant: pareto, seed: 0, timeout_s: 600}
-  rollout: {variant: harbor, budget_tasks: 10, task_sampling: generation_shuffle, n_concurrent: 4, agent_setup_timeout_multiplier: 1, max_retries: 1, timeout_s: 3600}
-  trace_analyzer:
-    variant: gepa
-    components:
-      system_prompt: target/prompt.md
-      task_execution_skill: target/skills/task-execution
-    max_cases: 10
-    field_limit: 4000
+  select: {operator: pareto, timeout_s: 600, config: {seed: 0}}
+  rollout: {operator: harbor, timeout_s: 3600, config: {budget_tasks: 10, task_sampling: generation_shuffle, n_concurrent: 4, agent_setup_timeout_multiplier: 1, max_retries: 1}}
+  analyze:
+    operator: gepa
     timeout_s: 600
-  meta_agent:
-    variant: gepa
-    expose_gate_data: false
-    runner: harbor
-    agent: codex
-    model: gpt-5.4
-    environment: docker
-    image: evolve-meta-agent-codex:20260805-codex0145
-    editable_roots: [target]
-    components:
-      system_prompt: target/prompt.md
-      task_execution_skill: target/skills/task-execution
-    component_strategy: round_robin
-    max_examples: 10
-    max_retries: 1
+    config:
+      components:
+        system_prompt: target/prompt.md
+        task_execution_skill: target/skills/task-execution
+      max_cases: 10
+      field_limit: 4000
+  mutate:
+    operator: gepa
     timeout_s: 3600
-  validate: {variant: minibatch_improvement, criterion: strict, n_concurrent: 4, agent_setup_timeout_multiplier: 1, max_retries: 1, timeout_s: 3600}
-  gate: {variant: parent_eligible, timeout_s: 600}
-  record: {variant: gepa, timeout_s: 600}
+    config:
+      expose_gate_data: false
+      runner: harbor
+      agent: codex
+      model: gpt-5.4
+      environment: docker
+      image: evolve-mutate-codex:20260805-codex0145
+      editable_roots: [target]
+      components:
+        system_prompt: target/prompt.md
+        task_execution_skill: target/skills/task-execution
+      component_strategy: round_robin
+      max_examples: 10
+      max_retries: 1
+  validate: {operator: minibatch_improvement, timeout_s: 3600, config: {criterion: strict, n_concurrent: 4, agent_setup_timeout_multiplier: 1, max_retries: 1}}
+  gate: {operator: parent_eligible, timeout_s: 600, config: {}}
+  record: {operator: gepa, timeout_s: 600, config: {}}
   timeout_s: 600
 evaluator:
   engine: harbor

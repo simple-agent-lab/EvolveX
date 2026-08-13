@@ -17,7 +17,7 @@ def test_aevolve_recipe_initializes_builtin_codex_workspace_contract(tmp_path: P
     config = (workspace / "evolve.yaml").read_text()
     assert "seed: builtin-codex" in config
     assert "agent: target.agent:HarborAgent" in config
-    assert "variant: trajectory_only" in config
+    assert "operator: trajectory_only" in config
     assert "trajectory_only: true" in config
     assert "expose_gate_data: false" in config
     assert "runner: harbor" in config
@@ -25,9 +25,9 @@ def test_aevolve_recipe_initializes_builtin_codex_workspace_contract(tmp_path: P
     assert "prompt_path: target/prompt.md" in config
     assert (workspace / "target" / "prompt.md").is_file()
     assert (workspace / "target" / "skills" / "task-execution" / "SKILL.md").is_file()
-    operator = (workspace / "operators" / "meta_agent.py").read_text()
+    operator = (workspace / "operators" / "mutate.py").read_text()
     assert "A-Evolve Workspace Improvement" in operator
-    assert "class AEvolveMetaAgent" in operator
-    analyzer = (workspace / "operators" / "trace_analyzer.py").read_text()
-    assert "source=library/trace_analyzer/trajectory_only.py" in analyzer
+    assert "class AEvolveMutate" in operator
+    analyzer = (workspace / "operators" / "analyze.py").read_text()
+    assert "source=library/analyze/trajectory_only.py" in analyzer
     assert "class TrajectoryOnly" in analyzer

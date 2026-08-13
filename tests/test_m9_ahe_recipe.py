@@ -35,16 +35,16 @@ def test_ahe_recipe_initializes_harbor_miniswe_composition(tmp_path: Path) -> No
     assert (workspace / "target/uv.lock").is_file()
     assert surface_lists(workspace) == (["target/**"], [])
     assert "source=library/rollout/parent_evaluation.py" in (workspace / "operators/rollout.py").read_text()
-    assert (workspace / "library/rollout/harbor.py").is_file()
-    assert "source=library/trace_analyzer/ahe.py" in (workspace / "operators/trace_analyzer.py").read_text()
-    assert "source=library/meta_agent/ahe.py" in (workspace / "operators/meta_agent.py").read_text()
+    assert not (workspace / "library/rollout/harbor.py").exists()
+    assert "source=library/analyze/ahe.py" in (workspace / "operators/analyze.py").read_text()
+    assert "source=library/mutate/ahe.py" in (workspace / "operators/mutate.py").read_text()
     assert "source=library/select/ahe_latest.py" in (workspace / "operators/select.py").read_text()
     assert "source=library/gate/ahe_artifact_valid.py" in (workspace / "operators/gate.py").read_text()
     for relative in (
-        "library/meta_agent/runners/__init__.py",
-        "library/meta_agent/runners/local.py",
-        "library/meta_agent/runners/harbor.py",
-        "library/meta_agent/support/evidence.py",
+        "library/_shared/runners/__init__.py",
+        "library/_shared/runners/local.py",
+        "library/_shared/runners/harbor.py",
+        "library/mutate/_support/evidence.py",
     ):
         assert (workspace / relative).is_file(), relative
     assert (workspace / ".evolve/evolve/integrations/harbor/codex_candidate.py").is_file()
@@ -52,7 +52,7 @@ def test_ahe_recipe_initializes_harbor_miniswe_composition(tmp_path: Path) -> No
     assert (workspace / ".evolve/evolve/integrations/harbor/miniswe_task_file.py").is_file()
     assert not (workspace / "evolve_harbor_adapter").exists()
     assert not (workspace / "evolve_harbor_agent").exists()
-    assert not (workspace / "library/meta_agent/support/ahe_manifest.py").exists()
+    assert not (workspace / "library/mutate/_support/ahe_manifest.py").exists()
     assert json.loads((workspace / ".evolve-components.json").read_text())["integrations"] == [
         "evolve.integrations.harbor.miniswe_candidate",
         "evolve.integrations.harbor.miniswe_task_file",
@@ -61,27 +61,30 @@ def test_ahe_recipe_initializes_harbor_miniswe_composition(tmp_path: Path) -> No
         "MINISWE_COST_LIMIT=0\nMINISWE_ENV_TIMEOUT=30\nMINISWE_REASONING_EFFORT=high\nMINISWE_STEP_LIMIT=100\n"
     )
     config = (workspace / "evolve.yaml").read_text()
-    assert "variant: ahe" in config
+    assert "operator: ahe" in config
     assert "runner: harbor" in config
     assert "expose_gate_data: false" in config
     assert "agent: evolve.integrations.harbor.miniswe_task_file:InstalledMiniSweAgent" in config
     assert "editable_roots:" in config
     operators = operator_blocks(workspace)
-    assert "agent_env" not in operators["meta_agent"]
-    assert {name: operator_timeout(operators, name) for name in ("rollout", "trace_analyzer", "meta_agent")} == {
+    assert "agent_env" not in operators["mutate"]["config"]
+    assert {name: operator_timeout(operators, name) for name in ("rollout", "analyze", "mutate")} == {
         "rollout": 600,
-        "trace_analyzer": 3600,
-        "meta_agent": 3600,
+        "analyze": 3600,
+        "mutate": 3600,
     }
-    assert operators["trace_analyzer"] == {
-        "variant": "ahe",
-        "max_tasks": 30,
-        "max_concurrent": 10,
-        "timeout_per_task": 600,
-        "retry_attempts": 1,
-        "debugger_agent_kwargs": {"reasoning_effort": "high", "max_tokens": 64000},
-        "field_limit": 2000,
+    assert operators["analyze"] == {
+        "operator": "ahe",
         "timeout_s": 3600,
+        "config": {
+            "max_tasks": 30,
+            "max_concurrent": 10,
+            "timeout_per_task": 600.0,
+            "retry_attempts": 1,
+            "debugger_agent_kwargs": {"reasoning_effort": "high", "max_tokens": 64000},
+            "field_limit": 2000,
+            "pass_threshold": 1.0,
+        },
     }
     config = (workspace / "evolve.yaml").read_text()
     assert "budget_usd" not in config

@@ -13,11 +13,11 @@ surface:
     - target/**
   exclude: []
 operators:
-  select: {variant: greedy}
-  rollout: {variant: failure_focused, budget_tasks: 32}
-  meta_agent: {variant: hyperagents, runner: local, timeout_s: 3600}
-  gate: {variant: hillclimb}
-  record: {variant: jsonl}
+  select: {operator: greedy, config: {}}
+  rollout: {operator: failure_focused, config: {budget_tasks: 32}}
+  mutate: {operator: hyperagents, timeout_s: 3600, config: {runner: local}}
+  gate: {operator: hillclimb, config: {}}
+  record: {operator: jsonl, config: {}}
   timeout_s: 600
 evaluator:
   engine: harbor

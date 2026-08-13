@@ -1,3 +1,4 @@
+import copy
 import json
 import shutil
 import subprocess
@@ -85,15 +86,23 @@ def _versioned_candidate_seed(path: Path, *, locked: bool) -> Path:
 
 def _override_hill_target(monkeypatch, target: dict[str, object]) -> None:
     from evolve import workspace as workspace_module
+    from evolve.composition import ResolvedRecipe
 
-    default_config = workspace_module.default_config
+    resolve_builtin_recipe = workspace_module.resolve_builtin_recipe
 
-    def configured(recipe: str, experiment_id: str) -> dict[str, object]:
-        config = default_config(recipe, experiment_id)
+    def configured(recipe: str) -> ResolvedRecipe:
+        resolved = resolve_builtin_recipe(recipe)
+        config = copy.deepcopy(resolved.config)
         config["target"] = target.copy()
-        return config
+        return ResolvedRecipe(
+            resolved.name,
+            resolved.directory,
+            config,
+            resolved.operators,
+            resolved.warnings,
+        )
 
-    monkeypatch.setattr(workspace_module, "default_config", configured)
+    monkeypatch.setattr(workspace_module, "resolve_builtin_recipe", configured)
 
 
 def test_init_rejects_test_only_builtin_dummy_seed_before_creating_workspace(tmp_path: Path) -> None:
@@ -517,7 +526,7 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
         "NOTICE.rsihub",
         "operators/select.py",
         "operators/rollout.py",
-        "operators/meta_agent.py",
+        "operators/mutate.py",
         "operators/gate.py",
         "operators/record.py",
         "operators/engines/local.sh",
@@ -550,16 +559,27 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
         assert (workspace / relative_path).exists(), relative_path
     for method_card in ("a-evolve.md", "gepa.md", "ahe.md", "hyperagents.md"):
         assert (workspace / "skills/evolve-agent/references" / method_card).is_file()
-    for capability in (
-        "library/trace_analyzer/ahe.py",
-        "library/trace_analyzer/gepa.py",
+    for helper in (
+        "library/__init__.py",
+        "library/select/_config.py",
+        "library/mutate/_config.py",
+        "library/_shared/runners/local.py",
+        "library/mutate/_support/workspace.py",
+    ):
+        assert (workspace / helper).is_file(), helper
+    for unselected in (
+        "library/analyze/ahe.py",
+        "library/analyze/gepa.py",
+        "library/mutate/aevolve.py",
+        "library/mutate/hyperagents.py",
+        "library/rollout/harbor.py",
         "library/validate/minibatch_improvement.py",
     ):
-        assert (workspace / capability).is_file(), capability
+        assert not (workspace / unselected).exists(), unselected
     assert "artifacts/" in (workspace / ".gitignore").read_text().splitlines()
-    assert not (workspace / "operators" / "mutate.py").exists()
-    assert not (workspace / "operators" / "mutate.md").exists()
-    assert not (workspace / "operators" / "mutation_brief.md").exists()
+    assert not (workspace / "operators" / "meta_agent.py").exists()
+    assert not (workspace / "operators" / "meta_agent.md").exists()
+    assert not (workspace / "operators" / "meta_agent_brief.md").exists()
     assert not (workspace / "evolve_harbor_adapter").exists()
     assert not (workspace / "evolve_harbor_agent").exists()
     assert not (workspace / "operators" / "meta_agent.md").exists()
@@ -577,8 +597,9 @@ def test_init_scaffolds_hill_climb_workspace(tmp_path: Path) -> None:
     assert "tests/fixtures/seeds/dummy" in config
     assert "variant:" not in config
     assert "script:" not in config
-    assert "meta_agent:\n    runner: local\n    timeout_s: 3600" in config
-    assert "mutate:" not in config
+    assert "mutate:\n    timeout_s: 3600.0\n    config:" in config
+    assert "      runner: local" in config
+    assert "meta_agent:" not in config
     assert "- target/**" in config
     assert (workspace / ".evolve-protocol-version").read_text() == "1\n"
     upstream = json.loads((workspace / "target" / "UPSTREAM.json").read_text())
@@ -652,10 +673,10 @@ def test_init_binds_real_hyperagents_method_surface_and_operators(tmp_path: Path
     assert result.returncode == 0, result.stderr
     assert "score_child_prop" in (workspace / "operators/select.py").read_text()
     assert "ParentEvaluationRollout" in (workspace / "operators/rollout.py").read_text()
-    assert (workspace / "library/rollout/harbor.py").is_file()
-    assert "class TraceBrowser" in (workspace / "operators/trace_analyzer.py").read_text()
-    assert "variant: hyperagents" in (workspace / "operators/meta_agent.py").read_text()
-    assert "HyperAgents Self-Improvement" in (workspace / "operators/meta_agent.py").read_text()
+    assert not (workspace / "library/rollout/harbor.py").exists()
+    assert "class TraceBrowser" in (workspace / "operators/analyze.py").read_text()
+    assert "operator: hyperagents" in (workspace / "operators/mutate.py").read_text()
+    assert "HyperAgents Self-Improvement" in (workspace / "operators/mutate.py").read_text()
     assert "HyperAgentsValidate" in (workspace / "operators/validate.py").read_text()
     assert "HyperAgentsRecord" in (workspace / "operators/record.py").read_text()
     assert surface_lists(workspace) == (["target/**", "operators/**"], [])

@@ -20,6 +20,13 @@ def _replay_module():
     return module
 
 
+def _vendor_harbor_evidence(checkout: Path) -> Path:
+    vendored = checkout / "library" / "_shared" / "harbor" / "evidence.py"
+    vendored.parent.mkdir(parents=True, exist_ok=True)
+    vendored.write_bytes((ROOT / "library" / "_shared" / "harbor" / "evidence.py").read_bytes())
+    return vendored
+
+
 class _Archive:
     def __init__(self, rows: dict[str, dict]) -> None:
         self._rows = rows
@@ -155,9 +162,7 @@ def test_replay_keeps_certified_atif_as_workspace_relative_reference(tmp_path: P
     workspace = tmp_path / "workspace"
     _jobs, reference = _artifact(workspace)
     rows = {"3": {"genid": "3", "artifacts": reference, "score": 1.0}}
-    vendored = workspace / "checkout" / "library" / "rollout" / "harbor.py"
-    vendored.parent.mkdir(parents=True, exist_ok=True)
-    vendored.write_text((ROOT / "library" / "rollout" / "harbor.py").read_text())
+    _vendor_harbor_evidence(workspace / "checkout")
     monkeypatch.setattr(module, "ArchiveView", lambda _workspace: _Archive(rows))
     ctx = _context(workspace, parent="3")
 
@@ -309,9 +314,7 @@ def test_replay_merges_base_and_repair_artifacts_for_composite_evaluation(tmp_pa
 def test_replay_loads_collector_from_vendored_workspace_library(tmp_path: Path) -> None:
     module = _replay_module()
     checkout = tmp_path / "checkout"
-    vendored = checkout / "library" / "rollout" / "harbor.py"
-    vendored.parent.mkdir(parents=True)
-    vendored.write_text((ROOT / "library" / "rollout" / "harbor.py").read_text())
+    _vendor_harbor_evidence(checkout)
     jobs = tmp_path / "jobs"
     trial = jobs / "trial-a"
     trial.mkdir(parents=True)
@@ -513,9 +516,7 @@ def test_replay_collector_and_returned_paths_stay_in_persistent_certified_view(
     aggregate = jobs / "aggregate" / "result.json"
     aggregate.parent.mkdir()
     aggregate.write_text(json.dumps({"status": "complete"}))
-    vendored = workspace / "checkout" / "library" / "rollout" / "harbor.py"
-    vendored.parent.mkdir(parents=True)
-    vendored.write_text((ROOT / "library" / "rollout" / "harbor.py").read_text())
+    _vendor_harbor_evidence(workspace / "checkout")
     monkeypatch.setattr(module, "ArchiveView", lambda _workspace: _Archive({"3": {"artifacts": reference}}))
     ctx = _context(workspace, parent="3")
 

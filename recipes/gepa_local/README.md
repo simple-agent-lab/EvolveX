@@ -12,7 +12,7 @@ Swap the seed (`--seed`) and dataset (`--dataset`) to optimize your own
 artifact once the loop is familiar. The local environment executes with the
 current user and no isolation — use it only with tasks you trust.
 
-The meta-agent uses
+The mutate operator uses
 `evolve.integrations.harbor.local_auto_agent:LocalAutoAgent`. It discovers the
 first installed CLI in this order: Codex, Claude Code, Gemini CLI, OpenCode.
 Set `EVOLVE_LOCAL_AGENT=claude-code` (or another supported name) to override the
@@ -31,8 +31,9 @@ cd ws && ./evolve run . --max-generations 0
 ```
 
 Codex defaults to `gpt-5.4` in this recipe. For another CLI that requires an
-explicit model, set `operators.meta_agent.model` in `evolve.yaml`, or provide a
-per-agent entry under `operators.meta_agent.agent_kwargs.model_by_agent`.
+explicit model, set `operators.mutate.config.model` in `evolve.yaml`, or
+provide a per-agent entry under
+`operators.mutate.config.agent_kwargs.model_by_agent`.
 
 ## Task directory checklist
 

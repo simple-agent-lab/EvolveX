@@ -15,9 +15,9 @@ class SelectOperator:
 The result contains parent generation IDs. A selector must use valid archive
 parents; it must not invent a generation or select an ineligible row.
 
-## Variants
+## Library operators
 
-| Variant | Selection policy |
+| Operator | Selection policy |
 | --- | --- |
 | `greedy` | highest-scoring valid parent |
 | `newest` | newest valid parent |
@@ -32,19 +32,20 @@ parents; it must not invent a generation or select an ineligible row.
 ```yaml
 operators:
   select:
-    variant: greedy
+    operator: greedy
     timeout_s: 600
+    config: {}
 ```
 
 Stochastic selectors use the experiment/operator seed so a frozen workspace can
-reproduce their decision process. Method-specific variants may write selection
+reproduce their decision process. Method-specific operators may write selection
 diagnostics; for example, `pareto` writes:
 
 ```text
 runs/gen-N/select/pareto.json
 ```
 
-## Choosing a variant
+## Choosing an operator
 
 - Use `greedy` for a simple hill-climbing baseline.
 - Use `ahe_latest` when artifact-valid iteration matters more than current
@@ -52,4 +53,3 @@ runs/gen-N/select/pareto.json
 - Use `pareto` when per-task coverage defines the population.
 - Use `score_child_prop` when high-scoring parents should be favored without
   repeatedly expanding the same lineage.
-

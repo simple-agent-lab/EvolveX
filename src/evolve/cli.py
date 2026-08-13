@@ -14,6 +14,7 @@ from dotenv import dotenv_values
 
 from .archive import archive_path, merged_rows, verify_integrity
 from .candidate.smoke import run_candidate_smoke
+from .composition.cli import build_recipe_app
 from .config import DEFAULT_RECIPE, RECIPE_NAMES, experiment_int
 from .doctor import DoctorProfile, run_doctor
 from .driver import RunOptions
@@ -71,6 +72,7 @@ def _guard(fn):
     return wrapper
 
 
+app.add_typer(build_recipe_app(_guard), name="recipe")
 attach_orchestration_commands(app, _guard, _workspace_environment, _enable_live_output)
 
 

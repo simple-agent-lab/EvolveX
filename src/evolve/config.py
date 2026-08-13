@@ -5,7 +5,7 @@ from collections.abc import Mapping
 from importlib import resources
 from importlib.resources.abc import Traversable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 
@@ -99,11 +99,11 @@ DEFAULT_RECIPE = "gepa"
 
 
 def default_config(recipe: str, experiment_id: str) -> dict[str, Any]:
-    if recipe not in RECIPE_NAMES:
-        raise ValueError(f"unsupported recipe: {recipe}")
-    config = _read_config_file(recipe_root() / recipe / "evolve.yaml")
-    config = copy.deepcopy(config)
-    config["experiment"]["id"] = experiment_id
+    from .composition import resolve_builtin_recipe
+
+    config = copy.deepcopy(resolve_builtin_recipe(recipe).config)
+    experiment = cast("dict[str, Any]", config["experiment"])
+    experiment["id"] = experiment_id
     return config
 
 
@@ -135,6 +135,16 @@ def surface_lists(workspace: Path) -> tuple[list[str], list[str]]:
 
 def operator_blocks(workspace: Path) -> dict[str, Any]:
     return _read_section(workspace, "operators")
+
+
+def operator_runtime_config(operators: Mapping[str, object], stage: str) -> dict[str, object]:
+    block = operators.get(stage)
+    if not isinstance(block, Mapping):
+        raise ValueError(f"operators.{stage} is not configured")
+    config = block.get("config", {})
+    if not isinstance(config, Mapping):
+        raise ValueError(f"operators.{stage}.config must be a mapping")
+    return {str(key): value for key, value in config.items()}
 
 
 def evaluator_values(workspace: Path) -> dict[str, Any]:

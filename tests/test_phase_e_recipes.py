@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from evolve.composition import resolve_builtin_recipe
 from evolve.config import RECIPE_NAMES, load_config
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,8 +19,8 @@ SUPPORTED_RECIPES = {
 UV_SOURCE_RECIPES = {"ahe", "hill_climb", "hyperagents"}
 MAIN_RECIPES = SUPPORTED_RECIPES - {"gepa_local"}
 TERMINAL_BENCH_DATASET = "terminal-bench-2-30-v1"
-CODEX_IMAGE = "evolve-meta-agent-codex:20260805-codex0145"
-MINISWE_IMAGE = "evolve-meta-agent-app:20260724-tools-mswe245"
+CODEX_IMAGE = "evolve-mutate-codex:20260805-codex0145"
+MINISWE_IMAGE = "evolve-mutate-app:20260724-tools-mswe245"
 
 
 def _config(name: str) -> str:
@@ -30,12 +31,16 @@ def _parsed_config(name: str) -> dict[str, object]:
     return load_config(RECIPES / name / "evolve.yaml")
 
 
-def test_main_recipes_share_terminal_bench_and_explicit_meta_agent_images() -> None:
+def _operator_config(name: str, stage: str) -> dict[str, object]:
+    return resolve_builtin_recipe(name).operators[stage].config
+
+
+def test_main_recipes_share_terminal_bench_and_explicit_mutate_images() -> None:
     for name in MAIN_RECIPES:
         config = _parsed_config(name)
         assert config["evaluator"]["dataset"] == TERMINAL_BENCH_DATASET
         expected_image = MINISWE_IMAGE if name in {"ahe", "hyperagents"} else CODEX_IMAGE
-        assert config["operators"]["meta_agent"]["image"] == expected_image
+        assert _operator_config(name, "mutate")["image"] == expected_image
 
 
 def test_all_recipes_are_recipe_artifacts_only() -> None:
@@ -66,191 +71,127 @@ def test_all_recipes_are_recipe_artifacts_only() -> None:
         assert top_level_sections == expected
 
 
-def test_supported_recipes_use_harbor_and_method_meta_agent() -> None:
+def test_supported_recipes_use_harbor_and_method_mutate() -> None:
+    expected_operators = {
+        "aevolve": {
+            "select": "greedy",
+            "rollout": "harbor",
+            "analyze": "trajectory_only",
+            "mutate": "aevolve",
+            "gate": "hillclimb",
+            "record": "jsonl",
+        },
+        "ahe": {
+            "select": "ahe_latest",
+            "rollout": "parent_evaluation",
+            "analyze": "ahe",
+            "mutate": "ahe",
+            "gate": "ahe_artifact_valid",
+            "record": "jsonl",
+        },
+        "ahe_codex": {
+            "select": "ahe_latest",
+            "rollout": "parent_evaluation",
+            "analyze": "ahe",
+            "mutate": "ahe",
+            "gate": "ahe_artifact_valid",
+            "record": "jsonl",
+        },
+        "gepa": {
+            "select": "pareto",
+            "rollout": "harbor",
+            "analyze": "gepa",
+            "mutate": "gepa",
+            "validate": "minibatch_improvement",
+            "gate": "parent_eligible",
+            "record": "gepa",
+        },
+        "gepa_local": {
+            "select": "pareto",
+            "rollout": "harbor",
+            "analyze": "gepa",
+            "mutate": "gepa",
+            "validate": "minibatch_improvement",
+            "gate": "parent_eligible",
+            "record": "gepa",
+        },
+        "hill_climb": {
+            "select": "greedy",
+            "rollout": "harbor",
+            "analyze": "failure_patterns",
+            "mutate": "hyperagents",
+            "gate": "hillclimb",
+            "record": "jsonl",
+        },
+        "hill_climb_codex": {
+            "select": "greedy",
+            "rollout": "harbor",
+            "analyze": "failure_patterns",
+            "mutate": "hyperagents",
+            "gate": "hillclimb",
+            "record": "jsonl",
+        },
+        "hyperagents": {
+            "select": "score_child_prop",
+            "rollout": "parent_evaluation",
+            "analyze": "trace_browser",
+            "mutate": "hyperagents",
+            "validate": "hyperagents",
+            "gate": "parent_eligible",
+            "record": "hyperagents",
+        },
+        "hyperagents_codex": {
+            "select": "score_child_prop",
+            "rollout": "parent_evaluation",
+            "analyze": "trace_browser",
+            "mutate": "hyperagents",
+            "validate": "hyperagents",
+            "gate": "parent_eligible",
+            "record": "hyperagents",
+        },
+    }
     for name in SUPPORTED_RECIPES:
-        config = _config(name)
-        assert "engine: harbor" in config
-        assert "target/**" in config
-        assert "target/agent.py" not in config
-        assert "tools_dir:" not in config
-        assert "evolve_tools:" not in config
+        resolved = resolve_builtin_recipe(name)
+        config = resolved.config
+        assert config["evaluator"]["engine"] == "harbor"
+        assert "target/**" in config["surface"]["include"]
+        assert {stage: binding.name for stage, binding in resolved.operators.items()} == expected_operators[name]
+        mutate = resolved.operators["mutate"].config
+        assert "evolve_tools" not in mutate
         if name == "aevolve":
-            assert f"dataset: {TERMINAL_BENCH_DATASET}" in config
-            assert "seed: builtin-codex" in config
-            assert "rollout: {variant: harbor" in config
-            assert "trace_analyzer: {variant: trajectory_only" in config
-            assert "trajectory_only: true" in config
-            assert "expose_gate_data: false" in config
-            assert "variant: aevolve" in config
-            assert "runner: harbor" in config
-            assert "agent: codex" in config
-            assert "editable_roots: [target]" in config
-            assert "evolve_prompts: true" in config
-            assert "evolve_skills: true" in config
-            assert "evolve_memory: false" in config
-            assert "agent: target.agent:HarborAgent" in config
+            assert config["target"]["seed"] == "builtin-codex"
+            assert mutate["trajectory_only"] is True
+            assert mutate["evolve_prompts"] is True
+            assert mutate["evolve_skills"] is True
+            assert mutate["evolve_memory"] is False
         elif name == "gepa":
-            assert f"dataset: {TERMINAL_BENCH_DATASET}" in config
-            assert "seed: builtin-codex" in config
-            assert "select: {variant: pareto" in config
-            assert "rollout: {variant: harbor" in config
-            assert "task_sampling: generation_shuffle" in config
-            assert "variant: gepa" in config
-            assert "task_execution_skill: target/skills/task-execution\n" in config
-            assert "task_execution_skill: target/skills/task-execution/SKILL.md" not in config
-            assert "expose_gate_data: false" in config
-            assert "variant: minibatch_improvement" in config
-            assert "criterion: strict" in config
-            assert "runner: harbor" in config
-            assert "agent: codex" in config
-            assert "editable_roots: [target]" in config
-            assert "agent: target.agent:HarborAgent" in config
-            assert "record: {variant: gepa" in config
+            assert resolved.operators["rollout"].config["task_sampling"] == "generation_shuffle"
+            assert resolved.operators["analyze"].config["components"] == {
+                "system_prompt": ["target/prompt.md"],
+                "task_execution_skill": ["target/skills/task-execution"],
+            }
+            assert resolved.operators["validate"].config["criterion"] == "strict"
         elif name == "gepa_local":
-            assert "seed: builtin-local-smoke" in config
-            assert "select: {variant: pareto" in config
-            assert "variant: minibatch_improvement" in config
-            assert "criterion: non_decreasing" in config
-            assert "expose_gate_data: false" in config
-            assert "runner: harbor" in config
-            assert "agent: evolve.integrations.harbor.local_auto_agent:LocalAutoAgent" in config
-            assert "agent: target.agent:HarborAgent" in config
-            assert "record: {variant: gepa" in config
-            assert config.count('environment: "evolve.harbor_local:LocalEnvironment"') == 4
-            assert "environment: docker" not in config
-            assert "image:" not in config
-        elif name == "ahe":
-            assert "max_generations: 10" in config
-            assert f"dataset: {TERMINAL_BENCH_DATASET}" in config
-            assert "seed: https://github.com/SWE-agent/mini-swe-agent.git" in config
-            assert "revision: 388da74aad620a384ab47669b17c52133e30e7c3" in config
-            assert "generate_lock: true" in config
-            assert "rollout: {variant: parent_evaluation" in config
-            assert "trace_analyzer: {variant: ahe" in config
-            assert "meta_agent: {variant: ahe, runner: harbor" in config
-            assert "expose_gate_data: false" in config
-            assert "select: {variant: ahe_latest" in config
-            assert "gate: {variant: ahe_artifact_valid" in config
-            assert "max_tasks: 30" in config
-            assert "max_cases" not in config
-            assert "budget_usd" not in config
-            assert "agent: evolve.integrations.harbor.miniswe_task_file:InstalledMiniSweAgent" in config
-            assert "editable_roots: [target]" in config
-            assert "max_retries: 1" in config
-            assert "agent: evolve.integrations.harbor.miniswe_candidate:CandidateMiniSweAgent" in config
-            assert "image: evolve-meta-agent-app:20260724-tools-mswe245" in config
-            assert "task_scope: full" in config
-            assert "evaluation_split: train" in config
-            assert "tasks_per_round: 30" in config
-            assert "repetitions: 1" in config
-            assert "n_concurrent: 10" in config
-            assert "\n  split:" not in config
-            assert "\n  anchor:" not in config
-        elif name == "ahe_codex":
-            assert "max_generations: 10" in config
-            assert f"dataset: {TERMINAL_BENCH_DATASET}" in config
-            assert "seed: builtin-codex" in config
-            assert "rollout: {variant: parent_evaluation" in config
-            assert "trace_analyzer: {variant: ahe" in config
-            assert "meta_agent: {variant: ahe, runner: harbor" in config
-            assert "expose_gate_data: false" in config
-            assert "select: {variant: ahe_latest" in config
-            assert "gate: {variant: ahe_artifact_valid" in config
-            assert "max_tasks: 30" in config
-            assert "max_cases" not in config
-            assert "budget_usd" not in config
-            assert "agent: codex" in config
-            assert "editable_roots: [target]" in config
-            assert "max_retries: 1" in config
-            assert "agent: target.agent:HarborAgent" in config
-            assert "task_scope: full" in config
-            assert "evaluation_split: train" in config
-            assert "tasks_per_round: 30" in config
-            assert "repetitions: 1" in config
-            assert "n_concurrent: 5" in config
-            assert "\n  split:" not in config
-            assert "\n  anchor:" not in config
-        elif name == "hyperagents":
-            assert "max_generations: 10" in config
-            assert f"dataset: {TERMINAL_BENCH_DATASET}" in config
-            assert "seed: https://github.com/SWE-agent/mini-swe-agent.git" in config
-            assert "revision: 388da74aad620a384ab47669b17c52133e30e7c3" in config
-            assert "generate_lock: true" in config
-            assert "    - operators/**" in config
-            assert "    - operators/meta_agent.py" not in config
-            assert "select: {variant: score_child_prop" in config
-            assert "rollout: {variant: parent_evaluation" in config
-            assert "trace_analyzer: {variant: trace_browser" in config
-            assert "meta_agent: {variant: hyperagents" in config
-            assert "expose_gate_data: false" in config
-            assert "runner: harbor" in config
-            assert "agent: evolve.integrations.harbor.miniswe_task_file:InstalledMiniSweAgent" in config
-            assert "editable_roots: [target, operators]" in config
-            assert "max_retries: 1" in config
-            assert "validate: {variant: hyperagents" in config
-            assert "gate: {variant: parent_eligible}" in config
-            assert "record: {variant: hyperagents}" in config
-            assert "image: evolve-meta-agent-app:20260724-tools-mswe245" in config
-            assert "task_scope: full" in config
-            assert "evaluation_split: train" in config
-            assert "tasks_per_round: 30" in config
-            assert "repetitions: 1" in config
-            assert "n_concurrent: 10" in config
-            assert "\n  split:" not in config
-            assert "\n  anchor:" not in config
-            assert "budget_usd" not in config
-        elif name == "hyperagents_codex":
-            assert "max_generations: 10" in config
-            assert f"dataset: {TERMINAL_BENCH_DATASET}" in config
-            assert "seed: builtin-codex" in config
-            assert "    - operators/**" in config
-            assert "select: {variant: score_child_prop" in config
-            assert "rollout: {variant: parent_evaluation" in config
-            assert "trace_analyzer: {variant: trace_browser" in config
-            assert "meta_agent: {variant: hyperagents" in config
-            assert "agent: codex" in config
-            assert "editable_roots: [target, operators]" in config
-            assert "validate: {variant: hyperagents" in config
-            assert "gate: {variant: parent_eligible}" in config
-            assert "record: {variant: hyperagents}" in config
-            assert "agent: target.agent:HarborAgent" in config
-            assert "image: evolve-meta-agent-codex:20260805-codex0145" in config
-        elif name == "hill_climb_codex":
-            assert f"dataset: {TERMINAL_BENCH_DATASET}" in config
-            assert "seed: builtin-codex" in config
-            assert "rollout: {variant: harbor" in config
-            assert "trace_analyzer: {variant: failure_patterns" in config
-            assert "meta_agent: {variant: hyperagents, runner: harbor" in config
-            assert "agent: codex" in config
-            assert "agent: target.agent:HarborAgent" in config
-            assert "editable_roots: [target]" in config
-            assert "image: evolve-meta-agent-codex:20260805-codex0145" in config
+            assert config["target"]["seed"] == "builtin-local-smoke"
+            assert resolved.operators["validate"].config["criterion"] == "non_decreasing"
+            assert mutate["agent"] == "evolve.integrations.harbor.local_auto_agent:LocalAutoAgent"
+        elif name in {"ahe", "hyperagents"}:
+            assert config["target"]["revision"] == "388da74aad620a384ab47669b17c52133e30e7c3"
+            assert mutate["agent"] == "evolve.integrations.harbor.miniswe_task_file:InstalledMiniSweAgent"
         else:
-            assert f"dataset: {TERMINAL_BENCH_DATASET}" in config
-            assert "seed: https://github.com/SWE-agent/mini-swe-agent.git" in config
-            assert "rollout: {variant: harbor" in config
-            assert "trace_analyzer: {variant: failure_patterns" in config
-            assert "meta_agent: {variant: hyperagents, runner: harbor" in config
-            assert "expose_gate_data: false" in config
-            assert "agent: codex" in config
-            assert "variant: noop" not in config
-        assert "mutate:" not in config
-        if name not in {"aevolve", "ahe_codex", "gepa", "gepa_local", "hill_climb_codex", "hyperagents_codex"}:
-            assert "agent: evolve.integrations.harbor.miniswe_candidate:CandidateMiniSweAgent" in config
-            assert "harbor_agent:" not in config
-        assert "variant: fixed" not in config
+            assert mutate["agent"] == "codex"
 
 
-def test_ahe_and_hyperagents_share_the_pinned_meta_agent_image() -> None:
-    expected = "evolve-meta-agent-app:20260724-tools-mswe245"
+def test_ahe_and_hyperagents_share_the_pinned_mutate_image() -> None:
+    expected = "evolve-mutate-app:20260724-tools-mswe245"
     for name in ("ahe", "hyperagents"):
-        assert _parsed_config(name)["operators"]["meta_agent"]["image"] == expected
+        assert _operator_config(name, "mutate")["image"] == expected
 
 
-def test_codex_meta_agents_use_the_preinstalled_codex_image() -> None:
-    expected = "evolve-meta-agent-codex:20260805-codex0145"
+def test_codex_mutates_use_the_preinstalled_codex_image() -> None:
+    expected = "evolve-mutate-codex:20260805-codex0145"
     for name in ("aevolve", "ahe_codex", "gepa", "hill_climb", "hill_climb_codex", "hyperagents_codex"):
-        assert _parsed_config(name)["operators"]["meta_agent"]["image"] == expected
+        assert _operator_config(name, "mutate")["image"] == expected
 
 
 def test_terminal_bench_method_recipes_use_full_curated_dataset() -> None:
@@ -272,11 +213,11 @@ def test_terminal_bench_method_recipes_use_full_curated_dataset() -> None:
         assert evaluator["repetitions"] == 1
         assert "k" not in evaluator
         assert evaluator["n_concurrent"] == (5 if name == "hyperagents_codex" else 10)
-        assert recipe["operators"]["meta_agent"]["expose_gate_data"] is False
+        assert _operator_config(name, "mutate")["expose_gate_data"] is False
 
-    ahe = _parsed_config("ahe")
-    assert ahe["operators"]["trace_analyzer"]["max_tasks"] == 30
-    assert ahe["operators"]["trace_analyzer"]["max_concurrent"] == 10
+    ahe_analyze = _operator_config("ahe", "analyze")
+    assert ahe_analyze["max_tasks"] == 30
+    assert ahe_analyze["max_concurrent"] == 10
 
 
 def test_supported_uv_recipes_enable_inline_candidate_runtime_and_task_retry() -> None:
@@ -322,18 +263,15 @@ def test_miniswe_method_agents_use_the_rollout_model_version() -> None:
     expected_model = "openai/gpt-5.4-2026-03-05"
     for name in ("ahe", "hyperagents"):
         config = _parsed_config(name)
-        operators = config["operators"]
-        assert isinstance(operators, dict)
-        meta_agent = operators["meta_agent"]
-        assert isinstance(meta_agent, dict)
-        assert meta_agent["model"] == expected_model
+        mutate = _operator_config(name, "mutate")
+        assert mutate["model"] == expected_model
         evaluator = config["evaluator"]
         assert isinstance(evaluator, dict)
         assert evaluator["model"] == expected_model
 
 
-def test_meta_agent_image_provides_harbor_workspace_parent() -> None:
-    dockerfile = ROOT / "containers" / "meta-agent" / "Dockerfile"
+def test_mutate_image_provides_harbor_workspace_parent() -> None:
+    dockerfile = ROOT / "containers" / "mutate" / "Dockerfile"
     contents = dockerfile.read_text()
     assert contents.startswith(
         "FROM ubuntu:24.04@sha256:4fbb8e6a8395de5a7550b33509421a2bafbc0aab6c06ba2cef9ebffbc7092d90"
@@ -359,8 +297,8 @@ def test_meta_agent_image_provides_harbor_workspace_parent() -> None:
     assert 'uv-real tool install --python 3.13 --with fastapi --with orjson "mini-swe-agent==$version"' in wrapper
 
 
-def test_meta_agent_required_tools_match_tier_zero_contract() -> None:
-    tools = (ROOT / "containers" / "meta-agent" / "required-tools.txt").read_text().splitlines()
+def test_mutate_required_tools_match_tier_zero_contract() -> None:
+    tools = (ROOT / "containers" / "mutate" / "required-tools.txt").read_text().splitlines()
     assert tools == [
         "bash",
         "git",
@@ -380,8 +318,8 @@ def test_meta_agent_required_tools_match_tier_zero_contract() -> None:
     ]
 
 
-def test_codex_meta_agent_image_pins_the_seed_cli_version() -> None:
-    dockerfile = (ROOT / "containers" / "meta-agent-codex" / "Dockerfile").read_text()
+def test_codex_mutate_image_pins_the_seed_cli_version() -> None:
+    dockerfile = (ROOT / "containers" / "mutate-codex" / "Dockerfile").read_text()
     assert dockerfile.startswith(
         "FROM node:22-bookworm-slim@sha256:f32b81066cde10a75dbac96646099533316d94bac4150c55da1636e1f0ffdc46"
     )
@@ -396,7 +334,7 @@ def test_codex_meta_agent_image_pins_the_seed_cli_version() -> None:
 
 def test_ahe_recipe_configures_reasoning_without_cost_caps() -> None:
     recipe = _parsed_config("ahe")
-    assert recipe["operators"]["meta_agent"]["agent_kwargs"] == {
+    assert _operator_config("ahe", "mutate")["agent_kwargs"] == {
         "reasoning_effort": "high",
         "cost_limit": 0,
         "max_tokens": 64_000,
@@ -407,7 +345,7 @@ def test_ahe_recipe_configures_reasoning_without_cost_caps() -> None:
 
 def test_hyperagents_recipe_configures_reasoning_without_cost_caps() -> None:
     recipe = _parsed_config("hyperagents")
-    assert recipe["operators"]["meta_agent"]["agent_kwargs"] == {
+    assert _operator_config("hyperagents", "mutate")["agent_kwargs"] == {
         "reasoning_effort": "high",
         "cost_limit": 0,
         "max_tokens": 64_000,

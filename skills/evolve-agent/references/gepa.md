@@ -12,17 +12,17 @@ mutation and candidates may trade off across tasks.
 
 ## Use the shipped capabilities
 
-Run `./evolve operator list . --json` first. The shipped GEPA profile normally
+Run `./evolve operator active . --json` first. The shipped GEPA profile normally
 connects a `pareto` select, task rollout, and a `gepa` analyzer for component
 reflection, and a `minibatch_improvement` validate stage. Invoke the configured direct stages, read
 the parent set, sampled cases, component examples, and validation decision under
 `runs/gen-<id>/`, then make the component edit. The configured GEPA
-`meta_agent` is optional when the outer agent owns that edit.
+`mutate` is optional when the outer agent owns that edit.
 
 Use `operators/select.py`, the active analyzer implementation, and
 `operators/validate.py` only to diagnose the active implementations. When the
 process itself is mutable, compare the shipped references at
-`library/select/pareto.py`, `library/trace_analyzer/gepa.py` (the compatibility
+`library/select/pareto.py`, `library/analyze/gepa.py` (the compatibility
 location for the `analyze` stage), and
 `library/validate/minibatch_improvement.py`, then adapt the active operator.
 Editing a library reference alone does not change a run.
@@ -33,7 +33,7 @@ Editing a library reference alone does not change a run.
 2. Run the parent on a sampled optimization minibatch.
 3. Convert executions and feedback into reflective examples for each component.
    Read `Feedback.natural_language_feedback` and
-   `trace_analyzer/feedback.md` as the primary prose signal when the evaluator
+   `analyze/feedback.md` as the primary prose signal when the evaluator
    returns one. Treat any binary completion reward as an execution signal, not
    as a quality score.
 4. Choose one or more components and propose an evidence-linked mutation. For

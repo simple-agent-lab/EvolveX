@@ -9,20 +9,23 @@ from typing import Any
 
 from evolve.evaluation.evidence import task_passed
 from evolve.frozen import sdk
+from evolve.frozen.config import Config
 from evolve.frozen.interfaces import ArchiveView, OperatorContext, RecordOperator, RecordResult, Row
+
+CONFIG = Config({})
 
 
 def _record_fields_from_run_dir(run_dir: Path) -> dict[str, Any]:
-    predicted_path = run_dir / "meta_agent" / "predicted_fixes.json"
+    predicted_path = run_dir / "mutate" / "predicted_fixes.json"
     note = ""
-    rationale = run_dir / "meta_agent" / "rationale.md"
+    rationale = run_dir / "mutate" / "rationale.md"
     if rationale.exists():
         for line in rationale.read_text().splitlines():
             stripped = line.strip()
-            if stripped and stripped != "written-by: operators/meta_agent.py":
+            if stripped and stripped != "written-by: operators/mutate.py":
                 note = stripped
                 break
-    usage = run_dir / "meta_agent" / "usage.json"
+    usage = run_dir / "mutate" / "usage.json"
     if usage.exists():
         try:
             usd = json.loads(usage.read_text()).get("usd")
@@ -45,7 +48,7 @@ def _record_fields_from_run_dir(run_dir: Path) -> dict[str, Any]:
 
 
 def _verified_fixes(child: Row, ctx: OperatorContext) -> list[str] | None:
-    predicted_path = ctx.run_dir / "meta_agent" / "predicted_fixes.json"
+    predicted_path = ctx.run_dir / "mutate" / "predicted_fixes.json"
     if not predicted_path.exists():
         return None
     predicted = json.loads(predicted_path.read_text())
@@ -69,4 +72,4 @@ class JsonlRecord(RecordOperator):
 
 
 if __name__ == "__main__":
-    sdk.main(JsonlRecord)
+    sdk.main(JsonlRecord, config_schema=CONFIG)

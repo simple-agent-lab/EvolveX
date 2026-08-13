@@ -26,7 +26,7 @@ from .archive import (
     rows_by_genid,
 )
 from .candidate.snapshot import build_candidate_snapshot, commit_candidate_snapshot
-from .config import evaluator_anchor, evaluator_sampling, experiment_id, operator_blocks
+from .config import evaluator_anchor, evaluator_sampling, experiment_id, operator_blocks, operator_runtime_config
 from .doctor import ensure_evaluator_ready
 from .evaluation import (
     CANONICAL_OUTCOMES,
@@ -40,7 +40,7 @@ from .frozen.interfaces import (
     ArchiveView,
     PayloadValidationError,
     validate_gate_file_payload,
-    validate_meta_agent_usage_payload,
+    validate_mutate_usage_payload,
     validate_novelty_file_payload,
     validate_record_fields_payload,
     validate_rollout_artifacts_payload,
@@ -64,6 +64,7 @@ from .git import (
 from .operators import OperatorResult, operator_timeout, run_operator
 from .population import best_row, fixed_evaluation_identity, format_genid, generation_number, valid_genid
 from .report import materialize_best_ever
+from .splits import load_manifest, selected_task_names
 from .surface import check_paths, surface_patterns
 
 PENDING_GATE_RECORD_NOTE = "mechanism evaluation recorded before gate/record"
@@ -145,6 +146,7 @@ def _run_locked(options: RunOptions, workspace: Path) -> None:
             "or run evolve repair after preserving any edits"
         )
     _ensure_genesis_evaluated(workspace)
+    _ensure_genesis_anchor_evaluated(workspace)
     operators_config = operator_blocks(workspace)
 
     for gen in range(1, options.max_generations + 1):
@@ -198,7 +200,7 @@ def _maybe_final_anchor(workspace: Path, generation: int) -> None:
     )
     if candidate is None:
         return
-    if any(isinstance(entry, dict) and entry.get("kind") == "anchor" for entry in candidate.get("evals", [])):
+    if _has_complete_anchor(candidate):
         return
     genid = str(candidate["genid"])
     _evaluate_once(
@@ -210,7 +212,7 @@ def _maybe_final_anchor(workspace: Path, generation: int) -> None:
             "parent": candidate.get("parent"),
             "mutated": candidate.get("mutated", []),
             "surface_violations": candidate.get("surface_violations", []),
-            "note": "sealed anchor evaluation; excluded from meta-agent feedback",
+            "note": "sealed anchor evaluation; excluded from mutate feedback",
             "kind": "anchor",
             "round": generation,
         },
@@ -301,11 +303,11 @@ def _run_child(
             return
 
         stages = ["rollout"]
-        if _operator_present(operators_config, "trace_analyzer"):
-            stages.append("trace_analyzer")
-        stages.append("meta_agent")
+        if _operator_present(operators_config, "analyze"):
+            stages.append("analyze")
+        stages.append("mutate")
         for name in stages:
-            if name == "meta_agent" and _operator_present(operators_config, "trace_analyzer"):
+            if name == "mutate" and _operator_present(operators_config, "analyze"):
                 write_feedback_bundle(workspace=workspace, run_dir=_run_dir(workspace, genid))
             if not _run_operator_or_fail(
                 name=name,
@@ -896,6 +898,44 @@ def _ensure_genesis_evaluated(workspace: Path) -> None:
         )
 
 
+def _ensure_genesis_anchor_evaluated(workspace: Path) -> None:
+    manifest = load_manifest(workspace / "evaluator" / "splits.json")
+    if not selected_task_names(manifest, "sealed"):
+        return
+    row = rows_by_genid(workspace).get("0", {})
+    if _has_complete_anchor(row):
+        return
+    result = _evaluate_once(
+        workspace,
+        "gen/0",
+        "0",
+        purpose="anchor",
+        metadata={
+            "parent": row.get("parent"),
+            "mutated": row.get("mutated", []),
+            "surface_violations": row.get("surface_violations", []),
+            "note": "genesis sealed anchor evaluated; excluded from mutate feedback",
+            "pending_gate_record": False,
+            "kind": "anchor",
+            "round": 0,
+        },
+    )
+    if result.outcome is not Outcome.BENCHMARK_COMPLETE:
+        raise RuntimeError(
+            f"genesis sealed anchor {result.outcome.value}: fix the seed or infrastructure and resume the workspace"
+        )
+
+
+def _has_complete_anchor(row: dict[str, Any]) -> bool:
+    return any(
+        isinstance(entry, dict)
+        and entry.get("kind") == "anchor"
+        and entry.get("purpose") == "anchor"
+        and entry.get("outcome") == Outcome.BENCHMARK_COMPLETE.value
+        for entry in row.get("evals", []) or []
+    )
+
+
 def _evaluate_once(
     workspace: Path,
     tag: str,
@@ -1150,13 +1190,13 @@ def _operator_output_error(name: str, run_dir: Path) -> OperatorOutputError | No
             (Path("rollout") / "summary.json", "summary", validate_rollout_summary_payload),
             (Path("rollout") / "artifacts.json", "artifacts", validate_rollout_artifacts_payload),
         )
-    elif name == "trace_analyzer":
+    elif name == "analyze":
         checks = (
-            (Path("trace_analyzer") / "summary.json", "summary", validate_rollout_summary_payload),
-            (Path("trace_analyzer") / "artifacts.json", "artifacts", validate_rollout_artifacts_payload),
+            (Path("analyze") / "summary.json", "summary", validate_rollout_summary_payload),
+            (Path("analyze") / "artifacts.json", "artifacts", validate_rollout_artifacts_payload),
         )
-    elif name == "meta_agent":
-        checks = ((Path("meta_agent") / "usage.json", "usage", validate_meta_agent_usage_payload),)
+    elif name == "mutate":
+        checks = ((Path("mutate") / "usage.json", "usage", validate_mutate_usage_payload),)
     elif name == "validate":
         checks = ((Path("validate") / "result.json", "accept", validate_validate_file_payload),)
     elif name == "novelty":
@@ -1316,8 +1356,7 @@ def _strip_record_fields(fields: dict[str, Any], allowed_fields: frozenset[str])
 
 
 def _operator_config_block(operators_config: dict[str, Any], name: str) -> dict[str, Any]:
-    block = operators_config.get(name)
-    return block if isinstance(block, dict) else {}
+    return dict(operator_runtime_config(operators_config, name))
 
 
 def _operator_present(operators_config: dict[str, Any], name: str) -> bool:

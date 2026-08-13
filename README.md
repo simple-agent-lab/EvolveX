@@ -85,6 +85,30 @@ edited, and which evaluations admit a new generation. The framework owns the
 mechanism that makes those decisions inspectable: clean candidate snapshots,
 protected scoring, surface enforcement, Git tags, and stamped archive records.
 
+The public composition model has four parts:
+
+- a **stage** is a fixed lifecycle slot such as `select`, `analyze`, or `mutate`;
+- an **operator** is a reusable implementation at
+  `library/<stage>/<name>.py`;
+- a **recipe** is code-free selection and configuration of those operators;
+- **evaluate** is the framework-owned trusted mechanism, never a selectable
+  operator.
+
+Add an operator to a source checkout, validate it, and compose it without a
+registry edit:
+
+```bash
+uv run --frozen evolve operator new mutate my_operator
+uv run --frozen evolve operator describe mutate/my_operator
+uv run --frozen evolve operator check mutate/my_operator --config '{}'
+uv run --frozen evolve operator list mutate
+uv run --frozen evolve recipe check /path/to/my-recipe/evolve.yaml
+```
+
+After `evolve init`, use `./evolve operator active .` to inspect the frozen
+bindings and `./evolve operator run ...` for direct stage orchestration. See
+[the operator guide](docs/reference/operators.md) for the complete workflow.
+
 ## What Can Evolve
 
 | Surface | Examples | Best fit |
@@ -150,7 +174,7 @@ supported recipe values, and launcher overrides.
 
 Scores are solved-task counts shown as **seed → best**, with the absolute
 task-count change underneath. All runs use a GPT-5.4-high target model and a
-GPT-5.4-xhigh Codex meta-agent.
+GPT-5.4-xhigh Codex mutate operator.
 
 ### Terminal Bench 2
 
@@ -325,8 +349,8 @@ composable strategies for different agent-evolution scenarios.
 | [Architecture](ARCHITECTURE.md) | Enforced source-module map and line budgets. |
 | [Recipes](recipes/README.md) | Supported evolution strategies. |
 | [Evaluation assets](evals/README.md) | Skill behavior/routing evaluation cases and result snapshots. |
-| [Meta-agents](docs/guides/meta-agents.md) | Trusted-host and isolated meta-agent runners. |
-| [Trace Analyzer](docs/reference/operators/trace_analyzer.md) | Trace retention and analyzer variants. |
+| [Mutate operators](docs/guides/mutate-operators.md) | Trusted-host and isolated mutation runners. |
+| [Analyze](docs/reference/operators/analyze.md) | Trace retention and analysis operators. |
 | [Local environment](docs/guides/local-environment.md) | Docker-free trusted local execution. |
 | [Operations](docs/guides/operations.md) | Doctor profiles, runtime setup, full-loop smoke, and recovery. |
 | [Contributing](CONTRIBUTING.md) | Development setup and repository conventions. |

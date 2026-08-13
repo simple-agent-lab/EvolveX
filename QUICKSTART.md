@@ -18,7 +18,7 @@ docker info
 ```
 
 Choose a recipe, download and verify the pinned dataset, build that recipe's
-pinned meta-agent image, and launch one generation:
+pinned mutate-runner image, and launch one generation:
 
 ```bash
 RECIPE=ahe

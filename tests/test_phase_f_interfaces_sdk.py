@@ -5,12 +5,12 @@ from pathlib import Path
 import pytest
 
 from evolve.frozen import sdk
+from evolve.frozen.config import Config
 from evolve.frozen.interfaces import (
     PayloadValidationError,
     ValidateOperator,
     ValidateResult,
     validate_gate_file_payload,
-    validate_meta_agent_usage_payload,
     validate_novelty_payload,
 )
 from evolve.operators import run_operator
@@ -22,7 +22,8 @@ def test_operator_abcs_have_one_kind_specific_abstract_method():
     expected = {
         interfaces.SelectOperator: {"pick"},
         interfaces.RolloutOperator: {"rollout"},
-        interfaces.MetaAgentOperator: {"run"},
+        interfaces.AnalyzeOperator: {"analyze"},
+        interfaces.MutateOperator: {"mutate"},
         interfaces.ValidateOperator: {"validate"},
         interfaces.GateOperator: {"decide"},
         interfaces.RecordOperator: {"annotate"},
@@ -31,16 +32,24 @@ def test_operator_abcs_have_one_kind_specific_abstract_method():
         assert cls.__abstractmethods__ == methods
 
 
-def test_operator_registry_uses_meta_agent_not_mutate():
+def test_operator_registry_uses_only_canonical_stage_names() -> None:
     from evolve.frozen import interfaces
 
-    kinds = {spec.kind for spec in interfaces.OPERATORS}
-    assert "meta_agent" in kinds
-    assert "mutate" not in kinds
-    assert hasattr(interfaces, "MetaAgentOperator")
-    assert hasattr(interfaces, "MetaAgentResult")
-    assert not hasattr(interfaces, "MutateOperator")
-    assert not hasattr(interfaces, "MutateResult")
+    assert tuple(spec.kind for spec in interfaces.OPERATORS) == (
+        "select",
+        "rollout",
+        "analyze",
+        "mutate",
+        "validate",
+        "novelty",
+        "gate",
+        "record",
+        "reflect",
+    )
+    assert hasattr(interfaces, "AnalyzeOperator")
+    assert hasattr(interfaces, "MutateOperator")
+    assert not hasattr(interfaces, "TraceAnalyzerOperator")
+    assert not hasattr(interfaces, "MetaAgentOperator")
 
 
 @pytest.mark.parametrize(
@@ -54,10 +63,12 @@ def test_gate_file_rejects_contradictory_parent_decision(valid_parent: bool, ver
 
 @pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
 def test_operator_payloads_reject_non_finite_numbers(value: float) -> None:
+    from evolve.frozen import interfaces
+
     with pytest.raises(PayloadValidationError, match="finite number"):
         validate_novelty_payload({"novelty": value, "accept": True})
     with pytest.raises(PayloadValidationError, match="finite number"):
-        validate_meta_agent_usage_payload({"usd": value})
+        interfaces.validate_mutate_usage_payload({"usd": value})
 
 
 def test_sdk_main_runs_select_operator_and_writes_parents(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -71,13 +82,14 @@ def test_sdk_main_runs_select_operator_and_writes_parents(tmp_path: Path, monkey
             assert ctx.run_dir == tmp_path / "run"
             assert ctx.genid == "5"
             assert ctx.parent is None
-            assert ctx.fan_out == 3
+            assert ctx.fan_out == 1
+            assert ctx.timeout_s == 600.0
             assert ctx.config == {"seed": 123, "fan_out": 3}
             return interfaces.SelectResult(parents=["0"])
 
     _set_sdk_env(monkeypatch, tmp_path, genid="5", config={"seed": 123, "fan_out": 3})
 
-    sdk.main(TinySelect)
+    sdk.main(TinySelect, config_schema=Config({}))
 
     assert json.loads((tmp_path / "run" / "parents.json").read_text()) == {"parents": ["0"]}
 
@@ -108,17 +120,36 @@ def test_sdk_rng_accepts_string_generation_ids(tmp_path: Path, monkeypatch: pyte
     assert isinstance(sdk._context({"seed": 0}).rng.random(), float)
 
 
-def test_sdk_main_runs_meta_agent_operator_and_writes_meta_agent_artifacts(
+def test_sdk_main_runs_analyze_operator_and_writes_analyze_artifacts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from evolve.frozen import interfaces, sdk
 
-    class TinyMetaAgent(interfaces.MetaAgentOperator):
-        def run(self, checkout, observation, ctx):
+    class TinyAnalyze(interfaces.AnalyzeOperator):
+        def analyze(self, checkout: Path, ctx):
+            assert checkout == tmp_path / "checkout"
+            return interfaces.AnalyzeResult(summary={"failed": ["task-1"]}, artifacts=["evidence/task-1.log"])
+
+    _set_sdk_env(monkeypatch, tmp_path)
+
+    sdk.main(TinyAnalyze, config_schema=Config({}))
+
+    analyze_dir = tmp_path / "run" / "analyze"
+    assert json.loads((analyze_dir / "summary.json").read_text()) == {"failed": ["task-1"]}
+    assert json.loads((analyze_dir / "artifacts.json").read_text()) == ["evidence/task-1.log"]
+
+
+def test_sdk_main_runs_mutate_operator_and_writes_mutate_artifacts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from evolve.frozen import interfaces, sdk
+
+    class TinyMutate(interfaces.MutateOperator):
+        def mutate(self, checkout, observation, ctx):
             assert checkout == tmp_path / "checkout"
             assert observation == '{"failed": ["task-1"]}\n'
             assert ctx.parent == "0"
-            return interfaces.MetaAgentResult(
+            return interfaces.MutateResult(
                 changed=["target/agent.py"],
                 notes=["edited target"],
                 usage={"usd": 1.25},
@@ -129,13 +160,13 @@ def test_sdk_main_runs_meta_agent_operator_and_writes_meta_agent_artifacts(
     rollout_dir.mkdir(parents=True)
     (rollout_dir / "summary.json").write_text('{"failed": ["task-1"]}\n')
 
-    sdk.main(TinyMetaAgent)
+    sdk.main(TinyMutate, config_schema=Config({}))
 
-    meta_agent_dir = tmp_path / "run" / "meta_agent"
-    assert json.loads((meta_agent_dir / "changed.json").read_text()) == ["target/agent.py"]
-    assert not (meta_agent_dir / "predicted_fixes.json").exists()
-    assert json.loads((meta_agent_dir / "usage.json").read_text()) == {"usd": 1.25}
-    assert (meta_agent_dir / "rationale.md").read_text() == "edited target\n"
+    mutate_dir = tmp_path / "run" / "mutate"
+    assert json.loads((mutate_dir / "changed.json").read_text()) == ["target/agent.py"]
+    assert not (mutate_dir / "predicted_fixes.json").exists()
+    assert json.loads((mutate_dir / "usage.json").read_text()) == {"usd": 1.25}
+    assert (mutate_dir / "rationale.md").read_text() == "edited target\n"
 
 
 def test_sdk_main_runs_validate_operator_and_writes_result(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -146,7 +177,7 @@ def test_sdk_main_runs_validate_operator_and_writes_result(tmp_path: Path, monke
         def validate(self, checkout: Path, ctx) -> ValidateResult:
             return ValidateResult(accept=True, reason="imports pass", artifacts=["validate/imports.log"])
 
-    sdk.main(TinyValidate)
+    sdk.main(TinyValidate, config_schema=Config({}))
 
     assert json.loads((run_dir / "validate" / "result.json").read_text()) == {
         "accept": True,
@@ -236,4 +267,5 @@ def _set_sdk_env(
     monkeypatch.setenv("EVOLVE_RUN_DIR", str(run_dir))
     monkeypatch.setenv("EVOLVE_GENID", genid)
     monkeypatch.setenv("EVOLVE_PARENT", parent)
+    monkeypatch.setenv("EVOLVE_STAGE_TIMEOUT_S", "600")
     monkeypatch.setattr(sys, "argv", ["operator.py", "--config", json.dumps(config or {})])

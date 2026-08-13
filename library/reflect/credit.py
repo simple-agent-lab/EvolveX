@@ -3,14 +3,17 @@
 Reads the ledger and, for every generation whose predictions were verified
 (`verified_fixes`), credits the candidate note as an insight. Emits full-state
 op lines (append-only; folding by id gives current state) so an insight's credit
-accumulates across the lineage — the memory a future meta-agent can consult and
+accumulates across the lineage — the memory a future mutate operator can consult and
 report as `used_insights`. Never rewrites the playbook.
 """
 
 import hashlib
 
 from evolve.frozen import sdk
+from evolve.frozen.config import Config
 from evolve.frozen.interfaces import OperatorContext, ReflectOperator, ReflectResult
+
+CONFIG = Config({})
 
 
 class CreditReflect(ReflectOperator):
@@ -38,4 +41,4 @@ class CreditReflect(ReflectOperator):
 
 
 if __name__ == "__main__":
-    sdk.main(CreditReflect)
+    sdk.main(CreditReflect, config_schema=CONFIG)

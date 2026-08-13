@@ -61,37 +61,51 @@ def test_top_level_skill_is_backend_neutral_and_operator_first() -> None:
     forbidden = ("harbor", "docker", "recipes/", "src/evolve/", "evolve_runtime_digest")
 
     assert [term for term in forbidden if term in body] == []
-    assert "./evolve operator list . --json" in body
+    assert "./evolve operator active . --json" in body
+    assert "uv run --frozen evolve operator list [stage]" in body
+    assert "uv run --frozen evolve operator new mutate <name>" in body
+    assert "uv run --frozen evolve operator check mutate/<name>" in body
+    assert "uv run --frozen evolve recipe check <recipe-path>" in body
+    assert "library/mutate/<name>.py" in body
+    assert "operator:" in body
+    assert "config:" in body
     assert "./evolve operator run . <stage>" in body
-    assert body.index("./evolve operator list . --json") < body.index("operators/<stage>.py")
+    assert body.index("./evolve operator active . --json") < body.index("operators/<stage>.py")
     assert body.index("operators/<stage>.py") < body.index("library/<stage>/")
     assert "do not read implementation source merely to invoke" in body
     assert not (SKILL / "scripts").exists()
 
 
+def test_top_level_skill_uses_only_canonical_operator_terms() -> None:
+    body = (SKILL / "SKILL.md").read_text().lower()
+
+    assert "## historical-workspace note" in body
+    assert not any(term in body for term in ("meta_agent", "trace_analyzer", "variant:"))
+
+
 def test_method_cards_route_to_shipped_capabilities() -> None:
     expected = {
-        "hill-climb.md": ("operator list . --json", "library/select/", "library/gate/"),
+        "hill-climb.md": ("operator active . --json", "library/select/", "library/gate/"),
         "a-evolve.md": (
-            "operator list . --json",
-            "library/trace_analyzer/trajectory_only.py",
-            "library/trace_analyzer/artifact_rubric.py",
-            "library/meta_agent/aevolve.py",
+            "operator active . --json",
+            "library/analyze/trajectory_only.py",
+            "library/analyze/artifact_rubric.py",
+            "library/mutate/aevolve.py",
         ),
         "gepa.md": (
-            "operator list . --json",
+            "operator active . --json",
             "library/select/pareto.py",
-            "library/trace_analyzer/gepa.py",
+            "library/analyze/gepa.py",
             "library/validate/minibatch_improvement.py",
         ),
         "ahe.md": (
-            "operator list . --json",
-            "operators/trace_analyzer.py",
-            "library/trace_analyzer/ahe.py",
+            "operator active . --json",
+            "operators/analyze.py",
+            "library/analyze/ahe.py",
         ),
         "hyperagents.md": (
-            "operator list . --json",
-            "library/meta_agent/hyperagents.py",
+            "operator active . --json",
+            "library/mutate/hyperagents.py",
             "library/validate/hyperagents.py",
         ),
     }
@@ -104,6 +118,19 @@ def test_method_cards_route_to_shipped_capabilities() -> None:
         term for terms in expected.values() for term in terms if term.startswith("library/") and term.endswith(".py")
     }
     assert all((ROOT / path).is_file() for path in concrete_paths)
+
+
+def test_initialized_workspace_guidance_uses_active_binding_discovery() -> None:
+    sources = [ROOT / "scaffolds" / "workspace" / "AGENTS.md"]
+    sources.extend(
+        (SKILL / "references" / name)
+        for name in ("hill-climb.md", "a-evolve.md", "gepa.md", "ahe.md", "hyperagents.md", "workspace-contract.md")
+    )
+
+    for source in sources:
+        body = source.read_text()
+        assert "./evolve operator active ." in body, source
+        assert "./evolve operator list ." not in body, source
 
 
 def test_evolve_skill_uses_checkable_completion_criteria() -> None:

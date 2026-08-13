@@ -70,11 +70,11 @@ def invoke_operator(
     configured = operator_blocks(workspace)
     if not _operator_present(configured, name):
         raise RuntimeError(f"operator is not configured: {name}")
-    reserved_overrides = sorted({"variant", "script"} & set(config_override or {}))
+    reserved_overrides = sorted({"operator", "script", "timeout_s", "config"} & set(config_override or {}))
     if reserved_overrides:
         raise RuntimeError("operator invocation cannot replace implementation keys: " + ", ".join(reserved_overrides))
     config = _merge_config(_operator_config_block(configured, name), config_override or {})
-    effective_timeout = _invocation_timeout(configured, name, config, timeout_s)
+    effective_timeout = _invocation_timeout(configured, name, timeout_s)
     run_dir = workspace / "runs" / f"gen-{genid}"
     exp_id = experiment_id(workspace)
     ensure_local_archive(workspace, exp_id)
@@ -105,7 +105,7 @@ def invoke_operator(
                 raise RuntimeError(f"operator {name} produced invalid output: {_operator_output_note(output_error)}")
             if name in {"validate", "novelty"}:
                 _write_candidate_receipt(workspace, selected_checkout, run_dir, name, str(parent))
-            if name == "trace_analyzer":
+            if name == "analyze":
                 write_feedback_bundle(workspace=workspace, run_dir=run_dir)
     return OperatorInvocation(result=result, run_dir=run_dir, config=config)
 
@@ -125,19 +125,18 @@ def _assert_invocation_route(name: str, parent: str | None) -> None:
 def _invocation_timeout(
     configured: dict[str, Any],
     name: str,
-    config: dict[str, Any],
     explicit: float | None,
 ) -> float:
-    candidate = explicit if explicit is not None else config.get("timeout_s", operator_timeout(configured, name))
+    candidate = explicit if explicit is not None else operator_timeout(configured, name)
     if not isinstance(candidate, (int, float)) or isinstance(candidate, bool) or candidate <= 0:
         raise RuntimeError("operator timeout must be a positive number")
     return float(candidate)
 
 
 def _assert_operator_prerequisites(name: str, run_dir: Path, configured: dict[str, Any]) -> None:
-    prerequisites = ["rollout"] if name in {"trace_analyzer", "meta_agent"} else []
-    if name == "meta_agent" and _operator_present(configured, "trace_analyzer"):
-        prerequisites.append("trace_analyzer")
+    prerequisites = ["rollout"] if name in {"analyze", "mutate"} else []
+    if name == "mutate" and _operator_present(configured, "analyze"):
+        prerequisites.append("analyze")
     for prerequisite in prerequisites:
         error = _operator_output_error(prerequisite, run_dir)
         if error is not None:
@@ -176,12 +175,12 @@ def _invocation_checkout(
 _STAGE_OUTPUTS: dict[str, tuple[Path, ...]] = {
     "select": (Path("parents.json"),),
     "rollout": (Path("rollout"),),
-    "trace_analyzer": (Path("trace_analyzer"), Path("feedback")),
-    "meta_agent": (Path("meta_agent"),),
+    "analyze": (Path("analyze"), Path("feedback")),
+    "mutate": (Path("mutate"),),
     "validate": (Path("validate"),),
     "novelty": (Path("novelty.json"), Path("novelty")),
 }
-_STAGE_ORDER = ("select", "rollout", "trace_analyzer", "meta_agent", "validate", "novelty")
+_STAGE_ORDER = ("select", "rollout", "analyze", "mutate", "validate", "novelty")
 
 
 def _archive_active_outputs(name: str, run_dir: Path) -> None:

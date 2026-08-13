@@ -16,18 +16,18 @@ harder attribution problem than target-only evolution.
 
 ## Use the shipped capabilities
 
-Run `./evolve operator list . --json` before choosing a stage. The shipped
+Run `./evolve operator active . --json` before choosing a stage. The shipped
 HyperAgents profile normally combines population-aware selection,
-`parent_evaluation`, `trace_browser`, a `hyperagents` meta agent, and an
+`parent_evaluation`, `trace_browser`, a `hyperagents` mutate operator, and an
 independent `hyperagents` validate stage. Invoke configured direct evidence
 and admission stages and inspect their generation artifacts. Use the configured
-`meta_agent` through the driver when it should own both target and process
+`mutate` through the driver when it should own both target and process
 edits; an outer agent may instead edit both only when both paths are declared in
 the mutable surface.
 
 Read active `operators/<stage>.py` files only for a justified process diagnosis
-or mutation. Use the matching `library/select/`, `library/trace_analyzer/`,
-`library/meta_agent/hyperagents.py`, and `library/validate/hyperagents.py`
+or mutation. Use the matching `library/select/`, `library/analyze/`,
+`library/mutate/hyperagents.py`, and `library/validate/hyperagents.py`
 implementations as adaptation references, never as evidence that the active
 workspace already runs them.
 

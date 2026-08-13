@@ -3,6 +3,7 @@ import json
 import random
 from pathlib import Path
 
+from evolve.composition.catalog import resolve_operator, validate_operator_config
 from evolve.frozen.interfaces import OperatorContext, RolloutResult
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -67,6 +68,39 @@ def test_gepa_validation_replays_exact_parent_minibatch_and_accepts_improvement(
     assert comparison["parent_total"] == 1
     assert comparison["child_total"] == 2
     assert comparison["delta"] == 1
+
+
+def test_gepa_validation_preserves_harbor_retry_fallback_when_omitted(tmp_path: Path, monkeypatch) -> None:
+    from library._shared.harbor import execution as harbor
+
+    module = _module("gepa_validate_retry_under_test", ROOT / "library/validate/minibatch_improvement.py")
+    normalized = validate_operator_config(
+        resolve_operator("validate", "minibatch_improvement"), {"criterion": "strict"}
+    )
+    ctx = _ctx(tmp_path, normalized)
+    parent_path = ctx.run_dir / "rollout/cases.json"
+    parent_path.parent.mkdir(parents=True)
+    parent_path.write_text(json.dumps([{"task_name": "task-a", "outcome": "failed", "reward": 0}]))
+    effective_retries: list[int] = []
+
+    class FakeRollout:
+        def rollout(self, _checkout, child_ctx):
+            effective_retries.append(
+                harbor._configured_max_retries(child_ctx.config, {"EVOLVE_HARBOR_MAX_RETRIES": "4"})
+            )
+            root = child_ctx.run_dir / "rollout"
+            root.mkdir(parents=True)
+            root.joinpath("cases.json").write_text(
+                json.dumps([{"task_name": "task-a", "outcome": "passed", "reward": 1}])
+            )
+            root.joinpath("harbor.log").write_text("ok\n")
+            return RolloutResult(summary={"infra_errors": 0}, artifacts=["rollout/cases.json"])
+
+    monkeypatch.setattr(module, "HarborRollout", FakeRollout)
+
+    module.MinibatchImprovementValidate().validate(tmp_path, ctx)
+
+    assert effective_retries == [4]
 
 
 def test_gepa_validation_excludes_infra_scores_and_rejects_incomplete_comparison(tmp_path: Path, monkeypatch) -> None:
@@ -153,7 +187,7 @@ def test_gepa_validation_cannot_accept_apparent_improvement_with_parent_infra(tm
 def test_gepa_record_points_to_evidence_and_comparison(tmp_path: Path) -> None:
     module = _module("gepa_record_under_test", ROOT / "library/record/gepa.py")
     ctx = _ctx(tmp_path)
-    proposal = ctx.run_dir / "meta_agent/proposal.json"
+    proposal = ctx.run_dir / "mutate/proposal.json"
     proposal.parent.mkdir(parents=True)
     proposal.write_text(json.dumps({"components": ["prompt"], "paths": ["target/prompt.md"]}))
     comparison = ctx.run_dir / "validate/comparison.json"
@@ -161,7 +195,7 @@ def test_gepa_record_points_to_evidence_and_comparison(tmp_path: Path) -> None:
     comparison.write_text(
         json.dumps({"criterion": "strict", "parent_total": 1, "child_total": 2, "delta": 1, "accepted": True})
     )
-    dataset = ctx.run_dir / "trace_analyzer/evidence/reflective_dataset.json"
+    dataset = ctx.run_dir / "analyze/evidence/reflective_dataset.json"
     dataset.parent.mkdir(parents=True)
     dataset.write_text("{}\n")
 

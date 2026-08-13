@@ -1,4 +1,4 @@
-import importlib.util
+import importlib
 import json
 import os
 import random
@@ -10,18 +10,20 @@ from conftest import init_workspace
 
 from evolve.feedback import write_feedback_bundle
 from evolve.frozen.interfaces import OperatorContext
-from evolve.trace_analysis import VARIANTS, _trajectory_only_cases, trajectory_signal_records, write_evidence_bundle
+from evolve.trace_analysis import (
+    ANALYZE_OPERATORS,
+    _trajectory_only_cases,
+    trajectory_signal_records,
+    write_evidence_bundle,
+)
+from library._shared.harbor import evidence as harbor_evidence
+from library._shared.harbor import execution as harbor_execution
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def _harbor_rollout_module():
-    path = ROOT / "library" / "rollout" / "harbor.py"
-    spec = importlib.util.spec_from_file_location("evolve_test_harbor_rollout", path)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    return importlib.import_module("library._shared.harbor.rollout")
 
 
 def _write_trial(
@@ -71,7 +73,6 @@ def _write_trial(
 
 
 def test_harbor_rollout_distinguishes_task_agent_and_infra_failures(tmp_path: Path) -> None:
-    module = _harbor_rollout_module()
     jobs = tmp_path / "jobs"
     _write_trial(jobs, name="task-failed", reward=0)
     _write_trial(jobs, name="task-partial", reward=0.5)
@@ -98,7 +99,7 @@ def test_harbor_rollout_distinguishes_task_agent_and_infra_failures(tmp_path: Pa
         exception_message="external dependency sync failed",
     )
 
-    cases = module.collect_cases(jobs)
+    cases = harbor_evidence.collect_cases(jobs)
     by_name = {case["trial_name"]: case for case in cases}
 
     assert by_name["task-failed"]["outcome"] == "failed"
@@ -117,11 +118,10 @@ def test_harbor_rollout_distinguishes_task_agent_and_infra_failures(tmp_path: Pa
     assert "content" not in by_name["task-failed"]["execution"]["trajectory"]
     assert "must-not-leak" not in by_name["task-failed"]["verifier_output"]
     assert "[REDACTED]" in by_name["task-failed"]["verifier_output"]
-    assert "json-secret" not in module._redact('{"OPENAI_API_KEY":"json-secret"}')
+    assert "json-secret" not in harbor_evidence._redact('{"OPENAI_API_KEY":"json-secret"}')
 
 
 def test_harbor_rollout_promotes_artifact_rubric_evidence(tmp_path: Path) -> None:
-    module = _harbor_rollout_module()
     jobs = tmp_path / "jobs"
     trial = _write_trial(jobs, name="poster-task", reward=0.75)
     tasks = tmp_path / "tasks" / "poster-task"
@@ -142,7 +142,7 @@ def test_harbor_rollout_promotes_artifact_rubric_evidence(tmp_path: Path) -> Non
         )
     )
 
-    [case] = module.collect_cases(jobs, tasks_dir=tmp_path / "tasks")
+    [case] = harbor_evidence.collect_cases(jobs, tasks_dir=tmp_path / "tasks")
 
     assert case["instruction"] == "Create a research poster."
     assert case["outputs"]["primary_artifact"] == "verifier/poster.svg"
@@ -160,14 +160,13 @@ def test_harbor_rollout_promotes_artifact_rubric_evidence(tmp_path: Path) -> Non
 
 
 def test_harbor_rollout_references_workspace_atif_without_copying_it(tmp_path: Path) -> None:
-    module = _harbor_rollout_module()
     workspace = tmp_path / "workspace"
     jobs = workspace / "runs" / "harbor-rollouts" / "gen-1"
     trial = _write_trial(jobs, name="task-a", reward=1)
     trajectory_path = trial / "agent" / "trajectory.json"
     archive = workspace / "runs" / "gen-1" / "rollout" / "trajectories"
 
-    [case] = module.collect_cases(
+    [case] = harbor_evidence.collect_cases(
         jobs,
         workspace=workspace,
         trajectory_archive_dir=archive,
@@ -179,25 +178,24 @@ def test_harbor_rollout_references_workspace_atif_without_copying_it(tmp_path: P
         "format": "atif",
         "status": "available",
         "path": trajectory_path.relative_to(workspace).as_posix(),
-        "sha256": module._file_sha256(trajectory_path),
+        "sha256": harbor_evidence._file_sha256(trajectory_path),
         "steps": 3,
     }
     assert not archive.exists()
 
 
 def test_harbor_rollout_archives_external_atif_once(tmp_path: Path) -> None:
-    module = _harbor_rollout_module()
     workspace = tmp_path / "workspace"
     jobs = tmp_path / "external-jobs"
     source = _write_trial(jobs, name="task-a", reward=1) / "agent" / "trajectory.json"
     archive = workspace / "runs" / "gen-1" / "rollout" / "trajectories"
 
-    [case] = module.collect_cases(
+    [case] = harbor_evidence.collect_cases(
         jobs,
         workspace=workspace,
         trajectory_archive_dir=archive,
     )
-    [same_case] = module.collect_cases(
+    [same_case] = harbor_evidence.collect_cases(
         jobs,
         workspace=workspace,
         trajectory_archive_dir=archive,
@@ -207,28 +205,26 @@ def test_harbor_rollout_archives_external_atif_once(tmp_path: Path) -> None:
     retained = workspace / reference["path"]
     assert retained.parent == archive
     assert retained.read_bytes() == source.read_bytes()
-    assert reference["sha256"] == module._file_sha256(source)
+    assert reference["sha256"] == harbor_evidence._file_sha256(source)
     assert same_case["execution"]["trajectory"] == reference
     assert len(list(archive.glob("*.json"))) == 1
 
 
 def test_harbor_rollout_redacts_configured_proxy_literal(monkeypatch: pytest.MonkeyPatch) -> None:
-    module = _harbor_rollout_module()
     proxy = "http://private-user:private-password@proxy.example.invalid:8118"
     monkeypatch.setenv("HTTPS_PROXY", proxy)
 
-    redacted = module._redact(f"dependency download through {proxy} timed out")
+    redacted = harbor_evidence._redact(f"dependency download through {proxy} timed out")
 
     assert proxy not in redacted
     assert redacted == "dependency download through [REDACTED] timed out"
 
 
 def test_harbor_rollout_child_creates_private_files(tmp_path: Path) -> None:
-    module = _harbor_rollout_module()
     output = tmp_path / "child-output"
     log = tmp_path / "harbor.log"
 
-    returncode = module._run_harbor(
+    returncode = harbor_execution._run_harbor(
         ["/bin/sh", "-c", 'printf private > "$OUTPUT_PATH"'],
         tmp_path,
         log,
@@ -241,10 +237,9 @@ def test_harbor_rollout_child_creates_private_files(tmp_path: Path) -> None:
 
 
 def test_harbor_rollout_accepts_infrastructure_failures_as_trace_evidence(tmp_path: Path) -> None:
-    module = _harbor_rollout_module()
     harbor_log = tmp_path / "harbor.log"
 
-    module.require_rollout_cases(
+    harbor_evidence.require_rollout_cases(
         [{"outcome": "infra_error"}, {"outcome": "incomplete"}],
         returncode=1,
         harbor_log=harbor_log,
@@ -252,7 +247,6 @@ def test_harbor_rollout_accepts_infrastructure_failures_as_trace_evidence(tmp_pa
 
 
 def test_harbor_rollout_defaults_jobs_to_workspace_runs(tmp_path: Path, monkeypatch) -> None:
-    module = _harbor_rollout_module()
     monkeypatch.delenv("EVOLVE_ROLLOUT_JOBS_DIR", raising=False)
     ctx = OperatorContext(
         workspace=tmp_path,
@@ -266,26 +260,24 @@ def test_harbor_rollout_defaults_jobs_to_workspace_runs(tmp_path: Path, monkeypa
         rng=random.Random(0),
     )
 
-    assert module._jobs_root(ctx) == tmp_path / "runs" / "harbor-rollouts"
+    assert harbor_execution._jobs_root(ctx) == tmp_path / "runs" / "harbor-rollouts"
 
 
 def test_harbor_rollout_explicit_zero_retries_overrides_environment() -> None:
-    module = _harbor_rollout_module()
 
     assert (
-        module._configured_max_retries(
+        harbor_execution._configured_max_retries(
             {"max_retries": 0},
             {"EVOLVE_HARBOR_MAX_RETRIES": "9"},
         )
         == 0
     )
-    assert module._configured_max_retries({}, {"EVOLVE_HARBOR_MAX_RETRIES": "2"}) == 2
+    assert harbor_execution._configured_max_retries({}, {"EVOLVE_HARBOR_MAX_RETRIES": "2"}) == 2
 
 
 def test_harbor_rollout_reuses_only_a_complete_explicitly_enabled_stage(
     tmp_path: Path,
 ) -> None:
-    module = _harbor_rollout_module()
     run_dir = tmp_path / "runs" / "gen-1"
     rollout = run_dir / "rollout"
     rollout.mkdir(parents=True)
@@ -310,19 +302,18 @@ def test_harbor_rollout_reuses_only_a_complete_explicitly_enabled_stage(
         rng=random.Random(0),
     )
 
-    reused = module._completed_rollout(ctx)
+    reused = harbor_execution._completed_rollout(ctx)
 
     assert reused is not None
     assert reused.summary == summary
     assert reused.artifacts == artifacts
     ctx.config["reuse_completed"] = False
-    assert module._completed_rollout(ctx) is None
+    assert harbor_execution._completed_rollout(ctx) is None
 
 
 def test_harbor_rollout_preserves_missing_selected_results_as_trace_cases() -> None:
-    module = _harbor_rollout_module()
 
-    cases = module._with_missing_result_placeholders(
+    cases = harbor_evidence._with_missing_result_placeholders(
         [
             {
                 "task_name": "terminal-bench/task-a",
@@ -342,11 +333,10 @@ def test_harbor_rollout_preserves_missing_selected_results_as_trace_cases() -> N
 
 
 def test_harbor_rollout_preserves_batch_failure_when_no_task_result_exists(tmp_path: Path) -> None:
-    module = _harbor_rollout_module()
     harbor_log = tmp_path / "harbor.log"
     harbor_log.write_text("docker network unavailable\n")
 
-    case = module._batch_failure_case(harbor_log, 1, 2000)
+    case = harbor_evidence._batch_failure_case(harbor_log, 1, 2000)
 
     assert case["outcome"] == "infra_error"
     assert case["exception"]["type"] == "HarborBatchError"
@@ -354,7 +344,6 @@ def test_harbor_rollout_preserves_batch_failure_when_no_task_result_exists(tmp_p
 
 
 def test_harbor_rollout_reads_codex_session_jsonl_when_trajectory_is_absent(tmp_path: Path) -> None:
-    module = _harbor_rollout_module()
     jobs = tmp_path / "jobs"
     trial = _write_trial(jobs, name="codex-session", reward=0)
     (trial / "agent" / "trajectory.json").unlink()
@@ -382,7 +371,7 @@ def test_harbor_rollout_reads_codex_session_jsonl_when_trajectory_is_absent(tmp_
     ]
     session.write_text("".join(json.dumps(row) + "\n" for row in rows))
 
-    case = module.collect_cases(jobs)[0]
+    case = harbor_evidence.collect_cases(jobs)[0]
 
     assert case["instruction"] == "Fix it."
     assert case["agent_messages"] == ["Inspecting.", "Done."]
@@ -398,7 +387,6 @@ def test_harbor_rollout_reads_codex_session_jsonl_when_trajectory_is_absent(tmp_
 
 
 def test_harbor_rollout_bounds_codex_session_events_to_the_latest_trace_window(tmp_path: Path) -> None:
-    module = _harbor_rollout_module()
     jobs = tmp_path / "jobs"
     trial = _write_trial(jobs, name="long-codex-session", reward=0)
     (trial / "agent" / "trajectory.json").unlink()
@@ -414,7 +402,7 @@ def test_harbor_rollout_bounds_codex_session_events_to_the_latest_trace_window(t
     ]
     session.write_text("".join(json.dumps(row) + "\n" for row in rows))
 
-    case = module.collect_cases(jobs)[0]
+    case = harbor_evidence.collect_cases(jobs)[0]
 
     assert len(case["events"]) == 32
     assert case["events"][0]["message"] == "message-68"
@@ -424,13 +412,12 @@ def test_harbor_rollout_bounds_codex_session_events_to_the_latest_trace_window(t
 
 
 def test_harbor_rollout_bounds_trajectory_events_to_the_latest_trace_window(tmp_path: Path) -> None:
-    module = _harbor_rollout_module()
     jobs = tmp_path / "jobs"
     trial = _write_trial(jobs, name="long-trajectory", reward=0)
     trajectory = {"steps": [{"source": "agent", "message": f"message-{index}"} for index in range(100)]}
     (trial / "agent" / "trajectory.json").write_text(json.dumps(trajectory))
 
-    case = module.collect_cases(jobs)[0]
+    case = harbor_evidence.collect_cases(jobs)[0]
 
     assert len(case["events"]) == 32
     assert case["events"][0]["message"] == "message-68"
@@ -442,49 +429,52 @@ def test_harbor_rollout_bounds_trajectory_events_to_the_latest_trace_window(tmp_
 def test_feedback_bundle_exposes_current_rollout_to_mutator(tmp_path: Path) -> None:
     workspace, _ = init_workspace(tmp_path)
     run_dir = workspace / "runs" / "gen-1"
-    (run_dir / "trace_analyzer").mkdir(parents=True)
-    (run_dir / "trace_analyzer" / "feedback.md").write_text("# Trace Analysis Feedback\n\nfailed task evidence\n")
+    (run_dir / "analyze").mkdir(parents=True)
+    (run_dir / "analyze" / "feedback.md").write_text("# Trace Analysis Feedback\n\nfailed task evidence\n")
 
     manifest = write_feedback_bundle(workspace=workspace, run_dir=run_dir)
 
-    copied = run_dir / "feedback" / "failures" / "trace_analyzer.md"
+    copied = run_dir / "feedback" / "failures" / "analyze.md"
     assert copied.read_text().endswith("failed task evidence\n")
-    assert "[current trace analysis](failures/trace_analyzer.md)" in (run_dir / "feedback" / "index.md").read_text()
-    assert "feedback/failures/trace_analyzer.md" in manifest
+    assert "[current trace analysis](failures/analyze.md)" in (run_dir / "feedback" / "index.md").read_text()
+    assert "feedback/failures/analyze.md" in manifest
 
 
-def test_trace_analyzer_variants_share_raw_harbor_facts(tmp_path: Path) -> None:
-    module = _harbor_rollout_module()
+def test_analyze_operators_share_raw_harbor_facts(tmp_path: Path) -> None:
     jobs = tmp_path / "jobs"
     _write_trial(jobs, name="missing-output-a", reward=0)
     _write_trial(jobs, name="missing-output-b", reward=0)
     _write_trial(jobs, name="passing", reward=1)
-    cases = module.collect_cases(jobs)
+    cases = harbor_evidence.collect_cases(jobs)
 
-    for variant in VARIANTS:
-        run_dir = tmp_path / variant
+    for operator in ANALYZE_OPERATORS:
+        run_dir = tmp_path / operator
         selected, artifacts = write_evidence_bundle(
             run_dir,
             cases,
-            variant=variant,
+            operator=operator,
             max_chars=100_000,
         )
-        if variant == "trajectory_only":
+        manifest = json.loads((run_dir / "analyze" / "evidence" / "manifest.json").read_text())
+        assert manifest["analyze_operator"] == operator
+        assert "selected_variant" not in manifest
+        if operator == "trajectory_only":
             assert "Agent Behavior Analysis" in selected
-            assert "trace_analyzer/evidence/raw_traces.jsonl" not in artifacts
-            assert "trace_analyzer/evidence/trajectory_only.json" in artifacts
+            assert "analyze/evidence/raw_traces.jsonl" not in artifacts
+            assert "analyze/evidence/trajectory_only.json" in artifacts
         else:
-            assert f"Variant: {variant}" in selected
-            assert "trace_analyzer/evidence/raw_traces.jsonl" in artifacts
-        assert (run_dir / "trace_analyzer" / "evidence" / "manifest.json").is_file()
+            assert f"Analyze Operator: {operator}" in selected
+            assert "analyze/evidence/raw_traces.jsonl" in artifacts
+            assert set(manifest["operators"]) == set(ANALYZE_OPERATORS) - {"trajectory_only"}
+        assert "variants" not in manifest
 
     patterns = json.loads(
-        (tmp_path / "failure_patterns" / "trace_analyzer" / "evidence" / "failure_patterns.json").read_text()
+        (tmp_path / "failure_patterns" / "analyze" / "evidence" / "failure_patterns.json").read_text()
     )
     assert patterns[0]["support"] == 2
     assert patterns[0]["signature"]["terminal_cause"] == "missing_artifact"
     passing = json.loads(
-        (tmp_path / "failure_patterns" / "trace_analyzer" / "evidence" / "passing_behaviors.json").read_text()
+        (tmp_path / "failure_patterns" / "analyze" / "evidence" / "passing_behaviors.json").read_text()
     )
     assert passing[0]["task_name"] == "harbor/passing"
 
@@ -528,7 +518,7 @@ def test_trajectory_only_matches_aevolve_behavior_only_evidence(tmp_path: Path) 
     selected, artifacts = write_evidence_bundle(
         tmp_path,
         cases,
-        variant="trajectory_only",
+        operator="trajectory_only",
         max_chars=100_000,
         judge_verdicts=[
             {
@@ -540,7 +530,7 @@ def test_trajectory_only_matches_aevolve_behavior_only_evidence(tmp_path: Path) 
         ],
     )
 
-    evidence = tmp_path / "trace_analyzer" / "evidence"
+    evidence = tmp_path / "analyze" / "evidence"
     records = json.loads((evidence / "trajectory_only.json").read_text())
     manifest = json.loads((evidence / "manifest.json").read_text())
     assert records[0]["task_id"] == "terminal/task-a"
@@ -564,9 +554,9 @@ def test_trajectory_only_matches_aevolve_behavior_only_evidence(tmp_path: Path) 
     assert manifest["ground_truth_exposed"] is False
     assert not (evidence / "raw_traces.jsonl").exists()
     assert artifacts == [
-        "trace_analyzer/evidence/manifest.json",
-        "trace_analyzer/evidence/trajectory_only.json",
-        "trace_analyzer/evidence/selected.md",
+        "analyze/evidence/manifest.json",
+        "analyze/evidence/trajectory_only.json",
+        "analyze/evidence/selected.md",
     ]
 
 
@@ -638,17 +628,18 @@ def test_trajectory_only_does_not_treat_pre_tool_commentary_as_final_response() 
     assert records[0]["signals"]["completed"] is False
 
 
-def test_feedback_bundle_copies_selected_evidence_and_history(tmp_path: Path) -> None:
+def test_feedback_history_uses_analyze_operator_key(tmp_path: Path) -> None:
     workspace, _ = init_workspace(tmp_path)
-    historical = workspace / "runs" / "gen-0" / "trace_analyzer" / "evidence"
+    historical = workspace / "runs" / "gen-0" / "analyze" / "evidence"
     historical.mkdir(parents=True)
     (historical / "metrics.json").write_text(json.dumps({"trials": 2}))
+    (historical / "manifest.json").write_text(json.dumps({"analyze_operator": "failure_patterns"}))
     run_dir = workspace / "runs" / "gen-1"
-    evidence = run_dir / "trace_analyzer" / "evidence"
+    evidence = run_dir / "analyze" / "evidence"
     evidence.mkdir(parents=True)
-    (run_dir / "trace_analyzer" / "feedback.md").write_text("duplicate selected view\n")
+    (run_dir / "analyze" / "feedback.md").write_text("duplicate selected view\n")
     (evidence / "selected.md").write_text("# selected profile evidence\n")
-    (evidence / "manifest.json").write_text(json.dumps({"selected_variant": "failure_patterns"}))
+    (evidence / "manifest.json").write_text(json.dumps({"analyze_operator": "failure_patterns"}))
     (evidence / "metrics.json").write_text(json.dumps({"trials": 1}))
 
     manifest = write_feedback_bundle(workspace=workspace, run_dir=run_dir)
@@ -656,7 +647,9 @@ def test_feedback_bundle_copies_selected_evidence_and_history(tmp_path: Path) ->
     assert (run_dir / "feedback" / "evidence" / "selected.md").read_text().startswith("# selected")
     assert "feedback/evidence/history.json" in manifest
     history = json.loads((run_dir / "feedback" / "evidence" / "history.json").read_text())
-    assert history[0]["raw_evidence_dir"] == "runs/gen-0/trace_analyzer/evidence"
+    assert history[0]["raw_evidence_dir"] == "runs/gen-0/analyze/evidence"
+    assert history[0]["analyze_operator"] == "failure_patterns"
+    assert "analyze_variant" not in history[0]
     index = (run_dir / "feedback" / "index.md").read_text()
     assert "[selected trace evidence](evidence/selected.md)" in index
     assert "[current trace analysis]" not in index

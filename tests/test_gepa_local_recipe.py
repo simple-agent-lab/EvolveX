@@ -19,7 +19,11 @@ TASKS_LOCAL = Path(__file__).parent / "fixtures" / "tasks-local"
 
 def _row_for(workspace: Path, genid: str) -> dict:
     rows = [json.loads(line) for line in (workspace / "archive.jsonl").read_text().splitlines()]
-    scored = [r for r in rows if r.get("genid") == genid and r.get("score") is not None]
+    scored = [
+        row
+        for row in rows
+        if row.get("genid") == genid and row.get("score") is not None and row.get("purpose") in {"candidate", "genesis"}
+    ]
     assert scored, f"no scored archive row for gen {genid}"
     return scored[-1]
 

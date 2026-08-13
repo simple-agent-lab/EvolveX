@@ -27,7 +27,7 @@ def test_poster_recipe_uses_codex_defaults_under_outer_agent_control() -> None:
     recipe = yaml.safe_load(RECIPE.read_text())
 
     assert "model" not in recipe["evaluator"]
-    assert "model" not in recipe["operators"]["meta_agent"]
+    assert "model" not in recipe["operators"]["mutate"]
 
 
 def test_renderer_uses_injected_local_runtime_and_preserves_rsvg_fallback(monkeypatch, tmp_path: Path) -> None:

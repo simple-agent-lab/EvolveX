@@ -5,6 +5,8 @@ surface includes `prompt.md`, `skills/**`, `codex.toml`, and the local plugin
 under `plugins/evolve-target/**`. Its initial `SessionStart` hook injects
 candidate-owned context, and every canonical evaluation installs the candidate
 plugin into an isolated temporary `CODEX_HOME` before invoking Codex CLI.
+The recipe selects each reusable operator by name and keeps its settings under
+the corresponding nested `config` block.
 
 Authentication may use an API key or an explicit Codex login file. After
 `codex login`, export `CODEX_AUTH_JSON_PATH=/absolute/path/to/auth.json` (or put

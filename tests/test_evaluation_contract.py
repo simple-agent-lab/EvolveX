@@ -9,11 +9,12 @@ from conftest import (
     fixture_recipe_config,
     git,
     init_recipe_with_local_inputs,
+    init_workspace_from_config,
 )
 
 from evolve import evaluation as evaluation_package
 from evolve.population import fixed_evaluation_identity
-from evolve.workspace import InitOptions, init_workspace
+from evolve.workspace import InitOptions
 
 
 def _dataset(root: Path, count: int = 10) -> Path:
@@ -25,7 +26,7 @@ def _dataset(root: Path, count: int = 10) -> Path:
     return root
 
 
-def _strict_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def _strict_workspace(tmp_path: Path) -> Path:
     dataset = _dataset(tmp_path / "tasks")
     workspace = tmp_path / "workspace"
     config = fixture_recipe_config("hill_climb-smoke", workspace.name)
@@ -44,8 +45,7 @@ def _strict_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         }
     )
     config["evaluator"].pop("k", None)
-    monkeypatch.setattr("evolve.workspace.default_config", lambda _recipe, _experiment: config)
-    init_workspace(InitOptions(workspace=workspace, recipe="fixture"))
+    init_workspace_from_config(InitOptions(workspace=workspace), config)
     return workspace
 
 
@@ -59,10 +59,8 @@ def _context(workspace: Path, candidate_commit: str, *, generation: str = "0"):
     )
 
 
-def test_contract_resolver_derives_every_field_from_trusted_workspace_inputs(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    workspace = _strict_workspace(tmp_path, monkeypatch)
+def test_contract_resolver_derives_every_field_from_trusted_workspace_inputs(tmp_path: Path) -> None:
+    workspace = _strict_workspace(tmp_path)
     candidate_commit = git(workspace, "rev-parse", "gen/0^{commit}")
     manifest = json.loads((workspace / "evaluator/splits.json").read_text())
     expected_tasks = tuple(manifest["tasks"]["gate"][:2])
@@ -105,7 +103,7 @@ def test_contract_resolver_derives_every_field_from_trusted_workspace_inputs(
     assert "test-key-not-a-secret" not in serialized
 
 
-def test_full_task_scope_contract_honors_tasks_per_round(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_full_task_scope_contract_honors_tasks_per_round(tmp_path: Path) -> None:
     dataset = _dataset(tmp_path / "tasks")
     workspace = tmp_path / "workspace"
     config = fixture_recipe_config("hill_climb-smoke", workspace.name)
@@ -120,8 +118,7 @@ def test_full_task_scope_contract_honors_tasks_per_round(tmp_path: Path, monkeyp
         }
     )
     config["evaluator"].pop("split", None)
-    monkeypatch.setattr("evolve.workspace.default_config", lambda _recipe, _experiment: config)
-    init_workspace(InitOptions(workspace=workspace, recipe="fixture"))
+    init_workspace_from_config(InitOptions(workspace=workspace), config)
 
     contract = contract_for_gen0(workspace)
 
@@ -192,10 +189,8 @@ def test_uv_candidate_dependency_identity_comes_from_inline_runtime(tmp_path: Pa
     assert len(contract.candidate_dependency_digest) == 64
 
 
-def test_contract_id_changes_with_candidate_tree_but_not_repeated_resolution(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    workspace = _strict_workspace(tmp_path, monkeypatch)
+def test_contract_id_changes_with_candidate_tree_but_not_repeated_resolution(tmp_path: Path) -> None:
+    workspace = _strict_workspace(tmp_path)
     first_commit = git(workspace, "rev-parse", "gen/0^{commit}")
     first = evaluation_package.resolve_evaluation_contract(_context(workspace, first_commit))
     repeated = evaluation_package.resolve_evaluation_contract(_context(workspace, first_commit))
@@ -212,14 +207,14 @@ def test_contract_id_changes_with_candidate_tree_but_not_repeated_resolution(
     assert second.dataset_content_digest == first.dataset_content_digest
 
 
-def test_contract_resolution_fails_closed_without_authoritative_dataset_identity(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_contract_resolution_fails_closed_without_authoritative_dataset_identity(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     dataset = _dataset(tmp_path / "tasks")
     config = fixture_recipe_config("hill_climb-smoke", workspace.name)
-    monkeypatch.setattr("evolve.workspace.default_config", lambda _recipe, _experiment: config)
-    init_workspace(InitOptions(workspace=workspace, recipe="fixture", dataset=str(dataset)))
+    init_workspace_from_config(
+        InitOptions(workspace=workspace, dataset=str(dataset)),
+        config,
+    )
     manifest_path = workspace / "evaluator/splits.json"
     manifest = json.loads(manifest_path.read_text())
     manifest["version"] = 1
@@ -238,8 +233,8 @@ def test_contract_resolution_fails_closed_without_authoritative_dataset_identity
     assert excinfo.value.field == "dataset_content_digest"
 
 
-def test_contract_writer_replaces_atomically(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    workspace = _strict_workspace(tmp_path, monkeypatch)
+def test_contract_writer_replaces_atomically(tmp_path: Path) -> None:
+    workspace = _strict_workspace(tmp_path)
     commit = git(workspace, "rev-parse", "gen/0^{commit}")
     contract = evaluation_package.resolve_evaluation_contract(_context(workspace, commit))
     output = tmp_path / "run" / "evaluation-contract.json"
@@ -251,10 +246,8 @@ def test_contract_writer_replaces_atomically(tmp_path: Path, monkeypatch: pytest
     assert not output.with_suffix(".json.tmp").exists()
 
 
-def test_candidate_runtime_receipt_must_match_contract_identity(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    workspace = _strict_workspace(tmp_path, monkeypatch)
+def test_candidate_runtime_receipt_must_match_contract_identity(tmp_path: Path) -> None:
+    workspace = _strict_workspace(tmp_path)
     commit = git(workspace, "rev-parse", "gen/0^{commit}")
     base = evaluation_package.resolve_evaluation_contract(_context(workspace, commit))
     contract = replace(base, candidate_dependency_digest="d" * 64)
@@ -281,10 +274,8 @@ def test_candidate_runtime_receipt_must_match_contract_identity(
         assert field in mismatch.reason
 
 
-def test_contract_without_candidate_runtime_requires_no_runtime_receipt(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    workspace = _strict_workspace(tmp_path, monkeypatch)
+def test_contract_without_candidate_runtime_requires_no_runtime_receipt(tmp_path: Path) -> None:
+    workspace = _strict_workspace(tmp_path)
     commit = git(workspace, "rev-parse", "gen/0^{commit}")
     contract = evaluation_package.resolve_evaluation_contract(_context(workspace, commit))
 

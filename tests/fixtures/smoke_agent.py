@@ -8,7 +8,7 @@ def main() -> None:
     target = Path("target/agent.py")
     target.parent.mkdir(parents=True, exist_ok=True)
     existing = target.read_text(encoding="utf-8") if target.exists() else ""
-    marker = f"# smoke-meta-agent gen {os.environ['EVOLVE_GENID']}"
+    marker = f"# smoke-mutate gen {os.environ['EVOLVE_GENID']}"
 
     if marker not in existing.splitlines():
         prefix = existing.rstrip("\n")

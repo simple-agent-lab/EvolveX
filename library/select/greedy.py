@@ -5,6 +5,7 @@ It is the default exploitative baseline recipe for score-driven evolution.
 
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import ArchiveView, OperatorContext, SelectOperator, SelectResult
+from library.select._config import SELECT_CONFIG as CONFIG
 
 
 class GreedySelect(SelectOperator):
@@ -17,4 +18,4 @@ class GreedySelect(SelectOperator):
 
 
 if __name__ == "__main__":
-    sdk.main(GreedySelect)
+    sdk.main(GreedySelect, config_schema=CONFIG)

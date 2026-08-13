@@ -5,6 +5,7 @@ It is a fitness-proportionate, roulette-wheel selection recipe from evolutionary
 
 from evolve.frozen import sdk
 from evolve.frozen.interfaces import ArchiveView, OperatorContext, SelectOperator, SelectResult
+from library.select._config import SELECT_CONFIG as CONFIG
 
 
 class ScoreWeightedSelect(SelectOperator):
@@ -18,4 +19,4 @@ class ScoreWeightedSelect(SelectOperator):
 
 
 if __name__ == "__main__":
-    sdk.main(ScoreWeightedSelect)
+    sdk.main(ScoreWeightedSelect, config_schema=CONFIG)

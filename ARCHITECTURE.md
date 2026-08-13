@@ -26,6 +26,11 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `candidate/smoke.py` | 225 | run install or one-request model smoke against an exact candidate snapshot and persist redacted evidence |
 | `candidate/snapshot.py` | 100 | exact candidate Git tree construction, temporary materialization, and reviewed-tree commit verification |
 | `cli.py` | 450 | argument parsing and verb dispatch only — no logic |
+| `composition/__init__.py` | 25 | stable recipe-resolution facade without CLI dependencies |
+| `composition/catalog.py` | 250 | filesystem-only operator library discovery and subprocess inspection protocol |
+| `composition/cli.py` | 100 | recipe check command rendering human and machine-readable resolved bindings |
+| `composition/materialize.py` | 200 | selected operator freezing, runtime-helper materialization, and provenance manifest entries |
+| `composition/recipe.py` | 300 | strict built-in and path recipe resolution, operator binding validation, and aggregated diagnostics |
 | `config.py` | 225 | read/render `evolve.yaml`, including evaluator repetition and inline runtime normalization |
 | `driver.py` | 1800 | the generation sequencer: orchestrates baseline eval, verbs + operators (incl. novelty, self-modification admission gates, sealed anchors); validates operator outputs; computes verified_fixes; audit quarantine; doctor repair |
 | `doctor.py` | 250 | read-only local/experiment preflight profiles and persisted diagnostic receipts |
@@ -46,9 +51,9 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `execution_runtime/probes.py` | 275 | daemon, Compose, disk, and bind-mount preflight probes |
 | `execution_runtime/resolve.py` | 175 | explicit/env/Linux/macOS Docker endpoint resolution |
 | `experiment_smoke.py` | 200 | isolated one-task gen0-to-gen1 full-loop canary |
-| `feedback.py` | 250 | assemble current and historical rollout evidence plus ledger-derived feedback for the meta-agent |
+| `feedback.py` | 250 | assemble current and historical rollout evidence plus ledger-derived feedback for mutation |
 | `operators.py` | 200 | subprocess runner for workspace operator scripts (contract: env vars, --config, timeout) |
-| `operator_cli.py` | 150 | agent-facing operator discovery and one-stage invocation command group |
+| `operator_cli.py` | 325 | agent-facing library authoring/discovery, active inspection, and one-stage invocation commands |
 | `orchestration.py` | 400 | safe outer-agent composition of driver verbs, stage handoffs, retries, and admission receipts |
 | `patching.py` | 150 | mutable-surface patch creation and parent-reference selection |
 | `population.py` | 100 | genid/lineage bookkeeping for fan-out generations |
@@ -67,8 +72,8 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `runtime/uv.py` | 550 | locked uv candidate-runtime construction and command execution |
 | `splits.py` | 650 | freeze content-backed task identity/membership and materialize authoritative limited runtime selections |
 | `surface.py` | 150 | mutable-surface pattern matching and violation checks |
-| `trace_analysis.py` | 775 | deterministic shared transforms used by the independent trace-analyzer operator variants |
-| `workspace.py` | 1100 | `evolve init` scaffolding: file copies, operator binding, deterministic dataset and Harbor runtime config, generated operator palette, protocol stamping, safe seed + mechanism vendoring, inner-skill copy |
+| `trace_analysis.py` | 775 | deterministic shared transforms used by the independent analyze operator variants |
+| `workspace.py` | 1100 | `evolve init` scaffolding: file copies, composition materialization, deterministic dataset and Harbor runtime config, protocol stamping, safe seed + mechanism vendoring, inner-skill copy |
 | `git.py` | 150 | thin git subprocess helpers — nothing evolve-specific |
 | `harbor_local.py` | 250 | minimal in-place Harbor environment for fast trials against a pre-configured local agent runtime |
 | `host_runtime.py` | 100 | host-side locked runtime process helpers |
@@ -79,8 +84,8 @@ decision (and usually a demolition pass) instead of silent sprawl.
 | `integrations/harbor/_candidate_source.py` | 75 | exact candidate-source validation and archive-copy boundary |
 | `integrations/harbor/codex_candidate.py` | 75 | Codex adapter for OpenAI-compatible Responses endpoints |
 | `integrations/harbor/miniswe_candidate.py` | 550 | exact-candidate MiniSWE Harbor evaluator agent |
-| `integrations/harbor/miniswe_task_file.py` | 130 | large-task MiniSWE meta-agent transport |
-| `meta_agent_budget.py` | 150 | shared Harbor meta-agent retry and timeout budget calculations |
+| `integrations/harbor/miniswe_task_file.py` | 130 | large-task MiniSWE mutate-runner transport |
+| `mutate_budget.py` | 150 | shared Harbor mutation retry and timeout budget calculations |
 
 ### The frozen ring (`src/evolve/frozen/`)
 
@@ -92,10 +97,11 @@ each workspace, immutable there because it sits outside the mutable surface
 | File | Budget (lines) | Responsibility (one line — keep it true) |
 | --- | --- | --- |
 | `frozen/__init__.py` | 50 | the frozen-ring definition (litmus + two homes: contract/gate vs the evaluator) — the canonical anchor a contributor reads |
+| `frozen/config.py` | 400 | dependency-free declarative operator config schemas, normalization, inspection descriptions, and path-aware errors |
 | `frozen/interfaces.py` | 350 | operator ABCs, registry, result schemas, and strict operator payload validation |
-| `frozen/sdk.py` | 300 | Python operator entrypoint and file-contract IO; no library algorithm policy |
+| `frozen/sdk.py` | 350 | Python operator entrypoint and file-contract IO; no library algorithm policy |
 
-Total `src/evolve/` budget: **16730 lines**. The budget admits the explicit content-backed
+Total `src/evolve/` budget: **18230 lines**. The budget admits the explicit content-backed
 evaluation-contract boundaries, the opt-in in-place Harbor runtime, and the redacted trace-analysis
 boundary between rollout and feedback assembly; if the mechanism wants to
 grow past that, something belongs in a workspace operator instead —

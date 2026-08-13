@@ -17,19 +17,14 @@ from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import Any, cast
 
-from . import __version__ as _EVOLVE_VERSION
 from .archive import append_event
+from .composition import ResolvedRecipe, materialize_operators, resolve_builtin_recipe, resolve_recipe
 from .config import (
     DEFAULT_RECIPE,
-    OPERATOR_KINDS,
-    OPTIONAL_OPERATOR_KINDS,
     SOURCE_ROOT,
-    default_config,
     evaluator_repetitions,
     library_root,
-    load_config,
     normalize_evaluator_config,
-    recipe_root,
     render_yaml,
     resource_root,
     scaffold_root,
@@ -85,14 +80,6 @@ class InitOptions:
     tasks_per_round: int | None = None
 
 
-@dataclass(frozen=True)
-class _OperatorBinding:
-    kind: str
-    source: str
-    text: str
-    companion_text: str | None
-
-
 def init_workspace(options: InitOptions) -> None:
     workspace = options.workspace
     if options.recipe is not None and options.recipe_path is not None:
@@ -102,31 +89,29 @@ def init_workspace(options: InitOptions) -> None:
     if workspace.exists() and any(workspace.iterdir()):
         raise ValueError(f"workspace is not empty: {workspace}")
 
-    if options.recipe_path is None:
-        recipe = options.recipe or DEFAULT_RECIPE
-        recipe_directory: Path | Traversable | None = None
-        config = default_config(recipe, workspace.name)
-    else:
-        recipe, recipe_directory, config = _path_recipe(options.recipe_path, workspace.name)
-    target = config["target"]
-    assert isinstance(target, dict)
+    resolved = (
+        resolve_builtin_recipe(options.recipe or DEFAULT_RECIPE)
+        if options.recipe_path is None
+        else resolve_recipe(options.recipe_path)
+    )
+    config = copy.deepcopy(resolved.config)
+    experiment = cast("dict[str, Any]", config["experiment"])
+    experiment["id"] = workspace.name
+    target = cast("dict[str, Any]", config["target"])
     if options.seed:
         target["seed"] = options.seed
         target.pop("revision", None)
         target.pop("generate_lock", None)
     if options.dataset:
-        evaluator = config["evaluator"]
-        assert isinstance(evaluator, dict)
+        evaluator = cast("dict[str, Any]", config["evaluator"])
         evaluator["dataset"] = options.dataset
     if options.tasks_per_round is not None:
         if options.tasks_per_round < 1:
             raise ValueError("--tasks must be at least 1")
-        evaluator = config["evaluator"]
-        assert isinstance(evaluator, dict)
+        evaluator = cast("dict[str, Any]", config["evaluator"])
         evaluator["tasks_per_round"] = options.tasks_per_round
 
-    evaluator = config["evaluator"]
-    assert isinstance(evaluator, dict)
+    evaluator = cast("dict[str, Any]", config["evaluator"])
     _validate_evaluator_config(evaluator)
     _validate_target_config(target)
     with tempfile.TemporaryDirectory(prefix="evolve-target-") as tmp:
@@ -139,9 +124,13 @@ def init_workspace(options: InitOptions) -> None:
         workspace.mkdir(parents=True, exist_ok=True)
         _write_files(
             workspace,
-            config,
-            recipe=recipe,
-            recipe_directory=recipe_directory,
+            ResolvedRecipe(
+                name=resolved.name,
+                directory=resolved.directory,
+                config=config,
+                operators=resolved.operators,
+                warnings=resolved.warnings,
+            ),
             init_cwd=Path.cwd(),
         )
         shutil.copytree(staged_target, workspace / "target")
@@ -156,19 +145,6 @@ def init_workspace(options: InitOptions) -> None:
     )
     _init_git(workspace)
     _write_gen0_archive(workspace)
-
-
-def _path_recipe(recipe_path: Path, experiment_id: str) -> tuple[str, Path, dict[str, Any]]:
-    source = recipe_path.expanduser()
-    if not source.is_absolute():
-        source = Path.cwd() / source
-    source = source.resolve()
-    config_path = source / "evolve.yaml" if source.is_dir() else source
-    if config_path.name != "evolve.yaml" or not config_path.is_file():
-        raise ValueError("--recipe-path must name a recipe directory or its evolve.yaml")
-    config = copy.deepcopy(load_config(config_path))
-    config["experiment"]["id"] = experiment_id
-    return config_path.parent.name, config_path.parent, config
 
 
 _CONSOLE = """#!/usr/bin/env bash
@@ -204,12 +180,12 @@ def _vendor_mechanism(workspace: Path) -> None:
 
 def _write_files(
     workspace: Path,
-    config: dict[str, object],
+    resolved: ResolvedRecipe,
     *,
-    recipe: str,
-    recipe_directory: Path | Traversable | None = None,
     init_cwd: Path,
 ) -> None:
+    config = resolved.config
+    operator_materialization = materialize_operators(resolved.operators)
     assert isinstance(config["evaluator"], dict)
     evaluator = cast("dict[str, Any]", config["evaluator"])
     evaluator_engine = str(evaluator["engine"])
@@ -218,8 +194,7 @@ def _write_files(
     if evaluator_engine == "harbor" and not evaluator_agent:
         raise ValueError("evaluator.agent is required for harbor recipes")
     recipe_evaluator_assets = _recipe_evaluator_assets(
-        recipe,
-        recipe_directory=recipe_directory,
+        resolved.directory,
     )
     evaluator_collisions = sorted(
         relative_path
@@ -264,11 +239,14 @@ def _write_files(
         gate_limit=tasks_per_round,
     )
     evaluator_dataset = str(split_manifest["dataset"])
-    files = {
+    files: dict[str, str | bytes] = {
         "pyproject.toml": _workspace_scaffold("pyproject.toml"),
         "uv.lock": _workspace_scaffold("uv.lock"),
         ".python-version": _workspace_scaffold(".python-version"),
-        ".evolve-components.json": json.dumps(_component_manifest(recipe, config), indent=2, sort_keys=True) + "\n",
+        ".evolve-components.json": json.dumps(
+            _component_manifest(resolved, operator_materialization.components), indent=2, sort_keys=True
+        )
+        + "\n",
         "evolve.yaml": render_yaml(_runtime_config(config)),
         "README.md": _workspace_scaffold("README.md"),
         "AGENTS.md": _workspace_scaffold("AGENTS.md"),
@@ -315,6 +293,7 @@ def _write_files(
         "archive.jsonl": "",
         "best_ever.json": "null\n",
     }
+    files.update(operator_materialization.files)
     files.update(_skill_package("evolve-agent"))
     if evaluator_engine == "harbor":
         files.update(
@@ -325,265 +304,49 @@ def _write_files(
                 "evaluator/smoke.sh": _evaluator_scaffold("harbor", "smoke.sh"),
             }
         )
-    bindings = _operator_bindings(
-        config,
-        recipe=recipe,
-        recipe_directory=recipe_directory,
-        init_cwd=init_cwd,
-    )
-    for binding in bindings:
-        files[f"operators/{binding.kind}.py"] = _with_provenance(binding.kind, binding.source, binding.text)
-        if binding.companion_text is not None:
-            files[f"operators/{binding.kind}.md"] = binding.companion_text
     generated_output_paths = {relative_path.casefold() for relative_path in files}
     evaluator_collisions = sorted(
         relative_path for relative_path in recipe_evaluator_assets if relative_path.casefold() in generated_output_paths
     )
     if evaluator_collisions:
         raise ValueError("recipe evaluator asset collides with generated file: " + ", ".join(evaluator_collisions))
-    files["operators/README.md"] = _operator_index(
-        bindings,
-        recipe,
-        recipe_directory=recipe_directory,
-    )
-    files.update(
-        _operator_palette(recipe, recipe_directory=recipe_directory)
-        | _operator_assets(recipe, recipe_directory=recipe_directory)
-        | recipe_evaluator_assets
-    )
+    files.update(recipe_evaluator_assets)
     for relative_path, content in files.items():
         path = workspace / relative_path
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content)
+        if isinstance(content, bytes):
+            path.write_bytes(content)
+        else:
+            path.write_text(content)
     (workspace / "runs").mkdir(exist_ok=True)
     (workspace / "artifacts" / "user").mkdir(parents=True, exist_ok=True)
     (workspace / "artifacts" / "generations").mkdir(parents=True, exist_ok=True)
 
 
-def _operator_bindings(
-    config: dict[str, object],
-    *,
-    recipe: str,
-    recipe_directory: Path | Traversable | None = None,
-    init_cwd: Path,
-) -> list[_OperatorBinding]:
-    operators = config.get("operators")
-    if not isinstance(operators, dict):
-        raise ValueError("operators section must be a mapping")
-    bindings: list[_OperatorBinding] = []
-    optional_present = [k for k in OPTIONAL_OPERATOR_KINDS if isinstance(operators.get(k), dict)]
-    for kind in (*OPERATOR_KINDS, *optional_present):
-        block = operators.get(kind)
-        if not isinstance(block, dict):
-            raise ValueError(f"operators.{kind} must be a mapping")
-        script = block.get("script")
-        variant = block.get("variant")
-        if script and variant:
-            raise ValueError(f"operators.{kind} cannot specify both variant and script")
-        if script:
-            source = Path(str(script)).expanduser()
-            source_path = source if source.is_absolute() else init_cwd / source
-            if not source_path.is_file():
-                raise ValueError(f"operators.{kind} script not found: {script}")
-            companion = source_path.with_suffix(".md")
-            companion_text = companion.read_text() if companion.is_file() else None
-            bindings.append(_OperatorBinding(kind, str(source_path), source_path.read_text(), companion_text))
-            continue
-        source = _resolve_operator_variant(
-            recipe,
-            kind,
-            str(variant or "default"),
-            recipe_directory=recipe_directory,
-        )
-        companion = source.with_suffix(".md")
-        companion_text = companion.read_text() if companion.is_file() else None
-        bindings.append(_OperatorBinding(kind, _source_label(source), source.read_text(), companion_text))
-    return bindings
-
-
-def _operator_palette(
-    recipe: str,
-    *,
-    recipe_directory: Path | Traversable | None = None,
-) -> dict[str, str]:
-    """Vendor the per-kind variant catalog into the workspace's own `library/`,
-    mirroring the framework's `library/`. `operators/` holds only the active
-    scripts the driver runs; `library/<kind>/` holds the swap-in alternatives a
-    self-modifying agent can copy over and evolve. Keeping them in separate
-    trees is what makes `operators/` scannable at a glance."""
-    palette: dict[str, str] = {}
-    for kind in (*OPERATOR_KINDS, *OPTIONAL_OPERATOR_KINDS):
-        for directory in (_recipe_directory(recipe, recipe_directory) / "operators" / kind, library_root() / kind):
-            if not directory.is_dir():
-                continue
-            for path in sorted(directory.iterdir()):
-                if path.name.endswith(".py"):
-                    palette.setdefault(
-                        f"library/{kind}/{path.name}", _with_provenance(kind, _source_label(path), path.read_text())
-                    )
-    return palette
-
-
-def _walk_files(root: Path | Traversable, prefix: Path = Path("")):
-    for item in sorted(root.iterdir(), key=lambda entry: entry.name):
-        relative = prefix / item.name
-        if any(part.startswith(".") or part == "__pycache__" for part in relative.parts):
-            continue
-        if isinstance(item, Path) and item.is_symlink():
-            raise ValueError(f"operator asset may not be a symlink: {item}")
-        if item.is_dir():
-            yield from _walk_files(item, relative)
-        elif item.is_file():
-            yield relative, item
-
-
-def _text_files(root: Path | Traversable):
-    for relative, source in _walk_files(root):
-        try:
-            yield relative, source.read_text()
-        except UnicodeDecodeError:
-            continue
-
-
-def _root_python_helpers(root: Path | Traversable):
-    for source in sorted(root.iterdir(), key=lambda entry: entry.name):
-        if source.name.startswith((".", "_")) or not source.name.endswith(".py") or not source.is_file():
-            continue
-        if isinstance(source, Path) and source.is_symlink():
-            raise ValueError(f"operator asset may not be a symlink: {source}")
-        try:
-            yield source.name, source.read_text()
-        except UnicodeDecodeError:
-            continue
-
-
-def _operator_assets(
-    recipe: str,
-    *,
-    recipe_directory: Path | Traversable | None = None,
-) -> dict[str, str]:
-    assets: dict[str, str] = {}
-    for kind in (*OPERATOR_KINDS, *OPTIONAL_OPERATOR_KINDS):
-        for directory in (_recipe_directory(recipe, recipe_directory) / "operators" / kind, library_root() / kind):
-            if directory.is_dir():
-                for relative, text in _text_files(directory):
-                    if relative.suffix != ".py" or len(relative.parts) > 1:
-                        assets.setdefault(f"library/{kind}/{relative.as_posix()}", text)
-    return assets | {f"library/{name}": text for name, text in _root_python_helpers(library_root())}
-
-
 def _recipe_evaluator_assets(
-    recipe: str,
-    *,
-    recipe_directory: Path | Traversable | None = None,
+    recipe_directory: Path | Traversable,
 ) -> dict[str, str]:
-    root = _recipe_directory(recipe, recipe_directory) / "evaluator"
-    return (
-        {} if not root.is_dir() else {f"evaluator/{relative.as_posix()}": text for relative, text in _text_files(root)}
-    )
+    root = recipe_directory / "evaluator"
+    assets: dict[str, str] = {}
 
+    def visit(directory: Path | Traversable, prefix: Path = Path("")) -> None:
+        for source in sorted(directory.iterdir(), key=lambda entry: entry.name):
+            relative = prefix / source.name
+            if any(part.startswith(".") or part == "__pycache__" for part in relative.parts):
+                continue
+            if isinstance(source, Path) and source.is_symlink():
+                raise ValueError(f"operator asset may not be a symlink: {source}")
+            if source.is_dir():
+                visit(source, relative)
+            elif source.is_file():
+                try:
+                    assets[f"evaluator/{relative.as_posix()}"] = source.read_text()
+                except UnicodeDecodeError:
+                    continue
 
-def _operator_index(
-    bindings: list[_OperatorBinding],
-    recipe: str,
-    *,
-    recipe_directory: Path | Traversable | None = None,
-) -> str:
-    rows = []
-    for binding in bindings:
-        active = Path(binding.source).stem
-        alts = [
-            variant
-            for variant in _available_operator_variants(
-                recipe,
-                binding.kind,
-                recipe_directory=recipe_directory,
-            )
-            if variant != active
-        ]
-        rows.append(
-            f"| {binding.kind} | {active}.py | {_first_docstring_line(binding.text)} "
-            f"| {', '.join(alts) if alts else '—'} |"
-        )
-    return (
-        "# Active operators\n\n"
-        "The loop runs exactly these scripts, one per verb — each is yours to evolve\n"
-        "(the mechanism never overwrites them). Alternatives live in `library/<verb>/`;\n"
-        "copy one over a script to swap strategy. This file is generated by `init`.\n\n"
-        "| verb | active | what it does | swap-in (`library/<verb>/`) |\n"
-        "| --- | --- | --- | --- |\n" + "\n".join(rows) + "\n"
-    )
-
-
-def _first_docstring_line(source_text: str) -> str:
-    lines = source_text.splitlines()
-    i = 0
-    while i < len(lines) and (not lines[i].strip() or lines[i].lstrip().startswith("#")):
-        i += 1
-    if i < len(lines):
-        line = lines[i].strip()
-        for marker in ('"""', "'''"):
-            if line.startswith(marker):
-                inner = line[3:].split(marker, 1)[0].strip()
-                if inner:
-                    return inner
-                return lines[i + 1].strip() if i + 1 < len(lines) else "(no description)"
-    return "(no description)"
-
-
-def _resolve_operator_variant(
-    recipe: str,
-    kind: str,
-    variant: str,
-    *,
-    recipe_directory: Path | Traversable | None = None,
-):
-    for candidate in (
-        _recipe_directory(recipe, recipe_directory) / "operators" / kind / f"{variant}.py",
-        library_root() / kind / f"{variant}.py",
-    ):
-        if candidate.is_file():
-            return candidate
-    available = _available_operator_variants(
-        recipe,
-        kind,
-        recipe_directory=recipe_directory,
-    )
-    suffix = f" available: {', '.join(available)}" if available else " no variants available"
-    raise ValueError(f"unknown {kind} variant: {variant};{suffix}")
-
-
-def _available_operator_variants(
-    recipe: str,
-    kind: str,
-    *,
-    recipe_directory: Path | Traversable | None = None,
-) -> list[str]:
-    names: set[str] = set()
-    for directory in (_recipe_directory(recipe, recipe_directory) / "operators" / kind, library_root() / kind):
-        if not directory.is_dir():
-            continue
-        names.update(
-            path.name[:-3]
-            for path in directory.iterdir()
-            if path.is_file() and path.name.endswith(".py") and not path.name.startswith("_")
-        )
-    return sorted(names)
-
-
-def _recipe_directory(
-    recipe: str,
-    recipe_directory: Path | Traversable | None,
-) -> Path | Traversable:
-    return recipe_root() / recipe if recipe_directory is None else recipe_directory
-
-
-def _with_provenance(kind: str, source: str, source_text: str) -> str:
-    return (
-        f"# evolve-provenance: kind={kind} source={source} framework_version={_EVOLVE_VERSION}\n"
-        "# this file is yours now - mechanism will never overwrite it; evolve it.\n\n"
-        f"{source_text}"
-    )
+    if root.is_dir():
+        visit(root)
+    return assets
 
 
 def _runtime_config(config: dict[str, object]) -> dict[str, object]:
@@ -593,8 +356,7 @@ def _runtime_config(config: dict[str, object]) -> dict[str, object]:
         runtime["evaluator"] = normalize_evaluator_config(cast("dict[str, Any]", evaluator))
     operators = runtime.get("operators")
     if isinstance(operators, dict):
-        for kind in OPERATOR_KINDS:
-            block = operators.get(kind)
+        for block in operators.values():
             if isinstance(block, dict):
                 block.pop("variant", None)
                 block.pop("script", None)
@@ -616,18 +378,27 @@ def _dataset_pin(dataset: str, manifest: dict[str, Any]) -> str:
     return f"dataset={dataset}\nchecksum=sha256:stub\n"
 
 
-def _component_manifest(recipe: str, config: dict[str, object]) -> dict[str, object]:
+def _component_manifest(
+    resolved: ResolvedRecipe,
+    operator_components: dict[str, dict[str, object]],
+) -> dict[str, object]:
+    config = resolved.config
     evaluator = cast("dict[str, Any]", config["evaluator"])
     operators = cast("dict[str, Any]", config["operators"])
-    meta_agent = cast("dict[str, Any]", operators["meta_agent"])
-    references = (str(evaluator.get("agent") or ""), str(meta_agent.get("agent") or ""))
+    mutate = cast("dict[str, Any]", operators["mutate"])
+    mutate_config = mutate.get("config")
+    references = (
+        str(evaluator.get("agent") or ""),
+        str(mutate_config.get("agent") or "") if isinstance(mutate_config, dict) else "",
+    )
     return {
-        "recipe": recipe,
+        "recipe": resolved.name,
         "target_seed": cast("dict[str, Any]", config["target"]).get("seed"),
         "evaluator_engine": evaluator.get("engine"),
         "integrations": sorted(
             {reference.split(":", 1)[0] for reference in references if reference.startswith("evolve.integrations.")}
         ),
+        "operators": operator_components,
     }
 
 
@@ -1051,11 +822,3 @@ def _skill_package(name: str) -> dict[str, str]:
 
     visit(root)
     return files
-
-
-def _source_label(source: object) -> str:
-    return (
-        source.relative_to(SOURCE_ROOT).as_posix()
-        if isinstance(source, Path) and source.is_relative_to(SOURCE_ROOT)
-        else str(source)
-    )

@@ -7,7 +7,10 @@ Swap in `diff_similarity` when you want near-duplicate edits pruned before eval.
 from pathlib import Path
 
 from evolve.frozen import sdk
+from evolve.frozen.config import Config
 from evolve.frozen.interfaces import NoveltyOperator, NoveltyResult, OperatorContext
+
+CONFIG = Config({})
 
 
 class AcceptAllNovelty(NoveltyOperator):
@@ -16,4 +19,4 @@ class AcceptAllNovelty(NoveltyOperator):
 
 
 if __name__ == "__main__":
-    sdk.main(AcceptAllNovelty)
+    sdk.main(AcceptAllNovelty, config_schema=CONFIG)

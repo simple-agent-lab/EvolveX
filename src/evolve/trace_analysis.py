@@ -1,4 +1,4 @@
-"""Shared deterministic trace analysis used by workspace analyzer variants."""
+"""Shared deterministic trace analysis used by workspace analyze operators."""
 
 from __future__ import annotations
 
@@ -8,26 +8,23 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
-from evolve.frozen.interfaces import OperatorContext, TraceAnalyzerOperator, TraceAnalyzerResult
+from evolve.frozen.interfaces import AnalyzeOperator, AnalyzeResult, OperatorContext
 
 Case = dict[str, Any]
 
-VARIANTS = (
+ANALYZE_OPERATORS = (
     "failure_patterns",
-    "failed_traces",
     "trace_browser",
     "trajectory_only",
-    "execution_records",
-    "utility_metrics",
 )
 
 
-def normalize_variant(value: object) -> str:
-    variant = str(value or "failure_patterns").strip().lower().replace("-", "_")
-    if variant not in VARIANTS:
-        supported = ", ".join(VARIANTS)
-        raise ValueError(f"unknown trace analyzer variant {variant!r}; choose one of: {supported}")
-    return variant
+def normalize_analyze_operator(value: object) -> str:
+    operator = str(value or "failure_patterns").strip().lower().replace("-", "_")
+    if operator not in ANALYZE_OPERATORS:
+        supported = ", ".join(ANALYZE_OPERATORS)
+        raise ValueError(f"unknown analyze operator {operator!r}; choose one of: {supported}")
+    return operator
 
 
 def _write_json(path: Path, payload: object) -> None:
@@ -523,26 +520,22 @@ def _metrics(cases: list[Case]) -> Case:
     }
 
 
-_VARIANT_GUIDANCE = {
+_ANALYZE_OPERATOR_GUIDANCE = {
     "failure_patterns": "Prioritize recurring, actionable failure signatures. Preserve passing behaviors and propose a narrow edit tied to one agent mechanism.",
-    "failed_traces": "Diagnose concrete capability weaknesses from failed executions and make a change that generalizes beyond one task.",
     "trace_browser": "Use filesystem tools to inspect raw traces, metrics, source, and prior generations instead of relying only on this bounded summary.",
     "trajectory_only": "Infer improvement opportunities from agent behavior alone. No pass/fail labels, rewards, verifier feedback, task text, or raw-case paths are exposed.",
-    "execution_records": "Reflect across complete per-case inputs, outputs, ordered actions, tool results, verifier feedback, metrics, and history.",
-    "utility_metrics": "Treat per-task reward as downstream utility and improve the editable component for average utility across tasks.",
 }
 
 
 def _render_selected(
-    variant: str,
+    operator: str,
     metrics: Case,
     patterns: list[Case],
     passes: list[Case],
-    reflections: list[Case],
     max_chars: int,
     trajectory_records: list[Case] | None = None,
 ) -> str:
-    if variant == "trajectory_only":
+    if operator == "trajectory_only":
         rendered = (
             "### Agent Behavior Analysis (this batch)\n\n"
             "You can ONLY see the agent's actions. You do NOT have access to actual test results.\n\n"
@@ -564,11 +557,11 @@ def _render_selected(
     lines = [
         "# Trace Analysis Feedback",
         "",
-        f"## Trace Analyzer Variant: {variant}",
+        f"## Analyze Operator: {operator}",
         "",
-        _VARIANT_GUIDANCE[variant],
+        _ANALYZE_OPERATOR_GUIDANCE[operator],
         "",
-        "The full redacted evidence is under `$EVOLVE_RUN_DIR/trace_analyzer/evidence/`; use filesystem tools to inspect it when the selected view calls for raw or historical evidence.",
+        "The full redacted evidence is under `$EVOLVE_RUN_DIR/analyze/evidence/`; use filesystem tools to inspect it when the selected view calls for raw or historical evidence.",
         "",
         "## Aggregate metrics",
         "",
@@ -576,21 +569,12 @@ def _render_selected(
         json.dumps(metrics, indent=2, sort_keys=True),
         "```",
     ]
-    if variant == "failure_patterns":
+    if operator == "failure_patterns":
         lines.extend(
             ["", "## Verifier-grounded failure patterns", "", "```json", json.dumps(patterns, indent=2), "```"]
         )
         lines.extend(["", "## Passing behaviors to preserve", "", "```json", json.dumps(passes, indent=2), "```"])
-    elif variant == "failed_traces":
-        failed_reflections = [
-            record
-            for record in reflections
-            if (record.get("feedback") or {}).get("outcome") in {"failed", "agent_error"}
-        ]
-        lines.extend(
-            ["", "## Detailed failed executions", "", "```json", json.dumps(failed_reflections, indent=2), "```"]
-        )
-    elif variant == "trace_browser":
+    elif operator == "trace_browser":
         lines.extend(
             [
                 "",
@@ -598,12 +582,6 @@ def _render_selected(
                 "",
                 "Inspect `raw_traces.jsonl`, `reflective_records.jsonl`, `failure_patterns.json`, and `metrics.json`. Compare these with prior generation directories under `$EVOLVE_WORKSPACE/runs/` and with the candidate source currently checked out.",
             ]
-        )
-    elif variant == "execution_records":
-        lines.extend(["", "## Execution records", "", "```json", json.dumps(reflections, indent=2), "```"])
-    elif variant == "utility_metrics":
-        lines.extend(
-            ["", "## Downstream utility observations", "", "```json", json.dumps(metrics["per_task"], indent=2), "```"]
         )
     rendered = "\n".join(lines) + "\n"
     if len(rendered) <= max_chars:
@@ -618,13 +596,13 @@ def write_evidence_bundle(
     run_dir: Path,
     cases: list[Case],
     *,
-    variant: object = "failure_patterns",
+    operator: object = "failure_patterns",
     max_chars: int = 30000,
     judge_verdicts: list[Case] | None = None,
 ) -> tuple[str, list[str]]:
     """Persist method-neutral evidence once and render a bounded selected view."""
-    selected = normalize_variant(variant)
-    root = run_dir / "trace_analyzer" / "evidence"
+    selected = normalize_analyze_operator(operator)
+    root = run_dir / "analyze" / "evidence"
     records = failure_records(cases)
     patterns = cluster_failure_patterns(records)
     passes = passing_behaviors(cases)
@@ -637,12 +615,12 @@ def write_evidence_bundle(
     if selected == "trajectory_only":
         _write_json(root / "trajectory_only.json", trajectory_records)
         manifest = {
-            "selected_variant": selected,
+            "analyze_operator": selected,
             "cases": len(trajectory_records),
             "evidence_policy": "trajectory_only",
             "ground_truth_exposed": False,
             "case_paths_exposed": False,
-            "variants": {
+            "operators": {
                 "trajectory_only": ["trajectory_only.json", "selected.md"],
             },
         }
@@ -652,15 +630,14 @@ def write_evidence_bundle(
             {},
             [],
             [],
-            [],
             max_chars,
             trajectory_records=trajectory_records,
         )
         (root / "selected.md").write_text(selected_md)
         return selected_md, [
-            "trace_analyzer/evidence/manifest.json",
-            "trace_analyzer/evidence/trajectory_only.json",
-            "trace_analyzer/evidence/selected.md",
+            "analyze/evidence/manifest.json",
+            "analyze/evidence/trajectory_only.json",
+            "analyze/evidence/selected.md",
         ]
 
     _write_jsonl(root / "raw_traces.jsonl", cases)
@@ -670,27 +647,24 @@ def write_evidence_bundle(
     _write_jsonl(root / "reflective_records.jsonl", reflections)
     _write_json(root / "metrics.json", metrics)
     manifest = {
-        "selected_variant": selected,
-        "variants": {
+        "analyze_operator": selected,
+        "operators": {
             "failure_patterns": ["failure_patterns.json", "passing_behaviors.json", "metrics.json"],
-            "failed_traces": ["reflective_records.jsonl", "metrics.json"],
             "trace_browser": ["raw_traces.jsonl", "metrics.json", "prior generation runs + source tree"],
-            "execution_records": ["raw_traces.jsonl", "reflective_records.jsonl", "metrics.json", "history"],
-            "utility_metrics": ["metrics.json", "source tree"],
         },
     }
     _write_json(root / "manifest.json", manifest)
-    selected_md = _render_selected(selected, metrics, patterns, passes, reflections, max_chars)
+    selected_md = _render_selected(selected, metrics, patterns, passes, max_chars)
     (root / "selected.md").write_text(selected_md)
     artifacts = [
-        "trace_analyzer/evidence/manifest.json",
-        "trace_analyzer/evidence/raw_traces.jsonl",
-        "trace_analyzer/evidence/failure_records.json",
-        "trace_analyzer/evidence/failure_patterns.json",
-        "trace_analyzer/evidence/passing_behaviors.json",
-        "trace_analyzer/evidence/reflective_records.jsonl",
-        "trace_analyzer/evidence/metrics.json",
-        "trace_analyzer/evidence/selected.md",
+        "analyze/evidence/manifest.json",
+        "analyze/evidence/raw_traces.jsonl",
+        "analyze/evidence/failure_records.json",
+        "analyze/evidence/failure_patterns.json",
+        "analyze/evidence/passing_behaviors.json",
+        "analyze/evidence/reflective_records.jsonl",
+        "analyze/evidence/metrics.json",
+        "analyze/evidence/selected.md",
     ]
     return selected_md, artifacts
 
@@ -738,12 +712,12 @@ def _trajectory_only_cases(ctx: OperatorContext, current: list[Case]) -> list[Ca
     return combined[-maximum:]
 
 
-class TraceAnalyzerBase(TraceAnalyzerOperator):
-    variant = "failure_patterns"
+class AnalyzeBase(AnalyzeOperator):
+    operator = "failure_patterns"
 
-    def analyze(self, checkout: Path, ctx: OperatorContext) -> TraceAnalyzerResult:
+    def analyze(self, checkout: Path, ctx: OperatorContext) -> AnalyzeResult:
         del checkout
-        selected = normalize_variant(self.variant)
+        selected = normalize_analyze_operator(self.operator)
         cases_path = ctx.run_dir / "rollout" / "cases.json"
         cases = _load_cases(cases_path)
         analysis_cases = _trajectory_only_cases(ctx, cases) if selected == "trajectory_only" else cases
@@ -751,11 +725,11 @@ class TraceAnalyzerBase(TraceAnalyzerOperator):
         feedback, artifacts = write_evidence_bundle(
             ctx.run_dir,
             analysis_cases,
-            variant=selected,
+            operator=selected,
             max_chars=max_chars,
         )
-        (ctx.run_dir / "trace_analyzer" / "feedback.md").write_text(feedback)
-        return TraceAnalyzerResult(
-            summary={"variant": selected, "cases": len(analysis_cases), "source": str(cases_path)},
-            artifacts=["trace_analyzer/feedback.md", *artifacts],
+        (ctx.run_dir / "analyze" / "feedback.md").write_text(feedback)
+        return AnalyzeResult(
+            summary={"operator": selected, "cases": len(analysis_cases), "source": str(cases_path)},
+            artifacts=["analyze/feedback.md", *artifacts],
         )

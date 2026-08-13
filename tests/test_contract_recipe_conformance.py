@@ -60,7 +60,7 @@ def test_all_partner_recipes_resolve_the_same_automatic_contract_schema(
     assert json.loads((workspace / ".evolve-components.json").read_text())["recipe"] == recipe
     assert json.loads((workspace / "evaluator/dataset.pin").read_text())["digest"]
     for kind, variant in zip(
-        ("select", "rollout", "meta_agent", "gate"),
+        ("select", "rollout", "mutate", "gate"),
         EXPECTED_OPERATOR_VARIANTS[recipe],
         strict=True,
     ):

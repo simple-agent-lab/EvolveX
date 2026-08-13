@@ -3,7 +3,7 @@ import random
 from pathlib import Path
 
 import pytest
-from conftest import FIXTURE_SEEDS, run_evolve
+from conftest import fixture_recipe_config, init_workspace_from_config, run_evolve
 
 from evolve import splits as splits_module
 from evolve.frozen.interfaces import OperatorContext
@@ -15,7 +15,7 @@ from evolve.splits import (
     task_content_digests,
     write_runtime_selection,
 )
-from evolve.workspace import InitOptions, init_workspace
+from evolve.workspace import InitOptions
 
 
 def _dataset(root: Path, count: int = 10) -> Path:
@@ -227,38 +227,27 @@ def test_init_dataset_option_freezes_local_harbor_tasks(tmp_path: Path) -> None:
     assert sum(len(manifest["tasks"][name]) for name in ("train", "gate", "sealed")) == 10
 
 
-def test_init_full_task_scope_freezes_every_task_without_partition(tmp_path: Path, monkeypatch) -> None:
+def test_init_full_task_scope_freezes_every_task_without_partition(tmp_path: Path) -> None:
     dataset = _dataset(tmp_path / "tasks", count=4)
     workspace = tmp_path / "workspace"
-    monkeypatch.setenv("EVOLVE_RUNTIME_DIGEST", "sha256:test-runtime")
-    monkeypatch.setattr(
-        "evolve.workspace.default_config",
-        lambda _recipe, name: {
-            "experiment": {"id": name, "max_generations": 1, "children_per_gen": 1},
-            "target": {"seed": str(FIXTURE_SEEDS / "dummy")},
-            "surface": {"include": ["target/**"], "exclude": []},
-            "operators": {
-                "select": {"variant": "ahe_latest"},
-                "rollout": {"variant": "harbor"},
-                "meta_agent": {"variant": "ahe"},
-                "gate": {"variant": "ahe_artifact_valid"},
-                "record": {"variant": "jsonl"},
-            },
-            "evaluator": {
-                "engine": "harbor",
-                "dataset": str(dataset),
-                "agent": "target.agent:HarborAgent",
-                "task_scope": "full",
-                "evaluation_split": "train",
-                "sampling": "static",
-                "tasks_per_round": 4,
-                "k": 2,
-                "n_concurrent": 4,
-            },
-        },
+    config = fixture_recipe_config("hill_climb-smoke", workspace.name)
+    config["evaluator"].update(
+        {
+            "dataset": str(dataset),
+            "task_scope": "full",
+            "evaluation_split": "train",
+            "sampling": "static",
+            "tasks_per_round": 4,
+            "k": 2,
+            "n_concurrent": 4,
+        }
     )
+    config["evaluator"].pop("split", None)
 
-    init_workspace(InitOptions(workspace=workspace, recipe="ahe", dataset=str(dataset)))
+    init_workspace_from_config(
+        InitOptions(workspace=workspace, dataset=str(dataset)),
+        config,
+    )
 
     manifest = json.loads((workspace / "evaluator" / "splits.json").read_text())
     assert manifest["ratios"] == {"train": 1.0, "gate": 0.0, "sealed": 0.0}
@@ -491,9 +480,8 @@ def test_harbor_rollout_keeps_infra_tasks_without_outer_repair(tmp_path: Path, m
 
 
 def test_harbor_rollout_exact_task_replay_is_limited_to_frozen_train_split(tmp_path: Path, monkeypatch) -> None:
-    from test_m7_harbor_rollout import _harbor_rollout_module
+    from library._shared.harbor import execution as module
 
-    module = _harbor_rollout_module()
     monkeypatch.setattr(
         module,
         "select_dataset_tasks",
@@ -528,9 +516,8 @@ def test_harbor_rollout_exact_task_replay_is_limited_to_frozen_train_split(tmp_p
 
 
 def test_harbor_rollout_can_shuffle_train_minibatches_by_generation(tmp_path: Path, monkeypatch) -> None:
-    from test_m7_harbor_rollout import _harbor_rollout_module
+    from library._shared.harbor import execution as module
 
-    module = _harbor_rollout_module()
     names = [f"train-{index}" for index in range(20)]
     monkeypatch.setattr(module, "select_dataset_tasks", lambda *_args, **_kwargs: (names, "hash"))
 

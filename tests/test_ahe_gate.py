@@ -18,7 +18,7 @@ def _module():
 
 def test_ahe_gate_accepts_lower_score_with_valid_manifest(tmp_path: Path) -> None:
     ctx = OperatorContext(tmp_path, tmp_path, tmp_path / "run", "2", "1", None, 1, {}, random.Random(0))
-    path = ctx.run_dir / "meta_agent" / "change_manifest.json"
+    path = ctx.run_dir / "mutate" / "change_manifest.json"
     path.parent.mkdir(parents=True)
     path.write_text(json.dumps({"iteration": 2, "changes": [{"id": "chg-1"}]}))
     child = {"outcome": "benchmark_complete", "selection_eligible": True, "score": 0.1}
@@ -30,7 +30,7 @@ def test_ahe_gate_accepts_canonical_child_without_valid_manifest(tmp_path: Path)
     child = {"outcome": "benchmark_complete", "selection_eligible": True}
     gate = _module().AheArtifactValidGate()
     assert gate.decide(child, None, ctx).decision == "accept"
-    path = ctx.run_dir / "meta_agent" / "change_manifest.json"
+    path = ctx.run_dir / "mutate" / "change_manifest.json"
     path.parent.mkdir(parents=True)
     path.write_text(json.dumps({"iteration": 9, "changes": [{"id": "chg-1"}]}))
     assert gate.decide(child, None, ctx).decision == "accept"

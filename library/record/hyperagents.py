@@ -5,7 +5,10 @@ from __future__ import annotations
 import json
 
 from evolve.frozen import sdk
+from evolve.frozen.config import Config
 from evolve.frozen.interfaces import RecordOperator, RecordResult
+
+CONFIG = Config({})
 
 
 class HyperAgentsRecord(RecordOperator):
@@ -19,4 +22,4 @@ class HyperAgentsRecord(RecordOperator):
 
 
 if __name__ == "__main__":
-    sdk.main(HyperAgentsRecord)
+    sdk.main(HyperAgentsRecord, config_schema=CONFIG)

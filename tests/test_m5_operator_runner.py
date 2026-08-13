@@ -8,7 +8,8 @@ import pytest
 import evolve.runtime.process as runtime_module
 from evolve import driver as driver_module
 from evolve.archive import archive_path, eval_receipt_path, mirror_path
-from evolve.driver import _run_operator_guarded
+from evolve.config import operator_runtime_config
+from evolve.driver import _operator_config_block, _run_operator_guarded
 from evolve.operators import OperatorResult, _operator_deadline_s, run_operator
 
 
@@ -43,11 +44,13 @@ def test_run_operator_success_env_and_config(tmp_path):
         args = sys.argv
         config = json.loads(args[args.index("--config") + 1])
         out = {
-            "variant": config["variant"],
+            "opaque": config["opaque"],
             "genid": os.environ["EVOLVE_GENID"],
             "parent": os.environ["EVOLVE_PARENT"],
             "workspace": os.environ["EVOLVE_WORKSPACE"],
             "checkout": os.environ.get("EVOLVE_CHECKOUT"),
+            "stage_timeout": os.environ["EVOLVE_STAGE_TIMEOUT_S"],
+            "operator_deadline": os.environ["EVOLVE_OPERATOR_TIMEOUT_S"],
         }
         run_dir = os.environ["EVOLVE_RUN_DIR"]
         os.makedirs(run_dir, exist_ok=True)
@@ -62,7 +65,7 @@ def test_run_operator_success_env_and_config(tmp_path):
         genid="1",
         parent="0",
         run_dir=run_dir,
-        config_block={"variant": "hillclimb"},
+        config_block={"opaque": {"value": True}},
         timeout_s=30,
     )
     assert isinstance(result, OperatorResult)
@@ -71,19 +74,94 @@ def test_run_operator_success_env_and_config(tmp_path):
 
     probe = json.loads((run_dir / "probe.json").read_text())
     assert probe == {
-        "variant": "hillclimb",
+        "opaque": {"value": True},
         "genid": "1",
         "parent": "0",
         "workspace": str(tmp_path.resolve()),
         "checkout": str(checkout.resolve()),
+        "stage_timeout": "30",
+        "operator_deadline": "30",
+    }
+
+
+def test_operator_runtime_config_returns_only_nested_opaque_mapping() -> None:
+    operators = {
+        "mutate": {
+            "operator": "hyperagents",
+            "timeout_s": 17,
+            "config": {"runner": "local", "seed": 4},
+        }
+    }
+
+    assert operator_runtime_config(operators, "mutate") == {"runner": "local", "seed": 4}
+
+
+def test_driver_extracts_only_nested_operator_runtime_config() -> None:
+    operators = {
+        "gate": {
+            "operator": "hillclimb",
+            "timeout_s": 12,
+            "config": {"strict": True},
+        }
+    }
+
+    assert _operator_config_block(operators, "gate") == {"strict": True}
+
+
+def test_sdk_context_uses_framework_timeout_and_fixed_fan_out(tmp_path: Path) -> None:
+    checkout = tmp_path / "checkout"
+    run_dir = tmp_path / "runs" / "gen-1"
+    (tmp_path / "evolve.yaml").write_text("execution_runtime: {backend: local}\n")
+    (checkout / ".evolve-protocol-version").parent.mkdir(parents=True, exist_ok=True)
+    (checkout / ".evolve-protocol-version").write_text("1\n")
+    _write_operator(
+        checkout,
+        "select",
+        """
+        import json
+        from evolve.frozen import sdk
+        from evolve.frozen.config import Config
+        from evolve.frozen.interfaces import SelectOperator, SelectResult
+
+        class Probe(SelectOperator):
+            def pick(self, archive, ctx):
+                ctx.run_dir.mkdir(parents=True, exist_ok=True)
+                (ctx.run_dir / "context.json").write_text(json.dumps({
+                    "timeout_s": ctx.timeout_s,
+                    "fan_out": ctx.fan_out,
+                    "config": ctx.config,
+                }))
+                return SelectResult(["0"])
+
+        if __name__ == "__main__":
+            sdk.main(Probe, config_schema=Config({}))
+        """,
+    )
+
+    result = run_operator(
+        name="select",
+        checkout=checkout,
+        workspace=tmp_path,
+        genid="1",
+        parent=None,
+        run_dir=run_dir,
+        config_block={"seed": 4, "fan_out": 9, "timeout_s": 999},
+        timeout_s=30,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert __import__("json").loads((run_dir / "context.json").read_text()) == {
+        "timeout_s": 30.0,
+        "fan_out": 1,
+        "config": {"seed": 4, "fan_out": 9, "timeout_s": 999},
     }
 
 
 def test_run_operator_nonzero_and_timeout(tmp_path):
     checkout = tmp_path / "checkout"
-    _write_operator(checkout, "meta_agent", "raise SystemExit(7)\n")
+    _write_operator(checkout, "mutate", "raise SystemExit(7)\n")
     failed = run_operator(
-        name="meta_agent",
+        name="mutate",
         checkout=checkout,
         workspace=tmp_path,
         genid="1",
@@ -116,17 +194,16 @@ def test_run_operator_nonzero_and_timeout(tmp_path):
         "evolve.integrations.harbor.miniswe_task_file:FileTaskMiniSweAgent",
     ],
 )
-def test_installed_miniswe_meta_agent_outer_timeout_budgets_every_retry(
+def test_installed_miniswe_mutate_outer_timeout_budgets_every_retry(
     agent: str,
 ) -> None:
     assert (
         _operator_deadline_s(
-            "meta_agent",
+            "mutate",
             {
                 "runner": "harbor",
                 "agent": agent,
                 "max_retries": 1,
-                "timeout_s": 3600,
             },
             3600,
         )
@@ -146,23 +223,22 @@ def test_installed_miniswe_meta_agent_outer_timeout_budgets_every_retry(
 def test_non_installed_agents_keep_whole_process_timeout(agent: str) -> None:
     assert (
         _operator_deadline_s(
-            "meta_agent",
-            {"runner": "harbor", "agent": agent, "max_retries": 1, "timeout_s": 3600},
+            "mutate",
+            {"runner": "harbor", "agent": agent, "max_retries": 1},
             3600,
         )
         == 3600
     )
 
 
-def test_codex_harbor_meta_agent_keeps_whole_process_timeout() -> None:
+def test_codex_harbor_mutate_keeps_whole_process_timeout() -> None:
     assert (
         _operator_deadline_s(
-            "meta_agent",
+            "mutate",
             {
                 "runner": "harbor",
                 "agent": "codex",
                 "max_retries": 1,
-                "timeout_s": 3600,
             },
             3600,
         )

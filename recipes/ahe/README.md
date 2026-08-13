@@ -8,9 +8,9 @@ with one trial per task. That certified evaluation is replayed as the next AHE
 debugger input, so its score
 and debugger evidence come from the same retained Harbor trajectories rather
 than a separate rollout run. Each task receives one required LLM debugger
-analysis using the same model and runner as the meta-agent. The debugger uses
+analysis using the same model and runner as the mutate operator. The debugger uses
 `high` reasoning so its short MiniSWE protocol reliably reaches the required
-tool call; the change-producing meta-agent also uses `high`. Both paths receive
+tool call; the change-producing mutation agent also uses `high`. Both paths receive
 an explicit 64k output budget through Harbor's `max_tokens` constructor field
 because mini-swe-agent otherwise uses its 1,000-token default. Failures
 stop the generation after three attempts; there is no silent deterministic
@@ -28,7 +28,7 @@ its Python API with evaluator-owned model and resource limits. The prompt asks
 for a change manifest linking target edits to debugger evidence and predicted
 effects, but that manifest is best-effort metadata: a missing or malformed block
 does not discard an otherwise surface-valid patch. The raw response, changed
-paths, and patch are preserved and passed to the next meta-agent; predicted-fix
+paths, and patch are preserved and passed to the next mutate run; predicted-fix
 and risk attribution is used only when available. The newest valid generation
 remains the next parent even after a score regression, allowing the following
 generation to attribute it and choose KEEP, REVISE, or ROLLBACK + PIVOT.
@@ -60,23 +60,23 @@ and call the AHE capabilities individually:
 ./evolve fork . "$PARENT" runs/worktrees/gen-1
 ./evolve operator run . rollout --genid 1 --parent "$PARENT" \
   --checkout runs/worktrees/gen-1
-./evolve operator run . trace_analyzer --genid 1 --parent "$PARENT" \
+./evolve operator run . analyze --genid 1 --parent "$PARENT" \
   --checkout runs/worktrees/gen-1 \
   --config '{"max_tasks":5,"max_concurrent":3}'
 ```
 
-The outer agent reads `runs/gen-1/trace_analyzer/`, edits the harness, and
+The outer agent reads `runs/gen-1/analyze/`, edits the harness, and
 finishes through `surface-check`, `commit`, `eval`, and `finalize`. Omit the
-temporary limits for the canonical full analysis. The `meta_agent` stage is
+temporary limits for the canonical full analysis. The `mutate` stage is
 optional on this path and remains the mutation stage for `evolve run`.
 
 Live runs need Docker, Harbor, model credentials, and an immutable evaluator
 runtime. Build the small workspace image once before running:
 
 ```bash
-IMAGE_CONTEXT="$(python -c 'from evolve.config import resource_root; print(resource_root("containers") / "meta-agent")')"
+IMAGE_CONTEXT="$(python -c 'from evolve.config import resource_root; print(resource_root("containers") / "mutate")')"
 docker build --build-arg MINISWE_VERSION=2.4.5 \
-  -t evolve-meta-agent-app:20260724-tools-mswe245 "$IMAGE_CONTEXT"
+  -t evolve-mutate-app:20260724-tools-mswe245 "$IMAGE_CONTEXT"
 ```
 
 The recipe never requires a local Codex command.

@@ -42,7 +42,7 @@ def test_runtime_manifest_pins_supported_assets_and_fonts() -> None:
 
 def test_poster_recipe_vendors_frozen_local_runtime_assets() -> None:
     recipe = RUNTIME.parent
-    assets = workspace_module._recipe_evaluator_assets("unused", recipe_directory=recipe)
+    assets = workspace_module._recipe_evaluator_assets(recipe)
 
     assert set(assets) == {
         "evaluator/doctor.json",

@@ -11,9 +11,39 @@ from pathlib import Path
 from typing import Any
 
 from evolve.frozen import sdk
+from evolve.frozen.config import Config, integer, number, string
+from evolve.frozen.config import object as object_field
 from evolve.frozen.interfaces import OperatorContext, ValidateOperator, ValidateResult
-from library.gepa_support import read_json
-from library.rollout.harbor import HarborRollout
+from library._methods_shared.gepa import read_json
+from library._shared.harbor import HarborRollout
+
+
+def _positive_multipliers(config: dict[str, object]) -> None:
+    for key in (
+        "agent_setup_timeout_multiplier",
+        "agent_timeout_multiplier",
+        "verifier_timeout_multiplier",
+    ):
+        if key in config and float(config[key]) <= 0:
+            raise ValueError(f"{key} must be positive")
+
+
+CONFIG = Config(
+    {
+        "criterion": string(
+            default="strict",
+            choices=("strict", "non_decreasing"),
+        ),
+        "n_concurrent": integer(minimum=1),
+        "agent_setup_timeout_multiplier": number(),
+        "agent_timeout_multiplier": number(),
+        "verifier_timeout_multiplier": number(),
+        "max_retries": integer(minimum=0),
+        "environment": string(),
+        "environment_kwargs": object_field(additional_properties=True),
+    },
+    refine=_positive_multipliers,
+)
 
 
 def _write_json(path: Path, payload: object) -> None:
@@ -23,7 +53,11 @@ def _write_json(path: Path, payload: object) -> None:
 
 def _cases(path: Path) -> list[dict[str, Any]]:
     payload = read_json(path)
-    return [row for row in payload if isinstance(row, dict)] if isinstance(payload, list) else []
+    return (
+        [{str(key): value for key, value in row.items()} for row in payload if isinstance(row, dict)]
+        if isinstance(payload, list)
+        else []
+    )
 
 
 def _task_scores(cases: list[dict[str, Any]]) -> dict[str, float]:
@@ -102,6 +136,7 @@ class MinibatchImprovementValidate(ValidateOperator):
             fan_out=ctx.fan_out,
             config=child_config,
             rng=ctx.rng,
+            timeout_s=ctx.timeout_s,
         )
         rollout_result = HarborRollout().rollout(checkout, child_ctx)
         _write_json(child_run_dir / "rollout" / "summary.json", rollout_result.summary)
@@ -168,4 +203,4 @@ class MinibatchImprovementValidate(ValidateOperator):
 
 
 if __name__ == "__main__":
-    sdk.main(MinibatchImprovementValidate)
+    sdk.main(MinibatchImprovementValidate, config_schema=CONFIG)

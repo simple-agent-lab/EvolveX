@@ -43,11 +43,11 @@ def test_environment_plan_uses_safe_templates_and_model_bypass_proxy() -> None:
     environment = complete_environment()
     environment["UNRELATED_MULTILINE_VALUE"] = "first\nsecond"
 
-    plan = resolve_runtime_environment(resolved_runtime(), environment, meta_agent_kind="codex")
+    plan = resolve_runtime_environment(resolved_runtime(), environment, mutate_kind="codex")
 
     assert plan.agent_env()["OPENAI_API_KEY"].startswith("${EVOLVE_RUNTIME_AGENT_")
     assert plan.agent_env()["OPENAI_BASE_URL"].startswith("${EVOLVE_RUNTIME_AGENT_")
-    assert plan.meta_agent_env()["OPENAI_API_KEY"].startswith("${EVOLVE_RUNTIME_META_AGENT_")
+    assert plan.mutate_env()["OPENAI_API_KEY"].startswith("${EVOLVE_RUNTIME_MUTATE_")
     assert "OPENAI_API_KEY" not in plan.verifier_env()
     assert "OPENAI_BASE_URL" not in plan.verifier_env()
     assert plan.process_env()["EVOLVE_RUNTIME_AGENT_NO_PROXY"] == ("pypi.org,.internal.example,model.example")
@@ -187,7 +187,7 @@ def test_harbor_writer_rejects_literal_values(tmp_path: Path) -> None:
         process_environment=(),
         agent_environment=(("OPENAI_API_KEY", "literal-secret"),),
         verifier_environment=(),
-        meta_agent_environment=(),
+        mutate_environment=(),
         evidence=(),
     )
 
