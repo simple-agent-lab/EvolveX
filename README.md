@@ -21,6 +21,9 @@
   <a href="https://www.python.org/">
     <img alt="Python 3.12+" src="https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&amp;logoColor=white">
   </a>
+  <a href="https://simple-agent-lab.github.io/RSIHub/">
+    <img alt="RSIHub documentation" src="https://img.shields.io/badge/Documentation-RSIHub-0F766E?logo=materialformkdocs&amp;logoColor=white">
+  </a>
 </p>
 
 <p align="center">
