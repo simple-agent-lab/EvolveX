@@ -1,0 +1,135 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="790" viewBox="0 0 1600 790" role="img" aria-labelledby="title desc">
+<title id="title">RSIHub benchmark results</title>
+<desc id="desc">Terminal Bench 2 and Tau cubed Banking results for four evolution methods with MiniSWE and Codex target agents. MiniSWE is grouped left and Codex right in each panel. The vertical axes use truncated ranges (50–80% and 5–45%). Dark bar sections show seed scores above each axis baseline; light sections show improvement to the best score.</desc>
+<rect width="1600" height="790" rx="18" fill="#F2FBF7"/>
+<style>text{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.title{font-size:25px;font-weight:750;fill:#19785A}.axis{font-size:12px;fill:#608675}.method{font-size:16px;font-weight:750;fill:#607169}.seed{font-size:16px;font-weight:800;fill:#FFFFFF}.best{font-size:16px;font-weight:800;fill:#19785A}.delta-up{fill:#7C3AED}.delta-down{fill:#CF222E}.delta-flat{fill:#9A6700}.agent{font-size:17px;font-weight:800}.legend{font-size:13px;font-weight:650;fill:#607169}.note{font-size:12px;fill:#608675}</style>
+<text class="title" x="427.5" y="72" text-anchor="middle">Terminal Bench 2</text>
+<line x1="70.0" y1="590.0" x2="785.0" y2="590.0" stroke="#D8EBE2"/>
+<text class="axis" x="60.0" y="594.0" text-anchor="end">50%</text>
+<line x1="70.0" y1="510.3" x2="785.0" y2="510.3" stroke="#D8EBE2"/>
+<text class="axis" x="60.0" y="514.3" text-anchor="end">55%</text>
+<line x1="70.0" y1="430.7" x2="785.0" y2="430.7" stroke="#D8EBE2"/>
+<text class="axis" x="60.0" y="434.7" text-anchor="end">60%</text>
+<line x1="70.0" y1="351.0" x2="785.0" y2="351.0" stroke="#D8EBE2"/>
+<text class="axis" x="60.0" y="355.0" text-anchor="end">65%</text>
+<line x1="70.0" y1="271.3" x2="785.0" y2="271.3" stroke="#D8EBE2"/>
+<text class="axis" x="60.0" y="275.3" text-anchor="end">70%</text>
+<line x1="70.0" y1="191.7" x2="785.0" y2="191.7" stroke="#D8EBE2"/>
+<text class="axis" x="60.0" y="195.7" text-anchor="end">75%</text>
+<line x1="70.0" y1="112.0" x2="785.0" y2="112.0" stroke="#D8EBE2"/>
+<text class="axis" x="60.0" y="116.0" text-anchor="end">80%</text>
+<line x1="70.0" y1="590" x2="785.0" y2="590" stroke="#608675" stroke-width="1.2"/>
+<line x1="427.5" y1="112" x2="427.5" y2="637" stroke="#B7D0C4" stroke-dasharray="4 6"/>
+<text class="agent" x="240.8" y="101" text-anchor="middle" fill="#19785A">MiniSWE</text>
+<defs><clipPath id="b-0-0-0"><rect x="83.7" y="491.2" width="58" height="98.8" rx="5"/></clipPath></defs>
+<g clip-path="url(#b-0-0-0)"><rect x="83.7" y="491.2" width="58" height="17.5" fill="#65CE9F"/><rect x="83.7" y="508.7" width="58" height="81.3" fill="#19785A"/></g>
+<text class="seed" x="112.7" y="527.7" text-anchor="middle">55.1</text>
+<text class="best" x="112.7" y="468.2" text-anchor="middle"><tspan x="112.7">56.2</tspan><tspan class="delta-up" style="fill:#7C3AED" x="112.7" dy="17">(+1.1)</tspan></text>
+<text class="method" x="112.7" y="608" text-anchor="end" transform="rotate(-45 112.7 608)">AHE</text>
+<defs><clipPath id="b-0-0-1"><rect x="169.1" y="295.2" width="58" height="294.8" rx="5"/></clipPath></defs>
+<g clip-path="url(#b-0-0-1)"><rect x="169.1" y="295.2" width="58" height="213.5" fill="#65CE9F"/><rect x="169.1" y="508.7" width="58" height="81.3" fill="#19785A"/></g>
+<text class="seed" x="198.1" y="527.7" text-anchor="middle">55.1</text>
+<text class="best" x="198.1" y="272.2" text-anchor="middle"><tspan x="198.1">68.5</tspan><tspan class="delta-up" style="fill:#7C3AED" x="198.1" dy="17">(+13.4)</tspan></text>
+<text class="method" x="198.1" y="608" text-anchor="end" transform="rotate(-45 198.1 608)">Hyperagents</text>
+<defs><clipPath id="b-0-0-2"><rect x="254.4" y="347.8" width="58" height="242.2" rx="5"/></clipPath></defs>
+<g clip-path="url(#b-0-0-2)"><rect x="254.4" y="347.8" width="58" height="160.9" fill="#65CE9F"/><rect x="254.4" y="508.7" width="58" height="81.3" fill="#19785A"/></g>
+<text class="seed" x="283.4" y="527.7" text-anchor="middle">55.1</text>
+<text class="best" x="283.4" y="324.8" text-anchor="middle"><tspan x="283.4">65.2</tspan><tspan class="delta-up" style="fill:#7C3AED" x="283.4" dy="17">(+10.1)</tspan></text>
+<text class="method" x="283.4" y="608" text-anchor="end" transform="rotate(-45 283.4 608)">A-Evolve</text>
+<defs><clipPath id="b-0-0-3"><rect x="339.8" y="437.0" width="58" height="153.0" rx="5"/></clipPath></defs>
+<g clip-path="url(#b-0-0-3)"><rect x="339.8" y="437.0" width="58" height="71.7" fill="#65CE9F"/><rect x="339.8" y="508.7" width="58" height="81.3" fill="#19785A"/></g>
+<text class="seed" x="368.8" y="527.7" text-anchor="middle">55.1</text>
+<text class="best" x="368.8" y="414.0" text-anchor="middle"><tspan x="368.8">59.6</tspan><tspan class="delta-up" style="fill:#7C3AED" x="368.8" dy="17">(+4.5)</tspan></text>
+<text class="method" x="368.8" y="608" text-anchor="end" transform="rotate(-45 368.8 608)">GEPA</text>
+<text class="agent" x="614.2" y="101" text-anchor="middle" fill="#608675">Codex</text>
+<defs><clipPath id="b-0-1-0"><rect x="457.2" y="330.3" width="58" height="259.7" rx="5"/></clipPath></defs>
+<g clip-path="url(#b-0-1-0)"><rect x="457.2" y="330.3" width="58" height="89.2" fill="#B8D8C9"/><rect x="457.2" y="419.5" width="58" height="170.5" fill="#608675"/></g>
+<text class="seed" x="486.2" y="438.5" text-anchor="middle">60.7</text>
+<text class="best" x="486.2" y="307.3" text-anchor="middle"><tspan x="486.2">66.3</tspan><tspan class="delta-up" style="fill:#7C3AED" x="486.2" dy="17">(+5.6)</tspan></text>
+<text class="method" x="486.2" y="608" text-anchor="end" transform="rotate(-45 486.2 608)">AHE</text>
+<defs><clipPath id="b-0-1-1"><rect x="542.6" y="258.6" width="58" height="331.4" rx="5"/></clipPath></defs>
+<g clip-path="url(#b-0-1-1)"><rect x="542.6" y="258.6" width="58" height="160.9" fill="#B8D8C9"/><rect x="542.6" y="419.5" width="58" height="170.5" fill="#608675"/></g>
+<text class="seed" x="571.6" y="438.5" text-anchor="middle">60.7</text>
+<text class="best" x="571.6" y="235.6" text-anchor="middle"><tspan x="571.6">70.8</tspan><tspan class="delta-up" style="fill:#7C3AED" x="571.6" dy="17">(+10.1)</tspan></text>
+<text class="method" x="571.6" y="608" text-anchor="end" transform="rotate(-45 571.6 608)">Hyperagents</text>
+<defs><clipPath id="b-0-1-2"><rect x="627.9" y="366.9" width="58" height="223.1" rx="5"/></clipPath></defs>
+<g clip-path="url(#b-0-1-2)"><rect x="627.9" y="366.9" width="58" height="52.6" fill="#B8D8C9"/><rect x="627.9" y="419.5" width="58" height="170.5" fill="#608675"/></g>
+<text class="seed" x="656.9" y="438.5" text-anchor="middle">60.7</text>
+<text class="best" x="656.9" y="343.9" text-anchor="middle"><tspan x="656.9">64.0</tspan><tspan class="delta-up" style="fill:#7C3AED" x="656.9" dy="17">(+3.3)</tspan></text>
+<text class="method" x="656.9" y="608" text-anchor="end" transform="rotate(-45 656.9 608)">A-Evolve</text>
+<defs><clipPath id="b-0-1-3"><rect x="713.3" y="419.5" width="58" height="170.5" rx="5"/></clipPath></defs>
+<g clip-path="url(#b-0-1-3)"><rect x="713.3" y="419.5" width="58" height="0.0" fill="#B8D8C9"/><rect x="713.3" y="419.5" width="58" height="170.5" fill="#608675"/></g>
+<text class="seed" x="742.3" y="438.5" text-anchor="middle">60.7</text>
+<text class="best" x="742.3" y="396.5" text-anchor="middle"><tspan x="742.3">60.7</tspan><tspan class="delta-flat" x="742.3" dy="17">(0.0)</tspan></text>
+<text class="method" x="742.3" y="608" text-anchor="end" transform="rotate(-45 742.3 608)">GEPA</text>
+<text class="title" x="1212.5" y="72" text-anchor="middle">Tau³ Banking</text>
+<line x1="855.0" y1="590.0" x2="1570.0" y2="590.0" stroke="#D8EBE2"/>
+<text class="axis" x="845.0" y="594.0" text-anchor="end">5%</text>
+<line x1="855.0" y1="530.2" x2="1570.0" y2="530.2" stroke="#D8EBE2"/>
+<text class="axis" x="845.0" y="534.2" text-anchor="end">10%</text>
+<line x1="855.0" y1="470.5" x2="1570.0" y2="470.5" stroke="#D8EBE2"/>
+<text class="axis" x="845.0" y="474.5" text-anchor="end">15%</text>
+<line x1="855.0" y1="410.8" x2="1570.0" y2="410.8" stroke="#D8EBE2"/>
+<text class="axis" x="845.0" y="414.8" text-anchor="end">20%</text>
+<line x1="855.0" y1="351.0" x2="1570.0" y2="351.0" stroke="#D8EBE2"/>
+<text class="axis" x="845.0" y="355.0" text-anchor="end">25%</text>
+<line x1="855.0" y1="291.2" x2="1570.0" y2="291.2" stroke="#D8EBE2"/>
+<text class="axis" x="845.0" y="295.2" text-anchor="end">30%</text>
+<line x1="855.0" y1="231.5" x2="1570.0" y2="231.5" stroke="#D8EBE2"/>
+<text class="axis" x="845.0" y="235.5" text-anchor="end">35%</text>
+<line x1="855.0" y1="171.8" x2="1570.0" y2="171.8" stroke="#D8EBE2"/>
+<text class="axis" x="845.0" y="175.8" text-anchor="end">40%</text>
+<line x1="855.0" y1="112.0" x2="1570.0" y2="112.0" stroke="#D8EBE2"/>
+<text class="axis" x="845.0" y="116.0" text-anchor="end">45%</text>
+<line x1="855.0" y1="590" x2="1570.0" y2="590" stroke="#608675" stroke-width="1.2"/>
+<line x1="1212.5" y1="112" x2="1212.5" y2="637" stroke="#B7D0C4" stroke-dasharray="4 6"/>
+<text class="agent" x="1025.8" y="101" text-anchor="middle" fill="#19785A">MiniSWE</text>
+<defs><clipPath id="b-1-0-0"><rect x="868.7" y="378.5" width="58" height="211.5" rx="5"/></clipPath></defs>
+<g clip-path="url(#b-1-0-0)"><rect x="868.7" y="378.5" width="58" height="123.1" fill="#65CE9F"/><rect x="868.7" y="501.6" width="58" height="88.4" fill="#19785A"/></g>
+<text class="seed" x="897.7" y="520.6" text-anchor="middle">12.4</text>
+<text class="best" x="897.7" y="355.5" text-anchor="middle"><tspan x="897.7">22.7</tspan><tspan class="delta-up" style="fill:#7C3AED" x="897.7" dy="17">(+10.3)</tspan></text>
+<text class="method" x="897.7" y="608" text-anchor="end" transform="rotate(-45 897.7 608)">AHE</text>
+<defs><clipPath id="b-1-0-1"><rect x="954.1" y="304.4" width="58" height="285.6" rx="5"/></clipPath></defs>
+<g clip-path="url(#b-1-0-1)"><rect x="954.1" y="304.4" width="58" height="197.2" fill="#65CE9F"/><rect x="954.1" y="501.6" width="58" height="88.4" fill="#19785A"/></g>
+<text class="seed" x="983.1" y="520.6" text-anchor="middle">12.4</text>
+<text class="best" x="983.1" y="281.4" text-anchor="middle"><tspan x="983.1">28.9</tspan><tspan class="delta-up" style="fill:#7C3AED" x="983.1" dy="17">(+16.5)</tspan></text>
+<text class="method" x="983.1" y="608" text-anchor="end" transform="rotate(-45 983.1 608)">Hyperagents</text>
+<defs><clipPath id="b-1-0-2"><rect x="1039.4" y="354.6" width="58" height="235.4" rx="5"/></clipPath></defs>
+<g clip-path="url(#b-1-0-2)"><rect x="1039.4" y="354.6" width="58" height="147.0" fill="#65CE9F"/><rect x="1039.4" y="501.6" width="58" height="88.4" fill="#19785A"/></g>
+<text class="seed" x="1068.4" y="520.6" text-anchor="middle">12.4</text>
+<text class="best" x="1068.4" y="331.6" text-anchor="middle"><tspan x="1068.4">24.7</tspan><tspan class="delta-up" style="fill:#7C3AED" x="1068.4" dy="17">(+12.3)</tspan></text>
+<text class="method" x="1068.4" y="608" text-anchor="end" transform="rotate(-45 1068.4 608)">A-Evolve</text>
+<defs><clipPath id="b-1-0-3"><rect x="1124.8" y="378.5" width="58" height="211.5" rx="5"/></clipPath></defs>
+<g clip-path="url(#b-1-0-3)"><rect x="1124.8" y="378.5" width="58" height="123.1" fill="#65CE9F"/><rect x="1124.8" y="501.6" width="58" height="88.4" fill="#19785A"/></g>
+<text class="seed" x="1153.8" y="520.6" text-anchor="middle">12.4</text>
+<text class="best" x="1153.8" y="355.5" text-anchor="middle"><tspan x="1153.8">22.7</tspan><tspan class="delta-up" style="fill:#7C3AED" x="1153.8" dy="17">(+10.3)</tspan></text>
+<text class="method" x="1153.8" y="608" text-anchor="end" transform="rotate(-45 1153.8 608)">GEPA</text>
+<text class="agent" x="1399.2" y="101" text-anchor="middle" fill="#608675">Codex</text>
+<defs><clipPath id="b-1-1-0"><rect x="1242.2" y="329.5" width="58" height="260.5" rx="5"/></clipPath></defs>
+<g clip-path="url(#b-1-1-0)"><rect x="1242.2" y="329.5" width="58" height="185.2" fill="#B8D8C9"/><rect x="1242.2" y="514.7" width="58" height="75.3" fill="#608675"/></g>
+<text class="seed" x="1271.2" y="533.7" text-anchor="middle">11.3</text>
+<text class="best" x="1271.2" y="306.5" text-anchor="middle"><tspan x="1271.2">26.8</tspan><tspan class="delta-up" style="fill:#7C3AED" x="1271.2" dy="17">(+15.5)</tspan></text>
+<text class="method" x="1271.2" y="608" text-anchor="end" transform="rotate(-45 1271.2 608)">AHE</text>
+<defs><clipPath id="b-1-1-1"><rect x="1327.6" y="181.3" width="58" height="408.7" rx="5"/></clipPath></defs>
+<g clip-path="url(#b-1-1-1)"><rect x="1327.6" y="181.3" width="58" height="333.4" fill="#B8D8C9"/><rect x="1327.6" y="514.7" width="58" height="75.3" fill="#608675"/></g>
+<text class="seed" x="1356.6" y="533.7" text-anchor="middle">11.3</text>
+<text class="best" x="1356.6" y="158.3" text-anchor="middle"><tspan x="1356.6">39.2</tspan><tspan class="delta-up" style="fill:#7C3AED" x="1356.6" dy="17">(+27.9)</tspan></text>
+<text class="method" x="1356.6" y="608" text-anchor="end" transform="rotate(-45 1356.6 608)">Hyperagents</text>
+<defs><clipPath id="b-1-1-2"><rect x="1412.9" y="489.6" width="58" height="100.4" rx="5"/></clipPath></defs>
+<g clip-path="url(#b-1-1-2)"><rect x="1412.9" y="489.6" width="58" height="25.1" fill="#B8D8C9"/><rect x="1412.9" y="514.7" width="58" height="75.3" fill="#608675"/></g>
+<text class="seed" x="1441.9" y="533.7" text-anchor="middle">11.3</text>
+<text class="best" x="1441.9" y="466.6" text-anchor="middle"><tspan x="1441.9">13.4</tspan><tspan class="delta-up" style="fill:#7C3AED" x="1441.9" dy="17">(+2.1)</tspan></text>
+<text class="method" x="1441.9" y="608" text-anchor="end" transform="rotate(-45 1441.9 608)">A-Evolve</text>
+<defs><clipPath id="b-1-1-3"><rect x="1498.3" y="464.5" width="58" height="125.5" rx="5"/></clipPath></defs>
+<g clip-path="url(#b-1-1-3)"><rect x="1498.3" y="464.5" width="58" height="50.2" fill="#B8D8C9"/><rect x="1498.3" y="514.7" width="58" height="75.3" fill="#608675"/></g>
+<text class="seed" x="1527.3" y="533.7" text-anchor="middle">11.3</text>
+<text class="best" x="1527.3" y="441.5" text-anchor="middle"><tspan x="1527.3">15.5</tspan><tspan class="delta-up" style="fill:#7C3AED" x="1527.3" dy="17">(+4.2)</tspan></text>
+<text class="method" x="1527.3" y="608" text-anchor="end" transform="rotate(-45 1527.3 608)">GEPA</text>
+<defs><clipPath id="legend-0"><rect x="698" y="700" width="26" height="22" rx="5"/></clipPath></defs>
+<g clip-path="url(#legend-0)"><rect x="698" y="700" width="26" height="11" fill="#65CE9F"/><rect x="698" y="711" width="26" height="11" fill="#19785A"/></g>
+<text class="legend" x="734" y="717">MiniSWE</text>
+<defs><clipPath id="legend-1"><rect x="832" y="700" width="26" height="22" rx="5"/></clipPath></defs>
+<g clip-path="url(#legend-1)"><rect x="832" y="700" width="26" height="11" fill="#B8D8C9"/><rect x="832" y="711" width="26" height="11" fill="#608675"/></g>
+<text class="legend" x="868" y="717">Codex</text>
+<text class="note" x="800" y="766" text-anchor="middle">dark = seed · light = improvement · labels show best (change) · target: GPT-5.4-high · meta: GPT-5.4-xhigh</text>
+</svg>
