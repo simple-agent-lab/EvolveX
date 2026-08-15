@@ -336,6 +336,23 @@ composable strategies for different agent-evolution scenarios.
 - **More method integrations:** add evolution and search methods while preserving
   the shared evaluator, lineage, and evidence contracts.
 
+## For AI Agents
+
+Working on or with RSIHub from a coding agent? Start here:
+
+- [`llms.txt`](https://simple-agent-lab.github.io/RSIHub/llms.txt) — a
+  machine-friendly index of the documentation following the
+  [llms.txt convention](https://llmstxt.org/), with links to raw Markdown
+  sources.
+- [`AGENTS.md`](AGENTS.md) — repository instructions for coding agents,
+  including the layered test policy (do not run the full suite after every
+  edit).
+- [Terminology](docs/reference/terminology.md) — the glossary that defines the
+  ubiquitous language used across the framework, recipes, and workspaces.
+- [Design](docs/concepts/design.md) and [ARCHITECTURE.md](ARCHITECTURE.md) —
+  required reading before non-trivial changes; the operator contract in
+  `src/evolve/frozen/interfaces.py` is authoritative for interfaces.
+
 ## Documentation
 
 | Document | Purpose |

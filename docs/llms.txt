@@ -1,0 +1,75 @@
+# RSIHub
+
+> Build agents that improve — and keep the evidence. RSIHub is a file-based
+> framework for running agent-evolution experiments: candidates are scored by a
+> frozen evaluator, every generation keeps durable evidence (scores, artifacts,
+> archive records, Git lineage), and mutation is bounded to a declared surface.
+
+Key facts for working with RSIHub:
+
+- Every recipe composes the same loop: select → evaluate → analyze → mutate →
+  gate → record.
+- A **stage** is a fixed lifecycle slot; an **operator** is a reusable
+  implementation at `library/<stage>/<name>.py`; a **recipe** is code-free
+  selection and configuration of operators; **evaluate** is framework-owned and
+  never a selectable operator.
+- Supported recipes: `hill_climb`, `aevolve`, `ahe`, `gepa`, `hyperagents`
+  (plus `*_codex` and `gepa_local` variants in `recipes/`).
+- Each experiment is one Git repository (a workspace) created by `evolve init`.
+  Evaluators, archive stamps, and the vendored framework mechanism stay outside
+  the mutable surface.
+- The CLI is `evolve` (run as `uv run --frozen evolve ...` in a source
+  checkout, or `./evolve ...` inside a workspace). Requires Python 3.12+ and
+  `uv`.
+- The operator contract in `src/evolve/frozen/interfaces.py` is authoritative
+  for interfaces.
+
+All documentation is authored as Markdown. The links below point to the raw
+Markdown sources, which are easier for agents to parse than the rendered HTML
+site at https://simple-agent-lab.github.io/RSIHub/.
+
+## Docs
+
+- [Overview](https://raw.githubusercontent.com/simple-agent-lab/RSIHub/main/docs/index.md): What RSIHub does, the composition model, and where to start.
+- [Getting started](https://raw.githubusercontent.com/simple-agent-lab/RSIHub/main/docs/getting-started.md): Requirements, installation, and a first run.
+- [Framework design](https://raw.githubusercontent.com/simple-agent-lab/RSIHub/main/docs/concepts/design.md): System model, ownership boundaries, and invariants — read this before non-trivial changes.
+- [Terminology](https://raw.githubusercontent.com/simple-agent-lab/RSIHub/main/docs/reference/terminology.md): The single ubiquitous glossary for the framework, skill, and generated workspaces.
+- [Operator overview](https://raw.githubusercontent.com/simple-agent-lab/RSIHub/main/docs/reference/operators.md): Stages, operators, recipes, and the operator CLI workflow.
+- [Environment variables](https://raw.githubusercontent.com/simple-agent-lab/RSIHub/main/docs/reference/environment-variables.md): Credentials and runtime settings needed before experiments run.
+
+## Guides
+
+- [Creating a custom recipe](https://raw.githubusercontent.com/simple-agent-lab/RSIHub/main/docs/guides/custom-recipes.md): Compose operators, mutable surface, evaluator, and runtime into a new recipe.
+- [From recipe to experiment](https://raw.githubusercontent.com/simple-agent-lab/RSIHub/main/docs/guides/recipe-to-experiment.md): Preflight, workspace initialization, smoke run, and a real evolution run.
+- [Running RSIHub reliably](https://raw.githubusercontent.com/simple-agent-lab/RSIHub/main/docs/guides/operations.md): Doctor profiles, runtime setup, full-loop smoke, and recovery.
+- [Mutate operator execution](https://raw.githubusercontent.com/simple-agent-lab/RSIHub/main/docs/guides/mutate-operators.md): Trusted-host and isolated mutation runners.
+- [Local Harbor environment](https://raw.githubusercontent.com/simple-agent-lab/RSIHub/main/docs/guides/local-environment.md): Docker-free trusted local execution for short feedback loops.
+
+## Operator reference
+
+- [Select](https://raw.githubusercontent.com/simple-agent-lab/RSIHub/main/docs/reference/operators/select.md): Parent selection operators.
+- [Rollout](https://raw.githubusercontent.com/simple-agent-lab/RSIHub/main/docs/reference/operators/rollout.md): Candidate rollout operators.
+- [Analyze](https://raw.githubusercontent.com/simple-agent-lab/RSIHub/main/docs/reference/operators/analyze.md): Trace retention and trajectory analysis operators.
+- [Mutate](https://raw.githubusercontent.com/simple-agent-lab/RSIHub/main/docs/reference/operators/mutate.md): Candidate mutation operators.
+- [Validate](https://raw.githubusercontent.com/simple-agent-lab/RSIHub/main/docs/reference/operators/validate.md): Pre-evaluation validation operators.
+- [Novelty](https://raw.githubusercontent.com/simple-agent-lab/RSIHub/main/docs/reference/operators/novelty.md): Novelty and diversity operators.
+- [Gate](https://raw.githubusercontent.com/simple-agent-lab/RSIHub/main/docs/reference/operators/gate.md): Admission gate operators.
+- [Record](https://raw.githubusercontent.com/simple-agent-lab/RSIHub/main/docs/reference/operators/record.md): Archive and lineage recording operators.
+- [Reflect](https://raw.githubusercontent.com/simple-agent-lab/RSIHub/main/docs/reference/operators/reflect.md): Reflection operators.
+
+## Repository files
+
+- [README](https://raw.githubusercontent.com/simple-agent-lab/RSIHub/main/README.md): Project overview, recipes, benchmark results, and roadmap.
+- [AGENTS.md](https://raw.githubusercontent.com/simple-agent-lab/RSIHub/main/AGENTS.md): Repository instructions for coding agents, including the layered test policy.
+- [QUICKSTART](https://raw.githubusercontent.com/simple-agent-lab/RSIHub/main/QUICKSTART.md): Recipe launcher setup against the pinned Terminal-Bench 2.0 subset.
+- [ARCHITECTURE](https://raw.githubusercontent.com/simple-agent-lab/RSIHub/main/ARCHITECTURE.md): Enforced source-module map and line budgets.
+- [Recipe guide](https://raw.githubusercontent.com/simple-agent-lab/RSIHub/main/recipes/README.md): Each supported strategy's workflow and configuration.
+- [Operator library](https://raw.githubusercontent.com/simple-agent-lab/RSIHub/main/library/README.md): The reusable operator implementations recipes compose.
+- [CONTRIBUTING](https://raw.githubusercontent.com/simple-agent-lab/RSIHub/main/CONTRIBUTING.md): Development setup and repository conventions.
+
+## Optional
+
+- [Evaluation assets](https://raw.githubusercontent.com/simple-agent-lab/RSIHub/main/evals/README.md): Skill behavior/routing evaluation cases and result snapshots.
+- [Documentation ownership](https://raw.githubusercontent.com/simple-agent-lab/RSIHub/main/docs/development/documentation.md): Which document owns which topic.
+- [Coding style](https://raw.githubusercontent.com/simple-agent-lab/RSIHub/main/docs/development/coding-style.md): Source conventions for contributions.
+- [Releasing](https://raw.githubusercontent.com/simple-agent-lab/RSIHub/main/RELEASING.md): Source, artifact, and publication checklist.
