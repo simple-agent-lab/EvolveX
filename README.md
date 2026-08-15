@@ -321,14 +321,14 @@ composable strategies for different agent-evolution scenarios.
 
 ## Roadmap
 
-- **Asynchronous evolution:** add asynchronous evolution modes where selection,
-  rollout, and mutation can overlap across generations instead of running in
-  lockstep, so long evaluations no longer block the rest of the loop.
+- **DeepSeek harness (`dsh`) integration:** integrate the DeepSeek harness as a
+  supported target agent alongside MiniSWE and Codex.
 - **Richer trajectory analysis tooling:** grow the analyze-stage toolbox with
   more operators and utilities for inspecting, comparing, and mining rollout
   trajectories, turning retained traces into actionable mutation feedback.
-- **DeepSeek harness (`dsh`) integration:** integrate the DeepSeek harness as a
-  supported target agent alongside MiniSWE and Codex.
+- **Asynchronous evolution:** add asynchronous evolution modes where selection,
+  rollout, and mutation can overlap across generations instead of running in
+  lockstep, so long evaluations no longer block the rest of the loop.
 - **Scenario-oriented recipes:** compose the current operator library into
   opinionated recipes for different agent-evolution use cases.
 - **Local-first workflows:** make lightweight, Docker-free iteration a
