@@ -290,12 +290,37 @@ composable strategies for different agent-evolution scenarios.
 
 ## Roadmap
 
+- **DeepSeek harness (`dsh`) integration:** integrate the DeepSeek harness as a
+  supported target agent alongside MiniSWE and Codex.
+- **Richer trajectory analysis tooling:** grow the analyze-stage toolbox with
+  more operators and utilities for inspecting, comparing, and mining rollout
+  trajectories, turning retained traces into actionable mutation feedback.
+- **Asynchronous evolution:** add asynchronous evolution modes where selection,
+  rollout, and mutation can overlap across generations instead of running in
+  lockstep, so long evaluations no longer block the rest of the loop.
 - **Scenario-oriented recipes:** compose the current operator library into
   opinionated recipes for different agent-evolution use cases.
 - **Local-first workflows:** make lightweight, Docker-free iteration a
   first-class path for trusted local agents, prompts, skills, and small features.
 - **More method integrations:** add evolution and search methods while preserving
   the shared evaluator, lineage, and evidence contracts.
+
+## For AI Agents
+
+Working on or with RSIHub from a coding agent? Start here:
+
+- [`llms.txt`](https://simple-agent-lab.github.io/RSIHub/llms.txt) — a
+  machine-friendly index of the documentation following the
+  [llms.txt convention](https://llmstxt.org/), with links to raw Markdown
+  sources.
+- [`AGENTS.md`](AGENTS.md) — repository instructions for coding agents,
+  including the layered test policy (do not run the full suite after every
+  edit).
+- [Terminology](docs/reference/terminology.md) — the glossary that defines the
+  ubiquitous language used across the framework, recipes, and workspaces.
+- [Design](docs/concepts/design.md) and [ARCHITECTURE.md](ARCHITECTURE.md) —
+  required reading before non-trivial changes; the operator contract in
+  `src/evolve/frozen/interfaces.py` is authoritative for interfaces.
 
 ## Documentation
 

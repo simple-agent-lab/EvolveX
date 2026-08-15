@@ -52,3 +52,12 @@ See the [design guide](concepts/design.md) for the complete model and invariants
 - [Source architecture map](https://github.com/simple-agent-lab/RSIHub/blob/main/ARCHITECTURE.md)
 - [Contributing guide](https://github.com/simple-agent-lab/RSIHub/blob/main/CONTRIBUTING.md)
 - [GitHub repository](https://github.com/simple-agent-lab/RSIHub)
+
+## For AI agents
+
+Reading this site from an LLM or coding agent? Fetch
+[`llms.txt`](https://simple-agent-lab.github.io/RSIHub/llms.txt) — a
+machine-friendly index of this documentation with links to the raw Markdown
+sources — and
+[`AGENTS.md`](https://github.com/simple-agent-lab/RSIHub/blob/main/AGENTS.md)
+for repository working instructions and the test policy.
