@@ -26,8 +26,8 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/simple-agent-lab/RSIHub"
-Documentation = "https://simple-agent-lab.github.io/RSIHub/"
+Homepage = "https://simpleagentlab.com/rsihub/"
+Documentation = "https://simpleagentlab.com/RSIHub/"
 Repository = "https://github.com/simple-agent-lab/RSIHub"
 Issues = "https://github.com/simple-agent-lab/RSIHub/issues"
 

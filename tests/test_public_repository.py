@@ -344,8 +344,8 @@ def test_license_metadata_and_notice_are_consistent() -> None:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]
     assert project["name"] == "rsihub"
     assert project["urls"] == {
-        "Homepage": "https://github.com/simple-agent-lab/RSIHub",
-        "Documentation": "https://simple-agent-lab.github.io/RSIHub/",
+        "Homepage": "https://simpleagentlab.com/rsihub/",
+        "Documentation": "https://simpleagentlab.com/RSIHub/",
         "Repository": "https://github.com/simple-agent-lab/RSIHub",
         "Issues": "https://github.com/simple-agent-lab/RSIHub/issues",
     }

@@ -26,7 +26,7 @@ Key facts for working with RSIHub:
 
 All documentation is authored as Markdown. The links below point to the raw
 Markdown sources, which are easier for agents to parse than the rendered HTML
-site at https://simple-agent-lab.github.io/RSIHub/.
+site at https://simpleagentlab.com/RSIHub/.
 
 ## Docs
 
