@@ -127,6 +127,7 @@ def test_builtin_codex_wrapper_injects_skills_and_opt_in_compaction(tmp_path: Pa
 
     agent = module.HarborAgent(logs_dir=tmp_path / "logs")
     assert agent.model_name == "gpt-5.4"
+    assert agent.kwargs["version"] == "0.143.0"
     assert agent.kwargs["skills_dir"] == "/tmp/evolve-target-skills"
     assert "auto_compact_token_limit" not in agent.kwargs
     assert {flag.kwarg for flag in agent.CLI_FLAGS} >= {

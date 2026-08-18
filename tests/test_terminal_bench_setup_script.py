@@ -36,7 +36,7 @@ if name == "docker":
         raise SystemExit(0)
     if args[:1] == ["build"]:
         image = args[args.index("-t") + 1]
-        images[image] = "2.4.5" if "mutate-app" in image else "0.145.0"
+        images[image] = "2.4.5" if "mutate-app" in image else "0.146.0"
         state.write_text(json.dumps(images))
         raise SystemExit(0)
     raise SystemExit(2)
@@ -190,12 +190,12 @@ def test_setup_builds_codex_image_for_gepa(tmp_path: Path) -> None:
 
     assert result.returncode == 0, result.stderr
     build = next(call for call in calls if call[:2] == ["docker", "build"])
-    assert "evolve-mutate-codex:20260805-codex0145" in build
+    assert "evolve-mutate-codex:20260818-codex0146" in build
 
 
 def test_setup_rebuilds_a_stale_image_with_the_expected_tag(tmp_path: Path) -> None:
     environment, calls_path = _environment(tmp_path)
-    Path(environment["DOCKER_STATE"]).write_text(json.dumps({"evolve-mutate-codex:20260805-codex0145": "stale"}))
+    Path(environment["DOCKER_STATE"]).write_text(json.dumps({"evolve-mutate-codex:20260818-codex0146": "stale"}))
 
     result = subprocess.run(
         ["bash", str(SCRIPT), "gepa"], cwd=ROOT, env=environment, text=True, capture_output=True, check=False
