@@ -21,12 +21,13 @@
   <a href="https://www.python.org/">
     <img alt="Python 3.12+" src="https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&amp;logoColor=white">
   </a>
-  <a href="https://simple-agent-lab.github.io/RSIHub/">
+  <a href="https://simpleagentlab.com/RSIHub/">
     <img alt="RSIHub documentation" src="https://img.shields.io/badge/Documentation-RSIHub-0F766E?logo=materialformkdocs&amp;logoColor=white">
   </a>
 </p>
 
 <p align="center">
+  <a href="https://simpleagentlab.com/rsihub/">RSIHub Website</a> ·
   <a href="#what-rsihub-does">What RSIHub Does</a> ·
   <a href="#how-rsihub-works">How It Works</a> ·
   <a href="#what-can-evolve">What Can Evolve</a> ·
@@ -309,7 +310,7 @@ composable strategies for different agent-evolution scenarios.
 
 Working on or with RSIHub from a coding agent? Start here:
 
-- [`llms.txt`](https://simple-agent-lab.github.io/RSIHub/llms.txt) — a
+- [`llms.txt`](https://simpleagentlab.com/RSIHub/llms.txt) — a
   machine-friendly index of the documentation following the
   [llms.txt convention](https://llmstxt.org/), with links to raw Markdown
   sources.
@@ -326,7 +327,7 @@ Working on or with RSIHub from a coding agent? Start here:
 
 | Document | Purpose |
 | --- | --- |
-| [Documentation site](https://simple-agent-lab.github.io/RSIHub/) | Installation, operation, concepts, guides, and reference. |
+| [Documentation site](https://simpleagentlab.com/RSIHub/) | Installation, operation, concepts, guides, and reference. |
 | [Quick start](QUICKSTART.md) | Recipe launcher setup and configuration. |
 | [Design](docs/concepts/design.md) | System model, ownership boundaries, and invariants. |
 | [Architecture](ARCHITECTURE.md) | Enforced source-module map and line budgets. |

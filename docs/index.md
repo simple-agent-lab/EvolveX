@@ -56,7 +56,7 @@ See the [design guide](concepts/design.md) for the complete model and invariants
 ## For AI agents
 
 Reading this site from an LLM or coding agent? Fetch
-[`llms.txt`](https://simple-agent-lab.github.io/RSIHub/llms.txt) — a
+[`llms.txt`](https://simpleagentlab.com/RSIHub/llms.txt) — a
 machine-friendly index of this documentation with links to the raw Markdown
 sources — and
 [`AGENTS.md`](https://github.com/simple-agent-lab/RSIHub/blob/main/AGENTS.md)
