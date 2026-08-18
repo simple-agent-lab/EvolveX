@@ -27,11 +27,11 @@ case "$RECIPE" in
     BUILD_ARGS=(--build-arg MINISWE_VERSION=2.4.5)
     ;;
   aevolve|ahe_codex|gepa|hill_climb|hill_climb_codex|hyperagents_codex)
-    IMAGE=evolve-mutate-codex:20260805-codex0145
+    IMAGE=evolve-mutate-codex:20260818-codex0146
     IMAGE_CONTEXT=$ROOT/containers/mutate-codex
     IMAGE_LABEL=io.evolve.codex.version
-    IMAGE_VERSION=0.145.0
-    BUILD_ARGS=(--build-arg CODEX_VERSION=0.145.0)
+    IMAGE_VERSION=0.146.0
+    BUILD_ARGS=(--build-arg CODEX_VERSION=0.146.0)
     ;;
   *)
     echo "unsupported recipe '$RECIPE'; supported recipes: aevolve, ahe, ahe_codex, gepa, hill_climb, hill_climb_codex, hyperagents, hyperagents_codex" >&2

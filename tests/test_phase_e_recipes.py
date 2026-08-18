@@ -19,7 +19,7 @@ SUPPORTED_RECIPES = {
 UV_SOURCE_RECIPES = {"ahe", "hill_climb", "hyperagents"}
 MAIN_RECIPES = SUPPORTED_RECIPES - {"gepa_local"}
 TERMINAL_BENCH_DATASET = "terminal-bench-2-30-v1"
-CODEX_IMAGE = "evolve-mutate-codex:20260805-codex0145"
+CODEX_IMAGE = "evolve-mutate-codex:20260818-codex0146"
 MINISWE_IMAGE = "evolve-mutate-app:20260724-tools-mswe245"
 
 
@@ -189,7 +189,7 @@ def test_ahe_and_hyperagents_share_the_pinned_mutate_image() -> None:
 
 
 def test_codex_mutates_use_the_preinstalled_codex_image() -> None:
-    expected = "evolve-mutate-codex:20260805-codex0145"
+    expected = "evolve-mutate-codex:20260818-codex0146"
     for name in ("aevolve", "ahe_codex", "gepa", "hill_climb", "hill_climb_codex", "hyperagents_codex"):
         assert _operator_config(name, "mutate")["image"] == expected
 
@@ -318,13 +318,13 @@ def test_mutate_required_tools_match_tier_zero_contract() -> None:
     ]
 
 
-def test_codex_mutate_image_pins_the_seed_cli_version() -> None:
+def test_codex_mutate_image_pins_the_mutator_cli_version() -> None:
     dockerfile = (ROOT / "containers" / "mutate-codex" / "Dockerfile").read_text()
     assert dockerfile.startswith(
         "FROM node:22-bookworm-slim@sha256:f32b81066cde10a75dbac96646099533316d94bac4150c55da1636e1f0ffdc46"
     )
     assert "FROM ubuntu:24.04@sha256:4fbb8e6a8395de5a7550b33509421a2bafbc0aab6c06ba2cef9ebffbc7092d90" in dockerfile
-    assert "ARG CODEX_VERSION=0.145.0" in dockerfile
+    assert "ARG CODEX_VERSION=0.146.0" in dockerfile
     assert 'npm install --global "@openai/codex@${CODEX_VERSION}"' in dockerfile
     assert dockerfile.count("&& codex --version") == 2
     assert "COPY --from=codex-build /usr/local/bin/node /usr/local/bin/node" in dockerfile
