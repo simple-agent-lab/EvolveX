@@ -3,25 +3,12 @@
 from __future__ import annotations
 
 import shlex
-import shutil
-from pathlib import Path
 
 from harbor.agents.installed.codex import Codex
 
 
 class ResponsesCodexAgent(Codex):
     """Codex adapter for an OpenAI-compatible HTTP Responses endpoint."""
-
-    async def install(self, environment) -> None:
-        local_codex = shutil.which("codex")
-        if local_codex:
-            remote_codex = "/tmp/evolve-host-codex"
-            await environment.upload_file(Path(local_codex).resolve(), remote_codex)
-            await self.exec_as_root(
-                environment,
-                command=f"install -m 755 {shlex.quote(remote_codex)} /usr/local/bin/codex",
-            )
-        await super().install(environment)
 
     def build_cli_flags(self) -> str:
         base_url = self._get_env("OPENAI_BASE_URL") or self._get_env("OPENAI_API_BASE")

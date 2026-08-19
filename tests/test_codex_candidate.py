@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 import os
 import sys
@@ -22,6 +23,9 @@ class FakeCodex:
 
     def build_cli_flags(self) -> str:
         return ""
+
+    async def install(self, environment) -> None:
+        environment.append("parent-install")
 
 
 def _load(monkeypatch):
@@ -58,6 +62,15 @@ def test_responses_codex_agent_configures_api_provider(monkeypatch) -> None:
     assert 'model_providers.evolve_http.wire_api="responses"' in flags
     assert 'model_providers.evolve_http.env_http_headers={"api-key"="OPENAI_API_KEY"}' in flags
     assert "model_providers.evolve_http.supports_websockets=false" in flags
+
+
+def test_responses_codex_agent_preserves_parent_versioned_install(monkeypatch) -> None:
+    module = _load(monkeypatch)
+    environment = []
+
+    asyncio.run(module.ResponsesCodexAgent().install(environment))
+
+    assert environment == ["parent-install"]
 
 
 @pytest.mark.parametrize(
