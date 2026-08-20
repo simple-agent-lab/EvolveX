@@ -596,7 +596,8 @@ _OUTCOME_ORDER = ("failed", "agent_error", "infra_error", "incomplete", "passed"
 
 
 def _task_leaf(task_name: str) -> str:
-    return task_name.rsplit("/", 1)[-1]
+    leaf = task_name.rsplit("/", 1)[-1]
+    return leaf.rsplit("__", 1)[-1]
 
 
 def _with_missing_result_placeholders(cases: list[dict[str, Any]], selected_tasks: list[str]) -> list[dict[str, Any]]:

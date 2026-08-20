@@ -191,14 +191,13 @@ def _select_train_tasks(
     normalized: list[str] = []
     unknown: list[str] = []
     for name in requested:
-        if name in train_set:
-            normalized.append(name)
-            continue
-        leaf = name.rsplit("/", 1)[-1] if "/" in name else ""
-        if leaf in train_set:
-            normalized.append(leaf)
-        else:
+        leaf = name.rsplit("/", 1)[-1]
+        aliases = (name, leaf, leaf.rsplit("__", 1)[-1])
+        match = next((alias for alias in aliases if alias in train_set), None)
+        if match is None:
             unknown.append(name)
+            continue
+        normalized.append(match)
     if unknown:
         raise ValueError("task_names must come from the frozen train split: " + ", ".join(unknown))
     if len(set(normalized)) != len(normalized):

@@ -497,6 +497,15 @@ def test_harbor_rollout_exact_task_replay_is_limited_to_frozen_train_split(tmp_p
         1,
         ["terminal-bench/train-c", "terminal-bench/train-a"],
     ) == ["train-c", "train-a"]
+    assert module._select_train_tasks(
+        tmp_path / "splits.json",
+        "dataset",
+        1,
+        [
+            "sierra-research/tau3-bench__train-c",
+            "sierra-research/tau3-bench__train-a",
+        ],
+    ) == ["train-c", "train-a"]
     with pytest.raises(ValueError, match="frozen train split"):
         module._select_train_tasks(tmp_path / "splits.json", "dataset", 1, ["gate-a"])
     with pytest.raises(ValueError, match="frozen train split"):
@@ -511,7 +520,7 @@ def test_harbor_rollout_exact_task_replay_is_limited_to_frozen_train_split(tmp_p
             tmp_path / "splits.json",
             "dataset",
             1,
-            ["train-c", "terminal-bench/train-c"],
+            ["train-c", "sierra-research/tau3-bench__train-c"],
         )
 
 

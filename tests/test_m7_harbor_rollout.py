@@ -316,7 +316,7 @@ def test_harbor_rollout_preserves_missing_selected_results_as_trace_cases() -> N
     cases = harbor_evidence._with_missing_result_placeholders(
         [
             {
-                "task_name": "terminal-bench/task-a",
+                "task_name": "sierra-research/tau3-bench__task-a",
                 "reward": 1.0,
                 "outcome": "passed",
             }
