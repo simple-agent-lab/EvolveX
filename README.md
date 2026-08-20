@@ -230,22 +230,22 @@ a GPT-5.4-xhigh Codex mutate operator.
       <td align="center" rowspan="4">MiniSWE</td>
       <td align="center"><a href="https://arxiv.org/pdf/2604.25850">AHE</a></td>
       <td align="center">0.0%&nbsp;→&nbsp;32.0%&nbsp;<img src="docs/assets/benchmark-deltas/gain-percent-32-0.svg" alt="(+32.0)" width="68" height="20"></td>
-      <td align="center">12.4%&nbsp;→&nbsp;33.0%&nbsp;<img src="docs/assets/benchmark-deltas/gain-percent-20-6.svg" alt="(+20.6)" width="68" height="20"></td>
+      <td align="center">3.1%&nbsp;→&nbsp;33.0%&nbsp;<img src="docs/assets/benchmark-deltas/gain-percent-29-9.svg" alt="(+29.9)" width="68" height="20"></td>
     </tr>
     <tr>
       <td align="center"><a href="https://arxiv.org/abs/2603.19461">Hyperagents</a></td>
       <td align="center">2.0%&nbsp;→&nbsp;30.0%&nbsp;<img src="docs/assets/benchmark-deltas/gain-percent-28-0.svg" alt="(+28.0)" width="68" height="20"></td>
-      <td align="center">12.4%&nbsp;→&nbsp;28.9%&nbsp;<img src="docs/assets/benchmark-deltas/gain-percent-16-5.svg" alt="(+16.5)" width="68" height="20"></td>
+      <td align="center">3.1%&nbsp;→&nbsp;28.9%&nbsp;<img src="docs/assets/benchmark-deltas/gain-percent-25-8.svg" alt="(+25.8)" width="68" height="20"></td>
     </tr>
     <tr>
       <td align="center"><a href="https://github.com/A-EVO-Lab/a-evolve">A-Evolve</a></td>
       <td align="center">2.0%&nbsp;→&nbsp;32.0%&nbsp;<img src="docs/assets/benchmark-deltas/gain-percent-30-0.svg" alt="(+30.0)" width="68" height="20"></td>
-      <td align="center">12.4%&nbsp;→&nbsp;21.7%&nbsp;<img src="docs/assets/benchmark-deltas/gain-percent-9-3.svg" alt="(+9.3)" width="68" height="20"></td>
+      <td align="center">3.1%&nbsp;→&nbsp;21.7%&nbsp;<img src="docs/assets/benchmark-deltas/gain-percent-18-6.svg" alt="(+18.6)" width="68" height="20"></td>
     </tr>
     <tr>
       <td align="center"><a href="https://arxiv.org/abs/2507.19457">GEPA</a></td>
       <td align="center">2.0%&nbsp;→&nbsp;22.0%&nbsp;<img src="docs/assets/benchmark-deltas/gain-percent-20-0.svg" alt="(+20.0)" width="68" height="20"></td>
-      <td align="center">12.4%&nbsp;→&nbsp;23.7%&nbsp;<img src="docs/assets/benchmark-deltas/gain-percent-11-3.svg" alt="(+11.3)" width="68" height="20"></td>
+      <td align="center">3.1%&nbsp;→&nbsp;23.7%&nbsp;<img src="docs/assets/benchmark-deltas/gain-percent-20-6.svg" alt="(+20.6)" width="68" height="20"></td>
     </tr>
     <tr>
       <td align="center" rowspan="4">Codex</td>
