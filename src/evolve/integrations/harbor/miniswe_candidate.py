@@ -19,6 +19,12 @@ LOG_PATH = "/logs/agent/mini-swe-agent.txt"
 RUNTIME_EVIDENCE_PATH = "/logs/agent/evolve-runtime.json"
 HOST_UV_PATH = "/tmp/evolve-uv"
 SOURCE_ARCHIVE_PATH = "/tmp/evolve-miniswe-source.tar"
+TAU3_MCP_CLI_PATH = "/tmp/tau3-mcp.py"
+TAU3_BANKING_MCP_CLI_HINT = (
+    "Use the Bash tool to access the `tau3-runtime` MCP tools through "
+    f"`{TAU3_MCP_CLI_PATH}`: run `{VENV_PYTHON} {TAU3_MCP_CLI_PATH} list` to list tools "
+    f"and `{VENV_PYTHON} {TAU3_MCP_CLI_PATH} call TOOL_NAME 'JSON_ARGUMENTS'` to call one."
+)
 PROXY_ENV_NAMES = ("HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy")
 
 
@@ -458,7 +464,13 @@ class CandidateMiniSweAgent(MiniSweAgent):
                 mcp_info += f"- {server.name}: stdio transport, command: {server.command} {' '.join(server.args)}\n"
             else:
                 mcp_info += f"- {server.name}: {server.transport} transport, url: {server.url}\n"
+        if self._is_tau3_banking_task() and any(server.name == "tau3-runtime" for server in self.mcp_servers):
+            mcp_info += f"\n{TAU3_BANKING_MCP_CLI_HINT}\n"
         return instruction + mcp_info
+
+    def _is_tau3_banking_task(self) -> bool:
+        task_trial_name = self.logs_dir.parent.name
+        return task_trial_name.split("__", 1)[0].startswith("tau3-banking_")
 
     def _run_command(self, task: str) -> str:
         task_literal = repr(task)

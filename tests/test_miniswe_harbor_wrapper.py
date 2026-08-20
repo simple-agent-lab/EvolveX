@@ -629,6 +629,44 @@ def test_miniswe_wrapper_runs_candidate_source_api_not_cli(tmp_path: Path, monke
     assert 'env_kwargs["cwd"] = os.environ.get("MINISWE_CWD") or os.getcwd()' in module.RUNNER
 
 
+@pytest.mark.parametrize(
+    ("trial_name", "expects_hint"),
+    [
+        ("tau3-banking_knowledge-task-067__trial", True),
+        ("tau3-airline_knowledge-task-067__trial", False),
+        ("terminal-bench-task__trial", False),
+    ],
+)
+def test_miniswe_wrapper_only_adds_tau3_cli_hint_for_banking_tasks(
+    adapter_path: Path,
+    monkeypatch,
+    tmp_path: Path,
+    trial_name: str,
+    expects_hint: bool,
+) -> None:
+    _install_fake_harbor(monkeypatch)
+    module = _load(adapter_path)
+    agent = module.MiniSweSourceAgent()
+    agent.logs_dir = tmp_path / trial_name / "agent"
+    agent.mcp_servers = [
+        types.SimpleNamespace(
+            name="tau3-runtime",
+            transport="streamable-http",
+            url="http://tau3-runtime:8000/mcp",
+        )
+    ]
+
+    augmented = agent._augment_instruction("Original instruction.")
+    generic = (
+        "Original instruction.\n\nMCP Servers:\n"
+        "The following MCP servers are available for this task.\n"
+        "- tau3-runtime: streamable-http transport, url: http://tau3-runtime:8000/mcp\n"
+    )
+
+    assert (module.TAU3_BANKING_MCP_CLI_HINT in augmented) is expects_hint
+    assert augmented == (f"{generic}\n{module.TAU3_BANKING_MCP_CLI_HINT}\n" if expects_hint else generic)
+
+
 def test_miniswe_runtime_and_offline_install_forward_download_proxies(tmp_path: Path, monkeypatch) -> None:
     _install_fake_harbor(monkeypatch)
     proxy_names = ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy")
