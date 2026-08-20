@@ -2,7 +2,6 @@
   <img src="docs/rsihub-lockup.svg" width="460" alt="RSIHub: the ring mark beside the RSIHub wordmark.">
 </p>
 
-
 <p align="center">
   A file-based evolution framework for evaluator-driven learning, reproducible candidate
   lineage, and controllable modification.
